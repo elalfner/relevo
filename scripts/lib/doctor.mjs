@@ -131,7 +131,10 @@ export function gatherFacts(p) {
     f.workflows[file] = { present: p.exists(`.github/workflows/${file}`) };
   });
   const goText = f.workflows['relevo-go.yml'].present ? p.read('.github/workflows/relevo-go.yml') : '';
-  f.pluginMarketplace = (/^\s*plugin_marketplaces:\s*(\S+)/m.exec(goText) ?? [])[1] ?? null;
+  const marketplace = (/^\s*plugin_marketplaces:\s*(.+?)\s*$/m.exec(goText) ?? [])[1] ?? null;
+  // A URL that carries a credential (x-access-token:...@) can already be cloned by the runner.
+  f.pluginMarketplaceHasToken = marketplace !== null && /^https:\/\/.*@github\.com\//.test(marketplace);
+  f.pluginMarketplace = marketplace;
   // Workflows that check out the plugin repository for its scripts: do they pass a token that can read it?
   f.pluginCheckouts = [];
   WORKFLOW_FILES.filter((file) => f.workflows[file].present).forEach((file) => {
@@ -164,7 +167,8 @@ export function gatherFacts(p) {
       rulesets = list.map((r) => api(`repos/${f.repo}/rulesets/${r.id}`));
     } catch (err) {
       const text = String(err.stderr ?? err.message ?? err);
-      if (/Upgrade to GitHub|403|not available/i.test(text)) f.protectionUnavailable = text.trim().split('\n')[0];
+      if (/Upgrade to GitHub|not available/i.test(text)) f.protectionUnavailable = text.trim().split('\n')[0];
+      else f.protectionError = text.trim().split('\n')[0];
     }
     f.pushScope = rulesets.some((r) => r.name === 'relevo-push-scope' && r.enforcement === 'active');
     f.protection = {};
@@ -180,7 +184,7 @@ export function gatherFacts(p) {
       const found = wf.find((w) => w.path === `.github/workflows/${file}`);
       f.workflows[file].enabled = found ? found.state === 'active' : null;
     });
-    const plugin = f.pluginMarketplace && /^https:\/\/github\.com\/([^/@\s]+\/[^/@\s]+?)(\.git)?$/.exec(f.pluginMarketplace);
+    const plugin = f.pluginMarketplace && /^https:\/\/(?:.*@)?github\.com\/([^/@\s]+\/[^/@\s]+?)(?:\.git)?$/.exec(f.pluginMarketplace);
     const slug = plugin ? plugin[1] : f.pluginCheckouts[0]?.repo;
     f.pluginRepoPrivate = slug ? tryRun(() => api(`repos/${slug}`).private, null) : null;
   }
@@ -237,7 +241,9 @@ export function runChecks(f) {
     r.push(f.branches.base ? pass('repo.base-branch', `base branch ${f.config.branches.base} exists`) : fail('repo.base-branch', `base branch ${f.config.branches.base} does not exist`, `create it from ${f.config.branches.release}, or run /relevo:init`));
   }
 
-  if (f.protectionUnavailable) {
+  if (f.protectionError) {
+    r.push(warn('repo.protection', `could not read the branch rules (${f.protectionError}), so they were not checked`, 'run doctor again; if it keeps failing, check your access to the repository'));
+  } else if (f.protectionUnavailable) {
     r.push(warn('repo.protection', `branch protection is not available on this repository (${f.protectionUnavailable})`, 'make the repository public or upgrade the plan; until then approval and merge are only enforced by the written confirmation in `ship`'));
   } else {
     [['base', f.config?.branches?.base ?? 'base'], ['release', f.config?.branches?.release ?? 'release']].forEach(([key, name]) => {
@@ -248,7 +254,7 @@ export function runChecks(f) {
       if (p?.dismissStale) r.push(fail(`repo.dismiss-stale.${key}`, `${name} dismisses approvals when new commits are pushed; the spec archive commit pushed by \`ship\` would dismiss the approval`, `turn off "dismiss stale pull request approvals when new commits are pushed" on ${name}`));
     });
   }
-  if (!f.protectionUnavailable) {
+  if (!f.protectionUnavailable && !f.protectionError) {
     r.push(f.pushScope ? pass('repo.push-scope', 'the agent can only create feature/* branches') : warn('repo.push-scope', 'nothing stops the unattended agent from creating branches other than feature/*', 'run /relevo:init to add the relevo-push-scope ruleset'));
   }
   if (f.secretScanning) {
@@ -279,7 +285,7 @@ export function runChecks(f) {
   if (f.pluginRepoPrivate === true && noToken.length > 0) {
     r.push(fail('automation.plugin-checkout', `${noToken.join(', ')} check out the private plugin repository with the default token, which cannot read it, so those runs fail`, 'copy the current templates (they pass `token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}`) and store RELEVO_PLUGIN_TOKEN'));
   }
-  if (f.pluginMarketplace && f.pluginRepoPrivate === true) {
+  if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
   return r;

@@ -219,3 +219,23 @@ test('Scenario: Private plugin repository - workflows that check it out without 
   assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: true, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: true }] })), 'automation.plugin-checkout'), undefined);
   assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: false, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }] })), 'automation.plugin-checkout'), undefined);
 });
+
+test('a failed read of the branch rules is a warning, never a false failure', () => {
+  const results = runChecks(healthy({ protectionError: 'gh: HTTP 502', protection: { base: { pullRequestRequired: false }, release: { pullRequestRequired: false } } }));
+  assert.equal(byId(results, 'repo.protection').status, 'warn');
+  assert.match(byId(results, 'repo.protection').message, /HTTP 502/);
+  assert.deepEqual(failing(results), []);
+  assert.equal(byId(results, 'repo.push-scope'), undefined);
+});
+
+test('a plugin_marketplaces URL that carries a credential is not reported as unreachable, and its repository is still found', () => {
+  const files = { 'relevo.yml': CONFIG_TEXT, '.github/workflows/relevo-go.yml': '          plugin_marketplaces: https://x-access-token:${{ secrets.RELEVO_PLUGIN_TOKEN }}@github.com/o/relevo.git\n' };
+  const api = { 'repos/o/r': { default_branch: 'main' }, 'repos/o/relevo': { private: true } };
+  const f = gatherFacts({
+    tool: () => 'ok', gh: (args) => { const path = args[args.length - 1]; if (!(path in api)) throw new Error(`HTTP 404 ${path}`); return JSON.stringify(api[path]); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: 'o/r', platform: 'flutter-android',
+  });
+  assert.equal(f.pluginMarketplaceHasToken, true);
+  assert.equal(f.pluginRepoPrivate, true);
+  assert.equal(byId(runChecks({ ...healthy(), ...f, config: healthy().config }), 'automation.plugin-clone'), undefined);
+});
