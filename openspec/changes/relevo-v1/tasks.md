@@ -18,7 +18,7 @@
 - [x] 3.3 `fix`: specification first, developer, QA, state preserved
 - [x] 3.4 `ship` with `review.mode: none`: archive, merge, close-out
 - [x] 3.5 Cloud workflow for `go` (label trigger, concurrency group, budget caps)
-- [ ] 3.6 Pilot in a solo repository and record findings
+- [x] 3.6 Pilot in a solo repository and record findings
 - [x] 3.8 `think`: invoke `openspec-explore` then `grill-with-docs` in one conversation, stop with install hints when a required skill is missing, hand off to `create`, leave documentation uncommitted (rewrite `skills/think/SKILL.md`)
 - [x] 3.7 `create`: turn an idea into issues that pass the spec gate (questions, dependencies, checked before creation)
 
