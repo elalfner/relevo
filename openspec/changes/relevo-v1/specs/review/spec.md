@@ -107,6 +107,14 @@ The review SHALL keep its checklist, captures and audit result on disk, so an in
 - **WHEN** the person starts the review again for an issue that is already `in-review` and has saved state
 - **THEN** the review resumes with the confirmed lines and captures it already had
 
+#### Scenario: Review after a fix
+- **WHEN** a fix changed the specification of an issue whose review is in progress
+- **THEN** confirmed lines stay confirmed, failed lines and new scenarios become pending, and the log audit and the person's agreement must be repeated
+
+#### Scenario: Retesting a confirmed line
+- **WHEN** the person asks to retest a line that was already confirmed
+- **THEN** that line becomes pending again
+
 ### Requirement: Safe push
 Before pushing, `review` SHALL scan the diff against the base branch for temporary markers and credential patterns and abort on a match.
 

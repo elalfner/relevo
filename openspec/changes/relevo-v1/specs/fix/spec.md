@@ -7,6 +7,17 @@
 - **WHEN** the person describes a defect
 - **THEN** a scenario describing the correct behaviour is added to the specification and a corrections section with unchecked tasks is appended to the task list, before the developer agent runs
 
+### Requirement: Specification first is checked, not trusted
+Before the developer agent runs, `fix` SHALL verify that the working tree contains a new or corrected scenario and at least one new unchecked correction task, and that nothing outside the change folder was edited. The fix SHALL NOT be committed before QA passes.
+
+#### Scenario: Code edited before the specification
+- **WHEN** a file outside the change folder was modified before the specification and tasks were updated
+- **THEN** the check fails, names the file, and the developer agent does not run
+
+#### Scenario: Nothing to correct yet
+- **WHEN** the issue has no branch with work to correct, or is in a state before `built`
+- **THEN** `fix` stops and says why, without changing anything
+
 ### Requirement: Rules are not rewritten to fit
 If the reported defect is actually a violation of a project rule, `fix` SHALL say so and SHALL NOT change the rule.
 
@@ -19,7 +30,7 @@ If the reported defect is actually a violation of a project rule, `fix` SHALL sa
 
 #### Scenario: Rejected twice
 - **WHEN** QA still rejects after the retries
-- **THEN** no commit or push is made, the changes are kept, and the person is told the findings
+- **THEN** no commit or push is made, the changes are kept in the working tree, the issue's labels do not change, and the person is told the findings
 
 ### Requirement: State is preserved
 After a successful fix the issue SHALL keep its current state (`in-review`, `qa-failed` returns to `built`, or `changes-requested` returns to `pr-open`), and a comment SHALL summarise the change, the QA verdict and the commit.
