@@ -11,8 +11,29 @@ Relevo SHALL read its behaviour from a `relevo.yml` file at the repository root.
 - **WHEN** a Relevo command other than `init` starts and `relevo.yml` does not exist
 - **THEN** it stops and tells the user to run `/relevo:init`
 
-### Requirement: Supported settings
-`relevo.yml` SHALL support at least: `branches.base`, `branches.release`, `tracker`, `git_provider`, `platform`, `team.members`, `team.spec_writer`, `team.approvers` (used by `roles`), `review.mode` (`none`, `peer`, `roles`), `review.merger` (`author`, `approver`), `limits.built_unreviewed_per_person`, `limits.concurrent_agents`, `limits.review_sla_hours`, `limits.run_max_turns`, `limits.run_max_cost`, `qa.retries`, `qa.rules_from`, `evidence.policy` (`attach_to_pr`, `local_only`), `labels`, `language`, `trust` (`private-team`, `public`).
+### Requirement: Repository and team settings
+`relevo.yml` SHALL support `branches.base`, `branches.release`, `tracker`, `git_provider`, `platform`, `team.members`, `team.spec_writer` and `team.approvers` (used by `roles`).
+
+#### Scenario: Team and branches set
+- **WHEN** `relevo.yml` sets `branches.base`, `team.members` and `team.spec_writer`
+- **THEN** validation passes and the commands use those values
+
+### Requirement: Review and limit settings
+`relevo.yml` SHALL support `review.mode` (`none`, `peer`, `roles`), `review.merger` (`author`, `approver`), `limits.built_unreviewed_per_person`, `limits.concurrent_agents`, `limits.review_sla_hours`, `limits.run_max_turns` and `limits.run_max_cost`.
+
+#### Scenario: Review mode set
+- **WHEN** `review.mode` is `peer` and `review.merger` is `approver`
+- **THEN** validation passes and `ship` applies the peer rules
+
+### Requirement: Quality and presentation settings
+`relevo.yml` SHALL support `qa.retries`, `qa.rules_from`, `evidence.policy` (`attach_to_pr`, `local_only`), `labels`, `language` and `trust` (`private-team`, `public`).
+
+#### Scenario: Evidence kept local
+- **WHEN** `evidence.policy` is `local_only`
+- **THEN** validation passes and captures are not attached to pull requests
+
+### Requirement: Defaults and validation
+Optional settings SHALL have documented defaults, `limits.run_max_cost` SHALL be mandatory, and invalid values SHALL be rejected with an actionable message.
 
 #### Scenario: Defaults
 - **WHEN** an optional setting is absent
