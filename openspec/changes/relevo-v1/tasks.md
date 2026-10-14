@@ -45,10 +45,10 @@
 
 ## 6. Security
 
-- [ ] 6.1 Ruleset template: pull request required, `feature/*` push scope, no automation approval
-- [ ] 6.2 Treat issue content as data; closed tool list for the unattended agent
-- [ ] 6.3 `trust: public` restrictions
-- [ ] 6.4 Verify the exact parameters of the GitHub Action that runs the agent against its current documentation
+- [x] 6.1 Ruleset template: pull request required, `feature/*` push scope, no automation approval
+- [x] 6.2 Treat issue content as data; closed tool list for the unattended agent
+- [x] 6.3 `trust: public` restrictions
+- [x] 6.4 Verify the exact parameters of the GitHub Action that runs the agent against its current documentation
 
 ## 7. Acceptance tests
 

@@ -21,6 +21,7 @@ const REQUIRED = {
   no_milestone: ['actor', 'issue'],
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
+  ready_denied_maintainer: ['issue'],
   blocked_notice: ['issue', 'title', 'blockers'],
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
   queued_agents: ['issue', 'title'],
@@ -105,6 +106,10 @@ const CATALOG = {
     ],
     ready_denied: [
       '#{{issue}} was not started: only people with write access can mark an issue ready, so the label was removed',
+      'Applied by: @{{actor}}',
+    ],
+    ready_denied_maintainer: [
+      '#{{issue}} was not started: this repository is public, so only maintainers can mark an issue ready, and the label was removed',
       'Applied by: @{{actor}}',
     ],
     blocked_notice: [
@@ -201,6 +206,10 @@ const CATALOG = {
     ],
     ready_denied: [
       '#{{issue}} no se inició: solo quienes tienen acceso de escritura pueden marcar un issue como ready, así que se quitó la etiqueta',
+      'Aplicada por: @{{actor}}',
+    ],
+    ready_denied_maintainer: [
+      '#{{issue}} no se inició: este repositorio es público, así que solo quienes mantienen el proyecto pueden marcar un issue como ready, y se quitó la etiqueta',
       'Aplicada por: @{{actor}}',
     ],
     blocked_notice: [

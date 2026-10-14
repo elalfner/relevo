@@ -2,7 +2,7 @@
 # A review that requests changes sets `relevo:changes-requested` and mentions the author; a new push returns the
 # issue to `relevo:pr-open`; an approval mentions the person who will run /relevo:ship.
 # Copy to .github/workflows/relevo-review.yml. Needs a relevo.yml at the repository root.
-# Pull requests from forks get a read-only token, so this workflow does nothing for them.
+# Pull requests from forks are skipped explicitly (and would only get a read-only token anyway).
 # Scripts come from the plugin repository; pin `ref` to a release tag once one exists.
 
 name: relevo-review
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   review:
-    if: startsWith(github.event.pull_request.head.ref, 'feature/')
+    if: startsWith(github.event.pull_request.head.ref, 'feature/') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

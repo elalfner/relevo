@@ -188,6 +188,9 @@ export function validateConfig(raw) {
   if (config.review.mode === 'roles' && config.team.approvers.length === 0) {
     errors.push({ path: 'team.approvers', message: 'team.approvers must list at least one person when review.mode is "roles"' });
   }
+  if (config.trust === 'public' && config.review.mode === 'none') {
+    errors.push({ path: 'review.mode', message: 'trust "public" needs a human review of generated code: review.mode cannot be "none"' });
+  }
   if (config.review.mode === 'peer' || config.review.mode === 'roles') {
     const eligible = config.team.members.filter((m) => m !== config.team.spec_writer);
     if (eligible.length < 2) {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { REQUIRED_SKILLS, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
-import { applyPlan, manualChecklist, planInit, renderConfig, renderPlan, rulesetBody } from '../scripts/lib/init.mjs';
+import { applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -69,7 +69,7 @@ test('Scenario: Never touches the API key - no item writes or reads a secret', (
 test('Scenario: Second run - nothing to do for what is already correct', () => {
   const facts = bare({
     configText: renderConfig(template, ANSWERS), config: loadConfig(renderConfig(template, ANSWERS)).config, labels: allLabels,
-    branches: { base: true, release: true }, protection: { base: PROTECTED, release: PROTECTED }, canApprove: false,
+    branches: { base: true, release: true }, protection: { base: PROTECTED, release: PROTECTED }, canApprove: false, pushScope: true,
   });
   const current = { workflows, gitignore: 'evidence/\n', keepFiles: empty().keepFiles };
   const items = plan(facts, current);
@@ -156,4 +156,20 @@ test('missing .gitkeep files for the empty OpenSpec folders are planned (a clean
   const it = get(plan(bare(), current), 'openspec-root');
   assert.equal(it.status, 'todo');
   assert.deepEqual(it.paths, ['openspec/specs/.gitkeep']);
+});
+
+test('Scenario: Agent tries to push outside feature branches - a ruleset restricts branch creation, with maintainers and admins allowed', () => {
+  const body = pushScopeBody({ base: 'dev', release: 'main' });
+  assert.deepEqual(body.rules, [{ type: 'creation' }]);
+  assert.deepEqual(body.conditions.ref_name.include, ['~ALL']);
+  assert.deepEqual(body.conditions.ref_name.exclude, ['refs/heads/feature/*', 'refs/heads/dev', 'refs/heads/main']);
+  assert.deepEqual(body.bypass_actors.map((a) => a.actor_id).sort(), [2, 5]);
+  assert.ok(body.bypass_actors.every((a) => a.actor_type === 'RepositoryRole' && a.bypass_mode === 'always'));
+  const items = plan(bare());
+  assert.equal(get(items, 'push-scope').status, 'todo');
+  assert.equal(get(plan(bare(), empty(), false), 'push-scope').status, 'manual');
+  assert.equal(get(plan(bare({ pushScope: true })), 'push-scope').status, 'ok');
+  const posted = [];
+  applyPlan(items.filter((i) => i.id === 'push-scope'), { repo: 'o/r', io: { gh: (a, input) => posted.push(JSON.parse(input).name) } });
+  assert.deepEqual(posted, ['relevo-push-scope']);
 });
