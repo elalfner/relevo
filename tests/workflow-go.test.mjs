@@ -41,3 +41,7 @@ test('OpenSpec is installed with telemetry off', () => {
   assert.match(workflow, /npm install --global @fission-ai\/openspec/);
   assert.match(workflow, /OPENSPEC_TELEMETRY: '0'/);
 });
+
+test('Scenario: Subagent in the background - the unattended run keeps subagents in the foreground', () => {
+  assert.match(workflow, /CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'/);
+});
