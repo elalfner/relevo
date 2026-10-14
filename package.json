@@ -1,0 +1,16 @@
+{
+  "name": "relevo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Relevo: an automatic issue-to-merge workflow where an agent builds and people verify.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "test": "node --test",
+    "validate:plugin": "claude plugin validate .",
+    "validate:spec": "openspec validate relevo-v1"
+  }
+}

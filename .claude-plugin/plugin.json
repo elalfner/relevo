@@ -1,0 +1,19 @@
+{
+  "name": "relevo",
+  "displayName": "Relevo",
+  "version": "0.1.0",
+  "description": "An automatic issue-to-merge workflow where an agent builds and people verify.",
+  "author": {
+    "name": "Elias Alfaro"
+  },
+  "homepage": "https://github.com/elalfner/relevo",
+  "repository": "https://github.com/elalfner/relevo",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "agents",
+    "pull-requests",
+    "openspec",
+    "flutter"
+  ]
+}

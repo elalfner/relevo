@@ -1,0 +1,20 @@
+{
+  "name": "relevo",
+  "owner": {
+    "name": "Elias Alfaro"
+  },
+  "description": "Marketplace for the Relevo plugin",
+  "plugins": [
+    {
+      "name": "relevo",
+      "description": "An automatic issue-to-merge workflow where an agent builds and people verify.",
+      "category": "development",
+      "tags": [
+        "workflow",
+        "agents",
+        "openspec"
+      ],
+      "source": "./"
+    }
+  ]
+}
