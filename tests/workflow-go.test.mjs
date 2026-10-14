@@ -16,7 +16,7 @@ test('Scenario: Authorised label - the workflow starts only on the ready label a
 });
 
 test('Scenario: Duplicate trigger - one run per issue, never cancelled midway', () => {
-  assert.match(workflow, /group: relevo-go-\$\{\{ github\.event\.issue\.number \}\}/);
+  assert.match(workflow, /group: relevo-go-\$\{\{ github\.event\.issue\.number \|\| inputs\.issue \}\}/);
   assert.match(workflow, /cancel-in-progress: false/);
 });
 
@@ -27,7 +27,7 @@ test('Scenario: Run exceeds its budget - the workflow caps turns and cost like t
 });
 
 test('the workflow runs the go skill of this plugin with the issue number', () => {
-  assert.match(workflow, /prompt: \/relevo:go \$\{\{ github\.event\.issue\.number \}\}/);
+  assert.match(workflow, /prompt: \/relevo:go \$\{\{ github\.event\.issue\.number \|\| inputs\.issue \}\}/);
   assert.ok(existsSync(`${root}skills/go/SKILL.md`));
 });
 
