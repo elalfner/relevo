@@ -7,9 +7,9 @@
 
 ## 2. Agents
 
-- [ ] 2.1 `dev` agent for Flutter: implements change tasks, never commits
-- [ ] 2.2 `qa` agent for Flutter: read-only, compares the diff with scenarios, reads rules from `qa.rules_from`
-- [ ] 2.3 Prefer the Dart tooling server for analysis and tests, with terminal fallback
+- [x] 2.1 `dev` agent for Flutter: implements change tasks, never commits
+- [x] 2.2 `qa` agent for Flutter: read-only, compares the diff with scenarios, reads rules from `qa.rules_from`
+- [x] 2.3 Prefer the Dart tooling server for analysis and tests, with terminal fallback
 
 ## 3. Core commands (stage 0.1, solo pilot)
 
