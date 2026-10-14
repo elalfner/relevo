@@ -10,10 +10,16 @@ name: relevo-go
 on:
   issues:
     types: [labeled]
+  # The queue workflow (relevo-queue.yml) starts waiting issues through this trigger.
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number to build
+        required: true
 
 # One run per issue: a repeated label event waits for the first run and then finds the issue already building.
 concurrency:
-  group: relevo-go-${{ github.event.issue.number }}
+  group: relevo-go-${{ github.event.issue.number || inputs.issue }}
   cancel-in-progress: false
 
 permissions:
@@ -24,7 +30,7 @@ permissions:
 
 jobs:
   go:
-    if: github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User'
+    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -65,7 +71,7 @@ jobs:
           plugin_marketplaces: https://github.com/elalfner/relevo.git
           plugins: relevo@relevo
           # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed.
-          prompt: /relevo:go ${{ github.event.issue.number }}
+          prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }}
           claude_args: >-
             --max-turns 100
             --max-budget-usd 5
