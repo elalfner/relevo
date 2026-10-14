@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { parse } from '../scripts/lib/yaml-lite.mjs';
 
 const root = (p) => new URL(`../${p}`, import.meta.url);
-const text = readFileSync(root('skills/draft/SKILL.md'), 'utf8');
+const text = readFileSync(root('skills/think/SKILL.md'), 'utf8');
 const [, front, body] = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 const meta = parse(front);
 
@@ -14,7 +14,7 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 
 test('frontmatter uses only documented fields and Claude never starts it on its own', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
-  assert.equal(meta.name, 'draft');
+  assert.equal(meta.name, 'think');
   assert.equal(meta['argument-hint'], '[what to build]');
   assert.equal(meta['disable-model-invocation'], true);
   assert.match(meta.description, /never applies the ready label/);
