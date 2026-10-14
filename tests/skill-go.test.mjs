@@ -86,3 +86,8 @@ test('it points at the issue format document, which exists', () => {
 test('the skill mentions neither private sources nor personal data', () => {
   assert.doesNotMatch(text, /claude\.ai|session_[0-9A-Za-z]{6}|co-authored/i);
 });
+
+test('the skill tells the unattended agent to wait for its subagents instead of ending the turn', () => {
+  assert.match(body, /## Subagents run in the foreground/);
+  assert.match(body, /never end your turn while one is running/);
+});

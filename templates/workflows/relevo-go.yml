@@ -36,6 +36,13 @@ jobs:
         with:
           node-version: 22
 
+      # The agent runs the project's own checks (QA runs them), so install the toolchain your platform needs here.
+      # For platform flutter-android, for example:
+      #   - uses: subosito/flutter-action@v2
+      #     with:
+      #       channel: stable
+      #       cache: true
+
       - name: Install OpenSpec
         run: npm install --global @fission-ai/openspec
         env:
@@ -45,9 +52,16 @@ jobs:
         env:
           OPENSPEC_TELEMETRY: '0'
           GH_TOKEN: ${{ github.token }}
+          # Without this the agent may start a subagent in the background and end the run before it finishes,
+          # leaving the issue stuck on building with no comment (seen in the pilot, see docs/pilot-findings.md).
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
+          # To run on a subscription instead of an API key, create a token with `claude setup-token`, store it as the
+          # secret CLAUDE_CODE_OAUTH_TOKEN and use `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` here.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
+          # If the plugin repository is private, the runner cannot clone this URL without a credential. Use a
+          # read-only token stored as a secret: https://x-access-token:${{ secrets.RELEVO_PLUGIN_TOKEN }}@github.com/elalfner/relevo.git
           plugin_marketplaces: https://github.com/elalfner/relevo.git
           plugins: relevo@relevo
           # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed.

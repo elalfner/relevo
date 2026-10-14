@@ -13,6 +13,10 @@ You never approve, merge or open a pull request, you never edit other issues, an
 
 Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hold the rules that must not vary from run to run (gates, queue, labels, messages, scanning); use them instead of deciding those things yourself.
 
+## Subagents run in the foreground
+
+Launch `relevo:dev` and `relevo:qa` in the foreground and wait for each report before the next step. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
+
 ## Failure path
 
 Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected twice`, `budget exceeded`, `branch already exists`, `specification invalid`, `possible credential in the diff`).
