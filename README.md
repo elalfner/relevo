@@ -4,9 +4,20 @@
 
 > *Relevo* is Spanish for "relay". Every step of the workflow is a handoff: the agent passes the baton to a person, and that person passes it to a peer.
 
-> **Status: early development.** The foundations exist (configuration validation, labels, hand-off messages, a diff scanner). The commands below are not implemented yet, so installing the plugin gives you nothing to run.
+> **Status: early development.** All the commands below exist. The solo cycle (`go`, `review`, `ship`) has run once on a real repository and a real Android device; the team features (peer review, review reminders and escalation, reviewer selection) are covered by tests only and have not run against a live team yet. See [pilot findings](docs/pilot-findings.md).
 
-Once released: `/plugin install relevo --marketplace elalfner/relevo`
+## Install
+
+Relevo is a Claude Code plugin. In a terminal:
+
+```bash
+claude plugin marketplace add elalfner/relevo
+claude plugin install relevo@relevo
+```
+
+Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing. While the repository is private you need read access to it (the first command clones it over SSH).
+
+Relevo works together with a few tools it does not bundle: the [OpenSpec](https://github.com/Fission-AI/OpenSpec) command-line tool, `git`, the GitHub CLI (`gh`), the toolchain of your platform and, for `think`, the skills listed [below](#skills-that-think-uses). `/relevo:init` offers to install what is missing, one command at a time.
 
 ## The idea
 
@@ -23,7 +34,7 @@ Writing code is no longer the slow part. Verifying it is. Relevo puts the agent 
 - **Humans decide.** Approving and merging are explicit human acts, enforced by branch protection, never by a prompt alone.
 - **Every handoff is one message** that says what happened, what is expected of you, and which command to run next.
 
-## Planned commands
+## Commands
 
 Distributed as a Claude Code plugin named `relevo`:
 
