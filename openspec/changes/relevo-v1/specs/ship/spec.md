@@ -44,6 +44,13 @@ When `review.mode` is `peer` or `roles`, `ship` SHALL require an approval from s
 - **WHEN** approval exists
 - **THEN** `ship` shows the summary (changes, QA verdict, review verdict) and merges only after the person confirms in writing
 
+### Requirement: No bypass of protections
+`ship` SHALL NOT use administrator override, bypass rulesets, approve the pull request itself or dismiss reviews. When the platform refuses the merge, `ship` SHALL report the reason and stop.
+
+#### Scenario: Merge refused
+- **WHEN** the platform refuses the merge because a protection is not satisfied
+- **THEN** `ship` reports the platform's reason, changes nothing further and does not retry with an override
+
 ### Requirement: Solo mode
 When `review.mode` is `none`, `ship` SHALL require only the invoking person's explicit confirmation.
 

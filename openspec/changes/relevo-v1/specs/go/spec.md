@@ -58,6 +58,17 @@ Eligible issues SHALL be started in first-in-first-out order of the time `ready`
 - **WHEN** a run reaches its turn or cost limit
 - **THEN** it stops, the branch is pushed, the issue is labelled `qa-failed` with the reason "budget exceeded"
 
+### Requirement: The workflow enforces the limits
+The workflow that runs `go` SHALL start only when a person (not an automation account) applies the `ready` label, SHALL group runs per issue without cancelling a run in progress, SHALL pass the turn and cost limits to the agent runner, and SHALL end a run after a fixed time limit. The cost limit is enforced by the runner, not by the agent.
+
+#### Scenario: Label applied by an automation
+- **WHEN** an automation account applies `ready`
+- **THEN** the workflow does not start
+
+#### Scenario: Run takes too long
+- **WHEN** a run exceeds the workflow time limit
+- **THEN** the runner stops it and the issue stays `building` until a person resets it
+
 ### Requirement: Labels follow the run
 `go` SHALL set `queued` while an issue waits for capacity, `building` when its run starts, and `built` when it finishes successfully, removing the previous lifecycle label each time.
 
