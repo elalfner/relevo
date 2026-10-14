@@ -21,3 +21,9 @@ export function slugify(title, max = MAX_SLUG) {
 
 export const changeId = (number, title) => `${number}-${slugify(title)}`;
 export const branchName = (number, title) => `feature/${changeId(number, title)}`;
+
+/** The issue number a feature branch was made for (`feature/12-add-total` -> 12), or null. */
+export function issueFromBranch(branch) {
+  const m = /^feature\/(\d+)-/.exec(String(branch ?? ''));
+  return m ? Number(m[1]) : null;
+}

@@ -1,0 +1,43 @@
+# Relevo: reminds the reviewer when a pull request waits longer than limits.review_sla_hours, and escalates
+# to the spec writer (adding the needs-reviewer label) after the same time again.
+# Copy to .github/workflows/relevo-sla.yml. Needs a relevo.yml at the repository root.
+# Scripts come from the plugin repository; pin `ref` to a release tag once one exists.
+
+name: relevo-sla
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: relevo-sla
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  sla:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: elalfner/relevo
+          ref: main
+          path: .relevo-plugin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Remind and escalate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .relevo-plugin/scripts/review-sla.mjs --repo "$GITHUB_REPOSITORY"
