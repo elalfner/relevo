@@ -1,0 +1,58 @@
+# Relevo: builds an issue when someone with write access labels it `relevo:ready`.
+# Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
+#
+# Needs: the repository secret ANTHROPIC_API_KEY, and a relevo.yml at the repository root.
+# Keep the numbers in claude_args in line with limits.run_max_turns and limits.run_max_cost.
+# Where the numbers disagree the lower one wins, so this file can only make a run cheaper than relevo.yml says.
+
+name: relevo-go
+
+on:
+  issues:
+    types: [labeled]
+
+# One run per issue: a repeated label event waits for the first run and then finds the issue already building.
+concurrency:
+  group: relevo-go-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: read
+  id-token: write
+
+jobs:
+  go:
+    if: github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install OpenSpec
+        run: npm install --global @fission-ai/openspec
+        env:
+          OPENSPEC_TELEMETRY: '0'
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          OPENSPEC_TELEMETRY: '0'
+          GH_TOKEN: ${{ github.token }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          plugin_marketplaces: https://github.com/elalfner/relevo.git
+          plugins: relevo@relevo
+          # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed.
+          prompt: /relevo:go ${{ github.event.issue.number }}
+          claude_args: >-
+            --max-turns 100
+            --max-budget-usd 5
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
