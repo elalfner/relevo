@@ -35,8 +35,29 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **WHEN** a ruleset cannot be created for lack of permission
 - **THEN** the exact settings are listed for an administrator
 
-### Requirement: Doctor verifies the environment and settings
-`doctor` SHALL check, and report as pass or fail with a fix next to each failure: required tools, including the OpenSpec command-line tool at a supported version; a valid `relevo.yml`; labels; the base branch; branch protection and rulesets on the base and release branches; that the automation cannot approve pull requests; that approvals are not dismissed when new commits are pushed (required because the spec archive is committed after approval); that the API key secret exists (without reading it); that workflows are installed and enabled; and that an objective CI check exists.
+### Requirement: Doctor reports every check
+`doctor` SHALL report each check as pass or fail with a fix next to each failure.
+
+#### Scenario: A failing check
+- **WHEN** a check fails
+- **THEN** the report shows the check as failed with the fix next to it
+
+### Requirement: Doctor checks tools and configuration
+`doctor` SHALL check the required tools, including the OpenSpec command-line tool at a supported version, a valid `relevo.yml`, the labels and the base branch.
+
+#### Scenario: Invalid configuration
+- **WHEN** `relevo.yml` fails validation
+- **THEN** `doctor` reports that check as failed and shows the validation messages
+
+### Requirement: Doctor checks repository protection
+`doctor` SHALL check branch protection and rulesets on the base and release branches, that the automation cannot approve pull requests, and that approvals are not dismissed when new commits are pushed (required because the spec archive is committed after approval).
+
+#### Scenario: Approvals dismissed on push
+- **WHEN** the base branch dismisses approvals when new commits are pushed
+- **THEN** `doctor` reports a failure explaining that the archive commit would dismiss the approval
+
+### Requirement: Doctor checks automation readiness
+`doctor` SHALL check that the API key secret exists (without reading it), that workflows are installed and enabled, and that an objective CI check exists.
 
 #### Scenario: Misconfigured repository
 - **WHEN** automation is allowed to approve pull requests
