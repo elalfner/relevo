@@ -70,6 +70,9 @@ jobs:
           #    `pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN`. Then replace the line above with:
           # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
+          # The queue starts builds with `gh workflow run`, so the actor is the Actions bot and the action refuses
+          # it unless it is allowed. Only this one bot: never '*', which would let outside apps start runs.
+          allowed_bots: github-actions
           # Plugin repository: choose ONE of the next two lines.
           # a) Public repository (default):
           plugin_marketplaces: https://github.com/elalfner/relevo.git
@@ -79,7 +82,7 @@ jobs:
           plugins: relevo@relevo
           # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed:
           # only the tools in --allowedTools, and no web access (nothing to fetch, nowhere to send a secret).
-          # Do not set allowed_non_write_users, allowed_bots or show_full_output here: they open the run to
+          # Do not set allowed_non_write_users or show_full_output here, and never widen allowed_bots: they open the run to
           # strangers or print tool results (possibly secrets) to the log.
           prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }}
           claude_args: >-
@@ -101,9 +104,14 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
+          # A run the queue dispatched that fails before it claims the issue leaves it `queued`: report that
+          # too, or the queue would dispatch it again every 30 minutes. A run that ends normally leaves it queued
+          # on purpose (no capacity), so that case is only reported when the job failed.
           if ! printf '%s\n' "$labels" | grep -qxE 'relevo:(ready|building)'; then
-            exit 0
+            if ! { [ "$JOB_STATUS" != "success" ] && printf '%s\n' "$labels" | grep -qx 'relevo:queued'; }; then
+              exit 0
+            fi
           fi
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
           gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."

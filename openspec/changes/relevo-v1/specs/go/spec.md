@@ -69,6 +69,17 @@ The workflow that runs `go` SHALL start only when a person (not an automation ac
 - **WHEN** a run exceeds the workflow time limit
 - **THEN** the runner stops it; if the workflow can still run its final step, that step reports the run on the issue (see "A run that ends without an outcome is reported"), otherwise the issue stays `building` until a person resets it
 
+### Requirement: Builds started by the queue are accepted
+The workflow SHALL accept a build dispatched by the queue workflow, whose actor is the Actions bot, and SHALL allow that one bot only. It SHALL NOT allow every bot, because that would let outside applications start runs.
+
+#### Scenario: The queue starts a build
+- **WHEN** the queue dispatches the `go` workflow for an eligible issue
+- **THEN** the agent runner accepts the run although its actor is the Actions bot
+
+#### Scenario: Another bot starts a run
+- **WHEN** a bot other than the Actions bot starts the workflow
+- **THEN** the agent runner refuses it
+
 ### Requirement: A run that ends without an outcome is reported
 The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `qa-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it.
 
@@ -79,6 +90,14 @@ The workflow that runs `go` SHALL end with a step that always runs. When the iss
 #### Scenario: The agent ends its session early
 - **WHEN** the job succeeds but the issue is still `building`
 - **THEN** the issue is labelled `qa-failed` and a comment links the run
+
+#### Scenario: A dispatched run fails before claiming the issue
+- **WHEN** the job fails and the issue is still `queued`
+- **THEN** the issue is labelled `qa-failed` and a comment links the run, so the queue does not dispatch it again every evaluation
+
+#### Scenario: A run ends normally with the issue queued
+- **WHEN** the job succeeds and the issue is `queued` because there was no capacity
+- **THEN** the final step changes nothing
 
 #### Scenario: The run recorded its outcome
 - **WHEN** the issue is `built`, `queued`, `blocked`, `needs-spec` or `qa-failed` when the job ends
