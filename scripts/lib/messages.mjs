@@ -15,6 +15,7 @@ const REQUIRED = {
   needs_spec: ['spec_writer', 'issue', 'title', 'missing'],
   changes_requested: ['author', 'issue', 'reviewer', 'summary'],
   needs_reviewer: ['spec_writer', 'issue', 'title', 'pr'],
+  approved: ['recipient', 'issue', 'reviewer'],
   review_reminder: ['reviewer', 'issue', 'pr', 'hours'],
   review_escalation: ['spec_writer', 'issue', 'pr', 'reviewer', 'hours'],
   no_milestone: ['actor', 'issue'],
@@ -28,6 +29,7 @@ const COMMANDS = {
   built: (issue) => `/relevo:review ${issue}`,
   qa_failed: (issue) => `/relevo:fix ${issue}`,
   changes_requested: (issue) => `/relevo:fix ${issue}`,
+  approved: (issue) => `/relevo:ship ${issue}`,
 };
 
 const CATALOG = {
@@ -64,6 +66,12 @@ const CATALOG = {
       '',
       'Summary: {{summary}}',
       'Full review: {{pr}}',
+      'Your next step: {{command}}',
+    ],
+    approved: [
+      '@{{recipient}} #{{issue}} was approved by {{reviewer}} ✅',
+      '',
+      'Pull request: {{pr}}',
       'Your next step: {{command}}',
     ],
     needs_reviewer: [
@@ -144,6 +152,12 @@ const CATALOG = {
       '',
       'Resumen: {{summary}}',
       'Revisión completa: {{pr}}',
+      'Tu siguiente paso: {{command}}',
+    ],
+    approved: [
+      '@{{recipient}} #{{issue}} fue aprobada por {{reviewer}} ✅',
+      '',
+      'Pull request: {{pr}}',
       'Tu siguiente paso: {{command}}',
     ],
     needs_reviewer: [
