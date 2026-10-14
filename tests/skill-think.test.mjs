@@ -17,7 +17,7 @@ test('frontmatter uses only documented fields and Claude never starts it on its 
   assert.equal(meta.name, 'think');
   assert.equal(meta['argument-hint'], '[idea]');
   assert.equal(meta['disable-model-invocation'], true);
-  assert.match(meta.description, /writes nothing by default/);
+  assert.match(meta.description, /once the person allows it/);
   assert.ok(String(meta.description).length <= 1536);
 });
 
@@ -46,10 +46,33 @@ test('Scenario: Unknown answer - it is an open question, never invented behaviou
   assert.match(body, /Silence is not acceptance/);
 });
 
-test('Scenario: Keeping the agreement - a file is written only when asked, after a yes or no question', () => {
+test('Scenario: Permission not given - nothing is written before a yes to glossary and decision records', () => {
+  assert.match(body, /may you create and update `GLOSSARY.md` and `docs\/adr\/`/);
+  assert.match(body, /Without a yes you write nothing/);
+  assert.ok(body.indexOf('direct yes/no question') < body.indexOf('## 2. Explore'));
+});
+
+test('Scenario: Keeping the agreement - the agreement file is written only on request', () => {
   assert.match(body, /Only if the person asks to keep the agreement/);
-  assert.match(body, /direct yes\/no question/);
-  assert.match(body, /Never write a file the person did not ask for/);
+  assert.match(body, /agreement file only on request/);
+});
+
+test('Scenario: Conflicting term and statement contradicted by the code', () => {
+  assert.match(body, /Challenge terms/);
+  assert.match(body, /Check the code/);
+  assert.match(body, /Test with concrete cases/);
+});
+
+test('the glossary holds vocabulary only and decision records are offered sparingly', () => {
+  assert.match(body, /holds vocabulary and nothing else/);
+  assert.match(body, /Never put implementation details or decisions in the glossary/);
+  assert.match(body, /hard to reverse, surprising without context and the result of a real trade-off/);
+  assert.match(body, /docs\/adr\/NNNN-short-title\.md/);
+});
+
+test('Scenario: Hand-off - documentation is never committed and the files are named', () => {
+  assert.match(body, /Name the documentation files you created or changed/);
+  assert.match(body, /not committed/);
 });
 
 test('it does not write an OpenSpec change itself any more', () => {

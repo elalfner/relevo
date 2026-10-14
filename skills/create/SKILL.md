@@ -20,6 +20,7 @@ Before asking anything, collect what exists:
 - the conversation so far;
 - if `openspec/changes/` exists read the `proposal.md`, `design.md`, `tasks.md` and `specs/` of the relevant change;
 - the agreement reached with `/relevo:think`, in this conversation or in a file whose path is given in `$ARGUMENTS`: take its decided scenarios, edge cases, dependencies and splits as already answered, and resolve its open questions with the person before writing;
+- `GLOSSARY.md`, if present: use its terms in the issues and avoid the words it lists to avoid;
 - `relevo.yml` (`language`, `team.members`, `team.spec_writer`, `branches.base`). If it is missing, continue without it and ask the language and the assignee.
 
 Tell the person in two or three lines what you already have, so they see their earlier work was used. Then ask only about what is still missing. Never ask again what is already answered.

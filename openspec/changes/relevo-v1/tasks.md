@@ -19,7 +19,7 @@
 - [x] 3.4 `ship` with `review.mode: none`: archive, merge, close-out
 - [x] 3.5 Cloud workflow for `go` (label trigger, concurrency group, budget caps)
 - [ ] 3.6 Pilot in a solo repository and record findings
-- [x] 3.8 `think`: explore, interview in rounds, state the agreement (writes nothing by default)
+- [x] 3.8 `think`: explore, interview in rounds, keep glossary and decision records, state the agreement (writes only with permission)
 - [x] 3.7 `create`: turn an idea into issues that pass the spec gate (questions, dependencies, checked before creation)
 
 ## 4. Team features (stage 0.2)

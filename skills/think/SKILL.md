@@ -1,6 +1,6 @@
 ---
 name: think
-description: Thinking partner for an idea before any issue exists. It explores the problem and the existing code, draws diagrams, and then interviews the person in rounds, with a recommended answer for each question, until every decision is made. It writes nothing by default and implements nothing. Use when asked to think through, explore, plan or stress-test a feature; the agreement it reaches is what /relevo:create turns into issues.
+description: Thinking partner for an idea before any issue exists. It explores the problem and the existing code, draws diagrams, and then interviews the person in rounds, with a recommended answer for each question, until every decision is made. It keeps the project's glossary and decision records up to date as terms and decisions settle, once the person allows it, and implements nothing. Use when asked to think through, explore, plan or stress-test a feature; the agreement it reaches is what /relevo:create turns into issues.
 argument-hint: "[idea]"
 disable-model-invocation: true
 ---
@@ -18,9 +18,12 @@ Before the first question, collect what can be looked up:
 - the conversation so far;
 - `relevo.yml`, if present (`language`, `team.members`);
 - the existing specifications in `openspec/specs/` and changes in `openspec/changes/`, so the idea fits what is already specified;
+- the project's vocabulary and past decisions: `GLOSSARY.md` (or `GLOSSARY-MAP.md` when there are several contexts) and the records in `docs/adr/`;
 - the code the idea touches. Finding facts is your job, never the person's: hand each lookup to a subagent and do not block on it; only the questions that depend on its answer wait for it.
 
 Say in two or three lines what you already know, so the person sees earlier work was used.
+
+Then ask one direct yes/no question: may you create and update `GLOSSARY.md` and `docs/adr/` while you think, as terms and decisions settle? Name both. Without a yes you write nothing, and you carry the terms and decisions in the agreement instead.
 
 ## 2. Explore
 
@@ -53,6 +56,16 @@ As far as it applies, the tree covers:
 
 Do not invent answers. If the person does not know, record it as an open question and keep it out of the agreement.
 
+## Language and decisions
+
+While you explore and interview, look after the project's vocabulary and decisions:
+
+- **Challenge terms.** When the person uses a word that conflicts with `GLOSSARY.md`, say so at once and ask which meaning is meant. When a word is vague or covers two things, propose one precise term and list the words to avoid.
+- **Test with concrete cases.** Invent specific scenarios that probe the boundary between two concepts and make the person decide.
+- **Check the code.** When the person says how something works, look at whether the code agrees, and raise any contradiction.
+- **Write terms down as they settle** (only with the yes from step 1). `GLOSSARY.md` holds vocabulary and nothing else: no implementation details, no decisions, no general programming terms. Each entry has a name, a one- or two-sentence definition of what it is, and the words to avoid. Create the file when the first term settles. With several contexts, a `GLOSSARY-MAP.md` at the root lists them and how they relate; ask which context a term belongs to when it is unclear.
+- **Offer a decision record sparingly,** only when the decision is hard to reverse, surprising without context and the result of a real trade-off between alternatives. Records are `docs/adr/NNNN-short-title.md`, numbered from the highest existing number plus one, and a paragraph is enough: what was decided, in what context, and why.
+
 ## 4. Agree
 
 The interview ends when the frontier is empty: every branch visited and nothing silently assumed. Then write the agreement in the conversation, in three parts: **decided** (behaviour, edge cases, dependencies, splits, out of scope), **open questions**, and **proposed defaults** the person has not confirmed. Silence is not acceptance. Ask the person to confirm it, and revise until they do.
@@ -61,10 +74,13 @@ The interview ends when the frontier is empty: every branch visited and nothing 
 
 Tell the person the next step: `/relevo:create`, which turns the agreement into issues. Run it in this same conversation so the agreement is still in context.
 
+Name the documentation files you created or changed (glossary, decision records) and say they are not committed.
+
 Only if the person asks to keep the agreement for another session, write it to a Markdown file at the path they choose, tell them where it is and that it is not committed, and say that `/relevo:create` can read it when given its path. Before writing, name the file and ask a direct yes/no question; an answer to a design question is never permission to write.
 
 ## Never
 
 - Never write code, commit, push, create issues or apply labels.
 - Never answer a question yourself and move on.
-- Never write a file the person did not ask for.
+- Never write a file the person did not allow: the glossary and the decision records after the yes of step 1, and the agreement file only on request.
+- Never put implementation details or decisions in the glossary.
