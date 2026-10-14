@@ -187,3 +187,11 @@ test('Scenario: Branch rules after the files - skipped items are left for a late
   assert.ok(!posted.some((p) => p.includes('/rulesets')));
   assert.equal(get(skipItems(items, ['config']), 'labels').status, 'todo', 'only the named items are skipped');
 });
+
+test('Scenario: Second run - secret scanning and the model credential are recognised, not planned again', () => {
+  const on = get(plan(bare({ secretScanning: { scanning: true, pushProtection: true }, secrets: ['CLAUDE_CODE_OAUTH_TOKEN'] })), 'secret-scanning');
+  assert.equal(on.status, 'ok');
+  assert.equal(get(plan(bare({ secretScanning: { scanning: true, pushProtection: true }, secrets: ['CLAUDE_CODE_OAUTH_TOKEN'] })), 'manual.api-key').status, 'ok');
+  assert.equal(get(plan(bare({ secretScanning: { scanning: true, pushProtection: false } })), 'secret-scanning').status, 'todo');
+  assert.equal(get(plan(bare({ secrets: [] })), 'manual.api-key').status, 'manual');
+});
