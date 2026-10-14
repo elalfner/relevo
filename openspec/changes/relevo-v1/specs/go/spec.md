@@ -83,6 +83,18 @@ QA SHALL compare the diff against the issue's scenarios and the project rules in
 - **WHEN** a task is checked off without code that implements it
 - **THEN** QA rejects and names the task
 
+#### Scenario: Validation tooling missing
+- **WHEN** QA cannot run static analysis or tests because the tooling is not available
+- **THEN** QA rejects with the finding "automated validation could not run" and never passes code it could not check
+
+#### Scenario: Device-only scenario
+- **WHEN** a scenario can only be observed on a device or in another app
+- **THEN** QA does not reject it for lacking a test, checks that the code plausibly produces it, and lists it as left for on-device review
+
+#### Scenario: Verdict line
+- **WHEN** QA finishes
+- **THEN** the first line of its output is exactly `QA PASSED` or `QA REJECTED`
+
 ### Requirement: Safe commits
 Before committing, `go` SHALL stage files explicitly (never "add all") and SHALL scan the staged diff for temporary markers (`NOCOMMIT`, `TEMP`, `DO NOT COMMIT`) and credential patterns, aborting on any match.
 
