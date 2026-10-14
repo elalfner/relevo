@@ -21,6 +21,7 @@ const REQUIRED = {
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
   blocked_notice: ['issue', 'title', 'blockers'],
+  fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
 };
 
 const COMMANDS = {
@@ -101,6 +102,14 @@ const CATALOG = {
       '',
       'Waiting for {{blockers}} to be merged. It starts automatically when they are.',
     ],
+    fix_done: [
+      '#{{issue}} "{{title}}" fixed (iteration {{iteration}})',
+      '',
+      'What changed: {{summary}}',
+      'QA: {{qa}}',
+      'Commit: {{commit}}',
+      '@{{recipient}} {{ask}}',
+    ],
   },
   es: {
     built: [
@@ -172,6 +181,14 @@ const CATALOG = {
       '#{{issue}} "{{title}}" está bloqueado',
       '',
       'Espera a que se fusionen {{blockers}}. Empieza solo cuando lo estén.',
+    ],
+    fix_done: [
+      '#{{issue}} "{{title}}" corregido (iteración {{iteration}})',
+      '',
+      'Qué cambió: {{summary}}',
+      'QA: {{qa}}',
+      'Commit: {{commit}}',
+      '@{{recipient}} {{ask}}',
     ],
   },
 };

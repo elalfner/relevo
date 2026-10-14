@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checklistFromChange, checklistMarkdown, scenariosFromSpec } from '../scripts/lib/checklist.mjs';
 import { auditLog, auditReport, ERROR_CLASSES } from '../scripts/lib/logaudit.mjs';
-import { decidePr, newState, setItem } from '../scripts/lib/review-state.mjs';
+import { decidePr, newState, setItem, syncState } from '../scripts/lib/review-state.mjs';
 import { pickReviewer } from '../scripts/lib/reviewers.mjs';
 import { capture, parseDevices, pickDevice, safeCaptureName } from '../scripts/lib/device.mjs';
 import { openReviewCounts } from '../scripts/lib/github.mjs';
@@ -179,6 +179,38 @@ test('review-state CLI: the whole review, from init to the decision', () => {
   assert.match(run('A RenderFlex overflowed\n', 'audit').stdout, /REVIEW REJECTED/);
   assert.equal(run('', 'decide').status, 1, 'a later failing audit blocks the PR again');
   assert.equal(run('', 'set', '7', 'ok').status, 2);
+});
+
+test('after a fix: confirmed lines stay, failed lines are retested, new scenarios are pending, audit and agreement reset', () => {
+  const s = twoItems();
+  setItem(s, 1, 'ok');
+  setItem(s, 2, 'fail', 'wrong total');
+  s.audit = passedAudit;
+  s.agreed = true;
+  syncState(s, [{ id: 1, title: 'A' }, { id: 2, title: 'B' }, { id: 3, title: 'C (new scenario)' }]);
+  assert.deepEqual(s.items.map((i) => [i.id, i.status]), [[1, 'ok'], [2, 'pending'], [3, 'pending']]);
+  assert.equal(s.items[1].note, null);
+  assert.equal(s.audit, null);
+  assert.equal(s.agreed, false);
+  assert.equal(decidePr(s).open, false);
+});
+
+test('review-state CLI: sync after a fix adds the new scenario and keeps what was confirmed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
+  const change = join(dir, 'change');
+  mkdirSync(join(change, 'specs', 'cap'), { recursive: true });
+  const specFile = join(change, 'specs', 'cap', 'spec.md');
+  writeFileSync(specFile, SPEC);
+  const state = join(dir, 'evidence', 'review-state.json');
+  const run = (...args) => spawnSync('node', [CLI('review-state.mjs'), ...args, '--state', state], { encoding: 'utf8' });
+  run('init', change);
+  run('set', '1', 'ok');
+  run('set', '2', 'fail', 'nothing shown');
+  writeFileSync(specFile, `${SPEC}\n#### Scenario: Offline\n- **WHEN** there is no network\n- **THEN** the last list is shown\n`);
+  const out = run('sync', change);
+  assert.match(out.stdout, /3 checklist item\(s\), 2 to test again/);
+  const saved = JSON.parse(readFileSync(state, 'utf8'));
+  assert.deepEqual(saved.items.map((i) => i.status), ['ok', 'pending', 'pending']);
 });
 
 // ---------- reviewer selection
