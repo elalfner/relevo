@@ -68,7 +68,11 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **THEN** `doctor` reports all green
 
 ### Requirement: Required external tools
-Relevo SHALL declare its external dependencies: the OpenSpec command-line tool (Node.js 20.19 or newer), `git`, the platform toolchain, and for `review` the device bridge. `doctor` SHALL detect each one and show the exact install command for what is missing.
+Relevo SHALL declare its external dependencies: the OpenSpec command-line tool (Node.js 20.19 or newer), `git`, the platform toolchain, and for `review` the device bridge. It SHALL also declare the skills that `think` invokes: `openspec-explore`, `grill-with-docs`, `grilling` and `domain-modeling`. `doctor` SHALL detect each one and show the exact install command for what is missing.
+
+#### Scenario: Skill missing
+- **WHEN** a skill that `think` invokes, such as `domain-modeling`, is not installed
+- **THEN** `doctor` fails that check and shows the install command
 
 #### Scenario: OpenSpec missing
 - **WHEN** the OpenSpec tool is not installed
