@@ -67,7 +67,22 @@ The workflow that runs `go` SHALL start only when a person (not an automation ac
 
 #### Scenario: Run takes too long
 - **WHEN** a run exceeds the workflow time limit
-- **THEN** the runner stops it and the issue stays `building` until a person resets it
+- **THEN** the runner stops it; if the workflow can still run its final step, that step reports the run on the issue (see "A run that ends without an outcome is reported"), otherwise the issue stays `building` until a person resets it
+
+### Requirement: A run that ends without an outcome is reported
+The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `qa-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it.
+
+#### Scenario: The plugin cannot be installed
+- **WHEN** the run fails before `go` starts and the issue is still `ready`
+- **THEN** the issue is labelled `qa-failed` and a comment links the run
+
+#### Scenario: The agent ends its session early
+- **WHEN** the job succeeds but the issue is still `building`
+- **THEN** the issue is labelled `qa-failed` and a comment links the run
+
+#### Scenario: The run recorded its outcome
+- **WHEN** the issue is `built`, `queued`, `blocked`, `needs-spec` or `qa-failed` when the job ends
+- **THEN** the final step changes nothing
 
 ### Requirement: Labels follow the run
 `go` SHALL set `queued` while an issue waits for capacity, `building` when its run starts, and `built` when it finishes successfully, removing the previous lifecycle label each time.

@@ -45,3 +45,22 @@ test('OpenSpec is installed with telemetry off', () => {
 test('Scenario: Subagent in the background - the unattended run keeps subagents in the foreground', () => {
   assert.match(workflow, /CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'/);
 });
+
+test('Scenario: Run ends without an outcome - a final step always runs and moves the issue to qa-failed with the run link', () => {
+  assert.match(workflow, /if: always\(\)/);
+  assert.ok(workflow.indexOf('anthropics/claude-code-action') < workflow.indexOf('Report a run that ended without an outcome'));
+  assert.match(workflow, /grep -qxE 'relevo:\(ready\|building\)'/);
+  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(workflow, /RUN_URL: \$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/);
+  assert.match(workflow, /gh issue comment "\$ISSUE"/);
+});
+
+test('Scenario: Run ends with an outcome - the final step leaves the issue alone', () => {
+  const guard = workflow.indexOf("grep -qxE 'relevo:(ready|building)'");
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed'));
+});
+
+test('the final step uses the default labels of the template', () => {
+  const names = resolveLabelNames({});
+  for (const key of ['ready', 'building', 'qa-failed']) assert.ok(workflow.includes(names[key]), `${names[key]} must appear`);
+});

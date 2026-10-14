@@ -70,3 +70,23 @@ jobs:
             --max-turns 100
             --max-budget-usd 5
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
+
+      # A run can end without telling anyone: the plugin cannot be cloned, the login fails, preflight stops, or the
+      # agent ends its session early (all seen in the pilot, see docs/pilot-findings.md). If the issue is still
+      # ready or building after the agent step, no outcome was recorded, so say so on the issue.
+      # If you renamed the labels in relevo.yml, change the names below too.
+      - name: Report a run that ended without an outcome
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
+          if ! printf '%s\n' "$labels" | grep -qxE 'relevo:(ready|building)'; then
+            exit 0
+          fi
+          assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
