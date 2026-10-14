@@ -15,7 +15,7 @@
 
 - [x] 3.1 `go`: gates, queue, unattended build, QA with retry, outcomes (`built`, `qa-failed`, `needs-spec`, `blocked`, `queued`)
 - [x] 3.2 `review`: base synchronisation, shot list and checklist, capture, log audit, pull request after verification
-- [ ] 3.3 `fix`: specification first, developer, QA, state preserved
+- [x] 3.3 `fix`: specification first, developer, QA, state preserved
 - [ ] 3.4 `ship` with `review.mode: none`: archive, merge, close-out
 - [ ] 3.5 Cloud workflow for `go` (label trigger, concurrency group, budget caps)
 - [ ] 3.6 Pilot in a solo repository and record findings
