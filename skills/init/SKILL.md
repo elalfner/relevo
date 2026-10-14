@@ -55,6 +55,8 @@ For each line in the plan that is an install, show its exact command and ask for
 node ${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs apply --answers <answers file>
 ```
 
+The branch rules (`protection` and `push-scope`) stop anyone, the person included, from pushing straight to the base and release branches. A workflow only runs once it is on the default branch, so when the plan also adds workflow files, apply with `--skip protection,push-scope`, ask the person to commit and push the new files first, and run `apply` again afterwards to add the rules.
+
 It carries out only the "will do" changes that are not installs. When GitHub refuses one (no administrator permission, or the feature needs a paid plan) it prints the exact settings to change by hand; show them to the person.
 
 ### 6. Check

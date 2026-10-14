@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { REQUIRED_SKILLS, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
-import { applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody } from '../scripts/lib/init.mjs';
+import { applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -173,4 +173,17 @@ test('Scenario: Agent tries to push outside feature branches - a ruleset restric
   const posted = [];
   applyPlan(items.filter((i) => i.id === 'push-scope'), { repo: 'o/r', io: { gh: (a, input) => posted.push(JSON.parse(input).name) } });
   assert.deepEqual(posted, ['relevo-push-scope']);
+});
+
+test('Scenario: Branch rules after the files - skipped items are left for a later run and the rest still apply', () => {
+  const items = plan(bare());
+  const skipped = skipItems(items, ['protection', 'push-scope']);
+  assert.equal(get(skipped, 'protection').status, 'skipped');
+  assert.equal(get(skipped, 'push-scope').status, 'skipped');
+  assert.equal(get(skipped, 'labels').status, 'todo');
+  const posted = [];
+  const results = applyPlan(skipped, { repo: 'o/r', io: { gh: (a, input) => { posted.push(a.join(' ')); return JSON.stringify({ commit: { sha: 'abc' } }); }, write() {}, append() {} } });
+  assert.ok(!results.some((r) => r.id === 'protection' || r.id === 'push-scope'));
+  assert.ok(!posted.some((p) => p.includes('/rulesets')));
+  assert.equal(get(skipItems(items, ['config']), 'labels').status, 'todo', 'only the named items are skipped');
 });

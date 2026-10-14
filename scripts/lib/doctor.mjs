@@ -142,6 +142,8 @@ export function gatherFacts(p) {
 
     const repoInfo = tryRun(() => api(`repos/${f.repo}`), {});
     f.defaultBranch = repoInfo.default_branch ?? release;
+    const sa = repoInfo.security_and_analysis;
+    f.secretScanning = sa ? { scanning: sa.secret_scanning?.status === 'enabled', pushProtection: sa.secret_scanning_push_protection?.status === 'enabled' } : null;
     f.labels = tryRun(() => flat(api(`repos/${f.repo}/labels?per_page=100`, true)).map((l) => l.name));
     f.branches = {
       base: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(base)}`); return true; }, false),
@@ -240,6 +242,11 @@ export function runChecks(f) {
   }
   if (!f.protectionUnavailable) {
     r.push(f.pushScope ? pass('repo.push-scope', 'the agent can only create feature/* branches') : warn('repo.push-scope', 'nothing stops the unattended agent from creating branches other than feature/*', 'run /relevo:init to add the relevo-push-scope ruleset'));
+  }
+  if (f.secretScanning) {
+    const { scanning, pushProtection } = f.secretScanning;
+    r.push(scanning && pushProtection ? pass('repo.secret-scanning', 'secret scanning and push protection are on')
+      : warn('repo.secret-scanning', `secret scanning is ${scanning ? 'on' : 'off'} and push protection is ${pushProtection ? 'on' : 'off'}`, 'turn both on in Settings > Code security (init tries to; GitHub may need a public repository or a paid plan)'));
   }
   if (f.canApprove === true) r.push(fail('repo.automation-approve', 'workflows are allowed to approve pull requests', 'in Settings > Actions > General, turn off "Allow GitHub Actions to create and approve pull requests"'));
   else if (f.canApprove === false) r.push(pass('repo.automation-approve', 'workflows cannot approve pull requests'));

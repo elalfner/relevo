@@ -75,3 +75,8 @@ test('Scenario: Private plugin repository or subscription - the template shows b
   assert.doesNotMatch(workflow, /^ {10}claude_code_oauth_token:/m);
   assert.doesNotMatch(workflow, /sk-ant-|ghp_|github_pat_/);
 });
+
+test('Scenario: Run started by the queue - the final step reports on the dispatched issue too', () => {
+  assert.match(workflow, /ISSUE: \$\{\{ github\.event\.issue\.number \|\| inputs\.issue \}\}/);
+  assert.match(workflow, /workflow_dispatch:/);
+});
