@@ -33,6 +33,11 @@ test('every script the skill runs exists', () => {
   new Set(scripts).forEach((s) => assert.ok(existsSync(root(`scripts/${s}`)), `scripts/${s} is referenced but does not exist`));
 });
 
+test('the checklist comes from the shared script, so go and review always agree', () => {
+  assert.match(body, /scripts\/checklist\.mjs openspec\/changes\/<change_id> --count/);
+  assert.match(body, /scripts\/checklist\.mjs openspec\/changes\/<change_id>`/);
+});
+
 test('every agent the skill launches exists', () => {
   const agents = [...body.matchAll(/`relevo:(\w+)`/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(agents)].sort(), ['dev', 'qa']);
