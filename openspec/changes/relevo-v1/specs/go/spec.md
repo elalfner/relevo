@@ -13,7 +13,11 @@
 
 #### Scenario: No milestone
 - **WHEN** `ready` is applied to an issue with no milestone
-- **THEN** no run starts and a comment asks for a milestone
+- **THEN** no run starts, the `ready` label is removed and a comment asks for a milestone
+
+#### Scenario: No assignee
+- **WHEN** `ready` is applied to an issue with no assignee
+- **THEN** no run starts, the `ready` label is removed and a comment asks for an assignee, because there would be nobody to hand the result to
 
 ### Requirement: Gate 1, spec
 Before building, `go` SHALL verify that the issue states scenarios and edge cases. It SHALL NOT invent them.
@@ -101,6 +105,25 @@ Before committing, `go` SHALL stage files explicitly (never "add all") and SHALL
 #### Scenario: Temporary marker staged
 - **WHEN** the staged diff contains `NOCOMMIT`
 - **THEN** the commit is aborted and the assignee is told which file
+
+#### Scenario: Credential found before pushing
+- **WHEN** the staged diff contains a possible credential
+- **THEN** nothing is pushed, the issue is labelled `qa-failed` with that reason, and the comment states that the branch was not pushed
+
+### Requirement: Unrecoverable problems end in qa-failed
+Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a stated reason, and SHALL push the branch except when the reason is a possible credential or temporary marker. `go` SHALL NOT open a pull request or advance the state in that case.
+
+#### Scenario: Branch already exists
+- **WHEN** the feature branch already exists on the remote
+- **THEN** `go` leaves it untouched and ends in `qa-failed` with the reason "branch already exists"
+
+#### Scenario: Specification invalid
+- **WHEN** the generated change specification still fails validation after two corrections
+- **THEN** `go` ends in `qa-failed` with the reason "specification invalid"
+
+#### Scenario: Ambiguity that changes behaviour
+- **WHEN** the issue is ambiguous in a way that changes observable behaviour
+- **THEN** `go` does not guess: the issue is labelled `needs-spec`, assigned to the spec writer, and nothing is pushed
 
 ### Requirement: Successful hand-off
 On `QA PASSED`, `go` SHALL push the branch, label the issue `built`, and post the hand-off message to the assignee.
