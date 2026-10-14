@@ -169,6 +169,7 @@ test('Scenario: Agent tries to push outside feature branches - a ruleset restric
   assert.equal(get(items, 'push-scope').status, 'todo');
   assert.equal(get(plan(bare(), empty(), false), 'push-scope').status, 'manual');
   assert.equal(get(plan(bare({ pushScope: true })), 'push-scope').status, 'ok');
+  assert.equal(get(plan(bare({ protectionUnavailable: 'Upgrade to GitHub Pro' })), 'push-scope').status, 'manual', 'rulesets that the plan does not offer are not attempted');
   const posted = [];
   applyPlan(items.filter((i) => i.id === 'push-scope'), { repo: 'o/r', io: { gh: (a, input) => posted.push(JSON.parse(input).name) } });
   assert.deepEqual(posted, ['relevo-push-scope']);

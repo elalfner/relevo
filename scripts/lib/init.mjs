@@ -136,7 +136,7 @@ export function planInit({ facts, answers, templates, current, admin }) {
   else items.push(item('protection', 'todo', `Add a ruleset: pull request required on ${base} and ${release}, no deletion, no force push, approvals not dismissed on push`, { ruleset: rulesetBody({ base, release, reviewMode }), checklist }));
 
   if (facts.pushScope === true) items.push(item('push-scope', 'ok', 'The agent can only create feature/* branches'));
-  else if (!admin) items.push(item('push-scope', 'manual', 'Ask an administrator to keep the agent on feature/* branches', { checklist: pushScopeChecklist({ base, release }) }));
+  else if (!admin || facts.protectionUnavailable) items.push(item('push-scope', 'manual', admin ? 'Rulesets are not available on this repository: keep the agent on feature/* branches by hand when you can' : 'Ask an administrator to keep the agent on feature/* branches', { checklist: pushScopeChecklist({ base, release }) }));
   else items.push(item('push-scope', 'todo', 'Add a ruleset so that only maintainers and administrators can create branches other than feature/* (the agent pushes only feature/*)', { ruleset: pushScopeBody({ base, release }), checklist: pushScopeChecklist({ base, release }) }));
 
   items.push(facts.canApprove === false ? item('workflow-permissions', 'ok', 'Workflows cannot approve pull requests')
