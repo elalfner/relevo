@@ -2,6 +2,7 @@
 // Keeps the state of an on-device review and decides whether a pull request may be opened.
 //   review-state.mjs init <change-dir>            build the checklist from the change's scenarios
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
+//   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
 //   review-state.mjs capture <path>               record a screenshot that was taken
 //   review-state.mjs audit [<log-file>|-]         audit the device log (stdin by default), write the report
 //   review-state.mjs agree                        the person agrees to open the pull request
@@ -13,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { checklistFromChange } from './lib/checklist.mjs';
 import { auditLog, auditReport } from './lib/logaudit.mjs';
-import { decidePr, newState, setItem } from './lib/review-state.mjs';
+import { decidePr, newState, setItem, syncState } from './lib/review-state.mjs';
 
 const argv = process.argv.slice(2);
 const si = argv.indexOf('--state');
@@ -41,6 +42,14 @@ try {
       const state = newState(checklistFromChange(rest[0]));
       save(state);
       console.log(`${state.items.length} checklist item(s) in ${statePath}`);
+      break;
+    }
+    case 'sync': {
+      if (!rest[0] || !existsSync(rest[0])) fail('usage: review-state.mjs sync <change-directory>');
+      const state = syncState(load(), checklistFromChange(rest[0]));
+      save(state);
+      const pending = state.items.filter((i) => i.status === 'pending').length;
+      console.log(`${state.items.length} checklist item(s), ${pending} to test again; the log audit and the agreement must be repeated`);
       break;
     }
     case 'set': {

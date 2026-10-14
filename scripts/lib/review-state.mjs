@@ -12,6 +12,23 @@ export function newState(items) {
   };
 }
 
+/**
+ * Reconcile the checklist after a fix changed the specification and the code.
+ * Lines that were confirmed stay confirmed; lines that failed go back to pending so they are tested again;
+ * new scenarios are added as pending. The log audit and the person's agreement no longer apply to the new code.
+ */
+export function syncState(state, items) {
+  const before = new Map(state.items.map((i) => [i.title, i]));
+  state.items = items.map((i) => {
+    const old = before.get(i.title);
+    const keep = old && old.status === 'ok';
+    return { id: i.id, title: i.title, status: keep ? 'ok' : 'pending', note: null };
+  });
+  state.audit = null;
+  state.agreed = false;
+  return state;
+}
+
 export function setItem(state, id, status, note = null) {
   if (!STATUSES.includes(status)) throw new Error(`status must be one of ${STATUSES.join(', ')}`);
   const item = state.items.find((i) => i.id === id);
