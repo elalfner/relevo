@@ -1,0 +1,54 @@
+# Relevo: re-evaluates the queue and starts the issues that are now eligible.
+# Copy to .github/workflows/relevo-queue.yml next to relevo-go.yml (it starts builds through that workflow).
+#
+# Runs when an issue is closed or its labels change (a merge, a built issue leaving that state) and on a
+# schedule, so a lost event does not stall the queue. Needs a relevo.yml at the repository root.
+# Scripts come from the plugin repository; pin `ref` to a release tag once one exists.
+
+name: relevo-queue
+
+on:
+  issues:
+    types: [closed, labeled, unlabeled]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+# One evaluation at a time; a second one waits and then sees the first one's labels.
+concurrency:
+  group: relevo-queue
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  actions: write
+
+jobs:
+  requeue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: elalfner/relevo
+          ref: main
+          path: .relevo-plugin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Evaluate the queue and dispatch builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          result=$(node .relevo-plugin/scripts/requeue.mjs --repo "$GITHUB_REPOSITORY")
+          echo "$result"
+          for issue in $(echo "$result" | node -e 'JSON.parse(require("fs").readFileSync(0,"utf8")).start.forEach(n=>console.log(n))'); do
+            gh workflow run relevo-go.yml --repo "$GITHUB_REPOSITORY" -f issue="$issue"
+          done
