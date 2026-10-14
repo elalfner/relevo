@@ -1,0 +1,42 @@
+# relevo.yml: one per repository. /relevo:init creates and updates this file.
+# Validate it with: node scripts/validate-config.mjs relevo.yml
+# Never put API keys or tokens here; they belong in the repository secret store.
+
+branches:
+  base: dev            # integration branch: feature pull requests target it
+  release: main        # promoted from base in a separate pull request
+
+tracker: github        # github (more later)
+git_provider: github   # github (more later)
+platform: flutter-android
+
+team:
+  members: []          # GitHub usernames of the people who build and review
+  spec_writer: null    # writes the specs; never reviews or merges
+  approvers: []        # only used when review.mode is "roles"
+
+review:
+  mode: peer           # none (solo) | peer | roles
+  merger: approver     # author | approver: who runs /relevo:ship
+
+limits:
+  built_unreviewed_per_person: 2   # built issues one person may have waiting
+  concurrent_agents: 3             # unattended runs at the same time
+  review_sla_hours: 8              # reminder, then escalation after the same time again
+  run_max_turns: 100               # per unattended run
+  run_max_cost: 5                  # REQUIRED: US dollars per unattended run; choose your own
+
+qa:
+  retries: 1                       # developer attempts after QA rejects
+  rules_from: CLAUDE.md            # project rules QA reads at every run
+
+evidence:
+  policy: attach_to_pr             # attach_to_pr | local_only (use for sensitive data)
+
+language: en                       # language of hand-off messages (en, es)
+trust: private-team                # private-team | public
+
+# Rename any label here; keys are fixed, names are yours.
+# labels:
+#   ready: relevo:ready
+#   built: relevo:built
