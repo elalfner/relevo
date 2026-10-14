@@ -19,7 +19,7 @@
 - **THEN** `ship` states that there is no objective check and continues only after the person confirms
 
 ### Requirement: Who may run ship
-The approval SHALL always come from someone other than the author (see below). Who runs `ship` depends on `review.merger`: with `approver` the person invoking it SHALL NOT be the author; with `author` the author runs it after a non-author approval exists.
+When `review.mode` is `peer` or `roles`, the approval SHALL always come from someone other than the author (see below), and who runs `ship` depends on `review.merger`: with `approver` the person invoking it SHALL NOT be the author; with `author` the author runs it after a non-author approval exists. When `review.mode` is `none` there is no restriction on who runs it.
 
 #### Scenario: Approver merges, author tries to ship
 - **WHEN** `review.merger` is `approver` and the author runs `ship` on their own pull request
@@ -28,6 +28,10 @@ The approval SHALL always come from someone other than the author (see below). W
 #### Scenario: Author merges
 - **WHEN** `review.merger` is `author`, a non-author approval exists and the author runs `ship`
 - **THEN** it proceeds to the confirmation step
+
+#### Scenario: Someone other than the author tries to ship when the author merges
+- **WHEN** `review.merger` is `author` and a person other than the author runs `ship`
+- **THEN** it refuses and names the author
 
 ### Requirement: Approval is required and human
 When `review.mode` is `peer` or `roles`, `ship` SHALL require an approval from someone other than the author (in `roles` mode, from a member of `team.approvers`) and no outstanding change requests. The agent SHALL NOT approve on its own.
@@ -59,11 +63,30 @@ When `review.mode` is `none`, `ship` SHALL require only the invoking person's ex
 - **THEN** `ship` aborts before merging and reports the files
 
 ### Requirement: Squash merge and close-out
-`ship` SHALL squash-merge into the base branch with a title that includes the summary and the issue number, ensure the issue is closed as completed (which is the final state), remove all lifecycle labels, and delete the local feature branch after updating the base branch.
+`ship` SHALL squash-merge into the base branch with a title that includes the summary and the issue number and a body that only refers to the issue, ensure the issue is closed as completed (which is the final state), remove all lifecycle labels, delete the feature branch locally and on the remote, and update the local base branch first.
 
 #### Scenario: Merge
 - **WHEN** the person confirms
-- **THEN** the pull request is squash-merged, the issue is closed as completed, lifecycle labels are removed and the local branch is deleted
+- **THEN** the pull request is squash-merged, the issue is closed as completed, lifecycle labels are removed and the feature branch is deleted
+
+#### Scenario: Base branch is not the default branch
+- **WHEN** the pull request is merged into a base branch that is not the repository's default branch
+- **THEN** `ship` closes the issue explicitly as completed, because GitHub only closes issues automatically when merging into the default branch
+
+#### Scenario: Clean squash commit
+- **WHEN** the pull request is squash-merged
+- **THEN** the commit message holds only the title and a reference to the issue, with no list of intermediate commits and no links or attribution lines
+
+### Requirement: Confirmation comes before any change
+`ship` SHALL ask for the person's written confirmation before it archives or merges anything, and SHALL NOT bypass branch protection, required checks or required reviews.
+
+#### Scenario: Declined
+- **WHEN** the person does not confirm
+- **THEN** nothing is archived, pushed or merged
+
+#### Scenario: Checks rerun after the archive push
+- **WHEN** the archive commit starts new checks or dismisses an approval
+- **THEN** `ship` waits for the checks, checks again, and stops if the pull request no longer qualifies
 
 ### Requirement: Release is separate
 Promoting the base branch to the release branch SHALL be a separate pull request, with a version tag, and SHALL NOT be performed by `ship`.
