@@ -46,6 +46,13 @@ Each run SHALL have turn and cost limits, and the daily digest SHALL include agg
 - **WHEN** a run reaches its limit
 - **THEN** it stops and the issue is labelled `qa-failed` with the reason
 
+### Requirement: No telemetry from Relevo's tooling
+Relevo SHALL run the OpenSpec tool with its telemetry disabled in its workflows and documentation.
+
+#### Scenario: Workflow installs OpenSpec
+- **WHEN** the workflow installs or runs the OpenSpec tool
+- **THEN** telemetry is disabled in that step
+
 ### Requirement: Auditability
 Every automated action SHALL be visible as a comment, label or commit attributed to the actor that performed it.
 

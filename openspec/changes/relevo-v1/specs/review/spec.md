@@ -7,6 +7,17 @@
 - **WHEN** no device appears in the device list
 - **THEN** the command stops with instructions to connect one
 
+### Requirement: Choosing the device
+When several devices are ready, `review` SHALL use the one named by `ANDROID_SERIAL` and otherwise stop and list them. A device that is connected but not authorised SHALL be reported as such with the step to authorise it.
+
+#### Scenario: Several devices
+- **WHEN** two devices are ready and `ANDROID_SERIAL` is not set
+- **THEN** the command stops and lists the serial numbers
+
+#### Scenario: Unauthorised device
+- **WHEN** the only device is listed as unauthorised
+- **THEN** the command stops and tells the person to unlock it and accept the USB debugging prompt
+
 ### Requirement: Synchronise with the base branch first
 `review` SHALL merge the current base branch into the feature branch before the person tests, and SHALL re-run QA if the merge changed anything.
 
@@ -45,6 +56,13 @@ When the person writes `capture <name>`, the agent SHALL save a screenshot to th
 #### Scenario: Capture
 - **WHEN** the person writes `capture 02_after_tap`
 - **THEN** a file `02_after_tap.png` is saved and the agent confirms
+
+### Requirement: Capture names are plain file names
+Capture names SHALL consist of letters, digits, `_`, `-` and `.` only. A name containing a path or `..` SHALL be rejected, so a capture can never be written outside the evidence directory.
+
+#### Scenario: Path in the name
+- **WHEN** the person writes `capture ../../x`
+- **THEN** the capture is rejected with the allowed characters and nothing is written
 
 ### Requirement: Close only on request
 The log audit SHALL run only after the person writes that they are done.
