@@ -28,7 +28,7 @@
 - [x] 4.1 `ship` with `review.mode: peer`: invoker is not the author, approval check, written confirmation
 - [x] 4.2 Capacity gate and queue re-evaluation workflow
 - [x] 4.3 Review SLA reminder and escalation
-- [ ] 4.4 Review-event workflow that sets `changes-requested` and returns to `pr-open`
+- [x] 4.4 Review-event workflow that sets `changes-requested` and returns to `pr-open`
 - [ ] 4.5 Reviewer selection (fewest open reviews, rotation, `roles` approvers, `needs-reviewer`)
 - [ ] 4.6 `status` (per-person, spec-writer view, alerts, capacity warning)
 - [ ] 4.7 Daily digest workflow

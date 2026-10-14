@@ -1,0 +1,50 @@
+# Relevo: keeps the issue label in step with its pull request.
+# A review that requests changes sets `relevo:changes-requested` and mentions the author; a new push returns the
+# issue to `relevo:pr-open`; an approval mentions the person who will run /relevo:ship.
+# Copy to .github/workflows/relevo-review.yml. Needs a relevo.yml at the repository root.
+# Pull requests from forks get a read-only token, so this workflow does nothing for them.
+# Scripts come from the plugin repository; pin `ref` to a release tag once one exists.
+
+name: relevo-review
+
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [synchronize]
+
+concurrency:
+  group: relevo-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  review:
+    if: startsWith(github.event.pull_request.head.ref, 'feature/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The base branch holds relevo.yml; the pull request code is never checked out or run.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: elalfner/relevo
+          ref: main
+          path: .relevo-plugin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Update the label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .relevo-plugin/scripts/review-event.mjs --repo "$GITHUB_REPOSITORY"
