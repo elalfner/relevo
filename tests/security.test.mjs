@@ -101,3 +101,12 @@ test('the go workflow never opens the run to strangers or prints tool results', 
     assert.ok(!activeLines.some((l) => l.includes(`${name}:`)), `${name} must not be set in the template`);
   });
 });
+
+test('every workflow that checks out the plugin repository passes a token that can read a private one', () => {
+  ['relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'].forEach((f) => {
+    const text = read(`templates/workflows/${f}`);
+    const block = /repository: [\w.-]+\/[\w.-]+\n([\s\S]*?)path: \.relevo-plugin\n([\s\S]*?)\n\n/.exec(text);
+    assert.ok(block, `${f} checks out the plugin repository`);
+    assert.match(`${block[1]}${block[2]}`, /token: \$\{\{ secrets\.RELEVO_PLUGIN_TOKEN \|\| github\.token \}\}/, f);
+  });
+});

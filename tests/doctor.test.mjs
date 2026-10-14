@@ -16,7 +16,7 @@ function healthy(over = {}) {
     configText: CONFIG_TEXT, config, configErrors: [], rulesFileMissing: false,
     openspecRoot: true, openspecRootTracked: true, evidenceIgnored: true,
     workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: true, enabled: true }])),
-    pluginMarketplace: 'https://github.com/o/relevo.git', pluginRepoPrivate: false, hasCi: true,
+    pluginMarketplace: 'https://github.com/o/relevo.git', pluginRepoPrivate: false, pluginCheckouts: [], hasCi: true,
     defaultBranch: 'main', labels: allLabels, branches: { base: true, release: true },
     protectionUnavailable: null, protection: { base: PROTECTED, release: PROTECTED }, pushScope: true, secretScanning: { scanning: true, pushProtection: true }, canApprove: false, secrets: ['ANTHROPIC_API_KEY'],
     ...over,
@@ -209,4 +209,13 @@ test('secret scanning and push protection are checked by reading them back, as a
   assert.equal(off.status, 'warn');
   assert.match(off.message, /off/);
   assert.equal(byId(runChecks(healthy({ secretScanning: null })), 'repo.secret-scanning'), undefined);
+});
+
+test('Scenario: Private plugin repository - workflows that check it out without a token fail the check', () => {
+  const bad = byId(runChecks(healthy({ pluginRepoPrivate: true, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }, { file: 'relevo-sla.yml', repo: 'o/relevo', hasToken: true }] })), 'automation.plugin-checkout');
+  assert.equal(bad.status, 'fail');
+  assert.match(bad.message, /relevo-queue\.yml/);
+  assert.ok(!bad.message.includes('relevo-sla.yml'));
+  assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: true, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: true }] })), 'automation.plugin-checkout'), undefined);
+  assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: false, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }] })), 'automation.plugin-checkout'), undefined);
 });

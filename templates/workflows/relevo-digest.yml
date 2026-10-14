@@ -32,6 +32,9 @@ jobs:
           repository: elalfner/relevo
           ref: main
           path: .relevo-plugin
+          # The default token cannot read another private repository. If the plugin repository is private, store a
+          # read-only token as the secret RELEVO_PLUGIN_TOKEN; otherwise the default token is used.
+          token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}
 
       - uses: actions/setup-node@v4
         with:
