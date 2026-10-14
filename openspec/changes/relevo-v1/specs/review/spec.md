@@ -80,14 +80,32 @@ The pull request SHALL be opened only when the verdict is `REVIEW PASSED` and ev
 
 #### Scenario: Verified
 - **WHEN** the verdict is passed, the checklist is complete and the person agrees
-- **THEN** the branch is pushed, a pull request to the base branch is opened ready for review (not as a draft) with the checklist and `Closes #<n>`, review is requested from the peer, and the issue is labelled `pr-open`
+- **THEN** the branch is pushed, a pull request to the base branch is opened ready for review (not as a draft) with the checklist and `Closes #<n>`, review is requested from the peer (unless `review.mode` is `none`), and the issue is labelled `pr-open`
 
 ### Requirement: Evidence policy
-When `evidence.policy` is `local_only`, screenshots SHALL NOT be attached to the pull request or issue and SHALL be deleted at the end. When it is `attach_to_pr`, they SHALL be attached.
+When `evidence.policy` is `local_only`, screenshots SHALL NOT be attached to the pull request or issue and SHALL be deleted at the end. When it is `attach_to_pr`, the review SHALL tell the person which files to attach and SHALL keep them until the person confirms. The review cannot upload images itself, because GitHub offers no API for attaching images to a pull request description, so the person drags them in.
 
 #### Scenario: Sensitive project
 - **WHEN** `evidence.policy` is `local_only`
 - **THEN** the pull request contains no images and the evidence directory is removed
+
+#### Scenario: Screenshots attached by the person
+- **WHEN** `evidence.policy` is `attach_to_pr` and the pull request is open
+- **THEN** the review lists the screenshot files to drag into the description, keeps the evidence directory, and removes it only after the person says they attached them
+
+### Requirement: Evidence is never committed
+The evidence directory SHALL be ignored by git. If it is not, the review SHALL stop before capturing anything.
+
+#### Scenario: Evidence directory not ignored
+- **WHEN** the repository does not ignore the evidence directory
+- **THEN** the review stops and tells the person to add it to the ignore file
+
+### Requirement: The review can be resumed
+The review SHALL keep its checklist, captures and audit result on disk, so an interrupted review continues where it stopped.
+
+#### Scenario: Interrupted review
+- **WHEN** the person starts the review again for an issue that is already `in-review` and has saved state
+- **THEN** the review resumes with the confirmed lines and captures it already had
 
 ### Requirement: Safe push
 Before pushing, `review` SHALL scan the diff against the base branch for temporary markers and credential patterns and abort on a match.
