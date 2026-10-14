@@ -17,39 +17,48 @@ test('frontmatter uses only documented fields and Claude never starts it on its 
   assert.equal(meta.name, 'think');
   assert.equal(meta['argument-hint'], '[idea]');
   assert.equal(meta['disable-model-invocation'], true);
-  assert.match(meta.description, /once the person allows it/);
+  assert.match(meta.description, /openspec-explore/);
+  assert.match(meta.description, /grill-with-docs/);
   assert.ok(String(meta.description).length <= 1536);
 });
 
-test('Scenario: A decision opens new questions - rounds follow the frontier', () => {
-  assert.match(body, /tree of decisions/);
-  assert.match(body, /frontier/);
-  assert.match(body, /Ask the whole frontier in one round/);
-  assert.match(body, /belongs to a later round/);
-  assert.match(body, /Recommended:/);
+test('Scenario: Shape of the idea is clear - it runs openspec-explore and then grill-with-docs', () => {
+  assert.ok(body.indexOf('## 2. Explore') < body.indexOf('## 3. Grill'));
+  assert.match(body, /Invoke the `openspec-explore` skill with the Skill tool/);
+  assert.match(body, /Invoke the `grill-with-docs` skill with the Skill tool in the same conversation/);
 });
 
-test('Scenario: A question needs a fact from the code - facts are looked up, decisions are asked', () => {
-  assert.match(body, /Finding facts is your job/);
-  assert.match(body, /subagent/);
+test('Scenario: Idea still vague - it stays in the exploration', () => {
+  assert.match(body, /Stay in it while the idea is still shapeless/);
 });
 
-test('Scenario: Idea still vague - it explores before it interviews', () => {
-  assert.ok(body.indexOf('## 2. Explore') < body.indexOf('## 3. Interview in rounds'));
-  assert.match(body, /thinking partner/);
-  assert.match(body, /plain ASCII/);
+test('it does not restate the rules of the skills it runs', () => {
+  assert.match(body, /do not restate them, shorten them or override them/);
+  assert.ok(!/frontier|tree of decisions|Recommended:/.test(body), 'the interview rules belong to grill-with-docs');
+  assert.ok(!/GLOSSARY\.md|docs\/adr/.test(body.replace(/\(glossary, decision records, OpenSpec artifacts\)/, '')), 'the language rules belong to grill-with-docs');
 });
 
-test('Scenario: Unknown answer - it is an open question, never invented behaviour', () => {
-  assert.match(body, /Do not invent answers/);
-  assert.match(body, /open questions/);
-  assert.match(body, /Silence is not acceptance/);
+test('Scenario: A skill is not installed - it stops and shows how to install them', () => {
+  assert.ok(body.indexOf('## 1. Check the skills first') < body.indexOf('## 2. Explore'));
+  for (const name of ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling']) {
+    assert.ok(body.includes(`\`${name}\``), `${name} must be named`);
+  }
+  assert.match(body, /If any is missing, stop/);
+  assert.match(body, /npx skills add mattpocock\/skills/);
+  assert.match(body, /openspec init/);
+  assert.match(body, /Never continue when a required skill is missing/);
 });
 
-test('Scenario: Permission not given - nothing is written before a yes to glossary and decision records', () => {
-  assert.match(body, /may you create and update `GLOSSARY.md` and `docs\/adr\/`/);
-  assert.match(body, /Without a yes you write nothing/);
-  assert.ok(body.indexOf('direct yes/no question') < body.indexOf('## 2. Explore'));
+test('it does not bundle or copy the skills', () => {
+  assert.match(body, /Never copy a skill's content into the repository/);
+  assert.ok(!existsSync(root('skills/grill-with-docs')) && !existsSync(root('skills/openspec-explore')));
+});
+
+test('Scenario: Invoked skill suggests another next step - it points to create', () => {
+  assert.match(body, /whatever next step those skills suggested themselves/);
+  assert.match(body, /\/opsx:propose/);
+  assert.match(body, /\/relevo:create/);
+  assert.ok(existsSync(root('skills/create/SKILL.md')));
 });
 
 test('Scenario: Keeping the agreement - the agreement file is written only on request', () => {
@@ -57,31 +66,14 @@ test('Scenario: Keeping the agreement - the agreement file is written only on re
   assert.match(body, /agreement file only on request/);
 });
 
-test('Scenario: Conflicting term and statement contradicted by the code', () => {
-  assert.match(body, /Challenge terms/);
-  assert.match(body, /Check the code/);
-  assert.match(body, /Test with concrete cases/);
-});
-
-test('the glossary holds vocabulary only and decision records are offered sparingly', () => {
-  assert.match(body, /holds vocabulary and nothing else/);
-  assert.match(body, /Never put implementation details or decisions in the glossary/);
-  assert.match(body, /hard to reverse, surprising without context and the result of a real trade-off/);
-  assert.match(body, /docs\/adr\/NNNN-short-title\.md/);
-});
-
 test('Scenario: Hand-off - documentation is never committed and the files are named', () => {
-  assert.match(body, /Name the documentation files you created or changed/);
+  assert.match(body, /Name the documentation files the session created or changed/);
   assert.match(body, /not committed/);
 });
 
-test('it does not write an OpenSpec change itself any more', () => {
-  assert.ok(!/openspec (new|instructions|archive)/.test(body));
-});
-
-test('think never commits, pushes, creates issues or labels, and points to create', () => {
+test('think never builds, commits, pushes, creates issues or labels, and does not write an OpenSpec change itself', () => {
   assert.match(body, /Never write code, commit, push, create issues or apply labels/);
-  assert.ok(!/gh issue create|git push|git commit|--add-label/.test(body.replace(/Never write code, commit, push, create issues or apply labels\./, '')), 'think must not run those commands');
-  assert.match(body, /\/relevo:create/);
-  assert.ok(existsSync(root('skills/create/SKILL.md')));
+  assert.match(body, /Never run `openspec new change`/);
+  const rest = body.replace(/Never write code, commit, push, create issues or apply labels\./g, '').replace(/Never run `openspec new change`[^\n]*/, '');
+  assert.ok(!/gh issue create|git push|git commit|--add-label|openspec (new|instructions|archive)/.test(rest), 'think must not run those commands');
 });

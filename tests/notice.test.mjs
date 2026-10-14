@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
-test('NOTICE reproduces the copyright and permission notices of the works the skills were written with reference to', () => {
+test('NOTICE reproduces the copyright and permission notices of the works Relevo works together with', () => {
   const notice = read('NOTICE');
   assert.match(notice, /Copyright \(c\) 2026 Matt Pocock/);
   assert.match(notice, /Copyright \(c\) 2024 OpenSpec Contributors/);
