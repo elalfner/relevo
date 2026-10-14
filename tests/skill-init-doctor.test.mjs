@@ -63,6 +63,12 @@ test('Scenario: Not an admin - the settings GitHub refused are shown to be chang
   assert.match(load('init').body, /prints the exact settings to change by hand/);
 });
 
+test('init applies the files before the branch rules, because the rules would block pushing them to the default branch', () => {
+  const { body } = load('init');
+  assert.match(body, /--skip protection,push-scope/);
+  assert.match(body, /commit and push the new files first/);
+});
+
 test('init runs doctor at the end, never commits and never creates openspec files by hand', () => {
   const { body } = load('init');
   assert.ok(body.lastIndexOf('doctor.mjs') > body.indexOf('init.mjs apply'));

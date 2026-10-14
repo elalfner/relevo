@@ -179,6 +179,12 @@ export function renderPlan(items) {
   return lines.join('\n');
 }
 
+/** Mark the items named in `ids` as skipped, so `applyPlan` leaves them for a later run. */
+export function skipItems(items, ids) {
+  const skip = new Set(ids);
+  return items.map((i) => (skip.has(i.id) && i.status === 'todo' ? { ...i, status: 'skipped' } : i));
+}
+
 /**
  * Carry out the `todo` items that are not installs. `io`: gh(args, input?) -> stdout, write(path, text),
  * append(path, line), mkdir(path). Returns [{ id, ok, message, checklist? }]; a refused GitHub change becomes a

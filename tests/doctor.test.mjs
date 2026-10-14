@@ -18,7 +18,7 @@ function healthy(over = {}) {
     workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: true, enabled: true }])),
     pluginMarketplace: 'https://github.com/o/relevo.git', pluginRepoPrivate: false, hasCi: true,
     defaultBranch: 'main', labels: allLabels, branches: { base: true, release: true },
-    protectionUnavailable: null, protection: { base: PROTECTED, release: PROTECTED }, pushScope: true, canApprove: false, secrets: ['ANTHROPIC_API_KEY'],
+    protectionUnavailable: null, protection: { base: PROTECTED, release: PROTECTED }, pushScope: true, secretScanning: { scanning: true, pushProtection: true }, canApprove: false, secrets: ['ANTHROPIC_API_KEY'],
     ...over,
   };
 }
@@ -201,4 +201,12 @@ test('Scenario: Agent tries to push outside feature branches - doctor warns when
   assert.match(r.fix, /relevo-push-scope/);
   assert.equal(byId(runChecks(healthy()), 'repo.push-scope').status, 'pass');
   assert.equal(byId(runChecks(healthy({ protectionUnavailable: 'Upgrade', protection: {} })), 'repo.push-scope'), undefined);
+});
+
+test('secret scanning and push protection are checked by reading them back, as a warning', () => {
+  assert.equal(byId(runChecks(healthy()), 'repo.secret-scanning').status, 'pass');
+  const off = byId(runChecks(healthy({ secretScanning: { scanning: false, pushProtection: false } })), 'repo.secret-scanning');
+  assert.equal(off.status, 'warn');
+  assert.match(off.message, /off/);
+  assert.equal(byId(runChecks(healthy({ secretScanning: null })), 'repo.secret-scanning'), undefined);
 });

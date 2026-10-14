@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Plans and applies the repository setup. Usage:
 //   node scripts/init.mjs plan  [--answers answers.json] [--repo owner/name] [--json]
-//   node scripts/init.mjs apply [--answers answers.json] [--repo owner/name] [--json]
+//   node scripts/init.mjs apply [--answers answers.json] [--repo owner/name] [--skip id,id] [--json]
 // `plan` changes nothing. `apply` carries out the planned changes except installs (the skill asks first).
 // answers.json: { "members": ["a","b"], "specWriter": "a", "reviewMode": "peer", "language": "en", "platform": "flutter-android" }
 // It never reads or writes the model API key.
@@ -12,7 +12,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { gatherFacts, readOnlyGh, WORKFLOW_FILES } from './lib/doctor.mjs';
-import { applyPlan, planInit, renderPlan } from './lib/init.mjs';
+import { applyPlan, planInit, renderPlan, skipItems } from './lib/init.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -92,7 +92,9 @@ const io = {
     appendFileSync(p, `${have === '' || have.endsWith('\n') ? '' : '\n'}${line}\n`);
   },
 };
-const results = applyPlan(items, { repo, io });
+const skipped = (arg('skip') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const results = applyPlan(skipItems(items, skipped), { repo, io });
+skipped.forEach((id) => console.error(`skipped ${id}: run init again to apply it`));
 if (process.argv.includes('--json')) console.log(JSON.stringify(results, null, 2));
 else {
   results.forEach((r) => {
