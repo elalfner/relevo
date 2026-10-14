@@ -113,3 +113,13 @@ export function applyDecisions(decisions, { gh, repo, config, includeStart = fal
   });
   return done;
 }
+
+/** Open pull requests currently waiting for a review from each of `logins`. Returns { login: count }. */
+export function openReviewCounts({ gh, repo, logins }) {
+  const counts = {};
+  logins.forEach((login) => {
+    const q = encodeURIComponent(`repo:${repo} is:pr is:open review-requested:${login}`);
+    counts[login] = apiJson(gh, `search/issues?q=${q}&per_page=1`).total_count ?? 0;
+  });
+  return counts;
+}
