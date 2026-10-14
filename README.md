@@ -4,7 +4,9 @@
 
 > *Relevo* is Spanish for "relay". Every step of the workflow is a handoff: the agent passes the baton to a person, and that person passes it to a peer.
 
-> **Status: design phase.** Nothing here is installable yet.
+> **Status: early development.** The foundations exist (configuration validation, labels, hand-off messages, a diff scanner). The commands below are not implemented yet, so installing the plugin gives you nothing to run.
+
+Once released: `/plugin install relevo --marketplace elalfner/relevo`
 
 ## The idea
 

@@ -18,6 +18,17 @@ The lifecycle SHALL provide these exits, each with an owner and a message that s
 - **WHEN** an issue enters a side exit
 - **THEN** a comment states the reason, the owner and the next command or action expected
 
+### Requirement: Side exits replace the state, except needs-reviewer
+`needs-spec`, `blocked`, `qa-failed` and `changes-requested` SHALL replace the current state label, so an issue never shows two states. `needs-reviewer` SHALL be added next to the current state and SHALL NOT replace it.
+
+#### Scenario: QA fails while building
+- **WHEN** an issue labelled `building` fails QA after its retries
+- **THEN** `building` is removed and `qa-failed` is added in the same operation
+
+#### Scenario: Review is overdue
+- **WHEN** a pull request labelled `pr-open` exceeds the escalation time
+- **THEN** `needs-reviewer` is added and `pr-open` stays
+
 ### Requirement: Review events update the label
 A workflow reacting to pull request review events SHALL keep the lifecycle label in sync: a review that requests changes sets `changes-requested` and mentions the author; a new push or fix that addresses them returns the issue to `pr-open`.
 
