@@ -111,7 +111,7 @@ Otherwise commit with the message `feat: <title> (#<issue>)`. Do not add links t
 
 1. `git push -u origin <branch>` (a normal push, never forced).
 2. Move the issue to `built`: `label-change.mjs --to built --current "..."`, applied with `gh issue edit`.
-3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (count the `[x]` and all checkboxes in `tasks.md`), `branch`, `scenarios` (count the `#### Scenario:` headings in the change's specs), `risk` if QA or the developer pointed at a riskiest area, and `checklist` (one `- [ ] <scenario title>` line per scenario).
+3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (count the `[x]` and all checkboxes in `tasks.md`), `branch`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
 
 The comment tells the assignee the next command (`/relevo:review <issue>`).
 
