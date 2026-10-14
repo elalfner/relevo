@@ -1,9 +1,9 @@
 ## 1. Foundations
 
-- [ ] 1.1 Plugin manifest, marketplace entry and repository layout (`skills/`, `agents/`, `templates/`, `docs/`, `evals/`)
-- [ ] 1.2 `relevo.yml` schema, defaults and validator
-- [ ] 1.3 Label set with configurable names and message templates (English default, `language` switch)
-- [ ] 1.4 Shared helpers: safe staging, temporary-marker and credential scan, hand-off message builder
+- [x] 1.1 Plugin manifest, marketplace entry and repository layout (`skills/`, `agents/`, `templates/`, `docs/`, `evals/`)
+- [x] 1.2 `relevo.yml` schema, defaults and validator
+- [x] 1.3 Label set with configurable names and message templates (English default, `language` switch)
+- [x] 1.4 Shared helpers: safe staging, temporary-marker and credential scan, hand-off message builder
 
 ## 2. Agents
 

@@ -80,6 +80,10 @@ Relevo uses OpenSpec to generate and archive change specifications. It is declar
 
 *Why*: invoking a separately installed MIT-licensed tool creates no redistribution obligations; bundling would require carrying its licence notice and tracking its updates. *Alternative kept open*: a thin specification-engine boundary so another engine can replace OpenSpec later.
 
+### D14. Labels carry a `relevo:` prefix by default
+
+Generic names such as `ready` or `blocked` collide with labels a repository already uses. The defaults are `relevo:ready`, `relevo:built` and so on, and every name can be changed in `labels` of `relevo.yml`. Eleven labels in total: six states, four exits that replace the state, and `needs-reviewer`, which is added next to it.
+
 ## Risks / Trade-offs
 
 - **The spec is a single point of failure.** A wrong issue is built confidently and QA checks against the same wrong spec. *Mitigation*: the spec gate, an `needs-spec` exit that returns the issue to its writer, and a metric for how often it is used.
@@ -96,7 +100,6 @@ Roll out in stages: pilot in a solo repository (`review.mode: none`) to prove `g
 ## Open Questions
 
 - Exact name and parameters of the GitHub Action used to run the agent unattended.
-- Label naming: plain names versus a `relevo:` prefix (leaning to a configurable prefix).
 - Whether to ship a sandbox repository for end-to-end tests inside this repo or separately.
 - Whether to add a specification-engine boundary in v1 or only when a second engine is needed.
 - Exact package name and install command of the OpenSpec tool should be re-verified at release time.
