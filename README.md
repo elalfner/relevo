@@ -49,7 +49,7 @@ The design of Relevo lives in `openspec/` and is managed with [OpenSpec](https:/
 
 ## Acknowledgements
 
-The interview method of `/relevo:think` (rounds of questions over a tree of decisions, each with a recommended answer, plus a glossary and decision records kept as terms settle) is inspired by the `grill-with-docs` skill and the skills it builds on in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). Relevo contains its own wording and depends on nothing from that repository.
+`/relevo:think` was written with reference to the `grilling`, `grill-with-docs` and `domain-modeling` skills in [mattpocock/skills](https://github.com/mattpocock/skills) (rounds of questions over a tree of decisions, each with a recommended answer, plus a glossary and decision records kept as terms settle) and to the explore skill of [OpenSpec](https://github.com/Fission-AI/OpenSpec) (thinking without implementing). Both are MIT licensed. Relevo contains its own wording and depends on nothing from those repositories; their notices are in [NOTICE](NOTICE).
 
 ## License
 

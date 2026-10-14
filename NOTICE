@@ -1,0 +1,38 @@
+Relevo is released under the MIT License (see LICENSE). Some of its skills were written with
+reference to the following MIT-licensed works. Relevo contains its own wording and does not
+include or depend on their files; their copyright and permission notices are reproduced here
+because parts of the structure and phrasing of the skills named below follow them closely.
+
+1. mattpocock/skills (https://github.com/mattpocock/skills)
+   Copyright (c) 2026 Matt Pocock
+   Reference for: skills/think/SKILL.md (the interview in rounds over a tree of decisions,
+   and the glossary and decision-record practice, from the "grilling", "grill-with-docs" and
+   "domain-modeling" skills).
+
+2. OpenSpec (https://github.com/Fission-AI/OpenSpec)
+   Copyright (c) 2024 OpenSpec Contributors
+   Reference for: skills/think/SKILL.md (the explore stance: thinking without implementing,
+   plain-text diagrams, confirmation before writing, from the "explore" skill), and the
+   OpenSpec workflow that Relevo's specifications and `go` skill use through its command line.
+
+--------------------------------------------------------------------------------
+MIT License text that applies to both works above
+--------------------------------------------------------------------------------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
