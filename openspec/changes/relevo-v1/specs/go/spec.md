@@ -38,7 +38,7 @@ Before building, `go` SHALL verify that the issue states scenarios and edge case
 
 #### Scenario: Assignee at capacity
 - **WHEN** the assignee has 2 issues in `built` and the limit is 2
-- **THEN** the issue is labelled `queued` and starts when the assignee's count drops below the limit
+- **THEN** the issue is labelled `queued`, one comment says the assignee is at the limit (without mentioning anyone), and it starts when the assignee's count drops below the limit
 
 ### Requirement: Queue order
 Eligible issues SHALL be started in first-in-first-out order of the time `ready` was applied. An ineligible issue SHALL be skipped without blocking the others and SHALL keep its position.

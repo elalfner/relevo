@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checklistFromChange, checklistMarkdown, scenariosFromSpec } from '../scripts/lib/checklist.mjs';
-import { auditLog, auditReport, ERROR_CLASSES } from '../scripts/lib/logaudit.mjs';
+import { auditLog, auditReport, ERROR_CLASSES, filterByApp, linePid, pidsForPackage } from '../scripts/lib/logaudit.mjs';
 import { decidePr, newState, setItem, syncState } from '../scripts/lib/review-state.mjs';
 import { pickReviewer } from '../scripts/lib/reviewers.mjs';
 import { capture, parseDevices, pickDevice, safeCaptureName } from '../scripts/lib/device.mjs';
@@ -338,4 +338,47 @@ test('ties are broken in rotation by pull request number', () => {
   const args = { members: ['a', 'b', 'c', 'd'], author: 'a', openCounts: {} };
   const picks = new Set([1, 2, 3].map((n) => pickReviewer({ ...args, prNumber: n })));
   assert.equal(picks.size, 3);
+});
+
+// ---------- log audit limited to the app under review
+const APP = 'com.example.counter';
+const MIXED = [
+  `10-14 12:00:01.000  500  600 I ActivityManager: Start proc 4242:${APP}/u0a99 for next-top-activity`,
+  '10-14 12:00:02.000  4242  4242 I flutter : app started',
+  '10-14 12:00:03.000  7777  7777 E flutter : Unhandled Exception: other app crashed',
+  '10-14 12:00:04.000  7777  7777 I Other  : notification registration token abc123',
+].join('\n');
+
+test('Scenario: Another app logs an error - only the app under review is audited and quoted', () => {
+  const { text, scope } = filterByApp(MIXED, { package: APP });
+  assert.deepEqual(scope, { package: APP, pids: [4242] });
+  assert.ok(!text.includes('other app crashed') && !text.includes('token abc123'));
+  const audit = auditLog(text);
+  assert.equal(audit.verdict, 'REVIEW PASSED');
+  assert.ok(!auditReport(audit, { scope }).includes('other app crashed'));
+  assert.match(auditReport(audit, { scope }), /only the processes of `com\.example\.counter` \(pid 4242\)/);
+});
+
+test('an error written by the app under review is still found', () => {
+  const log = `${MIXED}\n10-14 12:00:05.000  4242  4242 E flutter : Unhandled Exception: Bad state`;
+  const { text } = filterByApp(log, { package: APP });
+  assert.equal(auditLog(text).verdict, 'REVIEW REJECTED');
+});
+
+test('Scenario: The application process is not in the log - the whole log is audited and the report says so', () => {
+  const log = '10-14 12:00:03.000  7777  7777 E flutter : Unhandled Exception: other app crashed';
+  const { text, scope } = filterByApp(log, { package: APP });
+  assert.equal(text, log);
+  assert.deepEqual(scope.pids, []);
+  assert.match(auditReport(auditLog(text), { scope }), /whole device log.*not found/);
+});
+
+test('process ids come from the log, from crash headers and from --pid, in both logcat formats', () => {
+  assert.equal(linePid('10-14 12:00:00.000  1234  1234 E tag: x'), 1234);
+  assert.equal(linePid('10-14 12:00:00.000 E/flutter ( 1234): x'), 1234);
+  assert.equal(linePid('no pid here'), null);
+  assert.deepEqual(pidsForPackage(`E AndroidRuntime: Process: ${APP}, PID: 99`, APP), [99]);
+  const { scope } = filterByApp('10-14 12:00:00.000  55  55 E flutter : Unhandled Exception: x', { package: APP, pids: ['55'] });
+  assert.deepEqual(scope.pids, [55]);
+  assert.deepEqual(pidsForPackage(`Start proc 1:${APP}.other/u0`, APP), [], 'a different package that starts with the same prefix is not the app');
 });

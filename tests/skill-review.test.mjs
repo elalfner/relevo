@@ -87,3 +87,10 @@ test('it synchronises with the base branch and re-runs QA when the merge changed
 test('the skill mentions neither private sources nor personal data', () => {
   assert.doesNotMatch(text, /claude\.ai|session_[0-9A-Za-z]{6}|co-authored/i);
 });
+
+test('Scenario: Another app logs an error - the audit is limited to the app under review', () => {
+  assert.match(body, /app-id\.mjs/);
+  assert.match(body, /audit --package "\$package"/);
+  assert.match(body, /ask the person to start the app, or restart it/i);
+  assert.match(body, /may hold other apps' data/);
+});

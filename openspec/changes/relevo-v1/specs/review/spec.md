@@ -82,6 +82,17 @@ On completion, the agent SHALL scan the device log for layout overflows, lifecyc
 - **WHEN** the log contains an unhandled exception
 - **THEN** the verdict is `REVIEW REJECTED` and the agent offers a confirmed micro-fix loop
 
+### Requirement: Log audit covers only the app under review
+The log audit SHALL read only the log lines written by the processes of the application under review, identified by its application id, and SHALL NOT audit or quote lines from other applications on the device. When the log does not name the application's process, the audit SHALL cover the whole log and SHALL say so in its output and in the report.
+
+#### Scenario: Another app logs an error
+- **WHEN** another application on the device logs an unhandled exception and the application under review logs none
+- **THEN** the verdict is `REVIEW PASSED` and the report does not quote the other application's line
+
+#### Scenario: The application's process is not in the log
+- **WHEN** the log never names the process of the application under review
+- **THEN** the whole log is audited and the output and the report say so
+
 ### Requirement: Functional bugs go through the spec
 A functional or UX defect found during review SHALL NOT be patched live. The agent SHALL direct the person to `/relevo:fix`.
 

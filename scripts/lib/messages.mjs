@@ -22,6 +22,8 @@ const REQUIRED = {
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
   blocked_notice: ['issue', 'title', 'blockers'],
+  queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
+  queued_agents: ['issue', 'title'],
   fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
 };
 
@@ -110,6 +112,16 @@ const CATALOG = {
       '',
       'Waiting for {{blockers}} to be merged. It starts automatically when they are.',
     ],
+    queued_capacity: [
+      '#{{issue}} "{{title}}" is queued',
+      '',
+      '{{assignee}} already has {{built}} built issues waiting for review (the limit is {{limit}}). It starts automatically when one of them is reviewed.',
+    ],
+    queued_agents: [
+      '#{{issue}} "{{title}}" is queued',
+      '',
+      'The limit of concurrent agents is reached. It starts automatically when a run finishes.',
+    ],
     fix_done: [
       '#{{issue}} "{{title}}" fixed (iteration {{iteration}})',
       '',
@@ -195,6 +207,16 @@ const CATALOG = {
       '#{{issue}} "{{title}}" está bloqueado',
       '',
       'Espera a que se fusionen {{blockers}}. Empieza solo cuando lo estén.',
+    ],
+    queued_capacity: [
+      '#{{issue}} "{{title}}" está en cola',
+      '',
+      '{{assignee}} ya tiene {{built}} issues construidos esperando revisión (el límite es {{limit}}). Empieza solo cuando se revise uno.',
+    ],
+    queued_agents: [
+      '#{{issue}} "{{title}}" está en cola',
+      '',
+      'Se alcanzó el límite de agentes simultáneos. Empieza solo cuando termine una ejecución.',
     ],
     fix_done: [
       '#{{issue}} "{{title}}" corregido (iteración {{iteration}})',

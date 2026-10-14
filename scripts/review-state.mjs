@@ -4,7 +4,9 @@
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
 //   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
 //   review-state.mjs capture <path>               record a screenshot that was taken
-//   review-state.mjs audit [<log-file>|-]         audit the device log (stdin by default), write the report
+//   review-state.mjs audit [<log-file>|-] [--package <id>] [--pid <n>]
+//                                                 audit the device log (stdin by default), write the report;
+//                                                 with --package only that app's lines are audited
 //   review-state.mjs agree                        the person agrees to open the pull request
 //   review-state.mjs show                         print the state as JSON
 //   review-state.mjs decide                       exit 0 when the pull request may be opened, 1 when not
@@ -13,7 +15,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { checklistFromChange } from './lib/checklist.mjs';
-import { auditLog, auditReport } from './lib/logaudit.mjs';
+import { auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
 import { decidePr, newState, setItem, syncState } from './lib/review-state.mjs';
 
 const argv = process.argv.slice(2);
@@ -69,11 +71,18 @@ try {
     }
     case 'audit': {
       const state = load();
-      const source = rest[0] && rest[0] !== '-' ? readFileSync(rest[0], 'utf8') : readFileSync(0, 'utf8');
+      const pi = rest.indexOf('--package');
+      const pkg = pi === -1 ? null : rest[pi + 1];
+      const pids = rest.flatMap((a, i) => (a === '--pid' ? [rest[i + 1]] : []));
+      const positional = rest.filter((a, i) => !a.startsWith('--') && rest[i - 1] !== '--package' && rest[i - 1] !== '--pid');
+      const raw = positional[0] && positional[0] !== '-' ? readFileSync(positional[0], 'utf8') : readFileSync(0, 'utf8');
+      if (pi !== -1 && !pkg) fail('--package needs an application id');
+      const { text: source, scope } = pkg ? filterByApp(raw, { package: pkg, pids }) : { text: raw, scope: null };
       const audit = auditLog(source);
       state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings };
       save(state);
-      writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit));
+      writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
+      if (scope && scope.pids.length === 0) console.log(`note: the process of ${pkg} is not in the log, so the whole log was audited`);
       console.log(audit.verdict);
       audit.findings.slice(0, 10).forEach((f) => console.log(`  ${f.class}: ${f.excerpt}`));
       break;

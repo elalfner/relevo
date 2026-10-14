@@ -111,3 +111,14 @@ test('escalation and reminder messages mention only the person who must act', ()
   const escalation = renderMessage('review_escalation', { spec_writer: 'persona-a', issue: 31, pr: '#40', reviewer: 'persona-c', hours: 16 });
   assert.match(escalation, /^@persona-a #31 has waited 16 hours/);
 });
+
+test('Scenario: Queued states its reason - for capacity and for the agent limit, in both languages, without a mention', () => {
+  const cap = { issue: 9, title: 'Summary', assignee: 'persona-b', built: 2, limit: 2 };
+  const en = renderMessage('queued_capacity', cap, 'en');
+  assert.match(en, /persona-b already has 2 built issues waiting for review \(the limit is 2\)/);
+  assert.match(en, /starts automatically/);
+  assert.ok(!en.includes('@'));
+  assert.match(renderMessage('queued_capacity', cap, 'es'), /ya tiene 2 issues construidos/);
+  assert.match(renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'en'), /limit of concurrent agents/);
+  assert.match(renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'es'), /agentes simult/);
+});

@@ -62,13 +62,20 @@ jobs:
           # leaving the issue stuck on building with no comment (seen in the pilot, see docs/pilot-findings.md).
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
-          # To run on a subscription instead of an API key, create a token with `claude setup-token`, store it as the
-          # secret CLAUDE_CODE_OAUTH_TOKEN and use `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` here.
+          # Credentials: choose ONE of the next two lines.
+          # a) API key (default):
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # b) Subscription: create a token with `claude setup-token` and store it as the secret CLAUDE_CODE_OAUTH_TOKEN.
+          #    The command prints the token over two lines; remove all whitespace before storing it, for example
+          #    `pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN`. Then replace the line above with:
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          # If the plugin repository is private, the runner cannot clone this URL without a credential. Use a
-          # read-only token stored as a secret: https://x-access-token:${{ secrets.RELEVO_PLUGIN_TOKEN }}@github.com/elalfner/relevo.git
+          # Plugin repository: choose ONE of the next two lines.
+          # a) Public repository (default):
           plugin_marketplaces: https://github.com/elalfner/relevo.git
+          # b) Private repository: the runner cannot clone it without a credential. Store a read-only fine-grained
+          #    token as the secret RELEVO_PLUGIN_TOKEN and replace the line above with:
+          # plugin_marketplaces: https://x-access-token:${{ secrets.RELEVO_PLUGIN_TOKEN }}@github.com/elalfner/relevo.git
           plugins: relevo@relevo
           # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed.
           prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }}
