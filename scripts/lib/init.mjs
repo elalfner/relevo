@@ -142,7 +142,9 @@ export function planInit({ facts, answers, templates, current, admin }) {
   items.push(facts.canApprove === false ? item('workflow-permissions', 'ok', 'Workflows cannot approve pull requests')
     : admin ? item('workflow-permissions', 'todo', 'Stop workflows from approving pull requests and make their token read-only by default')
       : item('workflow-permissions', 'manual', 'Ask an administrator to stop workflows from approving pull requests', { checklist: [checklist[2]] }));
-  items.push(admin ? item('secret-scanning', 'todo', 'Turn on secret scanning and push protection (may need a public repository or a paid plan; if GitHub refuses, it is reported)', { checklist: [checklist[3]] })
+  const scanOn = facts.secretScanning?.scanning === true && facts.secretScanning?.pushProtection === true;
+  if (scanOn) items.push(item('secret-scanning', 'ok', 'Secret scanning and push protection are on'));
+  else items.push(admin ? item('secret-scanning', 'todo', 'Turn on secret scanning and push protection (may need a public repository or a paid plan; if GitHub refuses, it is reported)', { checklist: [checklist[3]] })
     : item('secret-scanning', 'manual', 'Ask an administrator to turn on secret scanning and push protection', { checklist: [checklist[3]] }));
 
   // workflows
@@ -164,7 +166,9 @@ export function planInit({ facts, answers, templates, current, admin }) {
   }
 
   // always manual
-  items.push(item('manual.api-key', 'manual', 'Add the model credential to the repository secrets yourself (init never reads or writes it): ANTHROPIC_API_KEY, or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` with all whitespace removed'));
+  const hasCredential = (facts.secrets ?? []).some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n));
+  if (hasCredential) items.push(item('manual.api-key', 'ok', 'A model credential secret exists (init never reads it)'));
+  else items.push(item('manual.api-key', 'manual', 'Add the model credential to the repository secrets yourself (init never reads or writes it): ANTHROPIC_API_KEY, or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` with all whitespace removed'));
   items.push(item('manual.push', 'manual', 'Commit and push the new files to the default branch: a workflow only runs from there'));
 
   return items;
