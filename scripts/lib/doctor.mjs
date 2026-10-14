@@ -132,6 +132,13 @@ export function gatherFacts(p) {
   });
   const goText = f.workflows['relevo-go.yml'].present ? p.read('.github/workflows/relevo-go.yml') : '';
   f.pluginMarketplace = (/^\s*plugin_marketplaces:\s*(\S+)/m.exec(goText) ?? [])[1] ?? null;
+  // Workflows that check out the plugin repository for its scripts: do they pass a token that can read it?
+  f.pluginCheckouts = [];
+  WORKFLOW_FILES.filter((file) => f.workflows[file].present).forEach((file) => {
+    const text = p.read(`.github/workflows/${file}`);
+    const m = /repository:\s*([\w.-]+\/[\w.-]+)\s*\n([\s\S]*?)path:\s*\.relevo-plugin/.exec(text);
+    if (m) f.pluginCheckouts.push({ file, repo: m[1], hasToken: /\n\s*token:/.test(`\n${m[2]}`) });
+  });
   f.hasCi = tryRun(() => p.listDir('.github/workflows').some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-')), false);
 
   if (f.repo && f.ghAuth) {
@@ -174,7 +181,8 @@ export function gatherFacts(p) {
       f.workflows[file].enabled = found ? found.state === 'active' : null;
     });
     const plugin = f.pluginMarketplace && /^https:\/\/github\.com\/([^/@\s]+\/[^/@\s]+?)(\.git)?$/.exec(f.pluginMarketplace);
-    f.pluginRepoPrivate = plugin ? tryRun(() => api(`repos/${plugin[1]}`).private, null) : null;
+    const slug = plugin ? plugin[1] : f.pluginCheckouts[0]?.repo;
+    f.pluginRepoPrivate = slug ? tryRun(() => api(`repos/${slug}`).private, null) : null;
   }
   return f;
 }
@@ -267,6 +275,10 @@ export function runChecks(f) {
   });
   r.push(f.hasCi ? pass('automation.ci', 'an objective CI check exists') : fail('automation.ci', 'no CI workflow other than Relevo\'s was found; QA needs an objective check', 'add a workflow that runs the project\'s analysis and tests on pull requests'));
 
+  const noToken = (f.pluginCheckouts ?? []).filter((c) => !c.hasToken).map((c) => c.file);
+  if (f.pluginRepoPrivate === true && noToken.length > 0) {
+    r.push(fail('automation.plugin-checkout', `${noToken.join(', ')} check out the private plugin repository with the default token, which cannot read it, so those runs fail`, 'copy the current templates (they pass `token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}`) and store RELEVO_PLUGIN_TOKEN'));
+  }
   if (f.pluginMarketplace && f.pluginRepoPrivate === true) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
