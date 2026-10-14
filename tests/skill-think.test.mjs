@@ -15,37 +15,42 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 test('frontmatter uses only documented fields and Claude never starts it on its own', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
   assert.equal(meta.name, 'think');
-  assert.equal(meta['argument-hint'], '[what to build]');
+  assert.equal(meta['argument-hint'], '[idea]');
   assert.equal(meta['disable-model-invocation'], true);
-  assert.match(meta.description, /never applies the ready label/);
+  assert.match(meta.description, /never commits/);
   assert.ok(String(meta.description).length <= 1536);
 });
 
-test('every script, template and document it points at exists', () => {
-  const scripts = [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([\w.-]+)/g)].map((m) => m[1]);
-  assert.ok(scripts.includes('check-issue.mjs'));
-  scripts.forEach((s) => assert.ok(existsSync(root(`scripts/${s}`)), `scripts/${s} does not exist`));
-  [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/((?:templates|docs)\/[\w.-]+)/g)].forEach((m) => assert.ok(existsSync(root(m[1])), `${m[1]} does not exist`));
+test('Scenario: A decision opens new questions - rounds follow the frontier', () => {
+  assert.match(body, /tree of decisions/);
+  assert.match(body, /frontier/);
+  assert.match(body, /Ask the whole frontier in one round/);
+  assert.match(body, /belongs to a later round/);
+  assert.match(body, /Recommended:/);
 });
 
-test('Scenario: Issues created - the skill never applies a lifecycle label and creates only after approval', () => {
-  assert.match(body, /Do \*\*not\*\* add the `ready` label/);
-  assert.match(body, /Never apply `ready`/);
-  assert.match(body, /Create nothing before a clear yes/);
-  assert.ok(!/gh issue edit|--add-label|--label/.test(body), 'the skill must not add labels');
+test('Scenario: A question needs a fact from the code - facts are looked up, decisions are asked', () => {
+  assert.match(body, /Finding facts is your job/);
+  assert.match(body, /subagent/);
 });
 
-test('the check comes before creation, and creation is in dependency order', () => {
-  assert.ok(body.indexOf('check-issue.mjs') < body.indexOf('gh issue create'));
-  assert.match(body, /in dependency order/);
-  assert.match(body, /Create nothing while any draft fails/);
+test('Scenario: Summary not confirmed - nothing is written before a clear yes', () => {
+  assert.ok(body.indexOf('## 3. Agree') < body.indexOf('openspec new change'));
+  assert.match(body, /Do not write the change before a clear yes/);
 });
 
-test('the keywords go reads are kept in English and the language setting is honoured', () => {
-  assert.match(body, /Keep the keywords `WHEN`, `THEN`, `Edge cases` and `Depends-on`/);
-  assert.match(body, /`language` in `relevo.yml`/);
+test('the change is written with the OpenSpec command line and validated', () => {
+  ['openspec new change', 'openspec status --change', 'openspec instructions', 'openspec validate'].forEach((c) => assert.ok(body.includes(c), `missing ${c}`));
 });
 
-test('it carries nothing from any private origin', () => {
-  assert.ok(!/jira|atlassian|funcionario|FUN-\d+/i.test(`${text}${readFileSync(root('templates/issue.md'), 'utf8')}`));
+test('Scenario: Unknown answer - it is an open question, never invented behaviour', () => {
+  assert.match(body, /open question/i);
+  assert.match(body, /Do not invent answers/);
+});
+
+test('think never commits, pushes, creates issues or labels, and points to create', () => {
+  assert.match(body, /Never commit, push, create issues or apply labels/);
+  assert.ok(!/gh issue create|git push|git commit|--add-label/.test(body.replace(/Never commit, push, create issues or apply labels\./, '')), 'think must not run those commands');
+  assert.match(body, /\/relevo:create/);
+  assert.ok(existsSync(root('skills/create/SKILL.md')));
 });
