@@ -11,6 +11,7 @@ Verified on 2026-10-14 against the documentation and `action.yml` of `anthropics
 | `github_token` | `${{ github.token }}` | the action documents it for a custom GitHub App; it worked with the workflow token in the pilot |
 | `prompt` | `/relevo:go <issue number>` | |
 | `claude_args` | `--max-turns`, `--max-budget-usd`, `--allowedTools`, `--disallowedTools` | the documented way to pass CLI flags |
+| `allowed_bots` | `github-actions` (only) | the queue starts builds with `gh workflow run`, so the actor is the Actions bot and the action refuses it otherwise (seen in the sandbox: "Workflow initiated by non-human actor"); never `*` |
 | `plugins`, `plugin_marketplaces` | `relevo@relevo` and the plugin repository URL | a private repository needs a read-only token in the URL |
 
 ## Inputs the template must never set
@@ -18,7 +19,6 @@ Verified on 2026-10-14 against the documentation and `action.yml` of `anthropics
 | Input | Why |
 |---|---|
 | `allowed_non_write_users` | lets people without write access start a run; the action calls it risky |
-| `allowed_bots` | `*` on a public repository lets outside apps start runs |
 | `show_full_output` | prints tool results, which may contain secrets; use only while piloting and never leave it on |
 | `trigger_phrase`, `label_trigger` | the run is started by Relevo's own label event, not by the action's triggers |
 

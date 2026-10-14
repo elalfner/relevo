@@ -50,7 +50,7 @@ test('Scenario: Run ends without an outcome - a final step always runs and moves
   assert.match(workflow, /if: always\(\)/);
   assert.ok(workflow.indexOf('anthropics/claude-code-action') < workflow.indexOf('Report a run that ended without an outcome'));
   assert.match(workflow, /grep -qxE 'relevo:\(ready\|building\)'/);
-  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
   assert.match(workflow, /RUN_URL: \$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/);
   assert.match(workflow, /gh issue comment "\$ISSUE"/);
 });
@@ -79,4 +79,13 @@ test('Scenario: Private plugin repository or subscription - the template shows b
 test('Scenario: Run started by the queue - the final step reports on the dispatched issue too', () => {
   assert.match(workflow, /ISSUE: \$\{\{ github\.event\.issue\.number \|\| inputs\.issue \}\}/);
   assert.match(workflow, /workflow_dispatch:/);
+});
+
+test('Scenario: Dispatched run fails before claiming the issue - it is reported, so the queue does not retry it forever', () => {
+  assert.match(workflow, /\[ "\$JOB_STATUS" != "success" \] && printf '%s\\n' "\$labels" \| grep -qx 'relevo:queued'/);
+});
+
+test('Scenario: Run ends normally with the issue queued - nothing is reported', () => {
+  const guard = workflow.indexOf('JOB_STATUS" != "success"');
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed'));
 });

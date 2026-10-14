@@ -83,7 +83,7 @@ test('the unattended agent has a closed tool list and no web access', () => {
 
 // ---------- 6.4 action parameters (checked against the action's documentation, see docs/action-parameters.md)
 
-const DOCUMENTED = new Set(['anthropic_api_key', 'claude_code_oauth_token', 'github_token', 'prompt', 'claude_args', 'plugins', 'plugin_marketplaces']);
+const DOCUMENTED = new Set(['anthropic_api_key', 'claude_code_oauth_token', 'github_token', 'allowed_bots', 'prompt', 'claude_args', 'plugins', 'plugin_marketplaces']);
 const DEPRECATED = ['mode', 'direct_prompt', 'override_prompt', 'custom_instructions', 'max_turns', 'model', 'fallback_model', 'allowed_tools', 'disallowed_tools', 'mcp_config', 'claude_env'];
 
 test('the go workflow uses only documented inputs of the action and none of the deprecated ones', () => {
@@ -97,7 +97,7 @@ test('the go workflow uses only documented inputs of the action and none of the 
 });
 
 test('the go workflow never opens the run to strangers or prints tool results', () => {
-  ['allowed_non_write_users', 'allowed_bots', 'show_full_output', 'trigger_phrase', 'label_trigger'].forEach((name) => {
+  ['allowed_non_write_users', 'show_full_output', 'trigger_phrase', 'label_trigger'].forEach((name) => {
     assert.ok(!activeLines.some((l) => l.includes(`${name}:`)), `${name} must not be set in the template`);
   });
 });
@@ -109,4 +109,11 @@ test('every workflow that checks out the plugin repository passes a token that c
     assert.ok(block, `${f} checks out the plugin repository`);
     assert.match(`${block[1]}${block[2]}`, /token: \$\{\{ secrets\.RELEVO_PLUGIN_TOKEN \|\| github\.token \}\}/, f);
   });
+});
+
+test('Scenario: Run started by the queue - only the Actions bot may start it, never every bot', () => {
+  const lines = activeLines.filter((l) => /^\s+allowed_bots:/.test(l));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /allowed_bots: github-actions\s*$/);
+  assert.ok(!/['"*]/.test(lines[0].split(':')[1]), 'allowed_bots must not be a wildcard');
 });
