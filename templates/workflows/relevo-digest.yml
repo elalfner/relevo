@@ -1,0 +1,44 @@
+# Relevo: posts one digest per working day, as a comment on the issue named by digest.issue in relevo.yml.
+# It lists who is waiting on what and the alerts, and posts nothing when nothing is waiting.
+# Subscribe your chat tool to that issue to receive it. Copy to .github/workflows/relevo-digest.yml.
+# Change the time below to suit your team (cron is in UTC).
+# Scripts come from the plugin repository; pin `ref` to a release tag once one exists.
+
+name: relevo-digest
+
+on:
+  schedule:
+    - cron: '0 13 * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  group: relevo-digest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: elalfner/relevo
+          ref: main
+          path: .relevo-plugin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Post the digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .relevo-plugin/scripts/digest.mjs --repo "$GITHUB_REPOSITORY"
