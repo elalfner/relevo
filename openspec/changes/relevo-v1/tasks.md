@@ -29,7 +29,7 @@
 - [x] 4.2 Capacity gate and queue re-evaluation workflow
 - [x] 4.3 Review SLA reminder and escalation
 - [x] 4.4 Review-event workflow that sets `changes-requested` and returns to `pr-open`
-- [ ] 4.5 Reviewer selection (fewest open reviews, rotation, `roles` approvers, `needs-reviewer`)
+- [x] 4.5 Reviewer selection (fewest open reviews, rotation, `roles` approvers, `needs-reviewer`)
 - [ ] 4.6 `status` (per-person, spec-writer view, alerts, capacity warning)
 - [ ] 4.7 Daily digest workflow
 - [ ] 4.8 Pilot with one milestone in a team repository

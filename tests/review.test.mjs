@@ -307,3 +307,35 @@ test('checklist CLI prints markdown and counts', () => {
   assert.match(execFileSync('node', [CLI('checklist.mjs'), dir], { encoding: 'utf8' }), /^- \[ \] 1\. \*\*Shows the total\*\*/);
   assert.equal(spawnSync('node', [CLI('checklist.mjs'), '/nope'], { encoding: 'utf8' }).status, 2);
 });
+
+// ---------- needs-reviewer (4.5)
+
+import { noReviewerDecision } from '../scripts/lib/reviewers.mjs';
+import { loadConfig as loadCfg } from '../scripts/lib/config.mjs';
+
+const cfgTpl = readFileSync(new URL('../templates/relevo.yml', import.meta.url), 'utf8');
+
+test('Scenario: Nobody eligible - the label goes next to the state and the spec writer is mentioned', () => {
+  const { config } = loadCfg(cfgTpl.replace('spec_writer: null', 'spec_writer: luz'));
+  const d = noReviewerDecision({ config, issue: { number: 12, title: 'Add total', pr: 'https://x/pull/40', labels: ['relevo:pr-open'] } });
+  assert.deepEqual(d.labels, { add: ['relevo:needs-reviewer'], remove: [] });
+  assert.equal(d.comment.kind, 'needs_reviewer');
+  assert.equal(d.comment.data.spec_writer, 'luz');
+});
+
+test('the label is not added twice', () => {
+  const { config } = loadCfg(cfgTpl.replace('spec_writer: null', 'spec_writer: luz'));
+  const d = noReviewerDecision({ config, issue: { number: 12, title: 't', pr: 'u', labels: ['relevo:pr-open', 'relevo:needs-reviewer'] } });
+  assert.deepEqual(d.labels.add, []);
+});
+
+test('Scenario: roles mode - only approvers are eligible, and nobody is a null', () => {
+  assert.equal(pickReviewer({ members: ['a', 'b', 'c'], author: 'a', approvers: ['a'], mode: 'roles' }), null);
+  assert.equal(pickReviewer({ members: ['a', 'b', 'c'], author: 'a', approvers: ['c'], mode: 'roles' }), 'c');
+});
+
+test('ties are broken in rotation by pull request number', () => {
+  const args = { members: ['a', 'b', 'c', 'd'], author: 'a', openCounts: {} };
+  const picks = new Set([1, 2, 3].map((n) => pickReviewer({ ...args, prNumber: n })));
+  assert.equal(picks.size, 3);
+});
