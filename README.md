@@ -30,7 +30,7 @@ Distributed as a Claude Code plugin named `relevo`:
 | Command | What it does |
 |---|---|
 | `/relevo:init` | Sets up config, labels, branch protection and workflows (idempotent, shows a plan first) |
-| `/relevo:think` | Explores an idea and interviews you in rounds until every decision is made (writes nothing by default) |
+| `/relevo:think` | Explores an idea and interviews you in rounds until every decision is made and keeps the glossary and decision records up to date (asks before writing) |
 | `/relevo:create` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build) |
 | `/relevo:go` | Builds a ready issue: spec check, build, QA with one retry (runs automatically in the cloud) |
 | `/relevo:review` | Guided on-device review: the person drives, the agent captures and audits logs |
@@ -49,7 +49,7 @@ The design of Relevo lives in `openspec/` and is managed with [OpenSpec](https:/
 
 ## Acknowledgements
 
-The interview method of `/relevo:think` (rounds of questions over a tree of decisions, each with a recommended answer) is inspired by the `grilling` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). Relevo contains its own wording and depends on nothing from that repository.
+The interview method of `/relevo:think` (rounds of questions over a tree of decisions, each with a recommended answer, plus a glossary and decision records kept as terms settle) is inspired by the `grill-with-docs` skill and the skills it builds on in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). Relevo contains its own wording and depends on nothing from that repository.
 
 ## License
 

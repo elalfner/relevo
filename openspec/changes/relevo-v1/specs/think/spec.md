@@ -43,9 +43,45 @@ When the interview ends, `think` SHALL state the agreement as what is decided, w
 - **WHEN** the person corrects the agreement
 - **THEN** `think` revises it and asks again
 
-### Requirement: Nothing is written without being asked
-`think` SHALL write a file only when the person asks to keep the agreement for another session, naming the file and asking a direct yes or no question first, and SHALL point to `create` as the next step.
+### Requirement: Nothing is written without permission
+`think` SHALL ask once, with a direct yes or no question naming both, whether it may create and update the glossary and the decision records while it works, and SHALL write nothing without that yes. It SHALL write the agreement to a file only when the person asks to keep it for another session, and SHALL point to `create` as the next step.
+
+#### Scenario: Permission not given
+- **WHEN** the person declines
+- **THEN** no file is written and the terms and decisions are carried in the agreement
 
 #### Scenario: Keeping the agreement
 - **WHEN** the person asks to keep the agreement
 - **THEN** `think` writes it to the path they choose, says it is not committed, and says `create` can read it from that path
+
+### Requirement: Think sharpens the project's language
+`think` SHALL read the glossary, call out terms that conflict with it or are vague, propose one precise term with the words to avoid, probe boundaries with concrete scenarios, and check what the person says against the code.
+
+#### Scenario: Conflicting term
+- **WHEN** the person uses a word the glossary defines differently
+- **THEN** `think` points out the conflict and asks which meaning is meant
+
+#### Scenario: Statement contradicted by the code
+- **WHEN** the person describes behaviour the code does not have
+- **THEN** `think` raises the contradiction before moving on
+
+### Requirement: The glossary holds vocabulary only
+With permission, `think` SHALL write each term to the glossary as soon as it settles, as a name, a short definition and the words to avoid, and SHALL NOT put implementation details, decisions or general programming terms in it.
+
+#### Scenario: Term settles
+- **WHEN** the person and `think` agree on a term
+- **THEN** it is added to the glossary immediately with its definition and words to avoid
+
+### Requirement: Decision records are offered sparingly
+`think` SHALL offer a decision record only when the decision is hard to reverse, surprising without context and the result of a real trade-off, and SHALL number records sequentially in `docs/adr/`.
+
+#### Scenario: Easily reversed decision
+- **WHEN** a decision is cheap to change later
+- **THEN** no record is offered
+
+### Requirement: Documentation changes stay uncommitted
+`think` SHALL NOT commit the documentation it wrote and SHALL name the files it created or changed.
+
+#### Scenario: Hand-off
+- **WHEN** the session ends
+- **THEN** `think` lists the glossary and decision-record files it touched and says they are not committed
