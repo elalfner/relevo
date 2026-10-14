@@ -1,7 +1,7 @@
 ---
 name: create
 description: Turns an idea, a conversation or an OpenSpec exploration into one or more GitHub issues that Relevo's go can build without asking anything. It asks only for what is missing (scenarios, edge cases, dependencies, screens, data contracts), checks each draft with the same rules go uses, shows everything for approval and then creates the issues. Use when asked to draft, write or create issues for a feature. It never applies the ready label.
-argument-hint: "[what to build]"
+argument-hint: "[what to build, or the path of a saved agreement]"
 disable-model-invocation: true
 ---
 
@@ -18,7 +18,8 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. The format is explained in `${
 Before asking anything, collect what exists:
 
 - the conversation so far;
-- if `openspec/changes/` exists (for example the change `/relevo:think` left uncommitted), read the `proposal.md`, `design.md`, `tasks.md` and `specs/` of the relevant change, and take its scenarios and edge cases as already answered; resolve its open questions with the person before writing;
+- if `openspec/changes/` exists read the `proposal.md`, `design.md`, `tasks.md` and `specs/` of the relevant change;
+- the agreement reached with `/relevo:think`, in this conversation or in a file whose path is given in `$ARGUMENTS`: take its decided scenarios, edge cases, dependencies and splits as already answered, and resolve its open questions with the person before writing;
 - `relevo.yml` (`language`, `team.members`, `team.spec_writer`, `branches.base`). If it is missing, continue without it and ask the language and the assignee.
 
 Tell the person in two or three lines what you already have, so they see their earlier work was used. Then ask only about what is still missing. Never ask again what is already answered.
@@ -73,8 +74,6 @@ Only after approval, in dependency order (so each `Depends-on` can name a real n
 1. If a milestone does not exist, create it only when the person said so: `gh api repos/{owner}/{repo}/milestones -f title="<name>"`.
 2. For each draft: `gh issue create --title "<title>" --body-file <file> --milestone "<milestone>" --assignee <login>`. Take the issue number from the URL it prints. Before creating a draft that depends on a draft created in this session, replace its placeholder with the real number and check it again.
 3. Do **not** add the `ready` label or any lifecycle label.
-
-If the issues came from a working change in `openspec/changes/` that is not committed, offer to delete that folder (`go` writes its own change from each issue) and delete it only on a yes. Never commit it.
 
 Finish with the links of the issues created and one reminder: `go` starts for an issue when someone with write access applies the `ready` label, and that is the moment to read the issue once more, because it is the last point to change what will be built.
 
