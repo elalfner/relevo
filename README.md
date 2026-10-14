@@ -30,7 +30,7 @@ Distributed as a Claude Code plugin named `relevo`:
 | Command | What it does |
 |---|---|
 | `/relevo:init` | Sets up config, labels, branch protection and workflows (idempotent, shows a plan first) |
-| `/relevo:think` | Thinks an idea through in rounds of questions, then writes the OpenSpec change from what was agreed (never commits) |
+| `/relevo:think` | Explores an idea and interviews you in rounds until every decision is made (writes nothing by default) |
 | `/relevo:create` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build) |
 | `/relevo:go` | Builds a ready issue: spec check, build, QA with one retry (runs automatically in the cloud) |
 | `/relevo:review` | Guided on-device review: the person drives, the agent captures and audits logs |

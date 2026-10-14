@@ -17,7 +17,7 @@ test('frontmatter uses only documented fields and Claude never starts it on its 
   assert.equal(meta.name, 'think');
   assert.equal(meta['argument-hint'], '[idea]');
   assert.equal(meta['disable-model-invocation'], true);
-  assert.match(meta.description, /never commits/);
+  assert.match(meta.description, /writes nothing by default/);
   assert.ok(String(meta.description).length <= 1536);
 });
 
@@ -34,23 +34,31 @@ test('Scenario: A question needs a fact from the code - facts are looked up, dec
   assert.match(body, /subagent/);
 });
 
-test('Scenario: Summary not confirmed - nothing is written before a clear yes', () => {
-  assert.ok(body.indexOf('## 3. Agree') < body.indexOf('openspec new change'));
-  assert.match(body, /Do not write the change before a clear yes/);
-});
-
-test('the change is written with the OpenSpec command line and validated', () => {
-  ['openspec new change', 'openspec status --change', 'openspec instructions', 'openspec validate'].forEach((c) => assert.ok(body.includes(c), `missing ${c}`));
+test('Scenario: Idea still vague - it explores before it interviews', () => {
+  assert.ok(body.indexOf('## 2. Explore') < body.indexOf('## 3. Interview in rounds'));
+  assert.match(body, /thinking partner/);
+  assert.match(body, /plain ASCII/);
 });
 
 test('Scenario: Unknown answer - it is an open question, never invented behaviour', () => {
-  assert.match(body, /open question/i);
   assert.match(body, /Do not invent answers/);
+  assert.match(body, /open questions/);
+  assert.match(body, /Silence is not acceptance/);
+});
+
+test('Scenario: Keeping the agreement - a file is written only when asked, after a yes or no question', () => {
+  assert.match(body, /Only if the person asks to keep the agreement/);
+  assert.match(body, /direct yes\/no question/);
+  assert.match(body, /Never write a file the person did not ask for/);
+});
+
+test('it does not write an OpenSpec change itself any more', () => {
+  assert.ok(!/openspec (new|instructions|archive)/.test(body));
 });
 
 test('think never commits, pushes, creates issues or labels, and points to create', () => {
-  assert.match(body, /Never commit, push, create issues or apply labels/);
-  assert.ok(!/gh issue create|git push|git commit|--add-label/.test(body.replace(/Never commit, push, create issues or apply labels\./, '')), 'think must not run those commands');
+  assert.match(body, /Never write code, commit, push, create issues or apply labels/);
+  assert.ok(!/gh issue create|git push|git commit|--add-label/.test(body.replace(/Never write code, commit, push, create issues or apply labels\./, '')), 'think must not run those commands');
   assert.match(body, /\/relevo:create/);
   assert.ok(existsSync(root('skills/create/SKILL.md')));
 });

@@ -1,7 +1,21 @@
 ## ADDED Requirements
 
+### Requirement: Think is a thinking partner and never builds
+`think` SHALL explore the idea with the person, reading the repository and the specifications as needed, and SHALL NOT write application code, commit, push, create issues or apply labels.
+
+#### Scenario: Asked to build
+- **WHEN** the person asks `think` to implement the idea
+- **THEN** it declines, and points to `create` for the issues and `go` for the build
+
+### Requirement: Explore before interviewing
+`think` SHALL look up what the repository and the conversation already answer, explore the idea (options, risks, unknowns, pictures where they help) and begin the interview only when the shape of the idea is clear enough for precise questions. The person MAY stop, change direction or defer a decision at any time.
+
+#### Scenario: Idea still vague
+- **WHEN** the person's idea is still shapeless
+- **THEN** `think` explores and compares options with them instead of asking detailed questions
+
 ### Requirement: Think interviews until nothing is left to guess
-`think` SHALL interview the person about the idea in rounds. Each round SHALL contain every question whose prerequisites are already settled, each with a recommended answer, and the interview SHALL end only when no question remains and nothing has been silently assumed.
+`think` SHALL interview the person in rounds. Each round SHALL contain every question whose prerequisites are already settled, each with a recommended answer, and the interview SHALL end only when no question remains and nothing has been silently assumed.
 
 #### Scenario: A decision opens new questions
 - **WHEN** the person's answer to a question raises further decisions
@@ -18,27 +32,20 @@
 - **WHEN** a question depends on how the existing code works
 - **THEN** a subagent finds out and the person is not asked
 
-### Requirement: The agreement is confirmed before writing
-`think` SHALL summarise what was decided and SHALL write the change only after the person confirms the summary.
-
-#### Scenario: Summary not confirmed
-- **WHEN** the person corrects the summary
-- **THEN** `think` revises it and asks again, and no change is written
-
-### Requirement: Think writes an OpenSpec change from the agreement
-After confirmation, `think` SHALL create the OpenSpec change with the OpenSpec command line, with scenarios and edge cases taken from the agreement, and SHALL validate it. It SHALL NOT add behaviour that was not agreed and SHALL record unanswered questions as open questions.
+### Requirement: The agreement is explicit
+When the interview ends, `think` SHALL state the agreement as what is decided, what is still open and what is only a proposed default, and SHALL treat silence as no acceptance. It SHALL NOT invent answers; what the person does not know is recorded as an open question.
 
 #### Scenario: Unknown answer
 - **WHEN** the person does not know the answer to a decision
-- **THEN** it is recorded under open questions and no behaviour is specified for it
+- **THEN** it is listed as an open question and no behaviour is assumed for it
 
-#### Scenario: Validation fails
-- **WHEN** the change does not validate
-- **THEN** `think` fixes it and validates again before handing off
+#### Scenario: Summary corrected
+- **WHEN** the person corrects the agreement
+- **THEN** `think` revises it and asks again
 
-### Requirement: Think changes nothing outside the working tree
-`think` SHALL NOT write application code, commit, push, create issues or apply labels, and SHALL tell the person where the uncommitted change is and that `create` is the next step.
+### Requirement: Nothing is written without being asked
+`think` SHALL write a file only when the person asks to keep the agreement for another session, naming the file and asking a direct yes or no question first, and SHALL point to `create` as the next step.
 
-#### Scenario: Hand-off
-- **WHEN** the change has been written
-- **THEN** `think` names the folder, lists the open questions and points to `create`
+#### Scenario: Keeping the agreement
+- **WHEN** the person asks to keep the agreement
+- **THEN** `think` writes it to the path they choose, says it is not committed, and says `create` can read it from that path

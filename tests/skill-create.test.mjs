@@ -15,7 +15,7 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 test('frontmatter uses only documented fields and Claude never starts it on its own', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
   assert.equal(meta.name, 'create');
-  assert.equal(meta['argument-hint'], '[what to build]');
+  assert.equal(meta['argument-hint'], '[what to build, or the path of a saved agreement]');
   assert.equal(meta['disable-model-invocation'], true);
   assert.match(meta.description, /never applies the ready label/);
   assert.ok(String(meta.description).length <= 1536);

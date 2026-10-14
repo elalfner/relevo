@@ -3,6 +3,10 @@
 ### Requirement: Create turns an idea into an issue Relevo can build
 `create` SHALL help a person turn an idea, a conversation or an OpenSpec exploration into one or more issues that satisfy the issue format, so that `go` never has to ask a question or guess.
 
+#### Scenario: Starting from a `think` agreement
+- **WHEN** the person runs `create` after `think`, in the same conversation or with the path of a saved agreement
+- **THEN** `create` takes the decided scenarios, edge cases, dependencies and splits as answered and asks only about the open questions
+
 #### Scenario: Starting from earlier context
 - **WHEN** the person runs `create` after discussing the feature, or while a change exploration exists in the repository
 - **THEN** `create` summarises in a few lines what it already knows and asks only about what is still missing
