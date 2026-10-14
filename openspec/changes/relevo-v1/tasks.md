@@ -19,7 +19,8 @@
 - [x] 3.4 `ship` with `review.mode: none`: archive, merge, close-out
 - [x] 3.5 Cloud workflow for `go` (label trigger, concurrency group, budget caps)
 - [ ] 3.6 Pilot in a solo repository and record findings
-- [x] 3.7 `think`: turn an idea into issues that pass the spec gate (questions, dependencies, checked before creation)
+- [x] 3.8 `think`: interview in rounds, confirm the agreement, write the OpenSpec change
+- [x] 3.7 `create`: turn an idea into issues that pass the spec gate (questions, dependencies, checked before creation)
 
 ## 4. Team features (stage 0.2)
 

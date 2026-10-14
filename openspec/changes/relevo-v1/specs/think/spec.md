@@ -1,72 +1,44 @@
 ## ADDED Requirements
 
-### Requirement: Think turns an idea into an issue Relevo can build
-`think` SHALL help a person turn an idea, a conversation or an OpenSpec exploration into one or more issues that satisfy the issue format, so that `go` never has to ask a question or guess.
+### Requirement: Think interviews until nothing is left to guess
+`think` SHALL interview the person about the idea in rounds. Each round SHALL contain every question whose prerequisites are already settled, each with a recommended answer, and the interview SHALL end only when no question remains and nothing has been silently assumed.
 
-#### Scenario: Starting from earlier context
-- **WHEN** the person runs `think` after discussing the feature, or while a change exploration exists in the repository
-- **THEN** `think` summarises in a few lines what it already knows and asks only about what is still missing
+#### Scenario: A decision opens new questions
+- **WHEN** the person's answer to a question raises further decisions
+- **THEN** those questions are asked in the next round and not before
 
-### Requirement: Questions are asked only for what is missing
-`think` SHALL ask about scenarios, edge cases, dependencies on other work, screens and behaviour when the feature has a visible part, and data contracts when it reads or writes data, and SHALL NOT ask what the earlier context already answers. It SHALL NOT invent scenarios or edge cases the person did not give.
+#### Scenario: Question depends on an open question
+- **WHEN** a question can only be asked once another question in the same round is answered
+- **THEN** it is held for a later round
 
-#### Scenario: Behaviour is unclear
-- **WHEN** the person's answer leaves the visible behaviour ambiguous
-- **THEN** `think` asks a follow-up question instead of writing an assumption into the scenarios
+### Requirement: Facts are looked up, decisions are asked
+`think` SHALL find facts about the code and the repository itself and SHALL ask the person only for decisions.
 
-### Requirement: Dependencies are explicit
-When the feature needs work that does not exist yet in this repository or elsewhere, `think` SHALL ask whether an issue already covers it. If one does, it SHALL record `Depends-on: #N`. If none does, it SHALL offer to draft that work as a separate issue and link the two.
+#### Scenario: A question needs a fact from the code
+- **WHEN** a question depends on how the existing code works
+- **THEN** a subagent finds out and the person is not asked
 
-#### Scenario: Work in another issue
-- **WHEN** the person says the data comes from work tracked in issue 12
-- **THEN** the new issue contains `Depends-on: #12`
+### Requirement: The agreement is confirmed before writing
+`think` SHALL summarise what was decided and SHALL write the change only after the person confirms the summary.
 
-#### Scenario: Work nobody has written yet
-- **WHEN** the feature needs a piece of work with no issue
-- **THEN** `think` offers to write that piece as its own issue first and links the second to it
+#### Scenario: Summary not confirmed
+- **WHEN** the person corrects the summary
+- **THEN** `think` revises it and asks again, and no change is written
 
-### Requirement: One issue, one buildable unit
-`think` SHALL propose splitting a feature that cannot be reviewed on one device pass, and SHALL give every resulting issue its own scenarios and edge cases, with the order expressed through `Depends-on`.
+### Requirement: Think writes an OpenSpec change from the agreement
+After confirmation, `think` SHALL create the OpenSpec change with the OpenSpec command line, with scenarios and edge cases taken from the agreement, and SHALL validate it. It SHALL NOT add behaviour that was not agreed and SHALL record unanswered questions as open questions.
 
-#### Scenario: Large feature
-- **WHEN** the feature spans work that can be built and verified separately
-- **THEN** `think` proposes several issues and the person decides how many to create
+#### Scenario: Unknown answer
+- **WHEN** the person does not know the answer to a decision
+- **THEN** it is recorded under open questions and no behaviour is specified for it
 
-### Requirement: Issues are checked before they are created
-Before creating anything, `think` SHALL check each draft with the same rules `go` applies: at least one complete scenario, at least one edge case, no leftover template text, no emoji in the title, a title of at most 72 characters, and nothing that looks like a credential.
+#### Scenario: Validation fails
+- **WHEN** the change does not validate
+- **THEN** `think` fixes it and validates again before handing off
 
-#### Scenario: Missing edge cases
-- **WHEN** a draft has no edge case
-- **THEN** the check fails, `think` says what is missing and does not create the issue
+### Requirement: Think changes nothing outside the working tree
+`think` SHALL NOT write application code, commit, push, create issues or apply labels, and SHALL tell the person where the uncommitted change is and that `create` is the next step.
 
-#### Scenario: Credential in the text
-- **WHEN** a draft contains something that looks like a credential
-- **THEN** the check fails and the issue is not created
-
-### Requirement: Approval before creation
-`think` SHALL show every draft in full together with its milestone, assignee and order, and SHALL create issues only after the person approves them explicitly.
-
-#### Scenario: Not approved
-- **WHEN** the person asks for changes
-- **THEN** `think` revises the drafts and shows them again, and nothing is created
-
-### Requirement: Milestone and assignee
-`think` SHALL ask which milestone each issue belongs to and who will develop it, offering the open milestones and the members from `relevo.yml`, and SHALL create a milestone only when the person asks.
-
-#### Scenario: Milestone does not exist
-- **WHEN** the person names a milestone that does not exist
-- **THEN** `think` asks whether to create it and does so only on a yes
-
-### Requirement: Think never starts a build
-`think` SHALL NOT apply the `ready` label. Applying it is the writer's explicit decision that the specification is finished, and it is what starts `go`.
-
-#### Scenario: Issues created
-- **WHEN** the issues have been created
-- **THEN** `think` lists their links, reminds the person that `go` starts when `ready` is applied, and applies no lifecycle label
-
-### Requirement: Think respects the language setting
-`think` SHALL write the issues in the language set by `language` in `relevo.yml`, unless the person asks for another, and SHALL keep the `WHEN`, `THEN` and `Depends-on` keywords in English because `go` reads them.
-
-#### Scenario: Spanish repository
-- **WHEN** `language` is `es`
-- **THEN** the issue text is in Spanish and the keywords `WHEN` and `THEN` stay in English
+#### Scenario: Hand-off
+- **WHEN** the change has been written
+- **THEN** `think` names the folder, lists the open questions and points to `create`

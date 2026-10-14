@@ -1,84 +1,85 @@
 ---
 name: think
-description: Turns an idea, a conversation or an OpenSpec exploration into one or more GitHub issues that Relevo's go can build without asking anything. It asks only for what is missing (scenarios, edge cases, dependencies, screens, data contracts), checks each draft with the same rules go uses, shows everything for approval and then creates the issues. Use when asked to draft, write or create issues for a feature. It never applies the ready label.
-argument-hint: "[what to build]"
+description: Thinks an idea through before any issue exists. It interviews the person in rounds until every decision has been made, then writes the OpenSpec change (proposal, design, specifications and tasks) from what was agreed. Use when asked to think through, plan or stress-test a feature. It changes only the working tree and never commits, so it never starts on its own.
+argument-hint: "[idea]"
 disable-model-invocation: true
 ---
 
 # Relevo think
 
-Help the person write the issue or issues for `$ARGUMENTS` (or for what you have just been discussing) so that `/relevo:go` can build them with nobody to ask. The issue is the only thing the builder sees: whatever is not written in it will be guessed or will send it back.
+Think `$ARGUMENTS` (or what you have just been discussing) through with the person until nothing is left to guess, then write it down as an OpenSpec change. The next step is `/relevo:create`, which turns that change into issues.
 
-You write issues; you never build, label as ready, assign work to the build queue or touch code.
+You ask and you write specifications. You never write application code, commit, push, create issues or apply labels.
 
-Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. The format is explained in `${CLAUDE_PLUGIN_ROOT}/docs/issue-format.md` and the skeleton is `${CLAUDE_PLUGIN_ROOT}/templates/issue.md`.
+## 1. Gather what exists
 
-## 1. What you already know
-
-Before asking anything, collect what exists:
+Before the first question, collect what can be looked up:
 
 - the conversation so far;
-- if `openspec/changes/` exists, read the `proposal.md`, `design.md`, `tasks.md` and `specs/` of the relevant change;
-- `relevo.yml` (`language`, `team.members`, `team.spec_writer`, `branches.base`). If it is missing, continue without it and ask the language and the assignee.
+- `relevo.yml`, if present (`language`, `team.members`);
+- existing changes in `openspec/changes/` and the specifications in `openspec/specs/`, so the idea fits what is already specified;
+- facts about the code that a question will depend on. Finding facts is your job, never the person's: hand each lookup to a subagent and do not block on it. Only the questions that depend on its answer wait for it.
 
-Tell the person in two or three lines what you already have, so they see their earlier work was used. Then ask only about what is still missing. Never ask again what is already answered.
+Say in two or three lines what you already know, so the person sees earlier work was used.
 
-## 2. Ask for what is missing
+## 2. Interview in rounds
 
-Ask in small groups, at most four questions at a time. Skip every group that is already clear.
+Treat the idea as a **tree of decisions**: every decision leads to the decisions that depend on it. The **frontier** is every decision whose prerequisites are already settled, that is, every question you can ask now without guessing an answer you have not heard.
 
-**Behaviour (always).** Which situations should the feature handle, and what must a person see in each? Each answer becomes a `WHEN` / `THEN` pair. Which unusual cases exist: empty data, missing values, no network, limits, repeated actions? Each becomes an edge case with the exact expected result. Do not invent scenarios or edge cases the person did not give; when an answer leaves the visible behaviour ambiguous, ask a follow-up instead of writing an assumption.
+Ask the whole frontier in one round, then wait. Number the questions, and give each your recommended answer, worded so that "yes" accepts it:
 
-**Other work it depends on (always).** Does this need something that does not exist yet, here or in another repository (for example a server endpoint)? Ask whether an issue already covers it.
-- If one does, ask for its number and write `Depends-on: #N`. If the person does not remember it, offer to search: `gh issue list --search "<words>" --state open`.
-- If none does, offer to draft that work as its own issue first, with its own scenarios and edge cases, and link the second to it. If the work lives outside this repository, write it under "Out of scope" with the reference the person gives.
-
-**Screens and behaviour (when something is visible).** Where does it appear, what does it look like, when does it show or hide, is there an animation or touch feedback, what happens while loading and on error, which system actions does it trigger (call, map, share), is there a reference image? Ask for the image's file name; never invent one.
-
-**Data contract (when data is read or written).** For each endpoint or source: method and path, how the caller authenticates, request fields, a realistic response with every field typed, and which values may be null and how the app treats them. Never put real keys, tokens or personal data in an example; use made-up values.
-
-**Size.** If the feature spans work that can be built and verified separately, propose splitting it. Every resulting issue needs its own scenarios and edge cases, and the order is written with `Depends-on`. The person decides how many to create.
-
-## 3. Write the drafts
-
-Fill `${CLAUDE_PLUGIN_ROOT}/templates/issue.md` for each issue, keeping the sections that apply and deleting the optional ones that do not. Rules:
-
-- Write in the language of `language` in `relevo.yml`, unless the person asks for another. Keep the keywords `WHEN`, `THEN`, `Edge cases` and `Depends-on` exactly as they are: `go` reads them.
-- The title is short, plain and has no emoji or tag suffixes (it must stay readable in lists and boards). Emojis are allowed inside the body only if the person wants them.
-- The body states facts from the person; where you had to choose a wording, keep the person's meaning.
-- Nothing secret goes in an issue, however it is phrased: issues are readable by everyone with access.
-
-Save each draft under the scratchpad or a temporary directory outside the repository (never inside the working tree), as `<n>.md`.
-
-## 4. Check
-
-For every draft:
-
-```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/check-issue.mjs --title "<title>" --body-file <file>
+```
+Q1. <short title>: <the question, with the options when there are several>
+Recommended: <your answer>
 ```
 
-It applies the rules `go` applies and a few more: at least one complete scenario, at least one edge case, no leftover template text, no emoji in the title, a title of at most 72 characters, and nothing that looks like a credential. If it reports problems, fix them with the person (ask for the missing information; do not fill it in yourself) and check again. Create nothing while any draft fails.
+Each round of answers settles some decisions and opens others. Work out the new frontier and ask it. A question whose answer depends on another question still open in the same round belongs to a later round.
 
-## 5. Approval
+The tree must cover, as far as it applies:
 
-Show every draft in full, in the order they will be created, with for each: the title, the milestone, the assignee and its dependencies. List the open milestones with `gh api repos/{owner}/{repo}/milestones --jq '.[].title'` and offer the members of `team.members` as assignees. The assignee is the person who will review the built work on a device.
+- **Behaviour.** Each situation and what a person must see in it. These become scenarios.
+- **Edge cases.** Empty or missing data, limits, no network, repeated actions, and the exact expected result of each.
+- **Other work it depends on.** Something that does not exist yet, here or in another repository.
+- **What is visible.** Where it appears, when it shows or hides, states while loading and on error, feedback, reference images.
+- **Data.** For each source or endpoint: how the caller authenticates, request, a realistic response with types, which values may be null. Use made-up values in examples, never real keys or personal data.
+- **Size.** Whether it can be built and verified in one pass on a device, or must be split.
+- **Out of scope.** What is deliberately left out.
 
-Ask for explicit approval. If the person asks for changes, revise, check again and show it again. Create nothing before a clear yes.
+Do not invent answers. If the person says they do not know, record it as an open question and keep it out of the specification.
 
-## 6. Create
+## 3. Agree
 
-Only after approval, in dependency order (so each `Depends-on` can name a real number):
+The interview ends when the frontier is empty: every branch visited and nothing silently assumed. Then write a summary of what was decided (behaviour, edge cases, dependencies, splits, open questions) and ask the person to confirm it. Do not write the change before a clear yes.
 
-1. If a milestone does not exist, create it only when the person said so: `gh api repos/{owner}/{repo}/milestones -f title="<name>"`.
-2. For each draft: `gh issue create --title "<title>" --body-file <file> --milestone "<milestone>" --assignee <login>`. Take the issue number from the URL it prints. Before creating a draft that depends on a draft created in this session, replace its placeholder with the real number and check it again.
-3. Do **not** add the `ready` label or any lifecycle label.
+## 4. Write the OpenSpec change
 
-Finish with the links of the issues created and one reminder: `go` starts for an issue when someone with write access applies the `ready` label, and that is the moment to read the issue once more, because it is the last point to change what will be built.
+Run `openspec --version`; if it does not run, tell the person to run `/relevo:doctor` and stop after the summary.
+
+Choose a short change name in kebab-case. Then:
+
+1. `openspec new change "<name>" --description "<one line>"`
+2. `openspec status --change "<name>" --json` to learn which artifacts are needed and in which order.
+3. For each artifact that is ready, in dependency order: `openspec instructions <artifact> --change "<name>" --json`. Follow its `instruction` and `template`, treat its `context` and `rules`, when it has them, as constraints for you (never copy them into the file), and write the file to its `resolvedOutputPath`. Re-read the artifacts it depends on first. Repeat until every needed artifact exists.
+4. `openspec validate "<name>"`. Fix what it reports.
+
+What goes in:
+
+- **Scenarios** are the agreed WHEN/THEN pairs, faithfully; every agreed edge case becomes a scenario too. Add nothing that was not agreed.
+- **design.md** records the decisions of the interview and why. Open questions go under an "Open questions" heading.
+- **tasks.md** has small, verifiable tasks that cover every scenario.
+
+Write the artifacts in the language set by `language` in `relevo.yml` where the OpenSpec tool allows it, keeping its keywords (`SHALL`, `WHEN`, `THEN`, headings) in English.
+
+## 5. Hand off
+
+Do not commit anything. Tell the person:
+
+- where the change is (`openspec/changes/<name>/`) and that it is left uncommitted on purpose;
+- the open questions, if any, that must be answered before the issues are written;
+- that the next step is `/relevo:create`, which reads this change to write the issues and can then offer to remove it (`go` writes its own change from each issue, so this one is a working draft).
 
 ## Never
 
-- Never apply `ready` or any other Relevo label.
-- Never create an issue before the person approved it and the check passed.
-- Never invent scenarios, edge cases, endpoints or data.
-- Never put credentials, tokens or personal data in an issue.
+- Never write the change before the person confirmed the summary.
+- Never answer the questions yourself and move on.
+- Never commit, push, create issues or apply labels.
