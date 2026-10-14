@@ -18,7 +18,7 @@ function healthy(over = {}) {
     workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: true, enabled: true }])),
     pluginMarketplace: 'https://github.com/o/relevo.git', pluginRepoPrivate: false, hasCi: true,
     defaultBranch: 'main', labels: allLabels, branches: { base: true, release: true },
-    protectionUnavailable: null, protection: { base: PROTECTED, release: PROTECTED }, canApprove: false, secrets: ['ANTHROPIC_API_KEY'],
+    protectionUnavailable: null, protection: { base: PROTECTED, release: PROTECTED }, pushScope: true, canApprove: false, secrets: ['ANTHROPIC_API_KEY'],
     ...over,
   };
 }
@@ -193,4 +193,12 @@ test('gatherFacts reads tools, skills, files and the GitHub state through the in
   assert.equal(f.pluginMarketplace, 'https://github.com/o/relevo.git');
   assert.equal(f.pluginRepoPrivate, true);
   assert.equal(f.openspecRootTracked, true);
+});
+
+test('Scenario: Agent tries to push outside feature branches - doctor warns when the push-scope ruleset is missing', () => {
+  const r = byId(runChecks(healthy({ pushScope: false })), 'repo.push-scope');
+  assert.equal(r.status, 'warn');
+  assert.match(r.fix, /relevo-push-scope/);
+  assert.equal(byId(runChecks(healthy()), 'repo.push-scope').status, 'pass');
+  assert.equal(byId(runChecks(healthy({ protectionUnavailable: 'Upgrade', protection: {} })), 'repo.push-scope'), undefined);
 });

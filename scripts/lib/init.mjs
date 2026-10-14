@@ -59,6 +59,26 @@ export function rulesetBody({ base, release, reviewMode }) {
   };
 }
 
+/**
+ * The ruleset that keeps the unattended agent on `feature/*`: nobody but a maintainer or an administrator may
+ * create any other branch. Updates to the base and release branches are already blocked by the other ruleset
+ * (pull request required); existing branches are not touched, so merging and normal work keep working.
+ */
+export function pushScopeBody({ base, release }) {
+  return {
+    name: 'relevo-push-scope',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['~ALL'], exclude: ['refs/heads/feature/*', `refs/heads/${base}`, `refs/heads/${release}`] } },
+    // Repository role ids: 5 = admin, 2 = maintain.
+    bypass_actors: [
+      { actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' },
+      { actor_id: 2, actor_type: 'RepositoryRole', bypass_mode: 'always' },
+    ],
+    rules: [{ type: 'creation' }],
+  };
+}
+
 /** What to change by hand when init cannot (not an administrator, or the feature needs a paid plan). */
 export function manualChecklist({ base, release, reviewMode }) {
   return [
@@ -67,6 +87,11 @@ export function manualChecklist({ base, release, reviewMode }) {
     'Settings > Actions > General > Workflow permissions: choose "Read repository contents" and turn OFF "Allow GitHub Actions to create and approve pull requests".',
     'Settings > Code security: turn ON secret scanning and push protection.',
   ];
+}
+
+/** The extra setting that keeps the agent on feature branches, for the hand-made route. */
+export function pushScopeChecklist({ base, release }) {
+  return [`Settings > Rules > Rulesets: add a second ruleset on all branches except \`feature/*\`, \`${base}\` and \`${release}\` that restricts creation, with the Maintain and Admin roles allowed to bypass, so the agent can only create \`feature/*\` branches.`];
 }
 
 const item = (id, status, description, extra = {}) => ({ id, status, description, ...extra });
@@ -109,6 +134,10 @@ export function planInit({ facts, answers, templates, current, admin }) {
   if (protectionOk) items.push(item('protection', 'ok', 'Branch protection is in place'));
   else if (!admin || facts.protectionUnavailable) items.push(item('protection', 'manual', admin ? 'Branch protection is not available on this repository; set it by hand when you can' : 'You are not an administrator: ask one to set the branch protection', { checklist }));
   else items.push(item('protection', 'todo', `Add a ruleset: pull request required on ${base} and ${release}, no deletion, no force push, approvals not dismissed on push`, { ruleset: rulesetBody({ base, release, reviewMode }), checklist }));
+
+  if (facts.pushScope === true) items.push(item('push-scope', 'ok', 'The agent can only create feature/* branches'));
+  else if (!admin) items.push(item('push-scope', 'manual', 'Ask an administrator to keep the agent on feature/* branches', { checklist: pushScopeChecklist({ base, release }) }));
+  else items.push(item('push-scope', 'todo', 'Add a ruleset so that only maintainers and administrators can create branches other than feature/* (the agent pushes only feature/*)', { ruleset: pushScopeBody({ base, release }), checklist: pushScopeChecklist({ base, release }) }));
 
   items.push(facts.canApprove === false ? item('workflow-permissions', 'ok', 'Workflows cannot approve pull requests')
     : admin ? item('workflow-permissions', 'todo', 'Stop workflows from approving pull requests and make their token read-only by default')
@@ -176,6 +205,7 @@ export function applyPlan(items, { repo, io }) {
           break;
         }
         case 'protection':
+        case 'push-scope':
           io.gh(['api', '-X', 'POST', `repos/${repo}/rulesets`, '--input', '-'], JSON.stringify(it.ruleset));
           break;
         case 'workflow-permissions':
@@ -196,7 +226,7 @@ export function applyPlan(items, { repo, io }) {
       }
       results.push({ id: it.id, ok: true, message: it.description });
     } catch (err) {
-      if (['protection', 'workflow-permissions', 'secret-scanning'].includes(it.id)) refused(it, err);
+      if (['protection', 'push-scope', 'workflow-permissions', 'secret-scanning'].includes(it.id)) refused(it, err);
       else results.push({ id: it.id, ok: false, message: String(err.message ?? err) });
     }
   });

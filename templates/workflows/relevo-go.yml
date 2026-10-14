@@ -77,12 +77,16 @@ jobs:
           #    token as the secret RELEVO_PLUGIN_TOKEN and replace the line above with:
           # plugin_marketplaces: https://x-access-token:${{ secrets.RELEVO_PLUGIN_TOKEN }}@github.com/elalfner/relevo.git
           plugins: relevo@relevo
-          # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed.
+          # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed:
+          # only the tools in --allowedTools, and no web access (nothing to fetch, nowhere to send a secret).
+          # Do not set allowed_non_write_users, allowed_bots or show_full_output here: they open the run to
+          # strangers or print tool results (possibly secrets) to the log.
           prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }}
           claude_args: >-
             --max-turns 100
             --max-budget-usd 5
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
+            --disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)"
 
       # A run can end without telling anyone: the plugin cannot be cloned, the login fails, preflight stops, or the
       # agent ends its session early (all seen in the pilot, see docs/pilot-findings.md). If the issue is still

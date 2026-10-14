@@ -105,7 +105,7 @@ Roll out in stages: pilot in a solo repository (`review.mode: none`) to prove `g
 
 ## Open Questions
 
-- Exact name and parameters of the GitHub Action used to run the agent unattended.
+- Whether `id-token: write` can be removed from the `go` workflow (see `docs/action-parameters.md`; the other parameters of the action were verified there).
 - Whether to ship a sandbox repository for end-to-end tests inside this repo or separately.
 - Whether to add a specification-engine boundary in v1 or only when a second engine is needed.
 - Exact package name and install command of the OpenSpec tool should be re-verified at release time.

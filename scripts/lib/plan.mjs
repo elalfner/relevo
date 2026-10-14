@@ -18,6 +18,9 @@ import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
+// In a public repository only maintainers may start work: anyone with write access could otherwise start a
+// run from an issue written by a stranger.
+const MAY_TRIGGER_PUBLIC = new Set(['admin', 'maintain']);
 
 function byReadyAt(a, b) {
   const ta = a.ready_at ? Date.parse(a.ready_at) : Number.POSITIVE_INFINITY;
@@ -77,10 +80,11 @@ export function planGo({ config, issues, completed = [], running = [], permissio
     if (has(issue, 'ready')) {
       // Trigger: only people with write access may start work.
       const permission = issue.ready_by ? permissions[issue.ready_by] : undefined;
-      if (!issue.ready_by || !MAY_TRIGGER.has(permission)) {
-        decision(issue, 'denied', 'the ready label was not applied by someone with write access', {
+      const isPublic = config.trust === 'public';
+      if (!issue.ready_by || !(isPublic ? MAY_TRIGGER_PUBLIC : MAY_TRIGGER).has(permission)) {
+        decision(issue, 'denied', isPublic ? 'the ready label was not applied by a maintainer (trust is public)' : 'the ready label was not applied by someone with write access', {
           labels: dropReady(issue),
-          comment: { kind: 'ready_denied', data: { issue: issue.number, actor: issue.ready_by ?? undefined } },
+          comment: { kind: isPublic ? 'ready_denied_maintainer' : 'ready_denied', data: { issue: issue.number, actor: issue.ready_by ?? undefined } },
         });
         return;
       }

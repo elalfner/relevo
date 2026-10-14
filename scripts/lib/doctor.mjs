@@ -157,6 +157,7 @@ export function gatherFacts(p) {
       const text = String(err.stderr ?? err.message ?? err);
       if (/Upgrade to GitHub|403|not available/i.test(text)) f.protectionUnavailable = text.trim().split('\n')[0];
     }
+    f.pushScope = rulesets.some((r) => r.name === 'relevo-push-scope' && r.enforcement === 'active');
     f.protection = {};
     [[base, 'base'], [release, 'release']].forEach(([branch, key]) => {
       const classic = f.branches[key] ? tryRun(() => api(`repos/${f.repo}/branches/${encodeURIComponent(branch)}/protection`)) : null;
@@ -236,6 +237,9 @@ export function runChecks(f) {
       else r.push(pass(`repo.protection.${key}`, `${name} requires a pull request${p.approvals ? ` with ${p.approvals} approval(s)` : ''}`));
       if (p?.dismissStale) r.push(fail(`repo.dismiss-stale.${key}`, `${name} dismisses approvals when new commits are pushed; the spec archive commit pushed by \`ship\` would dismiss the approval`, `turn off "dismiss stale pull request approvals when new commits are pushed" on ${name}`));
     });
+  }
+  if (!f.protectionUnavailable) {
+    r.push(f.pushScope ? pass('repo.push-scope', 'the agent can only create feature/* branches') : warn('repo.push-scope', 'nothing stops the unattended agent from creating branches other than feature/*', 'run /relevo:init to add the relevo-push-scope ruleset'));
   }
   if (f.canApprove === true) r.push(fail('repo.automation-approve', 'workflows are allowed to approve pull requests', 'in Settings > Actions > General, turn off "Allow GitHub Actions to create and approve pull requests"'));
   else if (f.canApprove === false) r.push(pass('repo.automation-approve', 'workflows cannot approve pull requests'));
