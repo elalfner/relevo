@@ -131,13 +131,19 @@ export function planGo({ config, issues, completed = [], running = [], permissio
     if (assignee && built >= config.limits.built_unreviewed_per_person) {
       decision(issue, 'queue', `${assignee} already has ${built} built issues waiting for review`, {
         labels: moveTo(issue, 'queued'),
+        comment: has(issue, 'queued')
+          ? null
+          : { kind: 'queued_capacity', data: { issue: issue.number, title: issue.title, assignee, built, limit: config.limits.built_unreviewed_per_person } },
       });
       return;
     }
 
     // Global limit on concurrent agents.
     if (freeSlots <= 0) {
-      decision(issue, 'queue', 'the limit of concurrent agents is reached', { labels: moveTo(issue, 'queued') });
+      decision(issue, 'queue', 'the limit of concurrent agents is reached', {
+        labels: moveTo(issue, 'queued'),
+        comment: has(issue, 'queued') ? null : { kind: 'queued_agents', data: { issue: issue.number, title: issue.title } },
+      });
       return;
     }
 

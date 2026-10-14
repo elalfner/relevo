@@ -108,13 +108,14 @@ test('still blocked on a later evaluation: no label change and no repeated comme
   assert.equal(d.comment, null);
 });
 
-test('Scenario: Assignee at capacity - queued, silently, and it starts when capacity frees up', () => {
+test('Scenario: Assignee at capacity - queued with a comment that says why, and it starts when capacity frees up', () => {
   const built = (n) => issue({ number: n, labels: ['relevo:built'], assignees: ['persona-b'] });
   const waiting = issue({ number: 9 });
   const full = one([built(1), built(2), waiting]);
   assert.equal(full.action, 'queue');
   assert.deepEqual(full.labels, { add: ['relevo:queued'], remove: ['relevo:ready'] });
-  assert.equal(full.comment, null);
+  assert.equal(full.comment.kind, 'queued_capacity');
+  assert.deepEqual(full.comment.data, { issue: 9, title: full.comment.data.title, assignee: 'persona-b', built: 2, limit: 2 });
 
   const queued = issue({ number: 9, labels: ['relevo:queued'] });
   const freed = one([built(1), queued]);
@@ -153,6 +154,7 @@ test('Concurrency limit: runs above the cap are queued', () => {
   const issues = [1, 2, 3].map((n) => issue({ number: n, assignees: [`p${n}`], ready_at: `2026-10-14T10:0${n}:00Z` }));
   const { decisions } = plan(issues, { config: 'limits:\n  concurrent_agents: 2\n' });
   assert.deepEqual(decisions.map((d) => d.action), ['start', 'start', 'queue']);
+  assert.equal(decisions[2].comment.kind, 'queued_agents');
 });
 
 test('runs already in progress use up the concurrency slots', () => {
@@ -168,6 +170,7 @@ test('Scenario: Queue re-evaluation - running the plan again changes nothing whe
   const d = one([...built, queued]);
   assert.equal(d.action, 'queue');
   assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.equal(d.comment, null);
 });
 
 test('closed issues and issues without a Relevo state are ignored', () => {

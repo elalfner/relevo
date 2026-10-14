@@ -46,8 +46,15 @@ export function auditLog(text) {
 }
 
 /** Markdown report of an audit. */
-export function auditReport(audit, { issue } = {}) {
+export function auditReport(audit, { issue, scope } = {}) {
   const lines = [`# Review report${issue ? ` for #${issue}` : ''}`, '', `**${audit.verdict}**`, ''];
+  if (scope?.pids?.length) {
+    lines.push(`Scope: only the processes of \`${scope.package}\` (pid ${scope.pids.join(', ')}); other apps' log lines were ignored.`, '');
+  } else if (scope) {
+    lines.push(`Scope: the whole device log. The process of \`${scope.package}\` was not found in it, so lines from other apps on the device were audited too and may be quoted below.`, '');
+  } else {
+    lines.push('Scope: the whole device log.', '');
+  }
   if (audit.findings.length === 0) {
     lines.push('The device log contains none of the error classes: layout, lifecycle, exceptions, network or data errors, missing activity.');
   } else {
@@ -55,4 +62,45 @@ export function auditReport(audit, { issue } = {}) {
     audit.findings.forEach((f) => lines.push(`- **${f.class}** (log line ${f.line}): \`${f.excerpt.replace(/`/g, "'")}\``));
   }
   return `${lines.join('\n')}\n`;
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// `logcat -v time` writes "E/tag( 1234): msg"; `-v threadtime` writes "10-14 12:00:00.123  1234  1234 E tag: msg".
+const PID_TIME = /^\S+\s+\S+\s+[VDIWEF]\/[^(]*\(\s*(\d+)\)/;
+const PID_THREADTIME = /^\S+\s+\S+\s+(\d+)\s+\d+\s+[VDIWEF]\s/;
+
+/** Process id of a logcat line, or null when the format has none. */
+export function linePid(line) {
+  const m = PID_THREADTIME.exec(line) ?? PID_TIME.exec(line);
+  return m ? Number(m[1]) : null;
+}
+
+/** Process ids the log itself says belong to an application package (process start and crash headers). */
+export function pidsForPackage(text, pkg) {
+  const p = escapeRe(pkg);
+  const re = [new RegExp(`Start proc (\\d+):${p}[/:]`), new RegExp(`Process: ${p}, PID: (\\d+)`)];
+  const pids = new Set();
+  String(text).split('\n').forEach((line) => {
+    re.forEach((r) => {
+      const m = r.exec(line);
+      if (m) pids.add(Number(m[1]));
+    });
+  });
+  return [...pids];
+}
+
+/**
+ * Keep only the log lines written by the processes of one application, so that other apps on the same
+ * device (and whatever they log) are neither audited nor quoted in the report.
+ * Returns { text, scope } where scope is { package, pids } when filtered, or { package, pids: [] } when the
+ * log never names the app's process, in which case the whole log is returned and the caller must say so.
+ */
+export function filterByApp(text, { package: pkg, pids = [] }) {
+  const all = new Set([...pids.map(Number), ...pidsForPackage(text, pkg)]);
+  if (all.size === 0) return { text: String(text), scope: { package: pkg, pids: [] } };
+  const kept = String(text).split('\n').filter((line) => {
+    const pid = linePid(line);
+    return pid !== null && all.has(pid);
+  });
+  return { text: kept.join('\n'), scope: { package: pkg, pids: [...all] } };
 }

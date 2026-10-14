@@ -77,6 +77,10 @@ A comment that notifies a person SHALL be posted only at a hand-off, and SHALL m
 - **WHEN** an issue becomes `blocked`
 - **THEN** one comment names the issues it is waiting for and nobody is mentioned; later evaluations that leave it blocked post nothing
 
+#### Scenario: Queued states its reason without mentioning anyone
+- **WHEN** an issue becomes `queued`
+- **THEN** one comment says whether it waits for the assignee's capacity or for a free agent slot and nobody is mentioned; later evaluations that leave it queued post nothing
+
 ### Requirement: Hand-off message content
 Each hand-off message SHALL state what happened, what is expected of the recipient, the exact command to run next, the riskiest area to check first (when known) and the expected time. It SHALL link to long logs instead of embedding them.
 

@@ -20,6 +20,7 @@
 - [x] 3.5 Cloud workflow for `go` (label trigger, concurrency group, budget caps)
 - [x] 3.6 Pilot in a solo repository and record findings
 - [x] 3.9 `go` workflow: final step that reports a run which ended without an outcome (pilot proposal 1)
+- [x] 3.10 Pilot follow-ups: comment when an issue is queued, log audit limited to the app under review, credential and private-repository alternatives in the `go` template (pilot proposals 2, 5, 6)
 - [x] 3.8 `think`: invoke `openspec-explore` then `grill-with-docs` in one conversation, stop with install hints when a required skill is missing, hand off to `create`, leave documentation uncommitted (rewrite `skills/think/SKILL.md`)
 - [x] 3.7 `create`: turn an idea into issues that pass the spec gate (questions, dependencies, checked before creation)
 

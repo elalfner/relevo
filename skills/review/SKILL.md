@@ -54,7 +54,7 @@ When the synchronisation succeeded, claim the issue: `node ${CLAUDE_PLUGIN_ROOT}
 
 If `evidence/review-state.json` exists for this issue, resume: show the confirmed lines and captures it already holds, and continue at step 4. If a fix changed the specification since the state was saved, run `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs sync openspec/changes/<change folder>` first: confirmed lines stay, failed lines and new scenarios are pending.
 
-Otherwise: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs init openspec/changes/<change folder>`, then clear the log so the audit only sees this session: `adb -s <serial> logcat -c`.
+Otherwise: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs init openspec/changes/<change folder>`, then clear the log so the audit only sees this session: `adb -s <serial> logcat -c`. Then ask the person to start the app, or restart it if it was already open, so that the log names its process and the audit can ignore other apps on the device.
 
 ### 3. Brief the person, then stop
 
@@ -80,8 +80,11 @@ Never go to step 5 without an explicit `done` (or the equivalent in the person's
 ### 5. Audit the log
 
 ```bash
-adb -s <serial> logcat -d -v time | node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs audit
+package=$(node ${CLAUDE_PLUGIN_ROOT}/scripts/app-id.mjs)
+adb -s <serial> logcat -d -v threadtime | node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs audit --package "$package"
 ```
+
+`app-id.mjs` prints the application id of the project. The audit then looks only at the lines written by that app's processes, so other apps on the device are neither audited nor quoted. If `app-id.mjs` finds no id, run the audit without `--package`. If the log never names the app's process, the audit covers the whole log and says so in its output and in the report: tell the person, because that log may hold other apps' data.
 
 It prints `REVIEW PASSED` or `REVIEW REJECTED` with the first findings, and writes `evidence/review-report.md`.
 

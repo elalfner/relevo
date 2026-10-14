@@ -64,3 +64,14 @@ test('the final step uses the default labels of the template', () => {
   const names = resolveLabelNames({});
   for (const key of ['ready', 'building', 'qa-failed']) assert.ok(workflow.includes(names[key]), `${names[key]} must appear`);
 });
+
+test('Scenario: Private plugin repository or subscription - the template shows both as ready-to-use alternatives', () => {
+  assert.match(workflow, /# claude_code_oauth_token: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}/);
+  assert.match(workflow, /tr -d '\[:space:\]'/);
+  assert.match(workflow, /# plugin_marketplaces: https:\/\/x-access-token:\$\{\{ secrets\.RELEVO_PLUGIN_TOKEN \}\}@github\.com\//);
+  // The defaults stay active and the alternatives stay commented out.
+  assert.match(workflow, /^ {10}anthropic_api_key: /m);
+  assert.match(workflow, /^ {10}plugin_marketplaces: https:\/\/github\.com\/[^@\n]+$/m);
+  assert.doesNotMatch(workflow, /^ {10}claude_code_oauth_token:/m);
+  assert.doesNotMatch(workflow, /sk-ant-|ghp_|github_pat_/);
+});
