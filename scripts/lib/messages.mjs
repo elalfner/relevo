@@ -17,6 +17,10 @@ const REQUIRED = {
   needs_reviewer: ['spec_writer', 'issue', 'title', 'pr'],
   review_reminder: ['reviewer', 'issue', 'pr', 'hours'],
   review_escalation: ['spec_writer', 'issue', 'pr', 'reviewer', 'hours'],
+  no_milestone: ['actor', 'issue'],
+  no_assignee: ['actor', 'issue'],
+  ready_denied: ['issue'],
+  blocked_notice: ['issue', 'title', 'blockers'],
 };
 
 const COMMANDS = {
@@ -44,7 +48,7 @@ const CATALOG = {
       '',
       'What happened: QA still rejected it after the retries{{reason_suffix}}.',
       'Finding: {{finding}}{{location_suffix}}',
-      'The branch {{branch}} is pushed; the state did not advance and no pull request was opened.',
+      '{{branch_line}}',
       'Full QA report: {{log_url}}',
       'Your next step: {{command}}',
     ],
@@ -78,6 +82,25 @@ const CATALOG = {
       'Pull request: {{pr}}',
       'Your next step: decide who reviews it.',
     ],
+    no_milestone: [
+      '#{{issue}} was not started: it has no milestone',
+      '',
+      '@{{actor}} your next step: add the issue to a milestone and label it ready again.',
+    ],
+    no_assignee: [
+      '#{{issue}} was not started: it has no assignee',
+      '',
+      '@{{actor}} your next step: assign the issue to the person who will review it and label it ready again.',
+    ],
+    ready_denied: [
+      '#{{issue}} was not started: only people with write access can mark an issue ready, so the label was removed',
+      'Applied by: @{{actor}}',
+    ],
+    blocked_notice: [
+      '#{{issue}} "{{title}}" is blocked',
+      '',
+      'Waiting for {{blockers}} to be merged. It starts automatically when they are.',
+    ],
   },
   es: {
     built: [
@@ -97,7 +120,7 @@ const CATALOG = {
       '',
       'Qué pasó: QA la rechazó otra vez tras los reintentos{{reason_suffix}}.',
       'Hallazgo: {{finding}}{{location_suffix}}',
-      'La rama {{branch}} está subida; el estado no avanzó y no se abrió ningún pull request.',
+      '{{branch_line}}',
       'Reporte completo de QA: {{log_url}}',
       'Tu siguiente paso: {{command}}',
     ],
@@ -131,6 +154,25 @@ const CATALOG = {
       'Pull request: {{pr}}',
       'Tu siguiente paso: decide quién lo revisa.',
     ],
+    no_milestone: [
+      '#{{issue}} no se inició: no tiene milestone',
+      '',
+      '@{{actor}} tu siguiente paso: agrega el issue a un milestone y márcalo como ready otra vez.',
+    ],
+    no_assignee: [
+      '#{{issue}} no se inició: no tiene responsable',
+      '',
+      '@{{actor}} tu siguiente paso: asigna el issue a quien lo va a revisar y márcalo como ready otra vez.',
+    ],
+    ready_denied: [
+      '#{{issue}} no se inició: solo quienes tienen acceso de escritura pueden marcar un issue como ready, así que se quitó la etiqueta',
+      'Aplicada por: @{{actor}}',
+    ],
+    blocked_notice: [
+      '#{{issue}} "{{title}}" está bloqueado',
+      '',
+      'Espera a que se fusionen {{blockers}}. Empieza solo cuando lo estén.',
+    ],
   },
 };
 
@@ -161,6 +203,17 @@ export function renderMessage(kind, data = {}, language = 'en') {
   if (kind === 'qa_failed') {
     const location = present(values.file) ? `${values.file}${present(values.line) ? `:${values.line}` : ''}` : '';
     values.location_suffix = location ? ` (${location})` : '';
+    const pushed = values.pushed !== false;
+    const es = pickLanguage(language) === 'es';
+    if (pushed) {
+      values.branch_line = es
+        ? `La rama ${values.branch} está subida; el estado no avanzó y no se abrió ningún pull request.`
+        : `The branch ${values.branch} is pushed; the state did not advance and no pull request was opened.`;
+    } else {
+      values.branch_line = es
+        ? `La rama ${values.branch} NO se subió (se encontró una posible credencial o un marcador temporal); el estado no avanzó y no se abrió ningún pull request.`
+        : `The branch ${values.branch} was NOT pushed (a possible credential or temporary marker was found); the state did not advance and no pull request was opened.`;
+    }
     values.reason_suffix = present(values.reason) ? ` (${values.reason})` : '';
   }
 
