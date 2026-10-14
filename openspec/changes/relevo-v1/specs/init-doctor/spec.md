@@ -21,6 +21,17 @@ Running `init` again SHALL not duplicate or overwrite existing correct configura
 - **WHEN** `init` runs on a repository with none of the above
 - **THEN** all items are created and `doctor` reports success
 
+### Requirement: Init protects the repository and keeps OpenSpec in git
+`init` SHALL add a ruleset on the base and release branches that blocks deletion and force pushes and requires a pull request, with approvals not dismissed when commits are pushed; SHALL stop workflows from approving pull requests; and SHALL leave `.gitkeep` files in the empty OpenSpec folders so git keeps them. It SHALL NOT create files under `openspec/` by hand: with no OpenSpec root it tells the person to run the OpenSpec tool's own `init`.
+
+#### Scenario: No OpenSpec root
+- **WHEN** `init` runs in a repository with no `openspec/config.yaml`
+- **THEN** it asks the person to run the OpenSpec tool's `init` and creates no `openspec/` file itself
+
+#### Scenario: Existing workflow differs
+- **WHEN** a workflow file already exists and differs from the template
+- **THEN** `init` reports it and leaves it as it is
+
 ### Requirement: Init never touches the API key
 `init` SHALL NOT read or write the model API key. It SHALL tell the person to add it to the repository's secret store.
 
@@ -36,7 +47,7 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **THEN** the exact settings are listed for an administrator
 
 ### Requirement: Doctor reports every check
-`doctor` SHALL report each check as pass or fail with a fix next to each failure.
+`doctor` SHALL report each check as pass or fail with a fix next to each failure. A check on something optional, or on something the platform may not offer, SHALL be reported as a warning with its fix and SHALL NOT make `doctor` fail.
 
 #### Scenario: A failing check
 - **WHEN** a check fails
@@ -55,6 +66,21 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 #### Scenario: Approvals dismissed on push
 - **WHEN** the base branch dismisses approvals when new commits are pushed
 - **THEN** `doctor` reports a failure explaining that the archive commit would dismiss the approval
+
+### Requirement: Doctor checks the repository contents
+`doctor` SHALL check that the OpenSpec root is tracked by git (an empty `openspec/` folder is not stored, so a clean checkout or the runner would have none), that `evidence/` is ignored by git, that the lifecycle labels and the base branch exist, and that the plugin repository can be cloned by the runner with the credential the workflow uses.
+
+#### Scenario: OpenSpec root not tracked
+- **WHEN** `openspec/config.yaml` is missing from git
+- **THEN** `doctor` fails that check and says to run `init` and commit the OpenSpec files
+
+#### Scenario: Private plugin repository
+- **WHEN** the workflow clones a private plugin repository with a plain URL
+- **THEN** `doctor` fails that check and says to store a read-only token and use the private-repository line of the workflow
+
+#### Scenario: Branch protection unavailable
+- **WHEN** the platform refuses to report branch protection (for example a private repository on a free plan)
+- **THEN** `doctor` warns that approval and merge are then enforced only by the written confirmation in `ship`
 
 ### Requirement: Doctor checks automation readiness
 `doctor` SHALL check that the API key secret exists (without reading it), that workflows are installed and enabled, and that an objective CI check exists.
