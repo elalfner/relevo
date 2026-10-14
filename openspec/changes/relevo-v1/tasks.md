@@ -37,11 +37,11 @@
 
 ## 5. Setup and verification
 
-- [ ] 5.1 `init`: plan first, idempotent, labels, branches, rulesets, workflows, ignore file, never touches the API key
-- [ ] 5.2 `doctor`: all checks, fix hints, read-only
-- [ ] 5.3 Fallback checklist when the person is not an administrator
-- [ ] 5.4 Dependency detection (OpenSpec, git, platform toolchain, device bridge, and the `openspec-explore`, `grill-with-docs`, `grilling` and `domain-modeling` skills) with install hints; confirmed install offer in `init`
-- [ ] 5.5 `doctor` check that approvals are not dismissed on new commits
+- [x] 5.1 `init`: plan first, idempotent, labels, branches, rulesets, workflows, ignore file, never touches the API key
+- [x] 5.2 `doctor`: all checks, fix hints, read-only
+- [x] 5.3 Fallback checklist when the person is not an administrator
+- [x] 5.4 Dependency detection (OpenSpec, git, platform toolchain, device bridge, and the `openspec-explore`, `grill-with-docs`, `grilling` and `domain-modeling` skills) with install hints; confirmed install offer in `init`
+- [x] 5.5 `doctor` check that approvals are not dismissed on new commits
 
 ## 6. Security
 
