@@ -33,6 +33,9 @@ qa:
 evidence:
   policy: attach_to_pr             # attach_to_pr | local_only (use for sensitive data)
 
+digest:
+  issue: null                     # number of the issue where the daily digest is posted as a comment; subscribe your chat tool to it
+
 language: en                       # language of hand-off messages (en, es)
 trust: private-team                # private-team | public
 

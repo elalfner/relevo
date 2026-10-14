@@ -26,6 +26,7 @@ export const SETTINGS = [
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'string', default: null },
   { path: 'evidence.policy', type: 'enum', allowed: ['attach_to_pr', 'local_only'], default: 'attach_to_pr' },
+  { path: 'digest.issue', type: 'int', min: 1, default: null },
   { path: 'language', type: 'string', default: 'en' },
   { path: 'trust', type: 'enum', allowed: ['private-team', 'public'], default: 'private-team' },
 ];
