@@ -56,6 +56,15 @@ test('Scenario: Failed build - names the finding with file and line, says the br
   assert.match(text, /Full QA report: https:\/\/example\.invalid\/report/);
 });
 
+test('when a credential stopped the push, the message says the branch was NOT pushed', () => {
+  const base = { assignee: 'b', issue: 1, title: 't', finding: 'possible credential in lib/a.dart', branch: 'feature/1-t' };
+  const text = renderMessage('qa_failed', { ...base, pushed: false });
+  assert.match(text, /was NOT pushed/);
+  assert.doesNotMatch(text, /is pushed/);
+  assert.match(renderMessage('qa_failed', { ...base, pushed: false }, 'es'), /NO se subió/);
+  assert.match(renderMessage('qa_failed', base), /is pushed/);
+});
+
 test('budget failures carry their reason', () => {
   const text = renderMessage('qa_failed', {
     assignee: 'b', issue: 1, title: 't', finding: 'stopped', branch: 'f', reason: 'budget exceeded',
