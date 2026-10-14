@@ -1,11 +1,11 @@
 ---
-name: draft
+name: think
 description: Turns an idea, a conversation or an OpenSpec exploration into one or more GitHub issues that Relevo's go can build without asking anything. It asks only for what is missing (scenarios, edge cases, dependencies, screens, data contracts), checks each draft with the same rules go uses, shows everything for approval and then creates the issues. Use when asked to draft, write or create issues for a feature. It never applies the ready label.
 argument-hint: "[what to build]"
 disable-model-invocation: true
 ---
 
-# Relevo draft
+# Relevo think
 
 Help the person write the issue or issues for `$ARGUMENTS` (or for what you have just been discussing) so that `/relevo:go` can build them with nobody to ask. The issue is the only thing the builder sees: whatever is not written in it will be guessed or will send it back.
 
