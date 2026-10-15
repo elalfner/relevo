@@ -196,6 +196,17 @@ On `QA PASSED`, `go` SHALL push the branch, label the issue `built`, and post th
 - **WHEN** QA passes
 - **THEN** the issue is `built`, the branch is pushed and the assignee is mentioned once
 
+### Requirement: The queue only acts on waiting issues
+The queue SHALL act only on issues that are already `queued` or `blocked`. An issue that has just been marked `ready` is handled by the `go` workflow that the label started, so the queue SHALL NOT apply its decision or dispatch a build for it.
+
+#### Scenario: Issue just marked ready
+- **WHEN** an issue is labelled `ready` and the queue and the `go` workflow both start on that event
+- **THEN** only the `go` workflow decides about it, and its comment is posted once
+
+#### Scenario: Waiting issue becomes eligible
+- **WHEN** a `queued` or `blocked` issue becomes eligible
+- **THEN** the queue starts it
+
 ### Requirement: Queue re-evaluation
 The queue SHALL be re-evaluated on every relevant event (an issue merged, a `built` issue leaving that state, a label change) and on a schedule, so a lost event does not stall the queue.
 
