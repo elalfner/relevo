@@ -4,7 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startable, toDispatch } from '../scripts/lib/requeue.mjs';
+import { ownedByQueue, startable, toDispatch } from '../scripts/lib/requeue.mjs';
+import { resolveLabelNames } from '../scripts/lib/labels.mjs';
 import { planGo } from '../scripts/lib/plan.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 
@@ -48,4 +49,42 @@ test('the queue workflow runs on events and on a schedule, one evaluation at a t
   assert.match(wf, /gh workflow run relevo-go\.yml/);
   assert.doesNotMatch(wf, /pull_request_target/);
   assert.match(readFileSync(`${root}templates/workflows/relevo-go.yml`, 'utf8'), /workflow_dispatch:/);
+});
+
+// ---------- the queue acts only on waiting issues
+
+const names = resolveLabelNames({});
+
+test('Scenario: Issue just marked ready - the queue leaves it to the go run its label started', () => {
+  const issues = [issue(1, ['relevo:ready'], { assignees: [] }), issue(2, ['relevo:queued']), issue(3, ['relevo:blocked'], { body: `${BODY}\nDepends-on: #99\n` })];
+  const { decisions } = planGo({ config, issues, permissions: { luz: 'write' } });
+  assert.ok(decisions.some((d) => d.issue === 1), 'the planner still plans the ready issue, so the limits stay right');
+  const mine = ownedByQueue(decisions, issues, names);
+  assert.deepEqual(mine.map((d) => d.issue).sort(), [2, 3]);
+  assert.ok(!mine.some((d) => d.comment && d.issue === 1), 'no comment for the ready issue from the queue');
+});
+
+test('a ready issue that would start is not dispatched by the queue (its own go run starts it)', () => {
+  const complete = '## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c\n';
+  const issues = [issue(1, ['relevo:ready'], { body: complete }), issue(2, ['relevo:queued'])];
+  const { decisions } = planGo({ config, issues, permissions: { luz: 'write' } });
+  assert.deepEqual(startable(decisions).sort(), [1, 2]);
+  assert.deepEqual(startable(ownedByQueue(decisions, issues, names)), [2]);
+});
+
+test('Scenario: Waiting issue becomes eligible - the queue still starts it', () => {
+  const issues = [issue(5, ['relevo:blocked'], { body: `${BODY}\nDepends-on: #1\n` })];
+  const { decisions } = planGo({ config, issues, completed: [1], permissions: { luz: 'write' } });
+  assert.deepEqual(startable(ownedByQueue(decisions, issues, names)), [5]);
+});
+
+test('the script ignores a ready issue even when it would start', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'requeue-own-'));
+  writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub'));
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [issue(1, ['relevo:ready'], { body: '## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c\n' }), issue(2, ['relevo:queued'], { assignees: ['ana'], ready_at: '2026-01-02T00:00:00Z' })], completed: [], running: [], permissions: { luz: 'write' } }));
+  const r = spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.start, [2]);
+  assert.equal(out.summary.start, 1);
 });

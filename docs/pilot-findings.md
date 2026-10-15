@@ -182,6 +182,10 @@ Once, `doctor` said `dev` and `main` did not require a pull request while both r
 
 When #3 was relabelled, two queue runs started (one per label event), 15 seconds apart. Both decided `{"start":[3]}` and each dispatched `relevo-go` for #3. The queue only decides; the issue becomes `building` several minutes later, when the build job has installed Flutter and OpenSpec and reaches `go-plan --claim`. The second queue run therefore still saw #3 as `queued`. The per-issue concurrency group made the second build wait for the first and then finish quickly (it found the issue already built), so nothing was built twice, but it cost a runner start and about a minute of Actions time. Options: the queue marks the issue `building` when it dispatches (then `go` must accept a dispatched issue that is already `building`), or the queue checks for a `relevo-go` run already queued or in progress. Not done.
 
+### G6. A comment was posted twice (fixed)
+
+After the gates moved to the light `decide` job, labelling #5 `relevo:ready` (no assignee) produced the same comment twice, one second apart. The label event started `relevo-go` and `relevo-queue` together, and both evaluated the same ready issue and applied the same decision. The queue could also have dispatched a build for an issue whose own `go` run was already starting. Fixed: the queue acts only on issues already `queued` or `blocked`; a freshly ready issue belongs to the `go` run its label started. The light job took 23 seconds in total for this outcome (19 seconds in `decide`, `build` skipped, no Flutter install).
+
 ## Times
 
 | Run | Outcome | Time |
@@ -191,6 +195,7 @@ When #3 was relabelled, two queue runs started (one per label event), 15 seconds
 | Build of #3, started by the queue | `built` | about 3 min 40 s |
 | Duplicate build of #3 (G5) | ended quickly, issue already built | about 1 min of work after waiting 3 min |
 | Run that does not build (label change, no `ready`) | skipped | 1 to 3 seconds |
+| `ready` on an issue with nothing to build, after the two-job split (G6) | `decide` only, `build` skipped | 23 seconds |
 | `go` run that did not start a build after the setup steps | no build | about 1 min |
 
 Every label change starts two queue runs (the label is removed and another is added); both finish in seconds. No cost per run was read from the logs this time.
