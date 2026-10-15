@@ -175,6 +175,8 @@ test('gatherFacts reads tools, skills, files and the GitHub state through the in
     'repos/o/r/actions/secrets': { secrets: [{ name: 'ANTHROPIC_API_KEY' }] },
     'repos/o/r/actions/workflows': { workflows: [{ path: '.github/workflows/relevo-go.yml', state: 'active' }] },
     'repos/o/relevo': { private: true },
+    'repos/o/r/contents/.github/workflows?ref=main': [{ name: 'relevo-go.yml' }, { name: 'ci.yml' }],
+    'repos/o/r/contents/.github/workflows/relevo-go.yml?ref=main': { content: Buffer.from(files['.github/workflows/relevo-go.yml']).toString('base64') },
   };
   const f = gatherFacts({
     tool: (name, args) => { if (name === 'openspec') return '1.14.1\n'; if (name === 'adb') throw new Error('not found'); return name === 'git' && args[0] === 'ls-files' ? 'openspec/config.yaml\n' : 'ok'; },
@@ -255,7 +257,11 @@ test('a failed read of the branch rules is a warning, never a false failure', ()
 
 test('a plugin_marketplaces URL that carries a credential is not reported as unreachable, and its repository is still found', () => {
   const files = { 'relevo.yml': CONFIG_TEXT, '.github/workflows/relevo-go.yml': '          plugin_marketplaces: https://x-access-token:${{ secrets.RELEVO_PLUGIN_TOKEN }}@github.com/o/relevo.git\n' };
-  const api = { 'repos/o/r': { default_branch: 'main' }, 'repos/o/relevo': { private: true } };
+  const api = {
+    'repos/o/r': { default_branch: 'main' }, 'repos/o/relevo': { private: true },
+    'repos/o/r/contents/.github/workflows?ref=main': [{ name: 'relevo-go.yml' }],
+    'repos/o/r/contents/.github/workflows/relevo-go.yml?ref=main': { content: Buffer.from(files['.github/workflows/relevo-go.yml']).toString('base64') },
+  };
   const f = gatherFacts({
     tool: () => 'ok', gh: (args) => { const path = args[args.length - 1]; if (!(path in api)) throw new Error(`HTTP 404 ${path}`); return JSON.stringify(api[path]); },
     exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: 'o/r', platform: 'flutter-android',
@@ -263,4 +269,61 @@ test('a plugin_marketplaces URL that carries a credential is not reported as unr
   assert.equal(f.pluginMarketplaceHasToken, true);
   assert.equal(f.pluginRepoPrivate, true);
   assert.equal(byId(runChecks({ ...healthy(), ...f, config: healthy().config }), 'automation.plugin-clone'), undefined);
+});
+
+function probes({ localFiles, remote, files = {} }) {
+  const api = {
+    'repos/o/r': { default_branch: 'main' },
+    'repos/o/r/contents/.github/workflows?ref=main': remote === null ? null : Object.keys(remote).map((name) => ({ name })),
+    ...Object.fromEntries(Object.entries(remote ?? {}).map(([n, t]) => [`repos/o/r/contents/.github/workflows/${n}?ref=main`, { content: Buffer.from(t).toString('base64') }])),
+    'repos/o/relevo': { private: true },
+  };
+  const all = { 'relevo.yml': CONFIG_TEXT, ...files, ...Object.fromEntries(Object.entries(localFiles).map(([n, t]) => [`.github/workflows/${n}`, t])) };
+  return {
+    tool: () => 'ok',
+    gh: (args) => {
+      const path = args[args.length - 1];
+      if (!(path in api) || api[path] === null) throw new Error(`HTTP 404 ${path}`);
+      return JSON.stringify(api[path]);
+    },
+    exists: (p) => p in all, read: (p) => all[p], listDir: () => Object.keys(localFiles), skillDirs: [], repo: 'o/r', platform: 'flutter-android',
+  };
+}
+const CHECKOUT = (token) => `      - uses: actions/checkout@v4\n        with:\n          repository: o/relevo\n          ref: main\n          path: .relevo-plugin\n${token ? '          token: ${{ secrets.RELEVO_PLUGIN_TOKEN }}\n' : ''}\n`;
+
+test('Scenario: Workflow fixed only in the working copy - doctor judges what is on the default branch, not the local file', () => {
+  const f = gatherFacts(probes({ localFiles: { 'relevo-queue.yml': CHECKOUT(true) }, remote: { 'relevo-queue.yml': CHECKOUT(false) } }));
+  assert.equal(f.workflowSource, 'default branch (main)');
+  assert.deepEqual(f.pluginCheckouts, [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }]);
+  const bad = byId(runChecks({ ...healthy(), ...f, config }), 'automation.plugin-checkout');
+  assert.equal(bad.status, 'fail');
+  assert.match(bad.message, /relevo-queue\.yml/);
+});
+
+test('Scenario: Workflow only in the working copy - a failure that says it must be pushed to the default branch', () => {
+  const f = gatherFacts(probes({ localFiles: { 'relevo-go.yml': 'name: go\n', 'relevo-sla.yml': 'name: sla\n' }, remote: {} }));
+  assert.equal(f.workflows['relevo-go.yml'].present, false);
+  assert.equal(f.workflows['relevo-go.yml'].local, true);
+  assert.equal(f.workflows['relevo-go.yml'].remote, false);
+  const results = runChecks({ ...healthy(), ...f, config });
+  const go = byId(results, 'automation.workflow.relevo-go.yml');
+  assert.equal(go.status, 'fail');
+  assert.match(go.message, /only in your working copy, not on the default branch/);
+  assert.match(go.fix, /through a pull request if the branch is protected/);
+  assert.equal(byId(results, 'automation.workflow.relevo-sla.yml').status, 'warn');
+});
+
+test('a workflow on the default branch counts even when the working copy does not have it', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': 'name: go\n', 'ci.yml': 'name: ci\n' } }));
+  assert.equal(f.workflows['relevo-go.yml'].present, true);
+  assert.equal(f.workflows['relevo-go.yml'].local, false);
+  assert.equal(f.hasCi, true);
+});
+
+test('when the default branch cannot be read, doctor falls back to the working copy', () => {
+  const p = probes({ localFiles: { 'relevo-go.yml': 'name: go\n' }, remote: null });
+  const failing = { ...p, gh: (args) => { const path = args[args.length - 1]; if (path.includes('/contents/')) throw new Error('HTTP 502'); return p.gh(args); } };
+  const f = gatherFacts(failing);
+  assert.equal(f.workflowSource, 'working copy');
+  assert.equal(f.workflows['relevo-go.yml'].present, true);
 });

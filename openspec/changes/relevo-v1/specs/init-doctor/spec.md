@@ -82,6 +82,17 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **WHEN** the platform refuses to report branch protection (for example a private repository on a free plan)
 - **THEN** `doctor` warns that approval and merge are then enforced only by the written confirmation in `ship`
 
+### Requirement: Doctor judges the workflows that run
+`doctor` SHALL read the workflow files from the repository's default branch on GitHub, because that is what runs, and not from the working copy. A workflow that exists only in the working copy SHALL be reported as not on the default branch, with the fix of pushing it there (through a pull request when the branch is protected). When the default branch cannot be read, `doctor` SHALL fall back to the working copy.
+
+#### Scenario: Fixed locally, not on the default branch
+- **WHEN** a workflow was corrected in the working copy but the default branch still has the old version
+- **THEN** `doctor` judges the old version and reports its failure
+
+#### Scenario: Only in the working copy
+- **WHEN** a Relevo workflow file exists locally and not on the default branch
+- **THEN** `doctor` reports that it only exists in the working copy and must be pushed to the default branch
+
 ### Requirement: Doctor checks automation readiness
 `doctor` SHALL check that the API key secret exists (without reading it), that workflows are installed and enabled, and that an objective CI check exists.
 
