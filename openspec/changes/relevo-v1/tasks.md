@@ -55,9 +55,9 @@
 
 ## 7. Acceptance tests
 
-- [ ] 7.1 Behaviour tests from the specs (QA twice rejected does not advance; no "done" means no audit; no approval means `ship` stops; author cannot `ship`)
+- [x] 7.1 Behaviour tests from the specs (QA twice rejected does not advance; no "done" means no audit; no approval means `ship` stops; author cannot `ship`) in `tests/acceptance.test.mjs`: they run the real scripts, and the parts only the model performs are pinned by the text of the skill that says so
 - [x] 7.2 Sandbox repository with a minimal Flutter app for end-to-end runs (https://github.com/elalfner/relevo-sandbox: a counter app with `relevo.yml`, the workflows, CI and rulesets; the pilots of tasks 3.6 and 4.8 ran on it)
-- [ ] 7.3 Continuous validation of skill frontmatter and `relevo.yml`
+- [x] 7.3 Continuous validation of skill frontmatter and `relevo.yml`: `tests/plugin-structure.test.mjs` checks every skill, agent, manifest, workflow template and the shipped `relevo.yml`, and `.github/workflows/ci.yml` runs the tests and the OpenSpec validation on every pull request and push
 
 ## 8. Release
 

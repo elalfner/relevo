@@ -3,7 +3,7 @@
 //   node scripts/capture.mjs <name> [--dir evidence]
 // Names are plain file names (letters, digits, "_", "-", "."), never paths.
 
-import { capture, listDevices, pickDevice } from './lib/device.mjs';
+import { capture, listDevices, pickDevice, safeCaptureName } from './lib/device.mjs';
 
 const name = process.argv[2];
 const di = process.argv.indexOf('--dir');
@@ -13,6 +13,7 @@ if (!name || name.startsWith('--')) {
   process.exit(2);
 }
 try {
+  safeCaptureName(name); // a bad name is refused before adb is run
   const serial = pickDevice(listDevices(), process.env.ANDROID_SERIAL ?? null);
   console.log(capture({ name, dir, serial }));
 } catch (err) {
