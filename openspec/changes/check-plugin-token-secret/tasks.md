@@ -7,4 +7,4 @@
 
 - [x] 2.1 In `tests/doctor.test.mjs`, add the four scenarios of the spec (missing, present, public, unknown visibility or unreadable secrets)
 - [x] 2.2 Adjust any existing test that sets `pluginRepoPrivate: true` and compares the full list of failures so its fixture includes the secret
-- [ ] 2.3 Run the full test suite and `node scripts/doctor.mjs` against a repository, and check the report and fix text read correctly
+- [x] 2.3 Run the full test suite and `node scripts/doctor.mjs` against a repository, and check the report and fix text read correctly
