@@ -1,7 +1,11 @@
 Relevo is released under the MIT License (see LICENSE). It works together with the following
-MIT-licensed works. Relevo does not include, copy or bundle their files: `skills/think/SKILL.md`
-runs their skills as they are, once they are installed in the project. Their copyright and
-permission notices are reproduced here as an acknowledgement.
+MIT-licensed works. The Relevo plugin (what is installed from `skills/`, `agents/` and
+`templates/`) does not include their files: `skills/think/SKILL.md` runs their skills as they
+are, once they are installed in the project. This repository does keep copies of them as
+development tooling, unmodified, so that Relevo can be worked on with the same skills it runs:
+the OpenSpec skills and commands under `.claude/`, and the mattpocock/skills skills under
+`.agents/skills/` (linked from `.claude/skills/`). Their copyright and permission notices are
+reproduced here.
 
 1. mattpocock/skills (https://github.com/mattpocock/skills)
    Copyright (c) 2026 Matt Pocock
