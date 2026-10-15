@@ -23,6 +23,7 @@
 - [x] 3.11 `go` workflow: accept builds dispatched by the queue (`allowed_bots: github-actions`) and report a dispatched run that fails before claiming the issue (found in the sandbox)
 - [x] 3.10 Pilot follow-ups: comment when an issue is queued, log audit limited to the app under review, credential and private-repository alternatives in the `go` template (pilot proposals 2, 5, 6)
 - [x] 3.8 `think`: invoke `openspec-explore` then `grill-with-docs` in one conversation, stop with install hints when a required skill is missing, hand off to `create`, leave documentation uncommitted (rewrite `skills/think/SKILL.md`)
+- [ ] 3.12 `think`: do not invoke a skill that sets `disable-model-invocation`; step 3 asks the person to run `/grill-with-docs` in the same conversation and gives the `/relevo:create` hand-off and uncommitted-files note in that message; step 1 reads the frontmatter of skills found only as folders; separate missing, reserved and invocable in "Never continue" (edit `skills/think/SKILL.md` and `tests/skill-think.test.mjs`)
 - [x] 3.7 `create`: turn an idea into issues that pass the spec gate (questions, dependencies, checked before creation)
 
 ## 4. Team features (stage 0.2)
@@ -43,6 +44,7 @@
 - [x] 5.3 Fallback checklist when the person is not an administrator
 - [x] 5.4 Dependency detection (OpenSpec, git, platform toolchain, device bridge, and the `openspec-explore`, `grill-with-docs`, `grilling` and `domain-modeling` skills) with install hints; confirmed install offer in `init`
 - [x] 5.5 `doctor` check that approvals are not dismissed on new commits
+- [ ] 5.6 `doctor`: read the frontmatter of required skills found as folders and report `disable-model-invocation` as a passing notice (facts become `{installed, manualOnly}`; new file-reading probe; update `scripts/lib/doctor.mjs`, `scripts/doctor.mjs`, `tests/doctor.test.mjs`, and the README if it describes the chaining)
 
 ## 6. Security
 
