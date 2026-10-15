@@ -40,6 +40,22 @@ Depends-on: #12, #13
 
 The issue is not started until every listed issue is closed as completed (its pull request merged). Until then it is labelled blocked and starts by itself afterwards.
 
+### 4. Documentation (optional)
+
+When the spec writer settled terms or decisions that must be recorded, the issue carries them in a `## Documentation` section, with the exact text. `go` has the developer write that text and the files arrive in the same pull request as the feature, so nobody has to commit documentation by hand.
+
+```markdown
+## Documentation
+
+- Add these entries to `GLOSSARY.md`, under its existing heading, after the existing ones, exactly as written. They are vocabulary only; nothing else in that file changes.
+
+**Build number**:
+The number after the `+` in the `version` of `pubspec.yaml`, shown in the app bar subtitle as "Build N".
+_Avoid_: Build label, build, build version
+```
+
+A glossary entry is a name, a definition of one or two sentences and the words to avoid. A decision record is a title and a text, without a number: it is numbered when it is written (the highest number in `docs/adr/` plus one). The section names only `GLOSSARY.md` and `docs/adr/`. It is not a scenario or an edge case, and an issue is valid with or without it.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.

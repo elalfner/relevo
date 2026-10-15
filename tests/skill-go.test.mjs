@@ -100,3 +100,12 @@ test('Scenario: Decision made by the workflow - the skill decodes it, skips its 
   assert.match(body, /failure path with the reason `invalid decision`/);
   assert.match(body, /Otherwise\*\* \(for example when someone runs `go` by hand\)/);
 });
+
+test('Scenario: Glossary entries / A decision record - the skill copies the Documentation section verbatim and adds one task', () => {
+  assert.match(body, /\*\*Documentation\.\*\* If the issue has a `## Documentation` section, copy it word for word into `design\.md` under the heading `Documentation from the issue`/);
+  assert.match(body, /add one task to `tasks\.md`: write that documentation exactly as given/);
+});
+
+test('Scenario: No documentation section - no task and nothing else is documented', () => {
+  assert.match(body, /Add no other documentation\. If the issue has no such section, add no documentation task/);
+});
