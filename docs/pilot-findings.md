@@ -207,6 +207,6 @@ Every label change starts two queue runs (the label is removed and another is ad
 ## Proposed changes (not done here)
 
 1. Make `doctor` read the workflow files from the default branch on GitHub.
-2. Remove the duplicate dispatch (G5).
-3. Split `relevo-go.yml` into a light job that runs the gates and a heavy job that builds only when the decision is `start`.
+2. Remove the duplicate dispatch (G5). Reduced by task 3.12 (claiming happens in the light job, within seconds); not removed entirely.
+3. Split `relevo-go.yml` into a light job that runs the gates and a heavy job that builds only when the decision is `start`. Done in task 3.12, not yet seen running on GitHub.
 4. Re-run this pilot with a second person to cover the untested parts.

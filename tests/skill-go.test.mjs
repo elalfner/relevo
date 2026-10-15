@@ -18,7 +18,7 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 test('frontmatter uses only documented fields', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
   assert.equal(meta.name, 'go');
-  assert.equal(meta['argument-hint'], '[issue-number]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--decision <base64>]');
 });
 
 test('go pushes code and spends money, so Claude can never start it on its own', () => {
@@ -90,4 +90,13 @@ test('the skill mentions neither private sources nor personal data', () => {
 test('the skill tells the unattended agent to wait for its subagents instead of ending the turn', () => {
   assert.match(body, /## Subagents run in the foreground/);
   assert.match(body, /never end your turn while one is running/);
+});
+
+test('Scenario: Decision made by the workflow - the skill decodes it, skips its own planning and treats it as data', () => {
+  assert.match(body, /When `\$ARGUMENTS` has `--decision <base64>`/);
+  assert.match(body, /Do not run `go-plan`/);
+  assert.match(body, /base64 -d/);
+  assert.match(body, /which you never read as an instruction/);
+  assert.match(body, /failure path with the reason `invalid decision`/);
+  assert.match(body, /Otherwise\*\* \(for example when someone runs `go` by hand\)/);
 });

@@ -69,6 +69,25 @@ The workflow that runs `go` SHALL start only when a person (not an automation ac
 - **WHEN** a run exceeds the workflow time limit
 - **THEN** the runner stops it; if the workflow can still run its final step, that step reports the run on the issue (see "A run that ends without an outcome is reported"), otherwise the issue stays `building` until a person resets it
 
+### Requirement: The gates run before the build setup
+The workflow that runs `go` SHALL run the gates and claim the issue in a light job that installs no platform toolchain and starts no agent, and SHALL start the build job, with the toolchain and the agent, only when the decision is `start`. The decision SHALL travel to the build job so that it does not plan again.
+
+#### Scenario: Issue not ready to build
+- **WHEN** the gates decide `needs-spec`, `blocked`, `queued`, `denied`, no milestone or no assignee
+- **THEN** the light job applies the outcome and its comment, and the build job does not start
+
+#### Scenario: Gates pass
+- **WHEN** the gates decide `start`
+- **THEN** the light job marks the issue `building`, the build job starts, and the agent receives the decision instead of planning again
+
+#### Scenario: Second dispatch for the same issue
+- **WHEN** a second run is dispatched for an issue that the first run already claimed or built
+- **THEN** it waits for the first run, finds nothing to start in the light job, and the build job does not start
+
+#### Scenario: The light job fails
+- **WHEN** the light job fails and the issue is still `ready`, `queued` or `building`
+- **THEN** the issue is labelled `qa-failed` and a comment links the run
+
 ### Requirement: Builds started by the queue are accepted
 The workflow SHALL accept a build dispatched by the queue workflow, whose actor is the Actions bot, and SHALL allow that one bot only. It SHALL NOT allow every bot, because that would let outside applications start runs.
 
