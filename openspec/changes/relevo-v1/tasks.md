@@ -36,7 +36,7 @@
 - [x] 4.5 Reviewer selection (fewest open reviews, rotation, `roles` approvers, `needs-reviewer`)
 - [x] 4.6 `status` (per-person, spec-writer view, alerts, capacity warning)
 - [x] 4.7 Daily digest workflow
-- [ ] 4.8 Pilot with one milestone in a team repository (done with one person on 2026-10-14/15, see docs/pilot-findings.md: queue, blocking, needs-spec, review, ship, promotion; still open: approval by another person, review reminder and escalation, review events, reviewer selection)
+- [x] 4.8 Pilot with one milestone (closed on 2026-10-15 with one person, see docs/pilot-findings.md: queue, blocking, needs-spec, review, ship, promotion. Not exercised on GitHub because they need a second person: approval and merge by someone other than the author, the `peer` and `roles` modes, the review reminder and escalation, the review events and reviewer selection. They are covered by tests only; if a team finds a problem in them it is corrected in a follow-up change)
 
 ## 5. Setup and verification
 
