@@ -56,7 +56,7 @@
 ## 7. Acceptance tests
 
 - [ ] 7.1 Behaviour tests from the specs (QA twice rejected does not advance; no "done" means no audit; no approval means `ship` stops; author cannot `ship`)
-- [ ] 7.2 Sandbox repository with a minimal Flutter app for end-to-end runs
+- [x] 7.2 Sandbox repository with a minimal Flutter app for end-to-end runs (https://github.com/elalfner/relevo-sandbox: a counter app with `relevo.yml`, the workflows, CI and rulesets; the pilots of tasks 3.6 and 4.8 ran on it)
 - [ ] 7.3 Continuous validation of skill frontmatter and `relevo.yml`
 
 ## 8. Release
