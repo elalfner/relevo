@@ -79,7 +79,7 @@ The template installs Node and OpenSpec only. QA runs `flutter analyze` and `flu
 | Parameter | Template | Used in the pilot | Why |
 |---|---|---|---|
 | `anthropic_api_key` | `${{ secrets.ANTHROPIC_API_KEY }}` | not used | A subscription token was used instead |
-| `claude_code_oauth_token` | not present | `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` | Run on a Pro subscription. Accepted together with `--max-budget-usd` and `--max-turns` |
+| `claude_code_oauth_token` | not present | `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` | Run on a subscription. Accepted together with `--max-budget-usd` and `--max-turns` |
 | `plugin_marketplaces` | plain URL | URL with a read-only token | F1 |
 | `show_full_output` | not present | `true` | F4, only while piloting |
 | step `env: CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` | not present | `'1'` | F2 |
