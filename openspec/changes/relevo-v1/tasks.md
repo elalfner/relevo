@@ -34,7 +34,7 @@
 - [x] 4.5 Reviewer selection (fewest open reviews, rotation, `roles` approvers, `needs-reviewer`)
 - [x] 4.6 `status` (per-person, spec-writer view, alerts, capacity warning)
 - [x] 4.7 Daily digest workflow
-- [ ] 4.8 Pilot with one milestone in a team repository
+- [ ] 4.8 Pilot with one milestone in a team repository (done with one person on 2026-10-14/15, see docs/pilot-findings.md: queue, blocking, needs-spec, review, ship, promotion; still open: approval by another person, review reminder and escalation, review events, reviewer selection)
 
 ## 5. Setup and verification
 
