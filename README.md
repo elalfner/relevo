@@ -17,7 +17,7 @@ claude plugin marketplace add elalfner/relevo
 claude plugin install relevo@relevo
 ```
 
-Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing. While the repository is private you need read access to it (the first command clones it over SSH).
+Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing.
 
 Relevo works together with a few tools it does not bundle: the [OpenSpec](https://github.com/Fission-AI/OpenSpec) command-line tool, `git`, the GitHub CLI (`gh`), the toolchain of your platform and, for `think`, the skills listed [below](#skills-that-think-uses). `/relevo:init` offers to install what is missing, one command at a time.
 
