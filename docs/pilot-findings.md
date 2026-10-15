@@ -140,7 +140,7 @@ Date: 2026-10-14 and 2026-10-15. Repository: the same sandbox, now public, with 
 
 Four issues went from `ready` to merged, two of them started by the queue and not by a person: #2 was reviewed and shipped; #4 sat `queued` while #2 was waiting, started by itself once #2 merged (after the fixes below), was built, reviewed and shipped; #3 came back `needs-spec`, was corrected, queued, started by the queue, built, reviewed and shipped. #5 was not started because it has no assignee, and said so in a comment. Two `dev` → `main` promotions were done with merge commits. `status` showed "Nothing is waiting on you" at the end.
 
-Not tested, because it needs a second person: approval and merge by someone other than the author, `peer` and `roles` modes, the review reminder and escalation, the review-event workflow, reviewer selection and `needs-reviewer`. They are covered by unit tests only. Task 4.8 stays open for that reason.
+Not tested, because it needs a second person: approval and merge by someone other than the author, `peer` and `roles` modes, the review reminder and escalation, the review-event workflow, reviewer selection and `needs-reviewer`. They are covered by unit tests only. Task 4.8 was closed on 2026-10-15 with this one-person pilot so that `relevo-v1` can be archived; whatever a team finds in those parts is corrected in a follow-up change.
 
 ## What `init` and `doctor` found and did on a real repository
 
