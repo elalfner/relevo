@@ -49,3 +49,39 @@ test('the keywords go reads are kept in English and the language setting is hono
 test('it carries nothing from any private origin', () => {
   assert.ok(!/jira|atlassian|funcionario|FUN-\d+/i.test(`${text}${readFileSync(root('templates/issue.md'), 'utf8')}`));
 });
+
+// ---------- the documentation the agreement settled
+
+test('Scenario: Terms handed over - the skill reads To document and writes the exact text in a Documentation section', () => {
+  assert.match(body, /part of that agreement named \*\*To document\*\*/);
+  assert.match(body, /optional `## Documentation` section of the template with the exact text of each, word for word as agreed/);
+  assert.match(body, /after the existing entries/);
+});
+
+test('Scenario: A decision record handed over - it has no number, it is numbered when written', () => {
+  assert.match(body, /a title and a text, to be added to `docs\/adr\/`, with no number \(it is numbered when it is written\)/);
+});
+
+test('Scenario: Nothing to document - the section is left out', () => {
+  assert.match(body, /When "To document" says nothing, leave the section out/);
+});
+
+test('Scenario: A request to document something else - the section only carries the glossary and decision records', () => {
+  assert.match(body, /names only `GLOSSARY\.md` and `docs\/adr\/`/);
+  assert.match(body, /for example the README, do not put that in the section/);
+  assert.match(body, /Never put anything in `Documentation` except glossary entries and decision records/);
+});
+
+test('Scenario: Approval - the Documentation section is shown whole with the rest of the draft', () => {
+  assert.match(body, /Show the `Documentation` section too, whole, like the rest of the draft/);
+});
+
+test('the issue template and the format doc describe the optional section', () => {
+  const template = readFileSync(new URL('../templates/issue.md', import.meta.url), 'utf8');
+  const doc = readFileSync(new URL('../docs/issue-format.md', import.meta.url), 'utf8');
+  assert.match(template, /## Documentation/);
+  assert.match(template, /Optional\. Only when the agreement settled terms/);
+  assert.match(doc, /### 4\. Documentation \(optional\)/);
+  assert.match(doc, /numbered when it is written/);
+  assert.match(doc, /an issue is valid with or without it/);
+});

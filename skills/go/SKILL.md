@@ -92,6 +92,7 @@ What to write:
 - **Scenarios** come from the issue's WHEN/THEN pairs, faithfully. Each edge case in the issue becomes a scenario too. Do not add behaviour the issue does not ask for.
 - **design.md** is short and grounded in the code you read in this repository. Record every small assumption you make under an "Assumptions" heading.
 - **tasks.md** has small, verifiable tasks that cover every scenario.
+- **Documentation.** If the issue has a `## Documentation` section, copy it word for word into `design.md` under the heading `Documentation from the issue` (it is the only place the developer and QA can read it), and add one task to `tasks.md`: write that documentation exactly as given. Add no other documentation. If the issue has no such section, add no documentation task.
 
 If the issue is ambiguous in a way that changes visible behaviour (not a detail), do not guess. Treat it as a spec defect: move the issue to `needs-spec` (`label-change.mjs --to needs-spec`), post `render-message.mjs needs_spec` with what is unclear in `missing`, assign it to `team.spec_writer`, and stop without pushing.
 

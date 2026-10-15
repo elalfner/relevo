@@ -41,7 +41,7 @@ Distributed as a Claude Code plugin named `relevo`:
 | Command | What it does |
 |---|---|
 | `/relevo:init` | Sets up config, labels, branch protection and workflows (idempotent, shows a plan first) |
-| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `create` |
+| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `create`. It writes no files: the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
 | `/relevo:create` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build) |
 | `/relevo:go` | Builds a ready issue: spec check, build, QA with one retry (runs automatically in the cloud) |
 | `/relevo:review` | Guided on-device review: the person drives, the agent captures and audits logs |
@@ -65,7 +65,7 @@ The design of Relevo lives in `openspec/` and is managed with [OpenSpec](https:/
 | Skill | Comes from | Role in `think` |
 |---|---|---|
 | `openspec-explore` | [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`openspec init`) | explores the idea and the code |
-| `grill-with-docs` | [mattpocock/skills](https://github.com/mattpocock/skills) | interviews you until every decision is made and keeps the glossary and decision records |
+| `grill-with-docs` | [mattpocock/skills](https://github.com/mattpocock/skills) | interviews you until every decision is made; the glossary and decision-record entries it settles are handed to `create`, not written |
 | `grilling`, `domain-modeling` | [mattpocock/skills](https://github.com/mattpocock/skills) | used by `grill-with-docs` |
 
 Relevo does not bundle or copy them. Install them in the project (`openspec init`, and `npx skills add mattpocock/skills`); if one is missing, `think` stops and says which.

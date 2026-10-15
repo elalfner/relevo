@@ -90,3 +90,30 @@ test('neither agent mentions private sources or personal data', () => {
     assert.doesNotMatch(text, /claude\.ai|session_[0-9A-Za-z]{6}|co-authored/i);
   });
 });
+
+test('Scenario: Glossary entries and A decision record - dev writes exactly the documentation the change gives, and numbers records', () => {
+  const { body } = load('dev');
+  assert.match(body, /## Documentation from the issue/);
+  assert.match(body, /heading `Documentation from the issue`, write exactly the text under it and nothing else/);
+  assert.match(body, /after the existing ones/);
+  assert.match(body, /`docs\/adr\/NNNN-short-title\.md`.*highest number already in that folder plus one/);
+  assert.match(body, /Do not reword an entry/);
+  assert.match(body, /Without that heading, never touch `GLOSSARY\.md` or `docs\/adr\/`/);
+  assert.match(body, /change `GLOSSARY\.md` or anything under `docs\/adr\/` except as the section above describes/);
+});
+
+test('Scenario: The agent rewords an entry / Other lines change / Documentation nobody asked for - qa checks the documentation against the issue', () => {
+  const { body } = load('qa');
+  assert.match(body, /### 6\. Documentation/);
+  assert.match(body, /heading `Documentation from the issue` in `design\.md`/);
+  assert.match(body, /Reject when an added word differs, when any other line of `GLOSSARY\.md` changed, when an existing record changed/);
+  assert.match(body, /number is not the highest existing number plus one/);
+  assert.match(body, /If it is not there, reject a diff that touches `GLOSSARY\.md` or `docs\/adr\/`/);
+  assert.match(body, /Do not judge the vocabulary itself/);
+});
+
+test('qa stays read-only after the documentation check', () => {
+  const { meta } = load('qa');
+  assert.match(String(meta.disallowedTools), /Write/);
+  assert.match(String(meta.disallowedTools), /Edit/);
+});

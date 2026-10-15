@@ -61,6 +61,15 @@ Review the diff against the base branch, leaving out generated files (for exampl
 - **Secrets**: credentials, tokens or keys anywhere in the diff. If the plugin's diff scanner is available, run it on the diff as well (`git diff <base>...HEAD | node <plugin>/scripts/scan-diff.mjs`).
 - **Scope**: changes unrelated to the change's proposal, or new dependencies that `design.md` does not justify.
 
+### 6. Documentation
+
+Look for the heading `Documentation from the issue` in `design.md`.
+
+- If it is there, compare what the diff adds to `GLOSSARY.md` and under `docs/adr/` with the text under that heading. Reject when an added word differs, when any other line of `GLOSSARY.md` changed, when an existing record changed, or when a new record's number is not the highest existing number plus one. Cite the entry and the line of `design.md`.
+- If it is not there, reject a diff that touches `GLOSSARY.md` or `docs/adr/`.
+
+Do not judge the vocabulary itself: its wording was approved with the issue. Your job is that what was written is what was given.
+
 ## Rules for yourself
 
 - Read-only: no file edits, no formatter, no code generation, no commits. Running the project's analysis and tests is expected.

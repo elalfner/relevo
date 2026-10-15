@@ -6,7 +6,7 @@ import { findCredentials } from './scan.mjs';
 
 export const TITLE_MAX = 72;
 // Text that only exists in templates/issue.md; finding it means the template was not filled in.
-export const PLACEHOLDERS = ['<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '#<number>'];
+export const PLACEHOLDERS = ['<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '#<number>', '**<term>**', '<definition>', '<words to avoid>'];
 const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
 
 /** Returns { ok, problems: string[], scenarios, edgeCases, dependsOn } for a drafted title and body. */

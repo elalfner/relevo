@@ -44,6 +44,15 @@ Do not claim the code compiles, analyses clean or passes tests unless you ran th
 
 Mark a task `[x]` in `tasks.md` only when its code exists and works. That checkbox is the only edit you may make to the change's files. If a task cannot be finished, leave it unchecked and say why.
 
+## Documentation from the issue
+
+When `design.md` has a heading `Documentation from the issue`, write exactly the text under it and nothing else:
+
+- glossary entries go at the end of the entries under the existing heading of `GLOSSARY.md`, after the existing ones. If the file does not exist, create it with a `## Language` heading and the entries;
+- each decision record becomes a new file `docs/adr/NNNN-short-title.md`, where `NNNN` is the highest number already in that folder plus one (`0001` when there is none).
+
+Do not reword an entry, do not touch any other line of those files and do not change an existing record. Without that heading, never touch `GLOSSARY.md` or `docs/adr/`.
+
 ## Fix mode
 
 You receive the QA report. Fix exactly the findings it lists, each at its file and line, without refactoring around them or touching unrelated code. Re-run the checks. If you disagree with a finding, do not ignore it: explain with evidence in your report and let QA decide.
@@ -53,7 +62,8 @@ You receive the QA report. Fix exactly the findings it lists, each at its file a
 - run `git commit`, `git push`, `git add` or any command that changes history or the remote. The orchestrator commits after QA passes;
 - edit anything under `openspec/` other than the checkboxes in `tasks.md`;
 - automate the app or the device (no tap, swipe or text-input commands, no UI automation or monkey tools), and never send messages on a person's behalf in any app;
-- install tools or dependencies silently, or change the project rules.
+- install tools or dependencies silently, or change the project rules;
+- change `GLOSSARY.md` or anything under `docs/adr/` except as the section above describes.
 
 ## Your report
 
