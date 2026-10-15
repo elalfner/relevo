@@ -220,6 +220,31 @@ test('Scenario: Private plugin repository - workflows that check it out without 
   assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: false, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }] })), 'automation.plugin-checkout'), undefined);
 });
 
+test('Scenario: Private plugin repository and no secret - the credential secret must exist', () => {
+  const missing = byId(runChecks(healthy({ pluginRepoPrivate: true, secrets: ['ANTHROPIC_API_KEY'] })), 'automation.plugin-secret');
+  assert.equal(missing.status, 'fail');
+  assert.match(missing.fix, /RELEVO_PLUGIN_TOKEN/);
+  assert.match(missing.fix, /read-only/);
+  assert.match(missing.fix, /organization/);
+});
+
+test('Scenario: Private plugin repository and the secret exists', () => {
+  const ok = byId(runChecks(healthy({ pluginRepoPrivate: true, secrets: ['ANTHROPIC_API_KEY', 'RELEVO_PLUGIN_TOKEN'] })), 'automation.plugin-secret');
+  assert.equal(ok.status, 'pass');
+});
+
+test('Scenario: Public plugin repository - no plugin-secret check, with or without the secret', () => {
+  assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: false, secrets: ['ANTHROPIC_API_KEY'] })), 'automation.plugin-secret'), undefined);
+  assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: false, secrets: ['ANTHROPIC_API_KEY', 'RELEVO_PLUGIN_TOKEN'] })), 'automation.plugin-secret'), undefined);
+});
+
+test('Scenario: Visibility or secrets cannot be read - no plugin-secret check, the unreadable-secrets warning stays', () => {
+  assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: null, secrets: ['ANTHROPIC_API_KEY'] })), 'automation.plugin-secret'), undefined);
+  const results = runChecks(healthy({ pluginRepoPrivate: true, secrets: null }));
+  assert.equal(byId(results, 'automation.plugin-secret'), undefined);
+  assert.equal(byId(results, 'automation.secret').status, 'warn');
+});
+
 test('a failed read of the branch rules is a warning, never a false failure', () => {
   const results = runChecks(healthy({ protectionError: 'gh: HTTP 502', protection: { base: { pullRequestRequired: false }, release: { pullRequestRequired: false } } }));
   assert.equal(byId(results, 'repo.protection').status, 'warn');
