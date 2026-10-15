@@ -20,6 +20,7 @@
 - [x] 3.5 Cloud workflow for `go` (label trigger, concurrency group, budget caps)
 - [x] 3.6 Pilot in a solo repository and record findings
 - [x] 3.9 `go` workflow: final step that reports a run which ended without an outcome (pilot proposal 1)
+- [x] 3.12 `go` workflow in two jobs: a light `decide` (gates and claim, outputs the decision) and a `build` that starts only on `start` and receives the decision; `go-plan --github-output`, skill reads `--decision`; reports a failure in either job (pilot G5 and proposal 3)
 - [x] 3.11 `go` workflow: accept builds dispatched by the queue (`allowed_bots: github-actions`) and report a dispatched run that fails before claiming the issue (found in the sandbox)
 - [x] 3.10 Pilot follow-ups: comment when an issue is queued, log audit limited to the app under review, credential and private-repository alternatives in the `go` template (pilot proposals 2, 5, 6)
 - [x] 3.8 `think`: invoke `openspec-explore` then `grill-with-docs` in one conversation, stop with install hints when a required skill is missing, hand off to `create`, leave documentation uncommitted (rewrite `skills/think/SKILL.md`)

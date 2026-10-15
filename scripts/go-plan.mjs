@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 // Plans what `go` should do. Reads GitHub (or a JSON file), prints the decisions as JSON.
 //
-//   node scripts/go-plan.mjs --repo owner/name [--config relevo.yml] [--running 12,13] [--only 31] [--apply] [--claim]
+//   node scripts/go-plan.mjs --repo owner/name [--config relevo.yml] [--running 12,13] [--only 31] [--apply] [--claim] [--github-output file]
 //   node scripts/go-plan.mjs --input state.json  [--config relevo.yml]
 //
 // --only N  keeps only the decision for issue N (the whole queue is still planned, so limits stay correct).
 // --apply   carries out every decision except `start` (labels, assignees, comments).
 // --claim   also carries out the `start` decision of the issue given by --only (marks it as building).
+// --github-output FILE  appends `action=<decision action, or none>` and `decision_b64=<the decision as base64 JSON>`
+//           to FILE (the GITHUB_OUTPUT file of a workflow step), so a later job can build without planning again.
+//           Needs --only: it describes the decision of one issue.
 // The `start` decisions are returned for the skill to build.
 //   exit 0: planned   exit 2: invalid or missing configuration, or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { applyDecisions, gather, realGh } from './lib/github.mjs';
@@ -60,5 +63,11 @@ if (flag('claim') && only === null) fail('--claim needs --only <issue>: it marks
 if (flag('apply') || flag('claim')) {
   if (!repo) fail('--apply and --claim need --repo owner/name');
   result.applied = applyDecisions(result.decisions, { gh: realGh, repo, config, includeStart: flag('claim') }).length;
+}
+if (arg('github-output')) {
+  if (only === null) fail('--github-output needs --only <issue>: it describes the decision of one issue');
+  const decision = result.decisions[0] ?? null;
+  const encoded = decision ? Buffer.from(JSON.stringify(decision), 'utf8').toString('base64') : '';
+  appendFileSync(arg('github-output'), `action=${decision ? decision.action : 'none'}\ndecision_b64=${encoded}\n`);
 }
 console.log(JSON.stringify(result, null, 2));
