@@ -61,7 +61,7 @@
 
 ## 8. Release
 
-- [ ] 8.1 English README with a short demo, Spanish translation
+- [x] 8.1 English README with a short demo, Spanish translation (`README.md` has the demo of a real sandbox run; `README.es.md` is the translation, and `tests/readme-sync.test.mjs` keeps the two in step: sections, commands, links, demo and the hand-off message)
 - [x] 8.2 Sanitise content: no names, keys, URLs or history from private sources (swept on 2026-10-15: no private project names, ticket ids, local paths, other people's emails or real credentials in the files or in the history of `main`; the credential-like strings are fake test data. Kept on purpose, by decision of the author: the commit and pull request history, the author's name and email in it, and three old commits that carry a `Co-Authored-By` line, reachable through the pull request pages)
 - [x] 8.3 Credit and licence notices for any third-party material actually redistributed (the plugin redistributes none; this repository keeps unmodified copies of the OpenSpec and mattpocock/skills skills as development tooling, and `NOTICE` and the README say so and reproduce their notices)
 - [ ] 8.4 Public release with a version tag and changelog
