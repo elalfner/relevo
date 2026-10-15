@@ -2,6 +2,8 @@
 
 **An automatic issue-to-merge workflow where an agent builds and people verify.**
 
+English · [Español](README.es.md)
+
 > *Relevo* is Spanish for "relay". Every step of the workflow is a handoff: the agent passes the baton to a person, and that person passes it to a peer.
 
 > **Status: early development.** All the commands below exist. The solo cycle (`go`, `review`, `ship`) has run once on a real repository and a real Android device; the team features (peer review, review reminders and escalation, reviewer selection) are covered by tests only and have not run against a live team yet. See [pilot findings](docs/pilot-findings.md).
@@ -33,6 +35,34 @@ Writing code is no longer the slow part. Verifying it is. Relevo puts the agent 
 - **Pull, not push.** A work-in-progress limit per person keeps the agent from burying the team in unreviewed branches.
 - **Humans decide.** Approving and merging are explicit human acts, enforced by branch protection, never by a prompt alone.
 - **Every handoff is one message** that says what happened, what is expected of you, and which command to run next.
+
+## See it work
+
+A real run on the [sandbox](https://github.com/elalfner/relevo-sandbox), a small Flutter app, for [issue #5](https://github.com/elalfner/relevo-sandbox/issues/5), "Show the build number". One person played every role.
+
+| Step | The person | Relevo | Time |
+|---|---|---|---|
+| 1 | thinks the idea through (the exploration and grilling that `/relevo:think` runs) and approves the issue text | explores the code, asks until every decision is made, and drafts the issue: scenarios, edge cases and the new vocabulary in a `Documentation` section | a conversation |
+| 2 | labels the issue `relevo:ready` | the light `decide` job runs the gates and claims the issue | 17 s |
+| 3 | nothing | the `build` job writes the specification, the code and the tests, and QA checks them | 3 min 35 s |
+| 4 | reads the hand-off and runs `/relevo:review 5` on a phone | captures screens, audits the log, opens the [pull request](https://github.com/elalfner/relevo-sandbox/pull/16) | a few minutes |
+| 5 | runs `/relevo:ship 5` and confirms | merges, archives the specification, closes the issue | seconds |
+
+The hand-off the agent left on the issue, shortened:
+
+```
+@elalfner #5 "Show the build number" is built ✅
+
+What happened: 11 of 11 tasks done, QA passed.
+Branch: feature/5-show-the-build-number
+What to test: 8 scenarios (checklist below)
+Riskiest area, check it first: The real build number from an APK through the
+Android package_info_plus plugin (tests only use the mock), and how the two
+texts look on a small physical device.
+Your next step: /relevo:review 5
+```
+
+The glossary entries that came out of the conversation travelled in the issue and arrived in the same pull request as the feature, so nobody committed documentation by hand. Peer review, reminders and reviewer selection need a second person and were not part of this run.
 
 ## Commands
 
