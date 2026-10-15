@@ -126,23 +126,18 @@ export function gatherFacts(p) {
   f.openspecRootTracked = tryRun(() => String(p.tool('git', ['ls-files', 'openspec'])).trim().length > 0, false);
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
 
+  // Workflows: what runs on GitHub is what is on the default branch, not what is in the working copy, so once the
+  // repository is known they are read from there. `present` says whether the file is where it has to be; `local`
+  // and `remote` say where it is.
   f.workflows = {};
+  let texts = {};
   WORKFLOW_FILES.forEach((file) => {
-    f.workflows[file] = { present: p.exists(`.github/workflows/${file}`) };
+    const local = p.exists(`.github/workflows/${file}`);
+    f.workflows[file] = { present: local, local, remote: null };
+    if (local) texts[file] = p.read(`.github/workflows/${file}`);
   });
-  const goText = f.workflows['relevo-go.yml'].present ? p.read('.github/workflows/relevo-go.yml') : '';
-  const marketplace = (/^\s*plugin_marketplaces:\s*(.+?)\s*$/m.exec(goText) ?? [])[1] ?? null;
-  // A URL that carries a credential (x-access-token:...@) can already be cloned by the runner.
-  f.pluginMarketplaceHasToken = marketplace !== null && /^https:\/\/.*@github\.com\//.test(marketplace);
-  f.pluginMarketplace = marketplace;
-  // Workflows that check out the plugin repository for its scripts: do they pass a token that can read it?
-  f.pluginCheckouts = [];
-  WORKFLOW_FILES.filter((file) => f.workflows[file].present).forEach((file) => {
-    const text = p.read(`.github/workflows/${file}`);
-    const m = /repository:\s*([\w.-]+\/[\w.-]+)\s*\n([\s\S]*?)path:\s*\.relevo-plugin/.exec(text);
-    if (m) f.pluginCheckouts.push({ file, repo: m[1], hasToken: /\n\s*token:/.test(`\n${m[2]}`) });
-  });
-  f.hasCi = tryRun(() => p.listDir('.github/workflows').some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-')), false);
+  let names = tryRun(() => p.listDir('.github/workflows'), []);
+  f.workflowSource = 'working copy';
 
   if (f.repo && f.ghAuth) {
     const api = (path, paginate = false) => JSON.parse(p.gh(paginate ? ['api', '--paginate', '--slurp', path] : ['api', path]));
@@ -184,11 +179,48 @@ export function gatherFacts(p) {
       const found = wf.find((w) => w.path === `.github/workflows/${file}`);
       f.workflows[file].enabled = found ? found.state === 'active' : null;
     });
+    const ref = encodeURIComponent(f.defaultBranch);
+    let remoteNames = null;
+    try {
+      remoteNames = api(`repos/${f.repo}/contents/.github/workflows?ref=${ref}`).map((e) => e.name);
+    } catch (err) {
+      if (/404|Not Found/i.test(String(err.stderr ?? err.message ?? err))) remoteNames = [];
+    }
+    if (remoteNames !== null) {
+      names = remoteNames;
+      texts = {};
+      WORKFLOW_FILES.forEach((file) => {
+        const remote = remoteNames.includes(file);
+        f.workflows[file].remote = remote;
+        f.workflows[file].present = remote;
+        if (remote) texts[file] = tryRun(() => Buffer.from(api(`repos/${f.repo}/contents/.github/workflows/${file}?ref=${ref}`).content, 'base64').toString('utf8'), '');
+      });
+      f.workflowSource = `default branch (${f.defaultBranch})`;
+    }
+    derivePluginFacts();
     const plugin = f.pluginMarketplace && /^https:\/\/(?:.*@)?github\.com\/([^/@\s]+\/[^/@\s]+?)(?:\.git)?$/.exec(f.pluginMarketplace);
     const slug = plugin ? plugin[1] : f.pluginCheckouts[0]?.repo;
     f.pluginRepoPrivate = slug ? tryRun(() => api(`repos/${slug}`).private, null) : null;
+  } else {
+    derivePluginFacts();
   }
   return f;
+
+  // What the workflows say about the plugin repository, and whether a CI workflow exists (closes over texts, names).
+  function derivePluginFacts() {
+    const goText = texts['relevo-go.yml'] ?? '';
+    const marketplace = (/^\s*plugin_marketplaces:\s*(.+?)\s*$/m.exec(goText) ?? [])[1] ?? null;
+    // A URL that carries a credential (x-access-token:...@) can already be cloned by the runner.
+    f.pluginMarketplaceHasToken = marketplace !== null && /^https:\/\/.*@github\.com\//.test(marketplace);
+    f.pluginMarketplace = marketplace;
+    // Workflows that check out the plugin repository for its scripts: do they pass a token that can read it?
+    f.pluginCheckouts = [];
+    Object.entries(texts).forEach(([file, text]) => {
+      const m = /repository:\s*([\w.-]+\/[\w.-]+)\s*\n([\s\S]*?)path:\s*\.relevo-plugin/.exec(text);
+      if (m) f.pluginCheckouts.push({ file, repo: m[1], hasToken: /\n\s*token:/.test(`\n${m[2]}`) });
+    });
+    f.hasCi = names.some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-'));
+  }
 }
 
 // ---------- checks
@@ -274,9 +306,10 @@ export function runChecks(f) {
   Object.entries(f.workflows).forEach(([file, w]) => {
     const required = REQUIRED_WORKFLOWS.has(file);
     const bad = (m, fix) => r.push(required ? fail(`automation.workflow.${file}`, m, fix) : warn(`automation.workflow.${file}`, m, fix));
-    if (!w.present) bad(`${file} is not installed`, 'run /relevo:init to copy it into .github/workflows/');
+    if (!w.present && w.local && w.remote === false) bad(`${file} is only in your working copy, not on the default branch, and a workflow only runs from there`, 'commit it and push it to the default branch (through a pull request if the branch is protected)');
+    else if (!w.present) bad(`${file} is not installed`, 'run /relevo:init to copy it into .github/workflows/');
     else if (w.enabled === false) bad(`${file} is disabled`, 'enable it in the Actions tab');
-    else if (w.enabled === null) r.push(warn(`automation.workflow.${file}`, `${file} is in the repository but not on GitHub yet`, 'commit and push it to the default branch'));
+    else if (w.enabled === null) r.push(warn(`automation.workflow.${file}`, `${file} is on the default branch but GitHub does not list it yet`, 'check the Actions tab, or run doctor again in a minute'));
     else r.push(pass(`automation.workflow.${file}`, `${file} is installed and enabled`));
   });
   r.push(f.hasCi ? pass('automation.ci', 'an objective CI check exists') : fail('automation.ci', 'no CI workflow other than Relevo\'s was found; QA needs an objective check', 'add a workflow that runs the project\'s analysis and tests on pull requests'));
