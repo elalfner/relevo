@@ -11,6 +11,6 @@
   "scripts": {
     "test": "node --test",
     "validate:plugin": "claude plugin validate .",
-    "validate:spec": "openspec validate relevo-v1"
+    "validate:spec": "openspec validate --all"
   }
 }

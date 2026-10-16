@@ -80,3 +80,43 @@ test('the CLI exits 0 for a good draft, 1 for a bad one, 2 for bad arguments', (
   assert.equal(run().status, 2);
   assert.equal(run('--title', 'x', '--body-file', join(dir, 'missing.md')).status, 2);
 });
+
+// ---------- the optional Documentation section
+
+const DOC_SECTION = `
+## Documentation
+
+- Add these entries to \`GLOSSARY.md\`, under its existing heading, after the existing ones, exactly as written. They are vocabulary only; nothing else in that file changes.
+
+**Build number**:
+The number after the \`+\` in the version of pubspec.yaml, shown in the app bar subtitle.
+_Avoid_: Build label, build
+`;
+
+test('Scenario: Issue with the section - the check passes and counts only the scenarios and edge cases', () => {
+  const without = checkIssueDraft({ title: 'Birthday list', body: GOOD });
+  const body = GOOD.replace('\nDepends-on: #12\n', `${DOC_SECTION}\nDepends-on: #12\n`);
+  const withDoc = checkIssueDraft({ title: 'Birthday list', body });
+  assert.equal(withDoc.ok, true, withDoc.problems.join('; '));
+  assert.equal(withDoc.scenarios.length, without.scenarios.length);
+  assert.equal(withDoc.edgeCases.length, without.edgeCases.length);
+  assert.deepEqual(withDoc.dependsOn, without.dependsOn);
+});
+
+test('an issue without the section stays valid', () => {
+  assert.equal(checkIssueDraft({ title: 'Birthday list', body: GOOD }).ok, true);
+});
+
+test('a Documentation section that still has the template placeholders is rejected', () => {
+  const body = GOOD.replace('\nDepends-on: #12\n', '\n## Documentation\n\n**<term>**:\n<definition>\n_Avoid_: <words to avoid>\n\nDepends-on: #12\n');
+  const r = checkIssueDraft({ title: 'Birthday list', body });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /template text: .*<term>/);
+});
+
+test('the Documentation section never hides a missing edge case', () => {
+  const body = `## Scenarios\n- **WHEN** a\n- **THEN** b\n${DOC_SECTION}`;
+  const r = checkIssueDraft({ title: 'Birthday list', body });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /edge case/i);
+});

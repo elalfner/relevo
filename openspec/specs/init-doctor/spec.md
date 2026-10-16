@@ -1,4 +1,28 @@
-## ADDED Requirements
+# init-doctor Specification
+
+## Purpose
+TBD - created by archiving change check-plugin-token-secret. Update Purpose after archive.
+## Requirements
+### Requirement: Doctor checks the plugin credential secret
+When the plugin repository is private, `doctor` SHALL check that the repository has a secret named `RELEVO_PLUGIN_TOKEN` and SHALL report a failure, with the fix next to it, when it does not. The check SHALL read secret names only, never values. It SHALL NOT report anything when the plugin repository is public, when its visibility could not be determined, or when the repository secrets could not be listed.
+
+#### Scenario: Private plugin repository and no secret
+- **WHEN** the plugin repository is private and the repository secrets do not include `RELEVO_PLUGIN_TOKEN`
+- **THEN** `doctor` reports a failed check `automation.plugin-secret`
+- **AND** its fix says to store a read-only token under that name and that a secret defined at organization level is not visible to this check
+
+#### Scenario: Private plugin repository and the secret exists
+- **WHEN** the plugin repository is private and the repository secrets include `RELEVO_PLUGIN_TOKEN`
+- **THEN** `doctor` reports a passed check `automation.plugin-secret`
+
+#### Scenario: Public plugin repository
+- **WHEN** the plugin repository is public
+- **THEN** `doctor` reports no `automation.plugin-secret` check, whether or not the secret exists
+
+#### Scenario: Visibility or secrets cannot be read
+- **WHEN** the plugin repository's visibility is unknown, or the repository secrets could not be listed
+- **THEN** `doctor` reports no `automation.plugin-secret` check
+- **AND** the existing warning about unreadable secrets still appears when the list failed
 
 ### Requirement: Init shows a plan first
 `init` SHALL show the full list of changes it intends to make and apply them only after the person confirms.
@@ -82,6 +106,17 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **WHEN** the platform refuses to report branch protection (for example a private repository on a free plan)
 - **THEN** `doctor` warns that approval and merge are then enforced only by the written confirmation in `ship`
 
+### Requirement: Doctor judges the workflows that run
+`doctor` SHALL read the workflow files from the repository's default branch on GitHub, because that is what runs, and not from the working copy. A workflow that exists only in the working copy SHALL be reported as not on the default branch, with the fix of pushing it there (through a pull request when the branch is protected). When the default branch cannot be read, `doctor` SHALL fall back to the working copy.
+
+#### Scenario: Fixed locally, not on the default branch
+- **WHEN** a workflow was corrected in the working copy but the default branch still has the old version
+- **THEN** `doctor` judges the old version and reports its failure
+
+#### Scenario: Only in the working copy
+- **WHEN** a Relevo workflow file exists locally and not on the default branch
+- **THEN** `doctor` reports that it only exists in the working copy and must be pushed to the default branch
+
 ### Requirement: Doctor checks automation readiness
 `doctor` SHALL check that the API key secret exists (without reading it), that workflows are installed and enabled, and that an objective CI check exists.
 
@@ -94,15 +129,11 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **THEN** `doctor` reports all green
 
 ### Requirement: Required external tools
-Relevo SHALL declare its external dependencies: the OpenSpec command-line tool (Node.js 20.19 or newer), `git`, the platform toolchain, and for `review` the device bridge. It SHALL also declare the skills that `think` invokes: `openspec-explore`, `grill-with-docs`, `grilling` and `domain-modeling`. `doctor` SHALL detect each one and show the exact install command for what is missing. For each skill found as a folder, `doctor` SHALL also read its frontmatter and, when it sets `disable-model-invocation`, report that the person must launch it by hand; this is a notice, not a failure.
+Relevo SHALL declare its external dependencies: the OpenSpec command-line tool (Node.js 20.19 or newer), `git`, the platform toolchain, and for `review` the device bridge. It SHALL also declare the skills that `think` invokes: `openspec-explore`, `grill-with-docs`, `grilling` and `domain-modeling`. `doctor` SHALL detect each one and show the exact install command for what is missing.
 
 #### Scenario: Skill missing
 - **WHEN** a skill that `think` invokes, such as `domain-modeling`, is not installed
 - **THEN** `doctor` fails that check and shows the install command
-
-#### Scenario: Skill reserved for the person
-- **WHEN** `grill-with-docs` is installed and its frontmatter sets `disable-model-invocation`
-- **THEN** `doctor` passes that check with a notice that `/grill-with-docs` must be run by hand, and does not fail
 
 #### Scenario: OpenSpec missing
 - **WHEN** the OpenSpec tool is not installed
@@ -125,3 +156,4 @@ Relevo SHALL declare its external dependencies: the OpenSpec command-line tool (
 #### Scenario: Running doctor
 - **WHEN** `doctor` runs
 - **THEN** no write operation is performed
+

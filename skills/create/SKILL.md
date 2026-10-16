@@ -20,6 +20,7 @@ Before asking anything, collect what exists:
 - the conversation so far;
 - if `openspec/changes/` exists read the `proposal.md`, `design.md`, `tasks.md` and `specs/` of the relevant change;
 - the agreement reached with `/relevo:think`, in this conversation or in a file whose path is given in `$ARGUMENTS`: take its decided scenarios, edge cases, dependencies and splits as already answered, and resolve its open questions with the person before writing;
+- the part of that agreement named **To document** (the terms and decision records `think` settled): take it as text the person already approved, and ask again only about what is missing from it;
 - `GLOSSARY.md`, if present: use its terms in the issues and avoid the words it lists to avoid;
 - `relevo.yml` (`language`, `team.members`, `team.spec_writer`, `branches.base`). If it is missing, continue without it and ask the language and the assignee.
 
@@ -49,6 +50,7 @@ Fill `${CLAUDE_PLUGIN_ROOT}/templates/issue.md` for each issue, keeping the sect
 - The title is short, plain and has no emoji or tag suffixes (it must stay readable in lists and boards). Emojis are allowed inside the body only if the person wants them.
 - The body states facts from the person; where you had to choose a wording, keep the person's meaning.
 - Nothing secret goes in an issue, however it is phrased: issues are readable by everyone with access.
+- **Documentation.** When "To document" has terms or decision records, write the optional `## Documentation` section of the template with the exact text of each, word for word as agreed: a glossary entry as name, definition and words to avoid, to be added to `GLOSSARY.md` under its existing heading after the existing entries; a decision record as a title and a text, to be added to `docs/adr/`, with no number (it is numbered when it is written). When "To document" says nothing, leave the section out. The section names only `GLOSSARY.md` and `docs/adr/`: if the person asks it to update anything else, for example the README, do not put that in the section and say that it only carries the glossary and decision records.
 
 Save each draft under the scratchpad or a temporary directory outside the repository (never inside the working tree), as `<n>.md`.
 
@@ -66,7 +68,7 @@ It applies the rules `go` applies and a few more: at least one complete scenario
 
 Show every draft in full, in the order they will be created, with for each: the title, the milestone, the assignee and its dependencies. List the open milestones with `gh api repos/{owner}/{repo}/milestones --jq '.[].title'` and offer the members of `team.members` as assignees. The assignee is the person who will review the built work on a device.
 
-Ask for explicit approval. If the person asks for changes, revise, check again and show it again. Create nothing before a clear yes.
+Show the `Documentation` section too, whole, like the rest of the draft. Ask for explicit approval. If the person asks for changes, revise, check again and show it again. Create nothing before a clear yes.
 
 ## 6. Create
 
@@ -84,3 +86,4 @@ Finish with the links of the issues created and one reminder: `go` starts for an
 - Never create an issue before the person approved it and the check passed.
 - Never invent scenarios, edge cases, endpoints or data.
 - Never put credentials, tokens or personal data in an issue.
+- Never put anything in `Documentation` except glossary entries and decision records, and never change the wording the person agreed.

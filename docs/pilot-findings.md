@@ -79,7 +79,7 @@ The template installs Node and OpenSpec only. QA runs `flutter analyze` and `flu
 | Parameter | Template | Used in the pilot | Why |
 |---|---|---|---|
 | `anthropic_api_key` | `${{ secrets.ANTHROPIC_API_KEY }}` | not used | A subscription token was used instead |
-| `claude_code_oauth_token` | not present | `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` | Run on a Pro subscription. Accepted together with `--max-budget-usd` and `--max-turns` |
+| `claude_code_oauth_token` | not present | `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` | Run on a subscription. Accepted together with `--max-budget-usd` and `--max-turns` |
 | `plugin_marketplaces` | plain URL | URL with a read-only token | F1 |
 | `show_full_output` | not present | `true` | F4, only while piloting |
 | step `env: CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` | not present | `'1'` | F2 |
@@ -129,3 +129,89 @@ A built issue costs about 0.4 USD and takes about 4 minutes of agent time for a 
 6. **Filter the log audit by process** of the app under review.
 7. **Add a guard against the subagent problem in `go`'s own gates**: if the dev agent report is missing when the skill is about to end, take the failure path (the skill now says so; a script check would make it testable).
 8. Decide how to enforce human approval on repositories where rulesets are unavailable (task 5.3), since this pilot ran without them.
+
+---
+
+# Second pilot: the full cycle with the queue, one person (task 4.8, partial)
+
+Date: 2026-10-14 and 2026-10-15. Repository: the same sandbox, now public, with `review.mode: none`, one person, `built_unreviewed_per_person: 1`, a milestone with a due date. The plugin was installed the way another person would install it (`claude plugin marketplace add`, `claude plugin install`). Setup was done with `init` and checked with `doctor`.
+
+## Verdict
+
+Four issues went from `ready` to merged, two of them started by the queue and not by a person: #2 was reviewed and shipped; #4 sat `queued` while #2 was waiting, started by itself once #2 merged (after the fixes below), was built, reviewed and shipped; #3 came back `needs-spec`, was corrected, queued, started by the queue, built, reviewed and shipped. #5 was not started because it has no assignee, and said so in a comment. Two `dev` → `main` promotions were done with merge commits. `status` showed "Nothing is waiting on you" at the end.
+
+Not tested, because it needs a second person: approval and merge by someone other than the author, `peer` and `roles` modes, the review reminder and escalation, the review-event workflow, reviewer selection and `needs-reviewer`. They are covered by unit tests only. Task 4.8 was closed on 2026-10-15 with this one-person pilot so that `relevo-v1` can be archived; whatever a team finds in those parts is corrected in a follow-up change.
+
+## What `init` and `doctor` found and did on a real repository
+
+- `doctor` run against the sandbox listed exactly what was missing (three skills, the workflows, `evidence/` in `.gitignore`, the model secret, a CI workflow) and went "All green" after the setup.
+- `init apply` created labels, workflows and the ignore line, and two rulesets after the files were pushed.
+- A second `init plan` still offered to turn on secret scanning and to ask for the credential although both existed: fixed, `init` now recognises them.
+- Rulesets stop everyone, the owner included, from pushing to the base and release branches. A workflow only runs from the default branch. So the files must be pushed first and the rules applied after: `init apply --skip protection,push-scope`, then `init apply` again.
+- Secret scanning was reported as set by `init` but read back as disabled once; repeating the same call enabled it. Cause unknown (possibly a delay). `doctor` now reads it back.
+
+## What failed, with the exact error
+
+### G1. The queue, review, SLA and digest workflows could not clone the plugin (blocking)
+
+```
+remote: Repository not found.
+fatal: repository 'https://github.com/<owner>/relevo/' not found
+```
+
+Those four workflows check out the plugin repository for its scripts with the default token, which cannot read another private repository. This is F1 of the first pilot again, in four more files. Fixed: they pass `token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}`. `doctor` now fails when a workflow checks out a private plugin repository without a token.
+
+### G2. The agent runner refuses a build started by the queue (blocking)
+
+```
+Action failed with error: Workflow initiated by non-human actor: github-actions (type: Bot).
+Add bot to allowed_bots list or use '*' to allow all bots.
+```
+
+The queue starts builds with `gh workflow run`, so the actor is the Actions bot. The build failed after 44 seconds, before it claimed the issue, so the issue stayed `queued` and the queue would have dispatched it again every 30 minutes. Fixed: `allowed_bots: github-actions` (that bot only, never `*`), and the final report step also moves an issue left `queued` by a failed job to `qa-failed`.
+
+### G3. Which branch a workflow runs from
+
+Workflows started by `issues` events, schedules and `workflow_dispatch` run the file on the **default branch**; workflows started by `pull_request` run the file on the **pull request's base branch**. A fix merged only into `dev` repaired `relevo-review` but not the queue. Every workflow change has to reach `main` and `dev`; with squash merges `dev` and `main` diverge, so promotions use merge commits.
+
+### G4. `doctor` reported a false failure
+
+Once, `doctor` said `dev` and `main` did not require a pull request while both rulesets were active; a second run passed. A failed read of the rulesets was being treated as "not protected". Fixed: a failed read is a warning. It also confused a `plugin_marketplaces` URL that carries a token with an unreachable one. Open: `doctor` reads the workflows in the working copy, not the ones on the default branch, so it did not notice that `main` still had the old files.
+
+### G5. Two builds were dispatched for the same issue (open)
+
+When #3 was relabelled, two queue runs started (one per label event), 15 seconds apart. Both decided `{"start":[3]}` and each dispatched `relevo-go` for #3. The queue only decides; the issue becomes `building` several minutes later, when the build job has installed Flutter and OpenSpec and reaches `go-plan --claim`. The second queue run therefore still saw #3 as `queued`. The per-issue concurrency group made the second build wait for the first and then finish quickly (it found the issue already built), so nothing was built twice, but it cost a runner start and about a minute of Actions time. Options: the queue marks the issue `building` when it dispatches (then `go` must accept a dispatched issue that is already `building`), or the queue checks for a `relevo-go` run already queued or in progress. Not done.
+
+### G6. A comment was posted twice (fixed)
+
+After the gates moved to the light `decide` job, labelling #5 `relevo:ready` (no assignee) produced the same comment twice, one second apart. The label event started `relevo-go` and `relevo-queue` together, and both evaluated the same ready issue and applied the same decision. The queue could also have dispatched a build for an issue whose own `go` run was already starting. Fixed: the queue acts only on issues already `queued` or `blocked`; a freshly ready issue belongs to the `go` run its label started. The light job took 23 seconds in total for this outcome (19 seconds in `decide`, `build` skipped, no Flutter install).
+
+## Times
+
+| Run | Outcome | Time |
+|---|---|---|
+| Queue evaluation | decision and dispatch | about 15 seconds |
+| Build of #4, started by the queue | `built` | about 4 min 40 s |
+| Build of #3, started by the queue | `built` | about 3 min 40 s |
+| Duplicate build of #3 (G5) | ended quickly, issue already built | about 1 min of work after waiting 3 min |
+| Run that does not build (label change, no `ready`) | skipped | 1 to 3 seconds |
+| `ready` on an issue with nothing to build, after the two-job split (G6) | `decide` only, `build` skipped | 23 seconds |
+| `go` run that did not start a build after the setup steps | no build | about 1 min |
+
+Every label change starts two queue runs (the label is removed and another is added); both finish in seconds. No cost per run was read from the logs this time.
+
+## Smaller observations
+
+- The runner's setup (Flutter, OpenSpec, plugin) dominates the time of a run that does not build. A light first job that only decides, and a heavy second job that builds only on `start`, would remove that cost; not done.
+- A queue run triggered by a closed issue or a label change evaluates all candidates, so one build can follow another label event within seconds.
+- `relevo-go` `skipped` runs are expected: the job `if` rejects every label that is not `relevo:ready`.
+- The `evidence/` folder stays on the person's machine with the `attach_to_pr` policy; the person decides whether to drag the screenshots into the pull request.
+- Promoting `dev` to `main` is a separate pull request, as designed; `ship` does not do it.
+- A repository that has rulesets and is public makes `trust: public` the right setting, but that requires a review mode other than `none`, so a one-person pilot keeps `trust: private-team` and is only safe while one person has write access.
+
+## Proposed changes (not done here)
+
+1. Make `doctor` read the workflow files from the default branch on GitHub.
+2. Remove the duplicate dispatch (G5). Reduced by task 3.12 (claiming happens in the light job, within seconds); not removed entirely.
+3. Split `relevo-go.yml` into a light job that runs the gates and a heavy job that builds only when the decision is `start`. Done in task 3.12, not yet seen running on GitHub.
+4. Re-run this pilot with a second person to cover the untested parts.
