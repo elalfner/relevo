@@ -1,5 +1,5 @@
 // Hand-off messages. Implements the hand-off requirements of
-// openspec/changes/relevo-v1/specs/issue-lifecycle/spec.md.
+// openspec/specs/issue-lifecycle/spec.md.
 //
 // A line is dropped when any of its {{placeholders}} has no value, so optional
 // parts (riskiest area, due time, log link) simply disappear when unknown.

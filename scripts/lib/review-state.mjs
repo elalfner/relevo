@@ -1,5 +1,5 @@
 // State of one on-device review, and the rule that decides whether a pull request may be opened.
-// Implements "Pull request only after verification" of openspec/changes/relevo-v1/specs/review/spec.md.
+// Implements "Pull request only after verification" of openspec/specs/review/spec.md.
 
 export const STATUSES = ['pending', 'ok', 'fail'];
 

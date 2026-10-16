@@ -1,5 +1,5 @@
 // Review reminder and escalation. Implements "Review reminders and escalation" of
-// openspec/changes/relevo-v1/specs/issue-lifecycle/spec.md.
+// openspec/specs/issue-lifecycle/spec.md.
 // The GitHub client is injected (`gh(args) -> stdout`), so everything here is testable without a network.
 
 import { issueFromBranch } from './branch.mjs';

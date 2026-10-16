@@ -1,5 +1,5 @@
 // Decides what `go` does with every candidate issue. Pure function: data in, decisions out.
-// Implements openspec/changes/relevo-v1/specs/go/spec.md (trigger, gates, queue, limits).
+// Implements openspec/specs/go/spec.md (trigger, gates, queue, limits).
 //
 // Input:
 //   config     effective configuration (see config.mjs)

@@ -1,5 +1,5 @@
 // `doctor`: reports every check as pass, fail or warn, with a fix next to each failure.
-// Implements openspec/changes/relevo-v1/specs/init-doctor/spec.md.
+// Implements openspec/specs/init-doctor/spec.md.
 //
 // Two layers, both read-only:
 //   gatherFacts(probes)  asks the machine and GitHub (through injected probes) and returns plain facts

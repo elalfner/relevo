@@ -1,5 +1,5 @@
 // Chooses who reviews a pull request.
-// Implements "Reviewer selection" of openspec/changes/relevo-v1/specs/issue-lifecycle/spec.md.
+// Implements "Reviewer selection" of openspec/specs/issue-lifecycle/spec.md.
 
 import { resolveLabelNames } from './labels.mjs';
 

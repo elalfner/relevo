@@ -1,5 +1,5 @@
 // Schema, defaults and validation for relevo.yml.
-// Implements openspec/changes/relevo-v1/specs/configuration/spec.md.
+// Implements openspec/specs/configuration/spec.md.
 
 import { parse, YamlLiteError } from './yaml-lite.mjs';
 import { LABEL_KEYS } from './labels.mjs';

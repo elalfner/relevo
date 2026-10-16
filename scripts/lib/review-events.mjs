@@ -1,5 +1,5 @@
 // Keeps the lifecycle label in step with pull request reviews. Implements "Review events update the label"
-// of openspec/changes/relevo-v1/specs/issue-lifecycle/spec.md. Pure: data in, decision out.
+// of openspec/specs/issue-lifecycle/spec.md. Pure: data in, decision out.
 //
 // event  { kind: 'review', state: 'changes_requested' | 'approved' | 'commented' | ..., reviewer, body, url }
 //        { kind: 'push' }

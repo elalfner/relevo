@@ -45,7 +45,7 @@ test('the checklist has one line per scenario, ticked when confirmed', () => {
 });
 
 test('it reads the real specs of this project: one item per scenario heading', () => {
-  const dir = new URL('../openspec/changes/relevo-v1', import.meta.url).pathname;
+  const dir = new URL('../openspec', import.meta.url).pathname; // its specs/ folder holds the main specifications
   const items = checklistFromChange(dir);
   let headings = 0;
   const walk = (d) => execFileSync('find', [d, '-name', 'spec.md'], { encoding: 'utf8' }).trim().split('\n').forEach((f) => {

@@ -1,5 +1,5 @@
 // Edits tasks.md of a change: appends a section of corrections for a review iteration.
-// Implements "Specification first" of openspec/changes/relevo-v1/specs/fix/spec.md.
+// Implements "Specification first" of openspec/specs/fix/spec.md.
 
 const SECTION_RE = /^##\s+(\d+)\.\s+(.*)$/;
 const ITERATION_RE = /Review corrections \[Iteration (\d+)\]/;

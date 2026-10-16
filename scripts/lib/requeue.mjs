@@ -1,4 +1,4 @@
-// Queue re-evaluation. Implements "Queue re-evaluation" of openspec/changes/relevo-v1/specs/go/spec.md.
+// Queue re-evaluation. Implements "Queue re-evaluation" of openspec/specs/go/spec.md.
 // The planner decides; this module only says which issues may be handed to a build run now.
 
 /**

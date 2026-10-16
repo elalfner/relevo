@@ -1,5 +1,5 @@
 # Checks every pull request and every push to main: the tests (which include the validation of the skills'
-# frontmatter, the agents and the shipped relevo.yml) and the OpenSpec changes.
+# frontmatter, the agents and the shipped relevo.yml) and the OpenSpec specifications and changes.
 name: ci
 
 on:
@@ -33,12 +33,7 @@ jobs:
         env:
           OPENSPEC_TELEMETRY: '0'
 
-      - name: Validate the OpenSpec changes
+      - name: Validate the OpenSpec specifications and changes
         env:
           OPENSPEC_TELEMETRY: '0'
-        run: |
-          for dir in openspec/changes/*/; do
-            name=$(basename "$dir")
-            [ "$name" = "archive" ] && continue
-            openspec validate "$name"
-          done
+        run: openspec validate --all

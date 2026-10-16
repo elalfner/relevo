@@ -1,5 +1,5 @@
 // Decides whether a pull request may be merged and what the person must still confirm.
-// Implements openspec/changes/relevo-v1/specs/ship/spec.md.
+// Implements openspec/specs/ship/spec.md.
 //
 // `pr` is the JSON of `gh pr view --json number,state,isDraft,mergeable,title,author,reviews,statusCheckRollup,headRefName,baseRefName`.
 

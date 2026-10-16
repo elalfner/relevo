@@ -1,5 +1,5 @@
 // The spec archive is committed after approval, so it may touch nothing but the specifications folder.
-// Implements "Archive the specification just before merging" of openspec/changes/relevo-v1/specs/ship/spec.md.
+// Implements "Archive the specification just before merging" of openspec/specs/ship/spec.md.
 
 /**
  * paths   every path changed in the working tree by the archive (from `git status --porcelain`)
