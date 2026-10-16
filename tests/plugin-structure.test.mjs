@@ -101,8 +101,17 @@ test('every workflow template has a name, an event, a job and least-privilege pe
 test('the repository CI runs the tests and validates the OpenSpec specifications and changes', () => {
   const ci = read('.github/workflows/ci.yml');
   assert.match(ci, /run: npm test/);
+  assert.match(ci, /branches: \[dev, main\]/);
   assert.match(ci, /run: openspec validate --all/);
   assert.match(ci, /^permissions:\n {2}contents: read/m);
   assert.doesNotMatch(ci, /pull_request_target/);
   assert.match(ci, /OPENSPEC_TELEMETRY: '0'/);
+});
+
+test('CLAUDE.md tells every session to work on dev and to reach main only through a pull request', () => {
+  const rules = read('CLAUDE.md');
+  assert.match(rules, /Work on `dev`/);
+  assert.match(rules, /`main` is the release branch\. It only receives a pull request from `dev`/);
+  assert.match(rules, /Before every commit, check the branch/);
+  assert.match(rules, /Never add attribution/, 'the earlier rule is kept');
 });
