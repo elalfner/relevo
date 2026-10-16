@@ -25,7 +25,7 @@ test('frontmatter uses only documented fields and Claude never starts it on its 
 test('Scenario: Shape of the idea is clear - it runs openspec-explore and then grill-with-docs', () => {
   assert.ok(body.indexOf('## 2. Explore') < body.indexOf('## 3. Grill'));
   assert.match(body, /Invoke the `openspec-explore` skill with the Skill tool/);
-  assert.match(body, /Invoke the `grill-with-docs` skill with the Skill tool in the same conversation/);
+  assert.match(body, /If `grill-with-docs` is invocable, invoke it with the Skill tool in the same conversation/);
 });
 
 test('Scenario: Idea still vague - it stays in the exploration', () => {
@@ -35,7 +35,9 @@ test('Scenario: Idea still vague - it stays in the exploration', () => {
 test('it does not restate the rules of the skills it runs', () => {
   assert.match(body, /do not restate them, shorten them or override them/);
   assert.ok(!/frontier|tree of decisions|Recommended:/.test(body), 'the interview rules belong to grill-with-docs');
-  assert.ok(!/GLOSSARY\.md|docs\/adr/.test(body.replace(/\(glossary, decision records, OpenSpec artifacts\)/, '')), 'the language rules belong to grill-with-docs');
+  // The language rules belong to grill-with-docs; think names the glossary and the records only to redirect them.
+  const outside = body.replace(/\*\*One exception to its rules\.\*\*[\s\S]*?probing boundaries with concrete scenarios and checking the code\./, '').replace(/- Never write `GLOSSARY\.md` or anything under `docs\/adr\/`[^\n]*/, '');
+  assert.ok(!/GLOSSARY\.md|docs\/adr/.test(outside), 'the language rules belong to grill-with-docs');
 });
 
 test('Scenario: A skill is not installed - it stops and shows how to install them', () => {
@@ -66,9 +68,8 @@ test('Scenario: Keeping the agreement - the agreement file is written only on re
   assert.match(body, /agreement file only on request/);
 });
 
-test('Scenario: Hand-off - documentation is never committed and the files are named', () => {
-  assert.match(body, /Name the documentation files the session created or changed/);
-  assert.match(body, /not committed/);
+test('Scenario: Hand-off - OpenSpec artifacts the person asked for are named and reported as not committed', () => {
+  assert.match(body, /If the session created or changed OpenSpec artifacts at the person's request, name them and say they are not committed/);
 });
 
 test('think never builds, commits, pushes, creates issues or labels, and does not write an OpenSpec change itself', () => {
@@ -76,4 +77,51 @@ test('think never builds, commits, pushes, creates issues or labels, and does no
   assert.match(body, /Never run `openspec new change`/);
   const rest = body.replace(/Never write code, commit, push, create issues or apply labels\./g, '').replace(/Never run `openspec new change`[^\n]*/, '');
   assert.ok(!/gh issue create|git push|git commit|--add-label|openspec (new|instructions|archive)/.test(rest), 'think must not run those commands');
+});
+
+test('Scenario: The skill would update the glossary - think redirects that one step to the To document list', () => {
+  assert.match(body, /\*\*One exception to its rules\.\*\*/);
+  assert.match(body, /do \*\*not\*\* write it/);
+  assert.match(body, /Keep the entry in a list called "To document" instead/);
+  assert.match(body, /a settled term: its name, a definition of one or two sentences and the words to avoid/);
+  assert.match(body, /a decision record the person accepted: a title and its text, without a number/);
+  assert.match(body, /Everything else that skill does stays as it is/);
+});
+
+test('Scenario: Nothing to document / Hand-off - the agreement has a To document part and says nothing was written', () => {
+  assert.match(body, /part named \*\*To document\*\*, even when it is empty/);
+  assert.match(body, /To document: nothing/);
+  assert.match(body, /through `\/relevo:create`, and that `think` wrote nothing to the repository/);
+  assert.match(body, /Never write `GLOSSARY\.md` or anything under `docs\/adr\/`/);
+});
+
+test('the glossary and decision records are no longer reported as files think created', () => {
+  assert.ok(!/Name the documentation files the session created or changed \(glossary/.test(body));
+  assert.ok(!/glossary, decision records, OpenSpec artifacts/.test(body));
+});
+
+test('the exception keeps the rules for what an entry may hold', () => {
+  assert.match(body, /An entry is vocabulary only: no implementation details, no decisions, no general programming terms/);
+});
+
+test('Scenario: A skill is installed but reserved for the person - think does not stop, it tells reserved from missing', () => {
+  assert.match(body, /only a missing one stops `think`/);
+  assert.match(body, /\*\*Reserved for the person\.\*\*/);
+  assert.match(body, /`disable-model-invocation: true` line in the frontmatter of its `SKILL\.md`/);
+  assert.match(body, /It is installed, so do not stop/);
+  assert.match(body, /If the file cannot be read, treat the skill as invocable/);
+  assert.match(body, /a skill that is only reserved for the person is not missing/);
+});
+
+test('Scenario: Grilling skill is reserved for the person - think asks for the command and does not replicate the flow', () => {
+  assert.match(body, /If it is reserved for the person, which is how it is published, do \*\*not\*\* try to invoke it/);
+  assert.match(body, /do not run its interview yourself by another route/);
+  assert.match(body, /asks the person to run `\/grill-with-docs` in this same conversation/);
+  assert.match(body, /Never invoke a skill whose `SKILL\.md` sets `disable-model-invocation`, and never replace it by running its flow yourself/);
+});
+
+test('Scenario: Hand-off when the person launches the skill - the same message gives the next command and says nothing was written', () => {
+  assert.match(body, /Because you may not regain control when that skill ends, put the hand-off in that same message/);
+  assert.match(body, /they should run `\/relevo:create` in this conversation/);
+  assert.match(body, /stay in "To document", and that you wrote nothing to the repository/);
 });

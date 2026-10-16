@@ -1,5 +1,5 @@
 // Which state an issue returns to after a successful fix.
-// Implements "State is preserved" of openspec/changes/relevo-v1/specs/fix/spec.md.
+// Implements "State is preserved" of openspec/specs/fix/spec.md.
 
 import { LABELS, resolveLabelNames, transition } from './labels.mjs';
 

@@ -48,7 +48,7 @@ test('Scenario: Subagent in the background - the unattended run keeps subagents 
 
 test('Scenario: Run ends without an outcome - a final step always runs and moves the issue to qa-failed with the run link', () => {
   assert.match(workflow, /if: always\(\)/);
-  assert.ok(workflow.indexOf('anthropics/claude-code-action') < workflow.indexOf('Report a run that ended without an outcome'));
+  assert.ok(workflow.indexOf('anthropics/claude-code-action') < workflow.lastIndexOf('Report a run that ended without an outcome'), 'the build job reports after the agent step');
   assert.match(workflow, /grep -qxE 'relevo:\(ready\|building\)'/);
   assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
   assert.match(workflow, /RUN_URL: \$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/);
@@ -57,7 +57,7 @@ test('Scenario: Run ends without an outcome - a final step always runs and moves
 
 test('Scenario: Run ends with an outcome - the final step leaves the issue alone', () => {
   const guard = workflow.indexOf("grep -qxE 'relevo:(ready|building)'");
-  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed'));
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed', guard));
 });
 
 test('the final step uses the default labels of the template', () => {
@@ -87,5 +87,54 @@ test('Scenario: Dispatched run fails before claiming the issue - it is reported,
 
 test('Scenario: Run ends normally with the issue queued - nothing is reported', () => {
   const guard = workflow.indexOf('JOB_STATUS" != "success"');
-  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed'));
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed', guard));
+});
+
+// ---------- two jobs: a light gate and a heavy build
+
+const jobText = (name) => {
+  const start = workflow.indexOf(`\n  ${name}:\n`);
+  assert.ok(start !== -1, `job ${name} exists`);
+  const rest = workflow.slice(start + 1);
+  const next = rest.slice(1).search(/\n  [a-z-]+:\n/);
+  return next === -1 ? rest : rest.slice(0, next + 1);
+};
+
+test('Scenario: Issue not ready to build - only the light decide job runs, and it never installs a toolchain or starts the agent', () => {
+  const decide = jobText('decide');
+  assert.ok(!/flutter-action|install --global|claude-code-action/.test(decide.replace(/^\s*#.*$/gm, '')), 'decide must stay light');
+  assert.match(decide, /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --apply --claim --github-output "\$GITHUB_OUTPUT"/);
+  assert.match(decide, /timeout-minutes: 10/);
+  assert.match(decide, /action: \$\{\{ steps\.plan\.outputs\.action \}\}/);
+  assert.match(decide, /decision_b64: \$\{\{ steps\.plan\.outputs\.decision_b64 \}\}/);
+});
+
+test('Scenario: Gates pass - the build job runs only when the decision is start and receives it with the prompt', () => {
+  const build = jobText('build');
+  assert.match(build, /needs: decide/);
+  assert.match(build, /if: needs\.decide\.outputs\.action == 'start'/);
+  assert.match(build, /prompt: \/relevo:go \$\{\{ github\.event\.issue\.number \|\| inputs\.issue \}\} --decision \$\{\{ needs\.decide\.outputs\.decision_b64 \}\}/);
+  assert.match(build, /anthropics\/claude-code-action/);
+  assert.ok(workflow.indexOf('\n  decide:') < workflow.indexOf('\n  build:'));
+});
+
+test('the event gate is on decide, so build is skipped with it', () => {
+  const decide = jobText('decide');
+  assert.match(decide, /if: github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.label\.name == 'relevo:ready' && github\.event\.sender\.type == 'User'\)/);
+  assert.ok(!/^\s+if: github\.event_name/m.test(jobText('build')));
+});
+
+test('Scenario: The plugin cannot be cloned - decide reports it, because the issue is still ready or queued', () => {
+  const decide = jobText('decide');
+  assert.match(decide, /Report a run that ended without an outcome/);
+  assert.match(decide, /if: always\(\)/);
+  assert.match(decide, /grep -qxE 'relevo:\(ready\|queued\|building\)'/);
+  assert.match(decide, /token: \$\{\{ secrets\.RELEVO_PLUGIN_TOKEN \|\| github\.token \}\}/);
+  assert.match(decide, /\[ "\$JOB_STATUS" = "success" \]/);
+});
+
+test('least privilege: decide only reads contents, build is the one that can push', () => {
+  assert.match(workflow, /^permissions:\n {2}contents: read\n {2}issues: write\n {2}pull-requests: read\n/m);
+  assert.doesNotMatch(jobText('decide'), /contents: write|id-token/);
+  assert.match(jobText('build'), /permissions:\n {6}contents: write/);
 });

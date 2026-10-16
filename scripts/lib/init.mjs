@@ -1,5 +1,5 @@
 // `init`: builds the plan of everything that has to change, then applies it once the person confirms.
-// Implements openspec/changes/relevo-v1/specs/init-doctor/spec.md.
+// Implements openspec/specs/init-doctor/spec.md.
 //
 // planInit is pure: it compares the facts `doctor` gathers with what a configured repository looks like, so
 // running it again only lists what differs (idempotent). applyPlan carries items out through injected I/O.

@@ -1,4 +1,4 @@
-// What is waiting on whom. Implements openspec/changes/relevo-v1/specs/status/spec.md. Pure: data in, report out.
+// What is waiting on whom. Implements openspec/specs/status/spec.md. Pure: data in, report out.
 //
 // issues  [{ number, title, labels: [names], assignees: [logins], milestone: number | null }]   open Relevo issues
 // prs     [{ number, issue, url, author, reviewer, requested_at, approved, behind_by }]          open feature pull requests

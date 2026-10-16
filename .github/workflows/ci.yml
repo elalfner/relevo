@@ -1,0 +1,39 @@
+# Checks every pull request and every push to dev and main: the tests (which include the validation of the skills'
+# frontmatter, the agents and the shipped relevo.yml) and the OpenSpec specifications and changes.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests
+        run: npm test
+
+      - name: Install OpenSpec
+        run: npm install --global @fission-ai/openspec
+        env:
+          OPENSPEC_TELEMETRY: '0'
+
+      - name: Validate the OpenSpec specifications and changes
+        env:
+          OPENSPEC_TELEMETRY: '0'
+        run: openspec validate --all

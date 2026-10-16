@@ -90,6 +90,10 @@ Relevo uses OpenSpec to generate and archive change specifications. It is declar
 
 Generic names such as `ready` or `blocked` collide with labels a repository already uses. The defaults are `relevo:ready`, `relevo:built` and so on, and every name can be changed in `labels` of `relevo.yml`. Eleven labels in total: six states, four exits that replace the state, and `needs-reviewer`, which is added next to it.
 
+### D16. The gates run in a light job, the build in a heavy one
+
+`relevo-go.yml` has two jobs. `decide` needs only Node and the plugin's scripts (about half a minute): it runs the gates, claims the issue and comments on any outcome that is not a build. `build` installs the toolchain and runs the agent, and starts only when the decision is `start`; the decision travels in the prompt, base64-encoded so the issue title it contains is never read as an instruction. *Why*: before, every outcome paid for installing Flutter, OpenSpec and the plugin (one to two minutes) before the agent found there was nothing to build; and the issue was only claimed minutes after the queue dispatched it, so a second queue evaluation dispatched it again (pilot G5). Claiming in the light job shrinks that window to seconds, and a late duplicate dispatch ends in `decide`, cheaply. *Not removed*: two dispatches that arrive at the same moment can both start a `decide` job. *Alternative rejected*: leaving the gates inside the agent; it keeps the cost and ties a deterministic rule to a model run.
+
 ## Risks / Trade-offs
 
 - **The spec is a single point of failure.** A wrong issue is built confidently and QA checks against the same wrong spec. *Mitigation*: the spec gate, an `needs-spec` exit that returns the issue to its writer, and a metric for how often it is used.

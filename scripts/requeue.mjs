@@ -12,7 +12,8 @@ import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { applyDecisions, gather, realGh } from './lib/github.mjs';
 import { planGo } from './lib/plan.mjs';
-import { startable } from './lib/requeue.mjs';
+import { resolveLabelNames } from './lib/labels.mjs';
+import { ownedByQueue, startable } from './lib/requeue.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -38,7 +39,14 @@ if (arg('input')) {
   state = gather({ gh: realGh, repo, config });
 }
 
-const { decisions, summary } = planGo({ config, ...state });
+// The whole queue is planned so that the limits stay right, but the queue only acts on the issues that are
+// already waiting: a freshly ready issue is handled by the `go` run its label started.
+const { decisions: planned } = planGo({ config, ...state });
+const decisions = ownedByQueue(planned, state.issues, resolveLabelNames(config.labels));
+const summary = {};
+decisions.forEach((d) => {
+  summary[d.action] = (summary[d.action] ?? 0) + 1;
+});
 const dry = process.argv.includes('--dry-run') || Boolean(arg('input'));
 if (!dry) applyDecisions(decisions, { gh: realGh, repo, config });
 console.log(JSON.stringify({ start: startable(decisions), summary }));

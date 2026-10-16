@@ -20,6 +20,8 @@
 - [x] 3.5 Cloud workflow for `go` (label trigger, concurrency group, budget caps)
 - [x] 3.6 Pilot in a solo repository and record findings
 - [x] 3.9 `go` workflow: final step that reports a run which ended without an outcome (pilot proposal 1)
+- [x] 3.13 The queue acts only on `queued` and `blocked` issues, so a freshly ready issue is decided once, by its own `go` run (found in the sandbox: duplicated comment)
+- [x] 3.12 `go` workflow in two jobs: a light `decide` (gates and claim, outputs the decision) and a `build` that starts only on `start` and receives the decision; `go-plan --github-output`, skill reads `--decision`; reports a failure in either job (pilot G5 and proposal 3)
 - [x] 3.11 `go` workflow: accept builds dispatched by the queue (`allowed_bots: github-actions`) and report a dispatched run that fails before claiming the issue (found in the sandbox)
 - [x] 3.10 Pilot follow-ups: comment when an issue is queued, log audit limited to the app under review, credential and private-repository alternatives in the `go` template (pilot proposals 2, 5, 6)
 - [x] 3.8 `think`: invoke `openspec-explore` then `grill-with-docs` in one conversation, stop with install hints when a required skill is missing, hand off to `create`, leave documentation uncommitted (rewrite `skills/think/SKILL.md`)
@@ -34,7 +36,7 @@
 - [x] 4.5 Reviewer selection (fewest open reviews, rotation, `roles` approvers, `needs-reviewer`)
 - [x] 4.6 `status` (per-person, spec-writer view, alerts, capacity warning)
 - [x] 4.7 Daily digest workflow
-- [ ] 4.8 Pilot with one milestone in a team repository
+- [x] 4.8 Pilot with one milestone (closed on 2026-10-15 with one person, see docs/pilot-findings.md: queue, blocking, needs-spec, review, ship, promotion. Not exercised on GitHub because they need a second person: approval and merge by someone other than the author, the `peer` and `roles` modes, the review reminder and escalation, the review events and reviewer selection. They are covered by tests only; if a team finds a problem in them it is corrected in a follow-up change)
 
 ## 5. Setup and verification
 
@@ -53,13 +55,13 @@
 
 ## 7. Acceptance tests
 
-- [ ] 7.1 Behaviour tests from the specs (QA twice rejected does not advance; no "done" means no audit; no approval means `ship` stops; author cannot `ship`)
-- [ ] 7.2 Sandbox repository with a minimal Flutter app for end-to-end runs
-- [ ] 7.3 Continuous validation of skill frontmatter and `relevo.yml`
+- [x] 7.1 Behaviour tests from the specs (QA twice rejected does not advance; no "done" means no audit; no approval means `ship` stops; author cannot `ship`) in `tests/acceptance.test.mjs`: they run the real scripts, and the parts only the model performs are pinned by the text of the skill that says so
+- [x] 7.2 Sandbox repository with a minimal Flutter app for end-to-end runs (https://github.com/elalfner/relevo-sandbox: a counter app with `relevo.yml`, the workflows, CI and rulesets; the pilots of tasks 3.6 and 4.8 ran on it)
+- [x] 7.3 Continuous validation of skill frontmatter and `relevo.yml`: `tests/plugin-structure.test.mjs` checks every skill, agent, manifest, workflow template and the shipped `relevo.yml`, and `.github/workflows/ci.yml` runs the tests and the OpenSpec validation on every pull request and push
 
 ## 8. Release
 
-- [ ] 8.1 English README with a short demo, Spanish translation
-- [ ] 8.2 Sanitise content: no names, keys, URLs or history from private sources
-- [ ] 8.3 Credit and licence notices for any third-party material actually redistributed (none planned)
-- [ ] 8.4 Public release with a version tag and changelog
+- [x] 8.1 English README with a short demo, Spanish translation (`README.md` has the demo of a real sandbox run; `README.es.md` is the translation, and `tests/readme-sync.test.mjs` keeps the two in step: sections, commands, links, demo and the hand-off message)
+- [x] 8.2 Sanitise content: no names, keys, URLs or history from private sources (swept on 2026-10-15: no private project names, ticket ids, local paths, other people's emails or real credentials in the files or in the history of `main`; the credential-like strings are fake test data. Kept on purpose, by decision of the author: the commit and pull request history, the author's name and email in it, and three old commits that carry a `Co-Authored-By` line, reachable through the pull request pages)
+- [x] 8.3 Credit and licence notices for any third-party material actually redistributed (the plugin redistributes none; this repository keeps unmodified copies of the OpenSpec and mattpocock/skills skills as development tooling, and `NOTICE` and the README say so and reproduce their notices)
+- [x] 8.4 Public release with a version tag and changelog (published on 2026-10-16 as the pre-release `v0.1.0` on commit 636bb14, with `CHANGELOG.md` and `0.1.0` in `plugin.json`; the repository is public with secret scanning on; the 466 tests pass at the tag)
