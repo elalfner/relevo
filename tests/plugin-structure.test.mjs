@@ -98,10 +98,10 @@ test('every workflow template has a name, an event, a job and least-privilege pe
   });
 });
 
-test('the repository CI runs the tests and validates the OpenSpec changes', () => {
+test('the repository CI runs the tests and validates the OpenSpec specifications and changes', () => {
   const ci = read('.github/workflows/ci.yml');
   assert.match(ci, /run: npm test/);
-  assert.match(ci, /openspec validate "\$name"/);
+  assert.match(ci, /run: openspec validate --all/);
   assert.match(ci, /^permissions:\n {2}contents: read/m);
   assert.doesNotMatch(ci, /pull_request_target/);
   assert.match(ci, /OPENSPEC_TELEMETRY: '0'/);

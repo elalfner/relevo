@@ -1,5 +1,5 @@
 // Label set and state transitions.
-// Implements openspec/changes/relevo-v1/specs/issue-lifecycle/spec.md.
+// Implements openspec/specs/issue-lifecycle/spec.md.
 
 // kind:
 //   state   - lifecycle label; exactly one of the exclusive labels at a time

@@ -41,8 +41,9 @@ test('README and NOTICE say plainly that this repository keeps copies of the ski
 test('the README says Relevo was built with OpenSpec and points at its design, history and pilots', () => {
   const readme = read('README.md');
   assert.match(readme, /## Built with OpenSpec and mattpocock\/skills/);
-  assert.match(readme, /openspec\/changes\/relevo-v1/);
+  assert.match(readme, /openspec\/changes\/archive\/2026-10-16-relevo-v1/);
+  assert.match(readme, /\]\(openspec\/specs\)/);
   assert.match(readme, /docs\/pilot-findings\.md/);
   assert.match(readme, /relevo-sandbox/);
-  ['openspec/changes/relevo-v1', 'docs/pilot-findings.md'].forEach((p) => assert.ok(existsSync(new URL(`../${p}`, import.meta.url)), `${p} exists`));
+  ['openspec/changes/archive/2026-10-16-relevo-v1', 'openspec/specs', 'docs/pilot-findings.md'].forEach((p) => assert.ok(existsSync(new URL(`../${p}`, import.meta.url)), `${p} exists`));
 });
