@@ -112,8 +112,13 @@ export function gatherFacts(p) {
   f.adb = tryRun(() => Boolean(p.tool('adb', ['version'])), false);
 
   f.skills = {};
+  f.manualOnlySkills = [];
   REQUIRED_SKILLS.forEach((name) => {
-    f.skills[name] = p.skillDirs.some((dir) => p.exists(`${dir}/${name}`));
+    const dir = p.skillDirs.find((d) => p.exists(`${d}/${name}`));
+    f.skills[name] = dir !== undefined;
+    // A skill that sets `disable-model-invocation` can only be launched by the person; an unreadable file counts as invocable.
+    const head = dir === undefined ? '' : tryRun(() => String(p.read(`${dir}/${name}/SKILL.md`)).split(/\n---\s*\n/)[0], '');
+    if (/^disable-model-invocation:\s*true\s*$/m.test(head)) f.manualOnlySkills.push(name);
   });
 
   f.configText = p.exists('relevo.yml') ? p.read('relevo.yml') : null;
@@ -243,7 +248,8 @@ export function runChecks(f) {
 
   // skills that think invokes
   REQUIRED_SKILLS.forEach((name) => {
-    r.push(f.skills[name] ? pass(`skills.${name}`, `skill ${name} is installed`) : fail(`skills.${name}`, `skill ${name} is not installed; \`think\` needs it`, SKILL_INSTALL[name]));
+    const manual = (f.manualOnlySkills ?? []).includes(name);
+    r.push(f.skills[name] ? pass(`skills.${name}`, manual ? `skill ${name} is installed; it is reserved for you, so run /${name} by hand when \`think\` asks (a notice, not a problem)` : `skill ${name} is installed`) : fail(`skills.${name}`, `skill ${name} is not installed; \`think\` needs it`, SKILL_INSTALL[name]));
   });
 
   // configuration
