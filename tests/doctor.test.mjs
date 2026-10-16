@@ -327,3 +327,46 @@ test('when the default branch cannot be read, doctor falls back to the working c
   assert.equal(f.workflowSource, 'working copy');
   assert.equal(f.workflows['relevo-go.yml'].present, true);
 });
+
+// ---------- skills that only the person can launch
+
+const FM_RESERVED = '---\nname: grill-with-docs\ndescription: Grill the user\ndisable-model-invocation: true\n---\n\n# body\n';
+const FM_OPEN = '---\nname: grilling\ndescription: Grill the user\n---\n\n# disable-model-invocation: true in the body does not count\n';
+function skillFacts(files, dirs = ['.claude/skills', '.agents/skills']) {
+  return gatherFacts({
+    tool: () => 'ok', gh: () => '{}', exists: (p) => p in files, read: (p) => { if (!(p in files)) throw new Error('ENOENT'); return files[p]; }, listDir: () => [],
+    skillDirs: dirs, repo: null, platform: null,
+  });
+}
+
+test('Scenario: Skill reserved for the person - doctor passes the check with a notice that it is launched by hand', () => {
+  const f = skillFacts({
+    '.claude/skills/grill-with-docs': true, '.claude/skills/grill-with-docs/SKILL.md': FM_RESERVED,
+    '.claude/skills/grilling': true, '.claude/skills/grilling/SKILL.md': FM_OPEN,
+    '.claude/skills/domain-modeling': true, '.claude/skills/domain-modeling/SKILL.md': FM_OPEN,
+    '.claude/skills/openspec-explore': true, '.claude/skills/openspec-explore/SKILL.md': FM_OPEN,
+  });
+  assert.deepEqual(f.manualOnlySkills, ['grill-with-docs']);
+  const results = runChecks({ ...healthy(), skills: f.skills, manualOnlySkills: f.manualOnlySkills });
+  const r = byId(results, 'skills.grill-with-docs');
+  assert.equal(r.status, 'pass');
+  assert.match(r.message, /reserved for you, so run \/grill-with-docs by hand/);
+  assert.equal(byId(results, 'skills.grilling').message, 'skill grilling is installed');
+  assert.deepEqual(failing(results), []);
+});
+
+test('only the frontmatter counts, an unreadable file counts as invocable, and a missing skill still fails', () => {
+  const f = skillFacts({ '.agents/skills/grill-with-docs': true }); // folder with no readable SKILL.md
+  assert.equal(f.skills['grill-with-docs'], true);
+  assert.deepEqual(f.manualOnlySkills, []);
+  const only = skillFacts({ '.claude/skills/grilling': true, '.claude/skills/grilling/SKILL.md': FM_OPEN });
+  assert.deepEqual(only.manualOnlySkills, [], 'a line in the body is not the frontmatter');
+  const results = runChecks({ ...healthy(), skills: { ...healthy().skills, 'domain-modeling': false }, manualOnlySkills: ['grill-with-docs'] });
+  assert.equal(byId(results, 'skills.domain-modeling').status, 'fail');
+  assert.equal(byId(results, 'skills.grill-with-docs').status, 'pass');
+});
+
+test('a skill found in the second folder is read from that folder', () => {
+  const f = skillFacts({ '.agents/skills/grill-with-docs': true, '.agents/skills/grill-with-docs/SKILL.md': FM_RESERVED });
+  assert.deepEqual(f.manualOnlySkills, ['grill-with-docs']);
+});

@@ -24,13 +24,22 @@ If any is missing, stop. Name the missing ones and show how to install them, the
 
 Never copy a skill's content into the repository by hand to get past this.
 
+An installed skill is in one of two states, and only a missing one stops `think`:
+
+- **Invocable.** It is listed among the available skills, so you may invoke it with the Skill tool.
+- **Reserved for the person.** It is not in that list but exists as a folder, and the `disable-model-invocation: true` line in the frontmatter of its `SKILL.md` says that only the person can launch it. It is installed, so do not stop. Remember which ones are reserved: you will not invoke them, you will ask the person to run them.
+
+To tell them apart, read the first lines of `SKILL.md` of each skill that is not in the available list. If the file cannot be read, treat the skill as invocable.
+
 ## 2. Explore
 
 Invoke the `openspec-explore` skill with the Skill tool, passing `$ARGUMENTS` as its argument. Stay in it while the idea is still shapeless: compare options and look at the real code instead of asking detailed questions. Move on when the shape of the idea is clear enough for precise questions, or when the person asks for the interview.
 
 ## 3. Grill
 
-Invoke the `grill-with-docs` skill with the Skill tool in the same conversation, so everything learned while exploring feeds its questions. Follow it until its own rules say it is done.
+If `grill-with-docs` is invocable, invoke it with the Skill tool in the same conversation, so everything learned while exploring feeds its questions, and follow it until its own rules say it is done.
+
+If it is reserved for the person, which is how it is published, do **not** try to invoke it and do not run its interview yourself by another route: the platform refuses both. End your turn with one message that asks the person to run `/grill-with-docs` in this same conversation, so the exploration feeds the questions. Because you may not regain control when that skill ends, put the hand-off in that same message (step 4): say that when the interview ends they should run `/relevo:create` in this conversation, that the terms and decisions they settle stay in "To document", and that you wrote nothing to the repository.
 
 **One exception to its rules.** The person using `think` often does not use git, and the base branch is protected, so a file written here would never reach the repository. Where the skill, through `domain-modeling`, would write `GLOSSARY.md` or a file under `docs/adr/`, do **not** write it. Keep the entry in a list called "To document" instead:
 
@@ -53,4 +62,5 @@ Only if the person asks to keep the agreement for another session, write it to a
 - Never write `GLOSSARY.md` or anything under `docs/adr/`; hand those entries over in "To document".
 - Never write a file the invoked skills' own rules do not allow; the agreement file only on request.
 - Never run `openspec new change`, `openspec instructions` or `openspec archive` yourself.
-- Never continue when a required skill is missing.
+- Never continue when a required skill is missing; a skill that is only reserved for the person is not missing.
+- Never invoke a skill whose `SKILL.md` sets `disable-model-invocation`, and never replace it by running its flow yourself.
