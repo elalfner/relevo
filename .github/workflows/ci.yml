@@ -1,11 +1,11 @@
-# Checks every pull request and every push to main: the tests (which include the validation of the skills'
+# Checks every pull request and every push to dev and main: the tests (which include the validation of the skills'
 # frontmatter, the agents and the shipped relevo.yml) and the OpenSpec specifications and changes.
 name: ci
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [dev, main]
 
 permissions:
   contents: read
