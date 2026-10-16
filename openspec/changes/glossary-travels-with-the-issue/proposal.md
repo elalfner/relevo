@@ -17,15 +17,15 @@ The pilot showed it: issue #5 of the sandbox introduced two terms (*build number
 
 ### New Capabilities
 
-<!-- None: the behaviour belongs to capabilities that relevo-v1 already specifies. -->
+<!-- None: the behaviour belongs to capabilities that already exist in openspec/specs/ since relevo-v1 was archived. -->
 
 ### Modified Capabilities
 
-- `think`: no longer writes `GLOSSARY.md` or decision records into the repository; hands the settled terms and decisions over in the agreement. Replaces "Documentation changes stay uncommitted" and the glossary-writing requirements.
+- `think`: no longer writes `GLOSSARY.md` or decision records into the repository; hands the settled terms and decisions over in the agreement. Three requirements change ("Think runs the exploration and grilling skills, it does not restate them" gets its one exception, "Writes follow the invoked skills' rules" no longer covers the glossary and the records, and "Documentation changes stay uncommitted" is renamed and narrowed to the OpenSpec artifacts the person asks for) and four are added.
 - `create`: writes the optional `Documentation` section of the issue from the agreement, with the exact text.
 - `go`: builds the documentation task from the issue, and QA checks that it only adds what the issue gave.
 
-<!-- relevo-v1 is not archived, so these three capabilities exist only as deltas of that change and not in openspec/specs/. This change records its requirements as ADDED under the same capability names. `rename-create-to-issue` renames `create` to `issue` in relevo-v1; whichever change lands second renames the folder. -->
+<!-- `create` and `go` only gain requirements, so they are ADDED. `rename-create-to-issue` renames `create` to `issue`; whichever change is archived second follows the rename. -->
 
 ## Impact
 
@@ -34,5 +34,5 @@ The pilot showed it: issue #5 of the sandbox introduced two terms (*build number
 - `skills/go/SKILL.md` (step that writes the change specification) and `agents/qa.md` (a check on documentation files).
 - `scripts/lib/issue-check.mjs`: no new rule; the section is optional and its content cannot be judged by a script. QA is the check.
 - Tests: `tests/skill-think.test.mjs`, `tests/skill-create.test.mjs`, `tests/skill-go.test.mjs`, `tests/agents.test.mjs`.
-- `openspec/changes/relevo-v1/specs/think/spec.md` and `specs/create/spec.md` describe the behaviour this change replaces; they are reconciled when this change is archived.
+- `openspec/specs/think/spec.md` describes behaviour this change replaces; the MODIFIED and RENAMED requirements of this change reconcile it when the change is archived.
 - Users who relied on `think` to write the glossary into their working copy get the entries in the issue instead.

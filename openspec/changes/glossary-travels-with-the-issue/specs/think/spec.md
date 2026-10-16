@@ -43,3 +43,35 @@ When the interview ends, the agreement SHALL include the "To document" part, eve
 #### Scenario: Hand-off
 - **WHEN** the session ends with terms in "To document"
 - **THEN** `think` says they will go into the issue as a documentation section and that nothing was written to the repository
+
+## MODIFIED Requirements
+
+### Requirement: Think runs the exploration and grilling skills, it does not restate them
+`think` SHALL invoke the `openspec-explore` skill and then the `grill-with-docs` skill, in the same conversation, and SHALL let each skill's own rules govern its part. `think` SHALL NOT reimplement, restate or override how those skills explore, interview, challenge terms or sharpen the project's language. The one exception is where such a skill would write the glossary or a decision record: there `think` keeps the entry in "To document", as the requirement about redirecting those writes says.
+
+#### Scenario: Idea still vague
+- **WHEN** the person's idea is still shapeless
+- **THEN** `think` stays in `openspec-explore` and compares options with them instead of starting the interview
+
+#### Scenario: Shape of the idea is clear
+- **WHEN** the exploration has made the shape of the idea clear
+- **THEN** `think` invokes `grill-with-docs` in the same conversation, so the exploration feeds the questions
+
+### Requirement: Writes follow the invoked skills' rules
+Any file written while `think` runs, such as OpenSpec artifacts that the person asks for, SHALL be written only as the invoked skill's own rules allow. `think` SHALL NOT write `GLOSSARY.md` or any file under `docs/adr/`, and SHALL NOT write a file itself except the agreement file the person asked for.
+
+#### Scenario: Skill needs permission to write
+- **WHEN** an invoked skill requires confirmation before writing
+- **THEN** nothing is written until the person gives it
+
+### Requirement: OpenSpec artifacts created at the person's request stay uncommitted
+`think` SHALL NOT commit anything it wrote during the session and, when the person asked it to create or change OpenSpec artifacts, SHALL name those files and say they are not committed.
+
+#### Scenario: Hand-off
+- **WHEN** the session ends and OpenSpec artifacts were created at the person's request
+- **THEN** `think` lists them and says they are not committed
+
+## RENAMED Requirements
+
+- FROM: `### Requirement: Documentation changes stay uncommitted`
+- TO: `### Requirement: OpenSpec artifacts created at the person's request stay uncommitted`

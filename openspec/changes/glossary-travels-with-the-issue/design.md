@@ -61,7 +61,7 @@ When the issue has the section, QA compares the added lines of `GLOSSARY.md` and
 ## Migration Plan
 
 1. Implement and merge this change.
-2. When `relevo-v1` is archived, its `think` requirements "Documentation changes stay uncommitted", "The glossary holds vocabulary only" (its writing half) and "Decision records are offered sparingly" are replaced by the requirements of this change, and this change's ADDED requirements become MODIFIED ones. `rename-create-to-issue` renames the `create` folder to `issue`; whichever of the two lands second follows the rename.
+2. Done on 2026-10-16, after `relevo-v1` was archived: the `think` delta now MODIFIES the three requirements of `openspec/specs/think/spec.md` that this change contradicted ("Think runs the exploration and grilling skills, it does not restate them", "Writes follow the invoked skills' rules") and RENAMES and narrows "Documentation changes stay uncommitted". The `create` and `go` requirements only add, so they stay ADDED. A rehearsal of the archive on a copy applied 8 added, 3 modified and 1 renamed requirement, and left no contradicting text. `rename-create-to-issue` renames the `create` folder to `issue`; whichever of the two is archived second follows the rename.
 3. The sandbox needs nothing: its `GLOSSARY.md` exists and the first issue that carries a `Documentation` section (#5) is the proof.
 
 ## Open Questions
