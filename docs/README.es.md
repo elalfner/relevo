@@ -24,5 +24,6 @@
 
 ## Marca
 
-- [Logo y guía de uso](brand/LEEME.md): los archivos del logo, la animación y cómo regenerarlos.
+- [Guía de uso](brand/guia-de-uso.md): significado, construcción, tamaños, espacio libre y qué no hacer.
+- [Archivos del logo](brand/LEEME.md): los archivos del logo, la animación y cómo regenerarlos.
 - [Marca registrada](../TRADEMARKS.es.md): qué puedes hacer con el nombre y el logo.

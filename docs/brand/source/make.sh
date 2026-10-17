@@ -9,3 +9,4 @@ TMP=$(node render_png.cjs | tail -n 1)  # PNG (dos pasadas para la transparencia
 python3 matte_png.py "$TMP"            # alfa + favicon.ico
 node make_gif.cjs                       # GIF
 python3 gen_guide.py                   # hoja de uso
+python3 gen_guide_md.py               # hoja de uso en Markdown (se ve en GitHub)

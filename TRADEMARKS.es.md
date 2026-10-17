@@ -11,7 +11,7 @@ La [licencia MIT](LICENSE) cubre el software y la documentación de este reposit
 - Mostrar capturas de pantalla de Relevo funcionando.
 - Enlazar este repositorio.
 
-Cuando uses el logo, sigue la [guía de uso](docs/brand/guia-de-uso.html): conserva sus proporciones y colores, deja el espacio libre a su alrededor y no mezcles sus versiones al mismo tamaño.
+Cuando uses el logo, sigue la [guía de uso](docs/brand/guia-de-uso.md): conserva sus proporciones y colores, deja el espacio libre a su alrededor y no mezcles sus versiones al mismo tamaño.
 
 ## Necesitas permiso por escrito para
 
