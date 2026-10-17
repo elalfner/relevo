@@ -25,8 +25,8 @@ test('the notice names no private origin', () => {
 });
 
 
-test('README and NOTICE say plainly that this repository keeps copies of the skills it works with', () => {
-  const readme = read('README.md');
+test('the commands page and NOTICE say plainly that this repository keeps copies of the skills it works with', () => {
+  const readme = read('docs/commands.md');
   const notice = read('NOTICE');
   assert.ok(existsSync(new URL('../.agents/skills', import.meta.url)), 'the copies are tracked');
   assert.match(notice, /does keep copies of them as\s+development tooling/);
@@ -38,12 +38,12 @@ test('README and NOTICE say plainly that this repository keeps copies of the ski
   assert.match(readme, /The plugin does not contain them/);
 });
 
-test('the README says Relevo was built with OpenSpec and points at its design, history and pilots', () => {
-  const readme = read('README.md');
-  assert.match(readme, /## Built with OpenSpec and mattpocock\/skills/);
+test('the documentation says Relevo was built with OpenSpec and points at its design, history and pilots', () => {
+  const readme = read('docs/built-with.md');
+  assert.match(readme, /^# Built with OpenSpec and mattpocock\/skills/m);
   assert.match(readme, /openspec\/changes\/archive\/2026-10-16-relevo-v1/);
-  assert.match(readme, /\]\(openspec\/specs\)/);
-  assert.match(readme, /docs\/pilot-findings\.md/);
+  assert.match(readme, /\]\(\.\.\/openspec\/specs\)/);
+  assert.match(readme, /\]\(pilot-findings\.md\)/);
   assert.match(readme, /relevo-sandbox/);
   ['openspec/changes/archive/2026-10-16-relevo-v1', 'openspec/specs', 'docs/pilot-findings.md'].forEach((p) => assert.ok(existsSync(new URL(`../${p}`, import.meta.url)), `${p} exists`));
 });

@@ -23,7 +23,7 @@ Si Playwright no encuentra el navegador, indícalo con `CHROMIUM_PATH=/ruta/a/ch
 
 | Archivo | Qué genera |
 |---|---|
-| `build.py` | Los SVG: marcas A y G, iconos, avatares, favicon y lockups con el nombre. Los trazos se convierten en formas y el texto en curvas. |
+| `build.py` | Los SVG: marcas A y G, iconos, avatares, favicon y lockups con el nombre (los trazos se convierten en formas y el texto en curvas), y las siete ilustraciones de estados en `states/`. |
 | `short.cjs` | El SVG animado corto (negro y blanco), muestreado a 30 fps con las mismas fórmulas que la animación larga. |
 | `render_png.cjs` + `matte_png.py` | Los PNG, con transparencia real, y `favicon.ico`. |
 | `make_gif.cjs` | El GIF del logo animado. |
