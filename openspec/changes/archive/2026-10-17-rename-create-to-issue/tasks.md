@@ -5,7 +5,7 @@
 - [x] 1.3 Update the user documentation: the command column of the cover table in `README.md` and `README.es.md` (the picture `relevo-state-issue-*.svg` stays), the command table in `docs/commands.md` and `docs/commands.es.md`, and the sentence about creating issues in `docs/install.md` and `docs/install.es.md`; keep both languages in the same order
 - [x] 1.4 Update the spec path in the comment of `scripts/lib/issue-check.mjs`; leave its logic untouched
 - [x] 1.5 Move `tests/skill-create.test.mjs` to `tests/skill-issue.test.mjs` and point it at `skills/issue/SKILL.md`; update `tests/skill-think.test.mjs` (four assertions), the `USER_ONLY` list in `tests/plugin-structure.test.mjs` and the command flow in `tests/readme-sync.test.mjs`
-- [ ] 1.6 Search the repository (`docs/`, `README*`, `skills/`, `scripts/`, `tests/`, `openspec/specs/`, `CHANGELOG.md`) for `relevo:create`, `skills/create`, `specs/create` and `skill-create`, and confirm no reference is left except the history of `CHANGELOG.md` 0.1.0 and the archived changes
+- [x] 1.6 Search the repository (`docs/`, `README*`, `skills/`, `scripts/`, `tests/`, `openspec/specs/`, `CHANGELOG.md`) for `relevo:create`, `skills/create`, `specs/create` and `skill-create`, and confirm no reference is left except the history of `CHANGELOG.md` 0.1.0 and the archived changes
 - [x] 1.7 Add an entry to `CHANGELOG.md` under an unreleased heading (the `create` command is now `issue`, with the update mode; no alias); leave the 0.1.0 entry as released, and make `tests/changelog.test.mjs` still pass
 
 ## 2. Decide whether an issue may be edited
@@ -32,4 +32,4 @@
 
 - [x] 5.1 Update the rows for `/relevo:issue` in `README.md`, `README.es.md`, `docs/commands.md` and `docs/commands.es.md` to say that it also updates an existing issue
 - [x] 5.2 Add the update-mode scenarios about the `Documentation` section to the skill text and to `tests/skill-issue.test.mjs` (kept unless the person asks, shown whole at approval, only glossary and decision records)
-- [ ] 5.3 When archiving, sync with `retire_capabilities` so `openspec/specs/create` is deleted and `openspec/specs/issue` exists; run `openspec validate --specs` and `npm test` afterwards
+- [x] 5.3 When archiving, sync with `retire_capabilities` so `openspec/specs/create` is deleted and `openspec/specs/issue` exists; run `openspec validate --specs` and `npm test` afterwards
