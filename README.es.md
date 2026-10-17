@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/animation/relevo-logo-animated-white.svg">
+  <img alt="Relevo" src="docs/brand/animation/relevo-logo-animated-black.svg" width="200">
+</picture>
+
 # Relevo
 
 **Un flujo automático de issue a merge donde un agente construye y las personas verifican.**
