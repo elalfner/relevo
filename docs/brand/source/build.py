@@ -180,9 +180,52 @@ for color, ink in (('black', INK), ('white', PAPER)):
     body = pth(d_of(cmds), ink) + pth(text_v, ink, rule=False)
     files['svg/relevo-lockup-vertical-%s.svg' % color] = svg((minx, miny, maxx - minx, maxy - miny), body)
 
+# ---------- estados del flujo: una ilustración por comando, para el README y la documentación ----------
+STATES = ['init', 'think', 'issue', 'go', 'review', 'fix', 'ship']
+
+
+def state_svg(name, ink, paper):
+    def line(x1, x2):
+        return '<line x1="%s" y1="0" x2="%s" y2="0" stroke="%s" stroke-width="8" stroke-linecap="round"/>' % (x1, x2, ink)
+
+    def chev(pts, color):
+        return '<polyline points="%s" fill="none" stroke="%s" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' % (pts, color)
+
+    ring_ = '<circle r="50" fill="none" stroke="%s" stroke-width="8"/>' % ink
+    disc = '<circle r="54" fill="%s"/>' % ink
+    dash = line(-76, -64)
+    inside = '-4.243,-8.485 4.243,0 -4.243,8.485'          # chevron hacia la derecha, centrado en el círculo
+    inside_back = '4.243,-8.485 -4.243,0 4.243,8.485'      # y hacia la izquierda (fix: vuelve atrás)
+    outside = '64,-8.485 72.485,0 64,8.485'                # fuera del círculo: ya salió
+    if name == 'init':
+        body = ('<circle r="50" fill="none" stroke="%s" stroke-width="8" stroke-linecap="round" pathLength="100" '
+                'transform="rotate(-99.2)" stroke-dasharray="5.093 4.907"/>' % ink)
+    elif name == 'think':
+        rays = ''.join(line(0, 0).replace('x1="0" y1="0" x2="0" y2="0"', 'x1="%s" y1="%s" x2="%s" y2="%s"' % (
+            f(64 * math.cos(math.radians(a))), f(64 * math.sin(math.radians(a))),
+            f(76 * math.cos(math.radians(a))), f(76 * math.sin(math.radians(a))))) for a in range(0, 360, 45))
+        body = disc + rays
+    elif name == 'issue':
+        body = ring_ + dash
+    elif name == 'go':
+        body = ring_ + dash + chev(inside, ink)
+    elif name == 'review':
+        body = disc + dash + chev(inside, paper)
+    elif name == 'fix':
+        body = ring_ + dash + chev(inside_back, ink)
+    else:  # ship
+        body = ring_ + dash + chev(outside, ink)
+    return svg((-88, -88, 176, 176), body, 'Relevo: %s' % name)
+
+
+for name in STATES:
+    files['svg/../states/relevo-state-%s-black.svg' % name] = state_svg(name, INK, PAPER)
+    files['svg/../states/relevo-state-%s-white.svg' % name] = state_svg(name, PAPER, INK)
+
 # ---------- escribir ----------
 os.makedirs(OUT + '/svg', exist_ok=True)
 os.makedirs(OUT + '/png', exist_ok=True)
+os.makedirs(OUT + '/states', exist_ok=True)
 for p, s in files.items():
     open(os.path.join(OUT, p), 'w').write(s)
 print('\n'.join(sorted(files)))

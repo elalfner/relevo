@@ -110,6 +110,7 @@ files = [
     ('png/favicon-{16,32,48}.png', 'Favicon en PNG.'),
     ('png/relevo-lockup-…, relevo-mark-…', 'Versiones PNG con transparencia del logo y los lockups.'),
     ('png/relevo-social-preview-1280x640.png', 'Vista previa social del repositorio en GitHub.'),
+    ('states/relevo-state-<estado>-{black,white}.svg', 'Una ilustración por comando del flujo: init, think, issue, go, review, fix y ship. Son las del README.'),
     ('animation/relevo-logo-animated-{black,white}.svg', 'Logo animado de 4,6 s, sin texto, que termina en ship y se queda. SMIL: se ve en GitHub y navegadores.'),
     ('animation/relevo-logo-animated.gif', 'La misma animación en GIF, con fondo blanco, para donde no se admite SVG animado.'),
     ('source/', 'Los scripts y la fuente para regenerar todo. Instrucciones en source/README.md.'),
