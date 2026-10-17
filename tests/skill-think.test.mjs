@@ -56,11 +56,11 @@ test('it does not bundle or copy the skills', () => {
   assert.ok(!existsSync(root('skills/grill-with-docs')) && !existsSync(root('skills/openspec-explore')));
 });
 
-test('Scenario: Invoked skill suggests another next step - it points to create', () => {
+test('Scenario: Invoked skill suggests another next step - it points to issue', () => {
   assert.match(body, /whatever next step those skills suggested themselves/);
   assert.match(body, /\/opsx:propose/);
-  assert.match(body, /\/relevo:create/);
-  assert.ok(existsSync(root('skills/create/SKILL.md')));
+  assert.match(body, /\/relevo:issue/);
+  assert.ok(existsSync(root('skills/issue/SKILL.md')));
 });
 
 test('Scenario: Keeping the agreement - the agreement file is written only on request', () => {
@@ -91,7 +91,7 @@ test('Scenario: The skill would update the glossary - think redirects that one s
 test('Scenario: Nothing to document / Hand-off - the agreement has a To document part and says nothing was written', () => {
   assert.match(body, /part named \*\*To document\*\*, even when it is empty/);
   assert.match(body, /To document: nothing/);
-  assert.match(body, /through `\/relevo:create`, and that `think` wrote nothing to the repository/);
+  assert.match(body, /through `\/relevo:issue`, and that `think` wrote nothing to the repository/);
   assert.match(body, /Never write `GLOSSARY\.md` or anything under `docs\/adr\/`/);
 });
 
@@ -122,6 +122,6 @@ test('Scenario: Grilling skill is reserved for the person - think asks for the c
 
 test('Scenario: Hand-off when the person launches the skill - the same message gives the next command and says nothing was written', () => {
   assert.match(body, /Because you may not regain control when that skill ends, put the hand-off in that same message/);
-  assert.match(body, /they should run `\/relevo:create` in this conversation/);
+  assert.match(body, /they should run `\/relevo:issue` in this conversation/);
   assert.match(body, /stay in "To document", and that you wrote nothing to the repository/);
 });

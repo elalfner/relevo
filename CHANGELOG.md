@@ -2,6 +2,12 @@
 
 All notable changes to Relevo are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **`create` is now `issue`**: `/relevo:create` is gone, with no alias, and `/relevo:issue` replaces it. Without an argument it writes new issues exactly as before; with an issue number it updates the description of an existing one.
+
 ## [0.1.0] - 2026-10-15
 
 The first release. It covers the whole cycle for one person, from an idea to a merged pull request, on a Flutter Android project hosted on GitHub.

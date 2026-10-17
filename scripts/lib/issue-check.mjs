@@ -1,5 +1,5 @@
 // Checks a drafted issue before it is created, with the same rules `go` applies when it starts.
-// Implements "Issues are checked before they are created" of openspec/specs/create/spec.md.
+// Implements "Issues are checked before they are created" of openspec/specs/issue/spec.md.
 
 import { parseIssueBody } from './issue-parse.mjs';
 import { findCredentials } from './scan.mjs';
