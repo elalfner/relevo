@@ -1,11 +1,12 @@
 ## 1. Rename create to issue
 
 - [ ] 1.1 Move `skills/create/` to `skills/issue/` with `git mv`; set `name: issue`, the title `Relevo issue` and the description (writes issues and updates an existing one; still never applies the ready label)
-- [ ] 1.2 Update `/relevo:create` to `/relevo:issue` in `skills/think/SKILL.md` (description and four more places) and in the `README.md` command table
-- [ ] 1.3 In `openspec/changes/relevo-v1`: move `specs/create` to `specs/issue` and rename `create` to `issue` inside it; update `specs/think/spec.md`, `design.md` (D15) and `tasks.md` (3.7, 3.8)
+- [ ] 1.2 Update `/relevo:create` to `/relevo:issue` in `skills/think/SKILL.md` (the description and every other mention, including the hand-off message that asks the person to launch `grill-with-docs`)
+- [ ] 1.3 Update the user documentation: the command column of the cover table in `README.md` and `README.es.md` (the picture `relevo-state-issue-*.svg` stays), the command table in `docs/commands.md` and `docs/commands.es.md`, and the sentence about creating issues in `docs/install.md` and `docs/install.es.md`; keep both languages in the same order
 - [ ] 1.4 Update the spec path in the comment of `scripts/lib/issue-check.mjs`; leave its logic untouched
-- [ ] 1.5 Move `tests/skill-create.test.mjs` to `tests/skill-issue.test.mjs` and point it, and `tests/skill-think.test.mjs`, at `skills/issue/SKILL.md` and `/relevo:issue`
-- [ ] 1.6 Search the repository for `relevo:create`, `skills/create` and `specs/create` and confirm no reference is left (`doctor` has none)
+- [ ] 1.5 Move `tests/skill-create.test.mjs` to `tests/skill-issue.test.mjs` and point it at `skills/issue/SKILL.md`; update `tests/skill-think.test.mjs` (four assertions), the `USER_ONLY` list in `tests/plugin-structure.test.mjs` and the command flow in `tests/readme-sync.test.mjs`
+- [ ] 1.6 Search the repository (`docs/`, `README*`, `skills/`, `scripts/`, `tests/`, `openspec/specs/`, `CHANGELOG.md`) for `relevo:create`, `skills/create`, `specs/create` and `skill-create`, and confirm no reference is left except the history of `CHANGELOG.md` 0.1.0 and the archived changes
+- [ ] 1.7 Add an entry to `CHANGELOG.md` under an unreleased heading (the `create` command is now `issue`, with the update mode; no alias); leave the 0.1.0 entry as released, and make `tests/changelog.test.mjs` still pass
 
 ## 2. Decide whether an issue may be edited
 
@@ -29,5 +30,6 @@
 
 ## 5. Close out
 
-- [ ] 5.1 Update the `README.md` row for `/relevo:issue` to mention that it also updates an existing issue
-- [ ] 5.2 Archive order: archive `relevo-v1` first, then this change, so `issue` exists in the main specs when this change adds to it
+- [ ] 5.1 Update the rows for `/relevo:issue` in `README.md`, `README.es.md`, `docs/commands.md` and `docs/commands.es.md` to say that it also updates an existing issue
+- [ ] 5.2 Add the update-mode scenarios about the `Documentation` section to the skill text and to `tests/skill-issue.test.mjs` (kept unless the person asks, shown whole at approval, only glossary and decision records)
+- [ ] 5.3 When archiving, sync with `retire_capabilities` so `openspec/specs/create` is deleted and `openspec/specs/issue` exists; run `openspec validate --specs` and `npm test` afterwards
