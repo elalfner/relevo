@@ -24,5 +24,6 @@ New here? Read [Install](install.md), then [How it works](how-it-works.md).
 
 ## Brand
 
-- [Logo and usage guide](brand/LEEME.md): the logo files, the animation and how to regenerate them. In Spanish.
+- [Usage guide](brand/guia-de-uso.md): meaning, construction, sizes, clear space and what not to do. In Spanish.
+- [Logo files](brand/LEEME.md): the logo files, the animation and how to regenerate them. In Spanish.
 - [Trademarks](../TRADEMARKS.md): what you can do with the name and the logo.

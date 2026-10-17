@@ -21,6 +21,12 @@ const eEnter = bez(0, 0, .2, 1), eExit = bez(.6, 0, .35, 1), eWipe = bez(.76, 0,
 const DASH0 = 16 / (2 * Math.PI * 50 / 10) * 10;
 
 const DUR = 4600, FPS = 30;
+// Bucle: el logo se queda en ship HOLD s, se desvanece en FADE s, deja GAP s en blanco y vuelve a empezar.
+// Así, quien llega al logo al hacer scroll lo ve moverse en pocos segundos (un SVG no sabe cuándo está a la vista).
+const HOLD = 7.6, FADE = 0.4, GAP = 0.3;
+const RESTART = (HOLD + FADE + GAP).toFixed(1) + 's';
+const BEGIN = '0s;a0.end+' + RESTART;
+let firstAnim = true;
 
 // ---- estado de todos los elementos en el instante t (ms) ----
 function state(t) {
@@ -68,7 +74,9 @@ function anim(attr, get, fmt = f2) {
   const fin = fmt(get(final));
   const staticAttr = ` ${attr}="${fin}"`;
   if (uniq.size === 1) return { staticAttr, child: '' };
-  return { staticAttr, child: `<animate attributeName="${attr}" dur="${secs}" values="${vals.join(';')}" fill="freeze" calcMode="linear"/>` };
+  const id = firstAnim ? ' id="a0"' : '';   // una animación lleva el id; todas se reinician a la vez cuando termina
+  firstAnim = false;
+  return { staticAttr, child: `<animate${id} attributeName="${attr}" dur="${secs}" begin="${BEGIN}" values="${vals.join(';')}" fill="freeze" calcMode="linear"/>` };
 }
 function el(tag, fixed, attrs, selfClose = false) {
   // attrs: [[nombre, getter, fmt?]]
@@ -78,6 +86,7 @@ function el(tag, fixed, attrs, selfClose = false) {
 }
 
 function build(ink, paper) {
+  firstAnim = true;
   const lines = (id, kind) => {
     const g = s => s.chev;
     const u = el('line', '', [['x1', s => g(s).tx], ['y1', () => 0], ['x2', s => g(s).ux], ['y2', s => -g(s).uy]]);
@@ -87,9 +96,9 @@ function build(ink, paper) {
   const rayEls = [0, 1, 2, 3, 4, 5, 6, 7].map(i => el('line', '', [
     ['x1', s => s.rays[i].x1], ['y1', s => s.rays[i].y1], ['x2', s => s.rays[i].x2], ['y2', s => s.rays[i].y2], ['opacity', s => s.rays[i].op]])).join('');
   const gBlack = '<g stroke="' + ink + '" stroke-width="8" stroke-linecap="round" opacity="' + f2(final.cop) + '">' +
-    '<animate attributeName="opacity" dur="' + secs + '" values="' + frames.map(s => f2(s.cop)).join(';') + '" fill="freeze" calcMode="linear"/>' + lines() + '</g>';
+    '<animate attributeName="opacity" dur="' + secs + '" begin="' + BEGIN + '" values="' + frames.map(s => f2(s.cop)).join(';') + '" fill="freeze" calcMode="linear"/>' + lines() + '</g>';
   const gWhite = '<g mask="url(#m)"><g stroke="' + paper + '" stroke-width="8" stroke-linecap="round" opacity="' + f2(final.cop) + '">' +
-    '<animate attributeName="opacity" dur="' + secs + '" values="' + frames.map(s => f2(s.cop)).join(';') + '" fill="freeze" calcMode="linear"/>' + lines() + '</g></g>';
+    '<animate attributeName="opacity" dur="' + secs + '" begin="' + BEGIN + '" values="' + frames.map(s => f2(s.cop)).join(';') + '" fill="freeze" calcMode="linear"/>' + lines() + '</g></g>';
 
   const ringAnim = el('circle', ` pathLength="100" transform="rotate(-99.2)" fill="none" stroke="${ink}" stroke-width="8" stroke-linecap="round"`, [
     ['r', s => s.ringR], ['stroke-dasharray', s => s.dash, x => x]]);
@@ -102,10 +111,12 @@ function build(ink, paper) {
     `<defs><radialGradient id="g"><stop offset=".86" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>` +
     `<clipPath id="c"><circle r="54.5"/></clipPath>` +
     `<mask id="m" maskUnits="userSpaceOnUse" x="-100" y="-100" width="200" height="200"><g clip-path="url(#c)">${mf}${mw}${ms}</g></mask></defs>` +
+    `<g><animate attributeName="opacity" values="1;0" dur="${FADE}s" begin="a0.end+${HOLD}s" fill="freeze"/>` +
+    `<set attributeName="opacity" to="1" begin="a0.end+${RESTART}"/>` +
     dot + ringAnim +
     `<g mask="url(#m)"><circle r="54" fill="${ink}"/></g>` +
     `<g stroke="${ink}" stroke-width="8" stroke-linecap="round">${rayEls}</g>` +
-    gBlack + gWhite + `</svg>\n`;
+    gBlack + gWhite + `</g></svg>\n`;
 }
 
 fs.writeFileSync(OUT + 'relevo-logo-animated-black.svg', build('#000000', '#FFFFFF'));

@@ -11,7 +11,7 @@ The [MIT License](LICENSE) covers the software and the documentation in this rep
 - Show screenshots of Relevo working.
 - Link to this repository.
 
-When you use the logo, follow the [usage guide](docs/brand/guia-de-uso.html): keep its proportions and colors, leave the clear space around it, and do not mix its versions at the same size.
+When you use the logo, follow the [usage guide](docs/brand/guia-de-uso.md): keep its proportions and colors, leave the clear space around it, and do not mix its versions at the same size.
 
 ## You need written permission to
 

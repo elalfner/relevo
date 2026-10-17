@@ -181,7 +181,7 @@ for color, ink in (('black', INK), ('white', PAPER)):
     files['svg/relevo-lockup-vertical-%s.svg' % color] = svg((minx, miny, maxx - minx, maxy - miny), body)
 
 # ---------- estados del flujo: una ilustración por comando, para el README y la documentación ----------
-STATES = ['init', 'think', 'issue', 'go', 'review', 'fix', 'ship']
+STATES = ['init', 'feature', 'think', 'issue', 'go', 'review', 'fix', 'ship']
 
 
 def state_svg(name, ink, paper):
@@ -205,6 +205,8 @@ def state_svg(name, ink, paper):
             f(64 * math.cos(math.radians(a))), f(64 * math.sin(math.radians(a))),
             f(76 * math.cos(math.radians(a))), f(76 * math.sin(math.radians(a))))) for a in range(0, 360, 45))
         body = disc + rays
+    elif name == 'feature':          # no es un comando: el anillo cerrado, el trabajo que se quiere hacer
+        body = ring_
     elif name == 'issue':
         body = ring_ + dash
     elif name == 'go':

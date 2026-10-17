@@ -1,6 +1,6 @@
 # Cómo regenerar la marca
 
-Todo lo que hay en `svg/`, `animation/`, `png/`, `favicon.ico` y `guia-de-uso.html` sale de estos scripts. Si cambias una medida, regenera y todo queda coherente.
+Todo lo que hay en `svg/`, `animation/`, `png/`, `favicon.ico` , `guia-de-uso.md`, `guia-de-uso.html` y `guide/` sale de estos scripts. Si cambias una medida, regenera y todo queda coherente.
 
 ## Requisitos
 
@@ -23,11 +23,12 @@ Si Playwright no encuentra el navegador, indícalo con `CHROMIUM_PATH=/ruta/a/ch
 
 | Archivo | Qué genera |
 |---|---|
-| `build.py` | Los SVG: marcas A y G, iconos, avatares, favicon y lockups con el nombre (los trazos se convierten en formas y el texto en curvas), y las siete ilustraciones de estados en `states/`. |
+| `build.py` | Los SVG: marcas A y G, iconos, avatares, favicon y lockups con el nombre (los trazos se convierten en formas y el texto en curvas), y las ocho ilustraciones de estados en `states/`. |
 | `short.cjs` | El SVG animado corto (negro y blanco), muestreado a 30 fps con las mismas fórmulas que la animación larga. |
 | `render_png.cjs` + `matte_png.py` | Los PNG, con transparencia real, y `favicon.ico`. |
 | `make_gif.cjs` | El GIF del logo animado. |
-| `gen_guide.py` | La hoja de uso (`guia-de-uso.html`). |
+| `gen_guide.py` | La hoja de uso interactiva (`guia-de-uso.html`). |
+| `gen_guide_md.py` | La hoja de uso en Markdown (`guia-de-uso.md`) y sus ilustraciones (`guide/`). |
 | `fonts/` | Nunito SemiBold, para el nombre, con su licencia (`OFL.txt`). |
 
 ## Dónde están las medidas

@@ -11,7 +11,7 @@ const read = (p) => readFileSync(`${root}${p}`, 'utf8');
 
 const PAGES = ['install', 'how-it-works', 'commands', 'configuration', 'built-with'];
 const pairs = [['README.md', 'README.es.md'], ['docs/README.md', 'docs/README.es.md'], ...PAGES.map((n) => [`docs/${n}.md`, `docs/${n}.es.md`])];
-const files = pairs.flat();
+const files = [...pairs.flat(), 'docs/brand/guia-de-uso.md'];
 
 const noCode = (s) => s.replace(/```[\s\S]*?```/g, '');
 const headings = (s) => [...noCode(s).matchAll(/^#{1,6} (.+)$/gm)].map((m) => m[1]);
@@ -65,7 +65,7 @@ test('the cover shows the seven commands of the flow, in order, with the same pi
     assert.match(text, /`\/relevo:doctor`/);
   }
   const pictures = (s) => [...s.matchAll(/relevo-state-([a-z]+)-black\.svg/g)].map((m) => m[1]);
-  assert.deepEqual(pictures(read('README.md')), ['init', 'think', 'issue', 'go', 'review', 'fix', 'ship']);
+  assert.deepEqual(pictures(read('README.md')), ['init', 'feature', 'think', 'issue', 'go', 'review', 'fix', 'ship']);
   assert.deepEqual(pictures(read('README.es.md')), pictures(read('README.md')));
 });
 
@@ -89,7 +89,7 @@ test('the demo has the same steps, times and hand-off message in both languages'
 
 test('every relative link, every in-page anchor and every picture resolves, in every page', () => {
   for (const f of files) {
-    const text = read(f);
+    const text = noCode(read(f));
     const dir = dirname(f);
     const target = (rel) => normalize(join(dir, rel));
     const own = new Set(headings(text).map(slug));
