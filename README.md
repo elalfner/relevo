@@ -114,4 +114,4 @@ Relevo builds on [OpenSpec](https://github.com/Fission-AI/OpenSpec) and [mattpoc
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) for the software and the documentation. The Relevo name and logo are not covered by it: see [TRADEMARKS.md](TRADEMARKS.md).

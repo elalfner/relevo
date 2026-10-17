@@ -38,3 +38,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+Font used in the logo files
+--------------------------------------------------------------------------------
+
+Nunito (https://github.com/googlefonts/nunito)
+Copyright 2014 The Nunito Project Authors
+Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
+Used by: the "relevo" wordmark in the logo files under docs/brand/, set in Nunito
+SemiBold and converted to outlines. The font file in docs/brand/source/fonts/ is
+included together with its license (OFL.txt).

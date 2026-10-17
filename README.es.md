@@ -115,4 +115,4 @@ Relevo se apoya en [OpenSpec](https://github.com/Fission-AI/OpenSpec) y en [matt
 
 ## Licencia
 
-[MIT](LICENSE)
+[MIT](LICENSE) para el software y la documentación. El nombre y el logo de Relevo no están cubiertos por ella: consulta [TRADEMARKS.es.md](TRADEMARKS.es.md).
