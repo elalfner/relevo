@@ -29,7 +29,7 @@ test('package.json and the manifest do not disagree about the version', () => {
 });
 
 test('each release lists what was added and what is known not to work yet', () => {
-  const first = changelog.split(/^## \[/m)[1];
+  const first = changelog.split(/^## \[/m).slice(1).find((section) => /^\d/.test(section)); // an [Unreleased] section is not a release yet
   assert.match(first, /### Added/);
   assert.match(first, /### Known limits/);
   assert.doesNotMatch(first, /sk-ant-|ghp_|\/Users\//);

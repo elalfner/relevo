@@ -1,15 +1,17 @@
 ---
-name: create
-description: Turns an idea, a conversation or an OpenSpec exploration into one or more GitHub issues that Relevo's go can build without asking anything. It asks only for what is missing (scenarios, edge cases, dependencies, screens, data contracts), checks each draft with the same rules go uses, shows everything for approval and then creates the issues. Use when asked to draft, write or create issues for a feature. It never applies the ready label.
-argument-hint: "[what to build, or the path of a saved agreement]"
+name: issue
+description: Writes the GitHub issues that Relevo's go builds, and updates the description of one that already exists. Given an idea, a conversation or an OpenSpec exploration it asks only for what is missing (scenarios, edge cases, dependencies, screens, data contracts), checks each draft with the same rules go uses, shows everything for approval and then creates the issues. Given an issue number it rewrites that issue's description, but only while Relevo has not committed to building it. Use when asked to draft, write, create or update issues for a feature. It never applies the ready label.
+argument-hint: "[what to build, the path of a saved agreement, or the number of an issue to update]"
 disable-model-invocation: true
 ---
 
-# Relevo create
+# Relevo issue
 
 Help the person write the issue or issues for `$ARGUMENTS` (or for what you have just been discussing) so that `/relevo:go` can build them with nobody to ask. The issue is the only thing the builder sees: whatever is not written in it will be guessed or will send it back.
 
 You write issues; you never build, label as ready, assign work to the build queue or touch code.
+
+**Mode.** If `$ARGUMENTS` starts with an issue number (`42` or `#42`) you are updating that issue: follow "Updating an existing issue" at the end and skip steps 1 to 6. Anything else, or nothing, is the creation flow below.
 
 Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. The format is explained in `${CLAUDE_PLUGIN_ROOT}/docs/issue-format.md` and the skeleton is `${CLAUDE_PLUGIN_ROOT}/templates/issue.md`.
 
@@ -80,10 +82,24 @@ Only after approval, in dependency order (so each `Depends-on` can name a real n
 
 Finish with the links of the issues created and one reminder: `go` starts for an issue when someone with write access applies the `ready` label, and that is the moment to read the issue once more, because it is the last point to change what will be built.
 
+## Updating an existing issue
+
+`go` builds exactly what an issue says, so its text is only free to change while Relevo has not committed to a build. The mode is the issue number in `$ARGUMENTS`; you edit the description only, never the title, labels, milestone or assignee.
+
+1. **Read it.** `gh issue view <n> --json number,title,body,state,labels > <file>` (the file goes outside the working tree). If the issue does not exist, say so and stop.
+2. **Ask whether it may be edited.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/can-edit-issue.mjs --input <file>`. Exit 0 prints `editable`. Exit 1 prints the label found and why: change nothing and tell the person that the text is what `go` builds, name the label, and give the way forward: remove `ready` by hand, edit, and apply `ready` again, which is also the last point to reread the issue. If `building` is the label, they must wait for the build to finish or fail first. Only an open issue with no lifecycle label, or with `needs-spec` alone, is editable.
+3. **Start from the current body.** Ask only what the person wants to change, keep every part they did not mention, and do not invent scenarios or edge cases. An existing `## Documentation` section stays exactly as it is unless the person asks to change it; it still carries only glossary entries and decision records.
+4. **Recheck the dependencies.** Every `Depends-on: #N` in the new body must name an existing issue (`gh issue view N`) other than this one. Fix a missing or self-referencing line with the person before going on.
+5. **Check.** Save the new body outside the working tree and run `check-issue.mjs --title "<current title>" --body-file <file>`. Fix every problem with the person; apply nothing while it fails.
+6. **Approve.** Show the new text next to the current one, the `Documentation` section whole, and ask for explicit approval. If the person asks for more changes, revise, check and show it again. Apply nothing before a clear yes.
+7. **Apply.** Read the issue again with `gh issue view <n> --json state,labels` and run `can-edit-issue.mjs` on it. If it is no longer editable, apply nothing and explain the refusal as above. Otherwise `gh issue edit <n> --body-file <file>`, then print the issue link.
+
 ## Never
 
 - Never apply `ready` or any other Relevo label.
 - Never create an issue before the person approved it and the check passed.
+- Never edit an issue that `can-edit-issue.mjs` refuses, and never edit before approval and a fresh read of its labels.
+- Never change the labels, title, milestone or assignee of an existing issue.
 - Never invent scenarios, edge cases, endpoints or data.
 - Never put credentials, tokens or personal data in an issue.
 - Never put anything in `Documentation` except glossary entries and decision records, and never change the wording the person agreed.
