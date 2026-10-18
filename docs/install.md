@@ -26,4 +26,4 @@ Restart Claude Code in your project and run `/relevo:doctor` to see what is stil
 1. Install the plugin as above and run `/relevo:doctor`.
 2. Run `/relevo:init`. It shows a plan first, and it is safe to run again.
 3. Adjust `relevo.yml` ([Configuration](configuration.md)).
-4. Think an idea through with `/relevo:think`, create the issues with `/relevo:create` and label them `relevo:ready`. From there [the cycle](how-it-works.md) runs.
+4. Think an idea through with `/relevo:think`, create the issues with `/relevo:issue` and label them `relevo:ready`. From there [the cycle](how-it-works.md) runs.

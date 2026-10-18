@@ -26,4 +26,4 @@ Reinicia Claude Code en tu proyecto y ejecuta `/relevo:doctor` para ver qué fal
 1. Instala el plugin como arriba y ejecuta `/relevo:doctor`.
 2. Ejecuta `/relevo:init`. Muestra un plan primero, y se puede volver a ejecutar sin problema.
 3. Ajusta `relevo.yml` ([Configuración](configuration.es.md)).
-4. Piensa una idea con `/relevo:think`, crea los issues con `/relevo:create` y etiquétalos `relevo:ready`. Desde ahí corre [el ciclo](how-it-works.es.md).
+4. Piensa una idea con `/relevo:think`, crea los issues con `/relevo:issue` y etiquétalos `relevo:ready`. Desde ahí corre [el ciclo](how-it-works.es.md).

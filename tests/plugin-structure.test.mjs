@@ -14,7 +14,7 @@ const KNOWN_SKILL_FIELDS = new Set(['name', 'description', 'when_to_use', 'argum
 
 // Skills that change a repository, spend money or start a build must never start on Claude's own initiative.
 // Read-only skills may. A new skill has to be classified here, which forces the decision to be made.
-const USER_ONLY = ['create', 'fix', 'go', 'init', 'review', 'ship', 'think'];
+const USER_ONLY = ['issue', 'fix', 'go', 'init', 'review', 'ship', 'think'];
 const READ_ONLY = ['doctor', 'status'];
 
 function frontmatter(text) {

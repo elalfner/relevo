@@ -57,7 +57,7 @@ test('the commands page lists the nine commands in the same order in both langua
 });
 
 test('the cover shows the seven commands of the flow, in order, with the same picture for each', () => {
-  const flow = ['init', 'think', 'create', 'go', 'review', 'fix', 'ship'].map((c) => `\`/relevo:${c}\``);
+  const flow = ['init', 'think', 'issue', 'go', 'review', 'fix', 'ship'].map((c) => `\`/relevo:${c}\``);
   for (const p of ['README.md', 'README.es.md']) {
     const text = read(p);
     assert.deepEqual(coverCommands(text), flow, p);

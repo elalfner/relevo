@@ -7,8 +7,8 @@ Distributed as a Claude Code plugin named `relevo`:
 | Command | What it does |
 |---|---|
 | `/relevo:init` | Sets up config, labels, branch protection and workflows (idempotent, shows a plan first) |
-| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `create`. `grill-with-docs` is published so that only you can launch it, so when it is time `think` asks you to run `/grill-with-docs` in the same conversation. It writes no files: the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
-| `/relevo:create` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build) |
+| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `issue`. `grill-with-docs` is published so that only you can launch it, so when it is time `think` asks you to run `/grill-with-docs` in the same conversation. It writes no files: the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
+| `/relevo:issue` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build). With an issue number it rewrites that issue instead, only while it is not queued, being built or built |
 | `/relevo:go` | Builds a ready issue: spec check, build, QA with one retry (runs automatically in the cloud) |
 | `/relevo:review` | Guided on-device review: the person drives, the agent captures and audits logs |
 | `/relevo:fix` | Fixes review feedback, updating the spec first |
