@@ -117,3 +117,18 @@ test('qa stays read-only after the documentation check', () => {
   assert.match(String(meta.disallowedTools), /Write/);
   assert.match(String(meta.disallowedTools), /Edit/);
 });
+
+test('Scenario: the agents have a read-only OpenSpec section and use the shared test flags', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  [dev, qa].forEach((t) => {
+    assert.match(t, /## OpenSpec commands/);
+    assert.match(t, /openspec instructions apply --change/);
+    assert.match(t, /flutter test --reporter=compact --no-pub/);
+  });
+  assert.match(dev, /Allow-paths:/);
+  assert.match(dev, /Install with the tool's no-scripts option/);
+  assert.match(qa, /git diff origin\/<base> -- \. ':\(exclude\)\*\.g\.dart'/);
+  assert.match(qa, /you never change the index or any file/);
+  assert.match(qa, /You still run analysis and all tests/);
+});
