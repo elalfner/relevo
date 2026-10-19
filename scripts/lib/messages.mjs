@@ -5,7 +5,9 @@
 // parts (riskiest area, due time, log link) simply disappear when unknown.
 // Long values are shortened: long logs are linked, never embedded.
 
+import { shortHash } from './issue-hash.mjs';
 import { pickLanguage, SUPPORTED_LANGUAGES } from './language.mjs';
+import { nextStep, nextStepPrefix } from './next-step.mjs';
 
 // Kept here as well so that existing imports keep working.
 export { pickLanguage, SUPPORTED_LANGUAGES };
@@ -31,11 +33,13 @@ const REQUIRED = {
   fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
 };
 
-const COMMANDS = {
-  built: (issue) => `/relevo:review ${issue}`,
-  qa_failed: (issue) => `/relevo:fix ${issue}`,
-  changes_requested: (issue) => `/relevo:fix ${issue}`,
-  approved: (issue) => `/relevo:ship ${issue}`,
+// The lifecycle state whose next step each message shows (see next-step.mjs, the only place that knows the commands).
+const STATE_OF = {
+  built: 'built',
+  qa_failed: 'qa-failed',
+  needs_spec: 'needs-spec',
+  changes_requested: 'changes-requested',
+  approved: 'pr-open',
 };
 
 const CATALOG = {
@@ -45,6 +49,7 @@ const CATALOG = {
       '',
       'What happened: {{tasks_done}} of {{tasks_total}} tasks done, QA passed.',
       'Branch: {{branch}}',
+      'Built from the issue text: {{issue_hash_short}}',
       'What to test: {{scenarios}} scenarios (checklist below)',
       'Riskiest area, check it first: {{risk}}',
       'Your next step: {{command}}',
@@ -59,13 +64,13 @@ const CATALOG = {
       'Finding: {{finding}}{{location_suffix}}',
       '{{branch_line}}',
       'Full QA report: {{log_url}}',
-      'Your next step: {{command}}',
+      '{{next_line}}',
     ],
     needs_spec: [
       '@{{spec_writer}} #{{issue}} "{{title}}" is back with you: the spec needs work',
       '',
       'What is missing: {{missing}}',
-      'Your next step: complete the issue, then label it ready again.',
+      '{{next_line}}',
     ],
     changes_requested: [
       '@{{author}} #{{issue}}: {{reviewer}} requested changes',
@@ -145,6 +150,7 @@ const CATALOG = {
       '',
       'Qué pasó: {{tasks_done}} de {{tasks_total}} tareas hechas, QA aprobado.',
       'Rama: {{branch}}',
+      'Construida con el texto del issue: {{issue_hash_short}}',
       'Qué probar: {{scenarios}} escenarios (checklist abajo)',
       'Zona más riesgosa, revísala primero: {{risk}}',
       'Tu siguiente paso: {{command}}',
@@ -159,13 +165,13 @@ const CATALOG = {
       'Hallazgo: {{finding}}{{location_suffix}}',
       '{{branch_line}}',
       'Reporte completo de QA: {{log_url}}',
-      'Tu siguiente paso: {{command}}',
+      '{{next_line}}',
     ],
     needs_spec: [
       '@{{spec_writer}} #{{issue}} "{{title}}" regresa contigo: la spec necesita trabajo',
       '',
       'Qué falta: {{missing}}',
-      'Tu siguiente paso: completa el issue y márcalo como ready otra vez.',
+      '{{next_line}}',
     ],
     changes_requested: [
       '@{{author}} #{{issue}}: {{reviewer}} pidió cambios',
@@ -258,21 +264,37 @@ export function renderMessage(kind, data = {}, language = 'en') {
   REQUIRED[kind].forEach((field) => {
     if (!present(values[field])) throw new Error(`message "${kind}" needs "${field}"`);
   });
-  if (!present(values.command) && COMMANDS[kind]) values.command = COMMANDS[kind](values.issue);
+  const language_ = pickLanguage(language);
+  const es = language_ === 'es';
+  if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
+
+  // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
+  if (STATE_OF[kind]) {
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? 'fix' : null;
+    const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
+    if (!present(values.command) && step.command) values.command = step.command;
+    if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
+    if (kind === 'qa_failed') values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
+  }
   if (kind === 'qa_failed') {
     const location = present(values.file) ? `${values.file}${present(values.line) ? `:${values.line}` : ''}` : '';
     values.location_suffix = location ? ` (${location})` : '';
-    const pushed = values.pushed !== false;
-    const es = pickLanguage(language) === 'es';
-    if (pushed) {
-      values.branch_line = es
+    // `pushed: false` is the older way to say that the branch was not pushed because of a credential or a marker.
+    const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
+    if (!['pushed', 'unsafe', 'existing'].includes(state)) throw new Error(`message "qa_failed" has an unknown branch_state "${state}"`);
+    if (state === 'existing' && !present(values.recovery)) throw new Error('message "qa_failed" needs "recovery" when the branch already existed');
+    const branchLines = {
+      pushed: es
         ? `La rama ${values.branch} está subida; el estado no avanzó y no se abrió ningún pull request.`
-        : `The branch ${values.branch} is pushed; the state did not advance and no pull request was opened.`;
-    } else {
-      values.branch_line = es
-        ? `La rama ${values.branch} NO se subió (se encontró una posible credencial o un marcador temporal); el estado no avanzó y no se abrió ningún pull request.`
-        : `The branch ${values.branch} was NOT pushed (a possible credential or temporary marker was found); the state did not advance and no pull request was opened.`;
-    }
+        : `The branch ${values.branch} is pushed; the state did not advance and no pull request was opened.`,
+      unsafe: es
+        ? `La rama ${values.branch} NO se subió (se encontró una posible credencial, un marcador temporal o una ruta protegida); el estado no avanzó y no se abrió ningún pull request.`
+        : `The branch ${values.branch} was NOT pushed (a possible credential, a temporary marker or a protected path was found); the state did not advance and no pull request was opened.`,
+      existing: es
+        ? `La rama ${values.branch} ya existía en el remoto, así que no se tocó; el estado no avanzó y no se abrió ningún pull request.`
+        : `The branch ${values.branch} already existed on the remote, so it was not touched; the state did not advance and no pull request was opened.`,
+    };
+    values.branch_line = branchLines[state];
     values.reason_suffix = present(values.reason) ? ` (${values.reason})` : '';
   }
 

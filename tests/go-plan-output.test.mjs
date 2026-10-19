@@ -69,3 +69,18 @@ test('without --github-output nothing is written and the JSON on stdout is uncha
   const out = execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7'], { encoding: 'utf8' });
   assert.equal(JSON.parse(out).decisions[0].action, 'start');
 });
+
+test('Scenario: Run started by the workflow - the hash and the allowed paths survive the base64 round trip', () => {
+  const o = parse(plan({ body: `${BODY}\nAllow-paths: composer.json, composer.lock\n` }).out);
+  const decision = JSON.parse(Buffer.from(o.decision_b64, 'base64').toString('utf8'));
+  assert.match(decision.issue_hash, /^[0-9a-f]{64}$/);
+  assert.deepEqual(decision.allow_paths, ['composer.json', 'composer.lock']);
+});
+
+test('the decision printed on stdout for a run started by hand carries the same hash', () => {
+  const input = join(dir, 'state-hash.json');
+  writeFileSync(input, JSON.stringify(state()));
+  const out = JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7'], { encoding: 'utf8' }));
+  const viaWorkflow = JSON.parse(Buffer.from(parse(plan().out).decision_b64, 'base64').toString('utf8'));
+  assert.equal(out.decisions[0].issue_hash, viaWorkflow.issue_hash);
+});
