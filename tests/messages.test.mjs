@@ -197,3 +197,11 @@ test('approved and changes_requested take their command from the same table', ()
   assert.match(renderMessage('approved', { recipient: 'persona-b', issue: 31, reviewer: 'persona-c' }), /Your next step: \/relevo:ship 31/);
   assert.match(renderMessage('changes_requested', { author: 'persona-b', issue: 31, reviewer: 'persona-c', summary: 'x' }), /Your next step: \/relevo:fix 31/);
 });
+
+test('Scenario: Issue changed after ready - the branch was not pushed, for a reason that is neither a credential nor a marker', () => {
+  const text = renderMessage('qa_failed', { ...FAILED, finding: 'the issue was edited', reason: 'issue changed after ready', branch_state: 'not_pushed' });
+  assert.match(text, /was not pushed; the state did not advance/);
+  assert.match(text, /\(issue changed after ready\)/);
+  assert.doesNotMatch(text, /credential|marker/);
+  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed' }, 'es'), /no se subió; el estado no avanzó/);
+});

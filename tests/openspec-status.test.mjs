@@ -40,3 +40,44 @@ test('an empty or missing status is never complete', () => {
 test('the rule agrees with isPlanningComplete on both saved examples', () => {
   [JUST_CREATED, ALL_DONE].forEach((status) => assert.equal(planningComplete(status), status.isPlanningComplete));
 });
+
+// ---------- The command
+
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const CLI = new URL('../scripts/spec-ready.mjs', import.meta.url).pathname;
+const tmp = mkdtempSync(join(tmpdir(), 'relevo-spec-ready-'));
+const saved = (status) => {
+  const path = join(tmp, `status-${Math.random().toString(36).slice(2)}.json`);
+  writeFileSync(path, JSON.stringify(status));
+  return path;
+};
+const cli = (...args) => spawnSync('node', [CLI, ...args], { encoding: 'utf8' });
+
+test('Scenario: All artifacts done - the command exits 0', () => {
+  const r = cli('--input', saved(ALL_DONE));
+  assert.deepEqual([r.status, r.stdout.trim()], [0, 'the specification is complete']);
+});
+
+test('Scenario: An artifact is missing - the command exits 1 and names the missing artifacts', () => {
+  const r = cli('--input', saved(JUST_CREATED));
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /artifacts not done: proposal, specs, design, tasks/);
+});
+
+test('the command asks OpenSpec for the status of the change, and exits 2 when OpenSpec fails or arguments are missing', () => {
+  const bin = join(tmp, 'bin');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, 'openspec'), `#!/bin/sh\n[ "$1 $2 $3" = "status --change x" ] && echo '${JSON.stringify(ALL_DONE)}' && exit 0\necho "no such change" >&2; exit 1\n`);
+  chmodSync(join(bin, 'openspec'), 0o755);
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  assert.equal(spawnSync('node', [CLI, '--change', 'x'], { env, encoding: 'utf8' }).status, 0);
+  const missing = spawnSync('node', [CLI, '--change', 'nope'], { env, encoding: 'utf8' });
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /openspec status failed: no such change/);
+  assert.equal(cli().status, 2);
+  assert.match(cli().stderr, /usage: spec-ready\.mjs/);
+});
