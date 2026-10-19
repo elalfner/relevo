@@ -11,8 +11,8 @@
 
 ## 2. Planner decision and messages
 
-- [ ] 2.1 Make `planGo` put `issue_hash` (from the title and body it already holds) and `allow_paths` (from the parsed issue) in the `start` decision, and keep both out of every other decision. Verify with additions to `tests/plan.test.mjs` and `tests/go-plan-output.test.mjs`: the fields are present for `start`, equal for equal text, and the `--github-output` base64 round-trips them.
-- [ ] 2.2 Update `scripts/lib/messages.mjs`: `needs_spec` takes an optional `reason` (`missing` by default) and its next-step line comes from `next-step.mjs`; `qa_failed` takes `branch_state` (`pushed` by default, `unsafe`, `existing`) and `recovery` (`fix`, `delete-branch`), with `pushed: false` kept as an alias of `unsafe`; `built` shows the short `issue_hash` when given; the `COMMANDS` map is replaced by the table. Verify with additions to `tests/messages.test.mjs` in English and Spanish: each branch state, each recovery, the alias, a message without a hash, and every existing assertion still passing.
+- [x] 2.1 Make `planGo` put `issue_hash` (from the title and body it already holds) and `allow_paths` (from the parsed issue) in the `start` decision, and keep both out of every other decision. Verify with additions to `tests/plan.test.mjs` and `tests/go-plan-output.test.mjs`: the fields are present for `start`, equal for equal text, and the `--github-output` base64 round-trips them.
+- [x] 2.2 Update `scripts/lib/messages.mjs`: `needs_spec` takes an optional `reason` (`missing` by default) and its next-step line comes from `next-step.mjs`; `qa_failed` takes `branch_state` (`pushed` by default, `unsafe`, `existing`) and `recovery` (`fix`, `delete-branch`), with `pushed: false` kept as an alias of `unsafe`; `built` shows the short `issue_hash` when given; the `COMMANDS` map is replaced by the table. Verify with additions to `tests/messages.test.mjs` in English and Spanish: each branch state, each recovery, the alias, a message without a hash, and every existing assertion still passing.
 
 ## 3. Scripts used by go
 

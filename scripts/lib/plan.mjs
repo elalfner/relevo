@@ -16,6 +16,7 @@
 import { parseIssueBody } from './issue-parse.mjs';
 import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
+import { issueHash } from './issue-hash.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
 // In a public repository only maintainers may start work: anyone with write access could otherwise start a
@@ -110,7 +111,7 @@ export function planGo({ config, issues, completed = [], running = [], permissio
           assign: [specWriter],
           comment: {
             kind: 'needs_spec',
-            data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: parsed.missing.join('; ') },
+            data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: parsed.missing.join('; '), reason: 'missing' },
           },
         });
         return;
@@ -164,6 +165,10 @@ export function planGo({ config, issues, completed = [], running = [], permissio
         qa_retries: config.qa.retries,
         run_max_turns: config.limits.run_max_turns,
         run_max_cost: config.limits.run_max_cost,
+        // The text the issue had when it was claimed: `go` checks it before it writes the specification.
+        issue_hash: issueHash({ title: issue.title, body: issue.body }),
+        // Dependency files the issue lets the change touch (see "Protected paths").
+        allow_paths: parsed.allowPaths,
       },
     });
   });

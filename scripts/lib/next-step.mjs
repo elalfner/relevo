@@ -139,3 +139,6 @@ export function nextStep({ state, reason = null, issue = null, language = 'en' }
     : `${PREFIX[lang].act}: ${command}${person}: ${hint}.`;
   return { state, reason: used, command, who: chosen.who, hint, line };
 }
+
+/** The words that open a next-step line in a language ("Your next step"), for messages that build their own line. */
+export const nextStepPrefix = (language) => PREFIX[pickLanguage(language)].act;

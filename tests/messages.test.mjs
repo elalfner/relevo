@@ -122,3 +122,78 @@ test('Scenario: Queued states its reason - for capacity and for the agent limit,
   assert.match(renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'en'), /limit of concurrent agents/);
   assert.match(renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'es'), /agentes simult/);
 });
+
+// ---------- Next step from one table, the recovery for an existing branch, the hash of the text it was built from
+
+const FAILED = { assignee: 'persona-b', issue: 31, title: 'Summary', finding: 'branch already exists', branch: 'feature/31-summary' };
+const BACK = { spec_writer: 'persona-a', issue: 31, title: 'Summary', missing: 'edge cases' };
+const BUILT_DATA = { assignee: 'persona-b', issue: 31, title: 'Summary', tasks_done: 5, tasks_total: 5, branch: 'feature/31-summary', scenarios: 4 };
+
+test('Scenario: Failed because the branch already exists with implementation commits - untouched, and /relevo:fix', () => {
+  const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' });
+  assert.match(text, /already existed on the remote, so it was not touched/);
+  assert.doesNotMatch(text, /is pushed|NOT pushed/);
+  assert.match(text, /Your next step: \/relevo:fix 31/);
+});
+
+test('Scenario: Failed because the branch already exists with only the specification - delete it and apply ready again', () => {
+  const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' });
+  assert.match(text, /already existed on the remote/);
+  assert.match(text, /Your next step: the branch holds only the specification: delete the remote branch and label the issue ready again\./);
+  assert.doesNotMatch(text, /\/relevo:fix/);
+});
+
+test('the same recoveries in Spanish', () => {
+  const fix = renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }, 'es');
+  assert.match(fix, /ya existía en el remoto, así que no se tocó/);
+  assert.match(fix, /Tu siguiente paso: \/relevo:fix 31/);
+  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' }, 'es'), /borra la rama remota y vuelve a ponerle ready al issue/);
+});
+
+test('branch_state unsafe is the same as the older pushed: false, and now names a protected path too', () => {
+  const unsafe = renderMessage('qa_failed', { ...FAILED, branch_state: 'unsafe' });
+  assert.equal(unsafe, renderMessage('qa_failed', { ...FAILED, pushed: false }));
+  assert.match(unsafe, /was NOT pushed \(a possible credential, a temporary marker or a protected path was found\)/);
+  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'unsafe' }, 'es'), /NO se subió \(se encontró una posible credencial, un marcador temporal o una ruta protegida\)/);
+});
+
+test('a plain failed build is unchanged: pushed branch and the fix command', () => {
+  const text = renderMessage('qa_failed', FAILED);
+  assert.match(text, /is pushed/);
+  assert.match(text, /Your next step: \/relevo:fix 31$/);
+});
+
+test('qa_failed rejects an unknown branch state and an existing branch without a recovery', () => {
+  assert.throws(() => renderMessage('qa_failed', { ...FAILED, branch_state: 'gone' }), /unknown branch_state "gone"/);
+  assert.throws(() => renderMessage('qa_failed', { ...FAILED, branch_state: 'existing' }), /needs "recovery"/);
+  assert.throws(() => renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'burn' }), /unknown reason "burn"/);
+});
+
+test('Scenario: Spec returned with a reason - missing gives /relevo:issue', () => {
+  const text = renderMessage('needs_spec', BACK);
+  assert.match(text, /What is missing: edge cases/);
+  assert.match(text, /Your next step: \/relevo:issue 31: complete what is missing, then label it ready again\./);
+  assert.equal(renderMessage('needs_spec', { ...BACK, reason: 'missing' }), text, 'missing is the default');
+});
+
+test('Scenario: Spec returned with a reason - ambiguous asks for a decision and mentions /relevo:think', () => {
+  const text = renderMessage('needs_spec', { ...BACK, missing: 'what happens when the list is empty?', reason: 'ambiguous' });
+  assert.match(text, /Your next step: \/relevo:issue 31: decide the open question \(run \/relevo:think first if you need to explore it\), then label it ready again\./);
+  assert.match(renderMessage('needs_spec', { ...BACK, reason: 'ambiguous' }, 'es'), /Tu siguiente paso: \/relevo:issue 31: decide la pregunta abierta \(ejecuta antes \/relevo:think/);
+  assert.throws(() => renderMessage('needs_spec', { ...BACK, reason: 'whim' }), /unknown reason "whim"/);
+});
+
+test('Scenario: Successful build - quotes the short hash of the issue text it was built from, and omits the line without one', () => {
+  const hash = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+  const text = renderMessage('built', { ...BUILT_DATA, issue_hash: hash });
+  assert.match(text, /Built from the issue text: abcdef01\n/);
+  assert.doesNotMatch(text, /abcdef012/);
+  assert.match(renderMessage('built', { ...BUILT_DATA, issue_hash: hash }, 'es'), /Construida con el texto del issue: abcdef01\n/);
+  assert.doesNotMatch(renderMessage('built', BUILT_DATA), /issue text/);
+  assert.match(renderMessage('built', BUILT_DATA), /Your next step: \/relevo:review 31/);
+});
+
+test('approved and changes_requested take their command from the same table', () => {
+  assert.match(renderMessage('approved', { recipient: 'persona-b', issue: 31, reviewer: 'persona-c' }), /Your next step: \/relevo:ship 31/);
+  assert.match(renderMessage('changes_requested', { author: 'persona-b', issue: 31, reviewer: 'persona-c', summary: 'x' }), /Your next step: \/relevo:fix 31/);
+});
