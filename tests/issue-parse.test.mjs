@@ -72,3 +72,20 @@ test('branch and change names come from the issue number and title', () => {
   assert.ok(!long.endsWith('-'));
   assert.equal(long, 'a-very-long-title-that-keeps-going-well');
 });
+
+test('Allow-paths lines list the dependency files the change may touch, once each', () => {
+  assert.deepEqual(parseIssueBody('Allow-paths: pubspec.yaml, pubspec.lock\n').allowPaths, ['pubspec.yaml', 'pubspec.lock']);
+  assert.deepEqual(parseIssueBody('- Allow-paths: `package.json`,`package-lock.json`\nAllow-paths: package.json\n').allowPaths, ['package.json', 'package-lock.json']);
+  assert.deepEqual(parseIssueBody('allow-paths:  apps/web/*  \n').allowPaths, ['apps/web/*']);
+});
+
+test('an issue without an Allow-paths line allows nothing, and the line inside a code block is only an example', () => {
+  assert.deepEqual(parseIssueBody(GOOD).allowPaths, []);
+  assert.deepEqual(parseIssueBody('```\nAllow-paths: pubspec.lock\n```\n').allowPaths, []);
+  assert.deepEqual(parseIssueBody('').allowPaths, []);
+});
+
+test('an Allow-paths line does not count as a scenario, an edge case or a dependency', () => {
+  const r = parseIssueBody(`${GOOD}\nAllow-paths: pubspec.yaml\n`);
+  assert.deepEqual([r.scenarios, r.edgeCases, r.dependsOn, r.missing], [1, 2, [], []]);
+});

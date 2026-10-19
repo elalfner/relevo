@@ -27,3 +27,17 @@ export function issueFromBranch(branch) {
   const m = /^feature\/(\d+)-/.exec(String(branch ?? ''));
   return m ? Number(m[1]) : null;
 }
+
+/**
+ * What an existing feature branch holds, from the paths it changes against the base branch:
+ * `empty` (nothing), `spec-only` (only the change specification, under openspec/changes/<change_id>/) or `implementation`.
+ */
+export function classifyBranchChanges(paths, id) {
+  const changed = (paths ?? []).map((p) => String(p).trim()).filter(Boolean);
+  if (changed.length === 0) return 'empty';
+  const prefix = `openspec/changes/${id}/`;
+  return changed.every((p) => p.startsWith(prefix)) ? 'spec-only' : 'implementation';
+}
+
+/** What to tell the person about a failed run on a branch that already exists: fix it, or start again. */
+export const recoveryForBranch = (kind) => (kind === 'implementation' ? 'fix' : 'delete-branch');

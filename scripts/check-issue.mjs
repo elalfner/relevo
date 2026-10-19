@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Checks a drafted issue. Usage:
-//   node scripts/check-issue.mjs --title "Short plain title" --body-file issue.md
+//   node scripts/check-issue.mjs --title "Short plain title" --body-file issue.md [--rules-file CLAUDE.md]
+// --rules-file is the project rules file (`qa.rules_from`), which an `Allow-paths:` line can never list.
 // Prints the counts and every problem. exit 0: ready to create   exit 1: problems   exit 2: bad arguments
 
 import { readFileSync } from 'node:fs';
@@ -23,8 +24,9 @@ try {
   console.error(`cannot read ${file}: ${err.message}`);
   process.exit(2);
 }
-const r = checkIssueDraft({ title, body });
-console.log(`${r.scenarios} scenario(s), ${r.edgeCases} edge case(s), depends on ${r.dependsOn.length ? r.dependsOn.map((n) => `#${n}`).join(', ') : 'nothing'}`);
+const r = checkIssueDraft({ title, body, rulesFile: arg('rules-file') ?? null });
+const allows = r.allowPaths.length ? `, allows changes to ${r.allowPaths.join(', ')}` : '';
+console.log(`${r.scenarios} scenario(s), ${r.edgeCases} edge case(s), depends on ${r.dependsOn.length ? r.dependsOn.map((n) => `#${n}`).join(', ') : 'nothing'}${allows}`);
 if (r.ok) {
   console.log('ready to create');
   process.exit(0);

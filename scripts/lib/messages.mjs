@@ -5,7 +5,10 @@
 // parts (riskiest area, due time, log link) simply disappear when unknown.
 // Long values are shortened: long logs are linked, never embedded.
 
-export const SUPPORTED_LANGUAGES = ['en', 'es'];
+import { pickLanguage, SUPPORTED_LANGUAGES } from './language.mjs';
+
+// Kept here as well so that existing imports keep working.
+export { pickLanguage, SUPPORTED_LANGUAGES };
 
 const MAX_VALUE_LENGTH = 400;
 
@@ -247,12 +250,6 @@ function present(value) {
 function shorten(value) {
   const text = String(value);
   return text.length > MAX_VALUE_LENGTH ? `${text.slice(0, MAX_VALUE_LENGTH)}… (truncated; see the full log)` : text;
-}
-
-/** Pick the catalog for a language tag such as "es" or "es-MX"; unknown languages use English. */
-export function pickLanguage(language) {
-  const base = String(language ?? 'en').split('-')[0];
-  return SUPPORTED_LANGUAGES.includes(base) ? base : 'en';
 }
 
 export function renderMessage(kind, data = {}, language = 'en') {
