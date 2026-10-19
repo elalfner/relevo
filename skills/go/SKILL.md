@@ -11,7 +11,9 @@ Build the GitHub issue whose number starts `$ARGUMENTS` from start to hand-off, 
 
 You never approve, merge or open a pull request, you never edit other issues, and you only push the issue's own feature branch.
 
-Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hold the rules that must not vary from run to run (gates, queue, labels, messages, scanning); use them instead of deciding those things yourself.
+Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hold the rules that must not vary from run to run (gates, queue, labels, messages, scanning, protected paths, commits); use them instead of deciding those things yourself.
+
+The runner that runs you stops the run when it reaches the turn or cost limit, without warning. You cannot see those counters, so do not try to stop early: work through the steps.
 
 ## Untrusted content
 
@@ -23,25 +25,42 @@ When `trust` in `relevo.yml` is `public`, the issue may have been written by a s
 
 Launch `relevo:dev` and `relevo:qa` in the foreground and wait for each report before the next step. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
 
+## OpenSpec commands
+
+Use these OpenSpec commands and no others:
+
+- `openspec --version`
+- `openspec list --json`
+- `openspec new change`
+- `openspec status`
+- `openspec instructions <artifact>`
+- `openspec instructions apply`
+- `openspec validate`
+
+Never run `openspec init`, `archive`, `update` or `sync`, and never create files under `openspec/changes/` by hand: the files of the change come from `openspec new change` and from the instructions of each artifact. When an OpenSpec command fails, show its output and take the failure path; do not try other options or another command.
+
 ## Failure path
 
-Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected twice`, `budget exceeded`, `branch already exists`, `specification invalid`, `possible credential in the diff`).
+Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `issue changed after ready`, `protected path in the diff`, `possible credential or temporary marker in the diff`).
 
-1. Push the branch **unless the reason is a possible credential or temporary marker**; in that case do not push anything. Push with `git push -u origin <branch>`; never force-push.
+1. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, or an issue that changed after `ready`; and never touch a branch that already existed.
 2. Move the issue to `qa-failed`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to qa-failed --current "<current labels, comma separated>"`, then apply the result with `gh issue edit`.
-3. Post one comment built by `render-message.mjs qa_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `pushed` (`false` when you did not push), and `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow).
+3. Post one comment built by `render-message.mjs qa_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow), and `branch_state`:
+   - `pushed` (the default) when you pushed the branch;
+   - `unsafe` when you did not push because of a possible credential, a temporary marker or a protected path;
+   - `not_pushed` when you did not push for another reason, such as an issue that changed after `ready`;
+   - `existing` when the branch already existed, together with `recovery` (step 2).
 4. Stop. Do not open a pull request and do not advance the state.
 
 ## Steps
 
 ### 0. Preflight
 
-Stop with a clear message, changing nothing, if any of these fails:
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.mjs
+```
 
-- `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs relevo.yml` exits non-zero. Show its output.
-- `openspec --version` does not run. Tell the person to run `/relevo:doctor`.
-- `openspec list --json` reports no OpenSpec root for this repository.
-- The working tree has uncommitted changes.
+It checks the configuration, that OpenSpec runs and finds a root for this repository, and that the working tree is clean. If it exits non-zero, stop with a clear message and change nothing: show its output, which names each failed check and its fix.
 
 Find the repository name: `$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
@@ -65,10 +84,8 @@ This reads the queue from GitHub, applies the gates and limits, carries out labe
 
 Read the decision for the issue in the JSON it prints:
 
-- `start`: continue. It gives you `branch`, `change_id`, `base`, `assignee`, `title`, `qa_retries`, `run_max_turns` and `run_max_cost`.
+- `start`: continue. It gives you `branch`, `change_id`, `base`, `assignee`, `title`, `qa_retries`, `run_max_turns`, `run_max_cost`, `issue_hash` (the text of the issue when it was claimed) and `allow_paths` (dependency files the issue lets the change touch).
 - anything else (`needs-spec`, `block`, `queue`, `denied`, `no-milestone`, `no-assignee`, `skip`): that is a normal outcome, already applied. Report the decision and its reason in one line, and stop. Do not build.
-
-Stay within `run_max_turns`. If you reach it, take the failure path with the reason `budget exceeded`. The cost limit is enforced by the workflow that runs you.
 
 ### 2. Branch
 
@@ -77,9 +94,23 @@ git fetch origin <base>
 git switch -c <branch> origin/<base>
 ```
 
-If `origin/<branch>` already exists, do not touch it: take the failure path with the reason `branch already exists`.
+If `origin/<branch>` already exists, do not touch it. Find out what it holds, then take the failure path with the reason `branch already exists`, `branch_state` `existing` and the `recovery`:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-state.mjs <base> <branch> <change_id>
+```
+
+It prints `implementation`, `spec-only` or `empty`. The recovery is `fix` for `implementation` (the person runs `/relevo:fix <issue>`) and `delete-branch` for the others (the person deletes the remote branch and applies `ready` again).
 
 ### 3. Specification
+
+First check that the issue is the one that was claimed:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/issue-hash.mjs --repo <owner/name> --issue <issue> --expect <issue_hash>
+```
+
+If it exits 1, the text was edited after `ready`: take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`.
 
 Write the change specification from the issue, with the OpenSpec command line, without the pauses of the interactive `propose` workflow (it asks questions and stops after planning; you must not). The issue is the source of truth.
 
@@ -94,48 +125,82 @@ What to write:
 - **tasks.md** has small, verifiable tasks that cover every scenario.
 - **Documentation.** If the issue has a `## Documentation` section, copy it word for word into `design.md` under the heading `Documentation from the issue` (it is the only place the developer and QA can read it), and add one task to `tasks.md`: write that documentation exactly as given. Add no other documentation. If the issue has no such section, add no documentation task.
 
-If the issue is ambiguous in a way that changes visible behaviour (not a detail), do not guess. Treat it as a spec defect: move the issue to `needs-spec` (`label-change.mjs --to needs-spec`), post `render-message.mjs needs_spec` with what is unclear in `missing`, assign it to `team.spec_writer`, and stop without pushing.
+If the issue is ambiguous in a way that changes visible behaviour (not a detail), do not guess. Treat it as a spec defect: move the issue to `needs-spec` (`label-change.mjs --to needs-spec`), post `render-message.mjs needs_spec` with what is unclear in `missing` and `reason` `ambiguous`, assign it to `team.spec_writer`, and stop without pushing.
+
+When every artifact exists, confirm with OpenSpec that none is missing:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/spec-ready.mjs --change "<change_id>"
+```
+
+If it exits 1 it names the artifacts that are not done: write them and run it once more. If one is still missing, take the failure path with the reason `specification incomplete`.
 
 Then `openspec validate "<change_id>"`. If it fails, fix the artifacts and validate again, at most twice. If it still fails, take the failure path with the reason `specification invalid`.
 
-Commit the specification on its own: stage `openspec/changes/<change_id>` with `node ${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs <paths>` (name the files), and commit `docs: specification for #<issue>`.
+Commit the specification on its own:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "docs: specification for #<issue>" -- openspec/changes/<change_id>
+```
 
 ### 4. Build
 
-Launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the project rules file (`qa.rules_from` in `relevo.yml`), and the base branch.
+```bash
+openspec instructions apply --change "<change_id>" --json
+```
 
-Read its report. If its open questions are not "none", treat them as a spec defect, exactly as in step 3. If some tasks are left unchecked, take the failure path with the reason `tasks left unfinished`.
+If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules file (`qa.rules_from` in `relevo.yml`), the base branch, and `allow_paths`.
+
+Read its report. If its open questions are not "none", treat them as a spec defect, exactly as in step 3. Then run the instructions command again: if `progress.remaining` is above 0, take the failure path with the reason `tasks left unfinished`.
 
 ### 5. QA, with retries
 
-Launch the `relevo:qa` agent on the result, giving it the same change directory, rules file and base branch. The first line of its answer is `QA PASSED` or `QA REJECTED`.
+Make the new files of the developer visible to `git diff`, without staging them, using the files its report lists (created and modified):
 
-On `QA REJECTED`, you may retry up to `qa_retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, then `relevo:qa` again with the previous report so it checks each earlier finding.
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/intent-to-add.mjs <files>
+```
+
+Launch the `relevo:qa` agent on the result, giving it the same change directory, rules file and base branch, and the diff to review: the working tree against the base branch, without generated files.
+
+```bash
+git diff origin/<base> -- . ':(exclude)*.g.dart' ':(exclude)*.freezed.dart'
+```
+
+The first line of its answer is `QA PASSED` or `QA REJECTED`.
+
+On `QA REJECTED`, you may retry up to `qa_retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, runs `intent-to-add.mjs` on the files of its new report, then launches `relevo:qa` again with the previous report and those files, so it checks each earlier finding and reviews only what changed.
 
 If QA still rejects after the retries, take the failure path with the reason `QA rejected after the retries`, and the first finding of the last report.
 
 ### 6. Commit
 
-Stage exactly the files the developer reported (created and modified) plus `tasks.md`, with `stage.mjs`. Never use `git add .` or `-A`.
-
-Scan what is staged:
+Commit exactly the files the developer reported (created and modified) plus `tasks.md`, through the script. Never use `git add .` or `-A`; the script refuses them.
 
 ```bash
-git diff --cached | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs
+node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "feat: <title> (#<issue>)" --allow "<allow_paths, comma separated>" -- <paths>
 ```
 
-If it reports anything, unstage everything (`git restore --staged .`) and take the failure path with the reason `possible credential or temporary marker in the diff`, naming the file and line. **Do not push.**
+Leave out `--allow` when `allow_paths` is empty. The script stages the paths, refuses protected paths, scans what is staged for temporary markers and credentials, and commits only when it finds nothing. If it exits 1 it has unstaged the paths and printed the file and line: take the failure path with the reason `protected path in the diff` or `possible credential or temporary marker in the diff`, naming the file and line. **Do not push.**
 
-Otherwise commit with the message `feat: <title> (#<issue>)`. Do not add links to this session or attribution lines.
+Do not add links to this session or attribution lines to the message.
 
 ### 7. Push and hand off
 
 1. `git push -u origin <branch>` (a normal push, never forced).
 2. Move the issue to `built`: `label-change.mjs --to built --current "..."`, applied with `gh issue edit`.
-3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (count the `[x]` and all checkboxes in `tasks.md`), `branch`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
+3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (`progress.complete` and `progress.total` of `openspec instructions apply --change "<change_id>" --json`), `branch`, `issue_hash`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
 
 The comment tells the assignee the next command (`/relevo:review <issue>`).
 
 ## Report
 
-Finish with one short block: the issue, the outcome (`built`, `needs-spec`, `qa-failed`, or the gate decision), the branch, the QA verdict, and the comment you posted.
+Finish with one short block: the issue, the outcome (`built`, `needs-spec`, `qa-failed`, or the gate decision), the branch, the QA verdict, and the comment you posted. Add whether the issue text was verified when the decision had no `issue_hash`.
+
+End with the next step, from the same table the comments use:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state <built|needs-spec|qa-failed|blocked|queued> --issue <issue>
+```
+
+Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`) the comment already says what to do.

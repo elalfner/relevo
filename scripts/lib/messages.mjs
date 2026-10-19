@@ -281,7 +281,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
     values.location_suffix = location ? ` (${location})` : '';
     // `pushed: false` is the older way to say that the branch was not pushed because of a credential or a marker.
     const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
-    if (!['pushed', 'unsafe', 'existing'].includes(state)) throw new Error(`message "qa_failed" has an unknown branch_state "${state}"`);
+    if (!['pushed', 'unsafe', 'not_pushed', 'existing'].includes(state)) throw new Error(`message "qa_failed" has an unknown branch_state "${state}"`);
     if (state === 'existing' && !present(values.recovery)) throw new Error('message "qa_failed" needs "recovery" when the branch already existed');
     const branchLines = {
       pushed: es
@@ -290,6 +290,9 @@ export function renderMessage(kind, data = {}, language = 'en') {
       unsafe: es
         ? `La rama ${values.branch} NO se subió (se encontró una posible credencial, un marcador temporal o una ruta protegida); el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} was NOT pushed (a possible credential, a temporary marker or a protected path was found); the state did not advance and no pull request was opened.`,
+      not_pushed: es
+        ? `La rama ${values.branch} no se subió; el estado no avanzó y no se abrió ningún pull request.`
+        : `The branch ${values.branch} was not pushed; the state did not advance and no pull request was opened.`,
       existing: es
         ? `La rama ${values.branch} ya existía en el remoto, así que no se tocó; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} already existed on the remote, so it was not touched; the state did not advance and no pull request was opened.`,

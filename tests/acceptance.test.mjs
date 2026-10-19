@@ -43,7 +43,7 @@ test('Scenario: QA still rejects - go retries exactly qa_retries times, then tak
   const go = skill('go');
   assert.match(go, /you may retry up to `qa_retries` times/);
   assert.match(go, /If QA still rejects after the retries, take the failure path with the reason `QA rejected after the retries`/);
-  assert.match(go, /Push the branch \*\*unless the reason is a possible credential or temporary marker\*\*/);
+  assert.match(go, /Push the branch with `git push -u origin <branch>`; never force-push\. \*\*Do not push anything\*\* when the reason is a possible credential or temporary marker, a protected path in the diff/);
   assert.match(go, /Stop\. Do not open a pull request and do not advance the state\./);
   assert.match(go, /You never approve, merge or open a pull request/);
   assert.ok(!/gh pr create/.test(go), 'go never opens a pull request');
@@ -54,7 +54,7 @@ test('Scenario: Credential found before pushing - the scanner stops the commit a
   const scan = node('scan-diff.mjs', [], diff);
   assert.equal(scan.status, 1);
   assert.match(scan.stderr + scan.stdout, /credential/i);
-  assert.match(skill('go'), /do not push anything/);
+  assert.match(skill('go'), /Do not push anything/);
 });
 
 // ---------- review: no "done", no audit
