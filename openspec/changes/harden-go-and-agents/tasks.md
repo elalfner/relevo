@@ -33,14 +33,14 @@
 
 ## 6. Workflow template
 
-- [ ] 6.1 Update `templates/workflows/relevo-go.yml`: the final-step comment says that the run may have reached its turn or cost limit; commented install examples without package scripts and a note that `pub` runs no install-time scripts. Verify with `tests/workflow-go.test.mjs` (limits still match `relevo.yml`, no `pull_request_target`, the final step still runs `if: always()`) and `tests/security.test.mjs`.
+- [x] 6.1 Update `templates/workflows/relevo-go.yml`: the final-step comment says that the run may have reached its turn or cost limit; commented install examples without package scripts and a note that `pub` runs no install-time scripts. Verify with `tests/workflow-go.test.mjs` (limits still match `relevo.yml`, no `pull_request_target`, the final step still runs `if: always()`) and `tests/security.test.mjs`.
 - [ ] 6.2 In the sandbox repository, run the `go` workflow once with `id-token: write` removed from the build job and record the result in `docs/pilot-findings.md`. Verify by the run's outcome: remove the permission from the template only if the run built the issue and posted the hand-off; otherwise leave the template unchanged and record why.
 
 ## 7. Documentation and integration
 
-- [ ] 7.1 Update the `go` row of `docs/commands.md` and `docs/commands.es.md` (a sentence each: verifies the issue text it was approved with, refuses protected paths, says what to do when the branch exists). Verify with `tests/readme-sync.test.mjs`.
-- [ ] 7.2 Add the entry to `CHANGELOG.md` under Unreleased (changed behaviour of `go`, the new scripts, the new optional `Allow-paths:` line, and that repositories must copy `relevo-go.yml` again to get the new final-step wording). Verify with `tests/changelog.test.mjs`.
-- [ ] 7.3 Run `npm test`, `openspec validate --all` and `openspec validate harden-go-and-agents --strict`, and `claude plugin validate .` when the `claude` command is available. Verify that every test passes and that validation reports no error; record any warning that is new.
+- [x] 7.1 Update the `go` row of `docs/commands.md` and `docs/commands.es.md` (a sentence each: verifies the issue text it was approved with, refuses protected paths, says what to do when the branch exists). Verify with `tests/readme-sync.test.mjs`.
+- [x] 7.2 Add the entry to `CHANGELOG.md` under Unreleased (changed behaviour of `go`, the new scripts, the new optional `Allow-paths:` line, and that repositories must copy `relevo-go.yml` again to get the new final-step wording). Verify with `tests/changelog.test.mjs`.
+- [x] 7.3 Run `npm test`, `openspec validate --all` and `openspec validate harden-go-and-agents --strict`, and `claude plugin validate .` when the `claude` command is available. Verify that every test passes and that validation reports no error; record any warning that is new.
 
 ## Workflow follow-up
 

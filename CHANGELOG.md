@@ -4,7 +4,16 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **Scripts** that hold the rules `go` must not vary: `preflight`, `issue-hash`, `branch-state`, `spec-ready`, `intent-to-add`, `commit-change` and `next-step`, plus the protected-paths and OpenSpec-command tables they and the tests share.
+- **`Allow-paths:` line** (optional) in the issue format: the dependency files a change may touch. The files that control the workflow (`.github/`, `relevo.yml`, `.relevo/`, skills, the project rules file) can never be listed.
+
 ### Changed
+
+- **`go` is hardened**: it checks that the issue text is the one that was approved (hash), refuses protected paths and temporary markers or credentials in what it commits, never touches a branch that already exists (the comment says how to recover, by its content), reads the progress of the build from `openspec instructions apply`, uses only a closed list of OpenSpec commands, and ends every comment with the next step from one table in English and Spanish.
+- **Agents `dev` and `qa`** run only `openspec status` and `openspec instructions apply`; QA reviews the diff of the working tree against `origin/<base>`, and on a retry still runs analysis and all tests.
+- **Workflow template**: copy `relevo-go.yml` again to get the new wording of the final step (a run can be cut at its turn or cost limit) and the install examples without package scripts.
 
 - **`create` is now `issue`**: `/relevo:create` is gone, with no alias, and `/relevo:issue` replaces it. Without an argument it writes new issues exactly as before; with an issue number it updates the description of an existing one.
 
