@@ -113,6 +113,10 @@ jobs:
       #     with:
       #       channel: stable
       #       cache: true
+      # Install dependencies without package scripts where the tool offers it, so a dependency cannot run code
+      # while it is installed: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`,
+      # `composer install --no-scripts`. `flutter pub get` and `dart pub get` run no install-time scripts of
+      # the packages, so they need no such option.
 
       - name: Install OpenSpec
         run: npm install --global @fission-ai/openspec
@@ -158,8 +162,9 @@ jobs:
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
             --disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)"
 
-      # A run can end without telling anyone: the plugin cannot be cloned, the login fails, preflight stops, or the
-      # agent ends its session early (all seen in the pilot, see docs/pilot-findings.md). If the issue is still
+      # A run can end without telling anyone: the plugin cannot be cloned, the login fails, preflight stops, the
+      # run reached --max-turns or --max-budget-usd (the runner cuts it; the agent cannot see those counters and
+      # does not stop itself), or the agent ends its session early (all seen in the pilot, see docs/pilot-findings.md). If the issue is still
       # ready or building after the agent step, no outcome was recorded, so say so on the issue.
       # If you renamed the labels in relevo.yml, change the names below too.
       - name: Report a run that ended without an outcome

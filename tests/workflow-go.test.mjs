@@ -138,3 +138,11 @@ test('least privilege: decide only reads contents, build is the one that can pus
   assert.doesNotMatch(jobText('decide'), /contents: write|id-token/);
   assert.match(jobText('build'), /permissions:\n {6}contents: write/);
 });
+
+test('Scenario: the template says a run may be cut at its limits and shows installs without package scripts', () => {
+  const t = readFileSync(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8').replace(/\n\s*#\s*/g, ' ');
+  assert.match(t, /run reached --max-turns or --max-budget-usd \(the runner cuts it/);
+  assert.match(t, /npm ci --ignore-scripts/);
+  assert.match(t, /composer install --no-scripts/);
+  assert.match(t, /`flutter pub get` and `dart pub get` run no install-time scripts/);
+});
