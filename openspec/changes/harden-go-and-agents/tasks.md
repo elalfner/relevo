@@ -28,8 +28,8 @@
 
 ## 5. The dev and qa agents
 
-- [ ] 5.1 Update `agents/dev.md`: `## OpenSpec commands` section (`status`, `instructions apply`, read-only); start from the context files and pending tasks `go` gives; do not add a dependency unless the issue's `Allow-paths:` names its manifest, otherwise report an open question; install without package scripts where the tool offers it; `flutter test --reporter=compact --no-pub`. Verify with `tests/agents.test.mjs`: the new sentences are present, the existing assertions about never committing, never editing `openspec/` and stopping on ambiguity still pass.
-- [ ] 5.2 Update `agents/qa.md`: `## OpenSpec commands` section; the diff under review is `git diff origin/<base> -- . ':(exclude)*.g.dart' ':(exclude)*.freezed.dart'` of the working tree; QA never changes the index or any file; on a retry it audits the reported files plus each earlier finding and still runs analysis and all tests; `flutter test --reporter=compact --no-pub`. Verify with `tests/agents.test.mjs` and `tests/openspec-commands.test.mjs` for `dev` and `qa`.
+- [x] 5.1 Update `agents/dev.md`: `## OpenSpec commands` section (`status`, `instructions apply`, read-only); start from the context files and pending tasks `go` gives; do not add a dependency unless the issue's `Allow-paths:` names its manifest, otherwise report an open question; install without package scripts where the tool offers it; `flutter test --reporter=compact --no-pub`. Verify with `tests/agents.test.mjs`: the new sentences are present, the existing assertions about never committing, never editing `openspec/` and stopping on ambiguity still pass.
+- [x] 5.2 Update `agents/qa.md`: `## OpenSpec commands` section; the diff under review is `git diff origin/<base> -- . ':(exclude)*.g.dart' ':(exclude)*.freezed.dart'` of the working tree; QA never changes the index or any file; on a retry it audits the reported files plus each earlier finding and still runs analysis and all tests; `flutter test --reporter=compact --no-pub`. Verify with `tests/agents.test.mjs` and `tests/openspec-commands.test.mjs` for `dev` and `qa`.
 
 ## 6. Workflow template
 

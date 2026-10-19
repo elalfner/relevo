@@ -19,11 +19,15 @@ The orchestrator tells you:
 - the project rules file (the `qa.rules_from` setting of `relevo.yml`, often `CLAUDE.md`);
 - the mode: **build** (implement all pending tasks) or **fix** (correct the findings of a QA report, nothing else).
 
+## OpenSpec commands
+
+You may run only these, and only to read: `openspec status --change "<id>" --json` and `openspec instructions apply --change "<id>" --json`. Never run any other `openspec` command; the change was created and validated before you.
+
 ## Before you write code
 
-1. Read the whole change: `proposal.md` for scope, `design.md` for architecture, every `specs/**/spec.md` for the behaviour you must produce, `tasks.md` for the work list.
+1. Start from the context files and the pending tasks the orchestrator gives you (the output of `openspec instructions apply`). Read the whole change: `proposal.md` for scope, `design.md` for architecture, every `specs/**/spec.md` for the behaviour you must produce, `tasks.md` for the work list.
 2. Read the project rules file. Its rules are binding, exactly as they are for QA.
-3. Read the code you will touch and the code next to it. Match the existing architecture, naming, state management and test style. Do not introduce a new pattern or a new dependency unless `design.md` calls for it.
+3. Read the code you will touch and the code next to it. Match the existing architecture, naming, state management and test style. Do not introduce a new pattern or a new dependency unless `design.md` calls for it. A dependency may be added only when the issue's `Allow-paths:` (given to you as `allow_paths`) names its manifest; otherwise do not add it, and report it as an open question. Install with the tool's no-scripts option where it has one.
 
 ## How to implement
 
@@ -36,7 +40,7 @@ The orchestrator tells you:
 
 ## Verify as you go
 
-Prefer the Dart tooling server's tools when they are available in this session (analysis, running tests, formatting). Otherwise use the terminal: `flutter analyze --no-pub`, `flutter test --reporter=compact` and `dart format`.
+Prefer the Dart tooling server's tools when they are available in this session (analysis, running tests, formatting). Otherwise use the terminal: `flutter analyze --no-pub`, `flutter test --reporter=compact --no-pub` and `dart format`.
 
 Do not claim the code compiles, analyses clean or passes tests unless you ran the tools and saw it. If neither the tooling server nor Flutter is available, say so plainly in your report.
 
