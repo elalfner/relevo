@@ -149,3 +149,11 @@ test('Scenario: Monorepo - go reads the platform from the decision, passes it on
   const wrapper = readFileSync(root('scripts/commit-change.mjs'), 'utf8');
   ['within', 'change'].forEach((f) => assert.ok(wrapper.includes(`'${f}'`), `commit-change does not implement --${f}`));
 });
+
+test('Scenario: the skill says where it runs - in the cloud with a decision, or on a machine with go-local.mjs in its own worktree', () => {
+  assert.match(body, /## Where it runs/);
+  assert.match(body, /scripts\/go-local\.mjs <issue>/);
+  assert.match(body, /separate git worktree, with the same limits and tool lists as the workflow/);
+  assert.match(body, /Started by hand without that script, it needs a clean working tree/);
+  assert.ok(existsSync(root('scripts/go-local.mjs')));
+});
