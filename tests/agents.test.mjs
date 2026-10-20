@@ -165,3 +165,25 @@ test('Scenario: Monorepo - both agents get the folder of the platform and the wo
   assert.match(qa, /\*\*Platform\*\*: a file changed outside the folder of the platform/);
   assert.match(qa, /unless the issue lists that path in `Allow-paths:`/);
 });
+
+// ---------- issue format v2
+
+test('Scenario: Decision broken / Section reworded - QA applies the decisions and constraints by id and compares the copied sections', () => {
+  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  assert.match(qa, /### 7\. Decisions and constraints from the issue/);
+  assert.match(qa, /headings that start `From the issue:`/);
+  assert.match(qa, /issue-sections\.mjs --body-file <issue_file> --copy/);
+  assert.match(qa, /Reject a reworded, shortened or reordered section and cite the section/);
+  assert.match(qa, /citing its id \(`D2`, `C1`\)/);
+  assert.match(qa, /A decision under `Discarded` is not a rule/);
+  assert.match(qa, /`Verification` is for the person's review/);
+  assert.match(qa, /the saved body of the issue \(`issue_file`\)/);
+});
+
+test('the developer treats the decisions and constraints as binding and reports a conflict instead of choosing', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  assert.match(dev, /## Decisions and constraints from the issue/);
+  assert.match(dev, /binding/);
+  assert.match(dev, /report it as an open question with its id/);
+  assert.match(dev, /Never edit those sections/);
+});

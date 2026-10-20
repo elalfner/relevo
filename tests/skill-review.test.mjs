@@ -102,3 +102,13 @@ test('Scenario: QA after the sync - review finds the platform again and gives QA
   assert.match(body, /If `platform-of\.mjs` exits 1, stop and tell the person what it printed/);
   assert.match(body, /the profile, the folder of the platform and the skill paths/);
 });
+
+// ---------- issue format v2
+
+test('Scenario: Brief shown first - the review shows the computed brief before the shot list and the checklist', () => {
+  const brief = body.indexOf('review-brief.mjs --issue');
+  assert.ok(brief > 0 && brief < body.indexOf('A **shot list**') && brief < body.indexOf('checklist.mjs openspec/changes/<change folder>`, one numbered line'));
+  assert.match(body, /computed and not written by you/);
+  assert.match(body, /Show them as they are/);
+  assert.ok(existsSync(root('scripts/review-brief.mjs')));
+});

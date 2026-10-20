@@ -17,26 +17,26 @@ test('frontmatter uses only documented fields and Claude never starts it on its 
   assert.equal(meta.name, 'issue');
   assert.equal(meta['argument-hint'], '[what to build, the path of a saved agreement, or the number of an issue to update]');
   assert.equal(meta['disable-model-invocation'], true);
-  assert.match(meta.description, /never applies the ready label/);
+  assert.match(meta.description, /applies the ready label only when asked in a separate question/);
   assert.ok(String(meta.description).length <= 1536);
 });
 
 test('every script, template and document it points at exists', () => {
   const scripts = [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([\w.-]+)/g)].map((m) => m[1]);
   assert.ok(scripts.includes('check-issue.mjs'));
-  assert.ok(scripts.includes('can-edit-issue.mjs'));
+  assert.ok(readFileSync(root('skills/issue/references/update.md'), 'utf8').includes('${CLAUDE_PLUGIN_ROOT}/scripts/can-edit-issue.mjs'));
   scripts.forEach((s) => assert.ok(existsSync(root(`scripts/${s}`)), `scripts/${s} does not exist`));
   [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/((?:templates|docs)\/[\w.-]+)/g)].forEach((m) => assert.ok(existsSync(root(m[1])), `${m[1]} does not exist`));
 });
 
 test('Scenario: Issues created - the skill never applies a lifecycle label and creates only after approval', () => {
   assert.match(body, /Do \*\*not\*\* add the `ready` label/);
-  assert.match(body, /Never apply `ready`/);
+  assert.match(body, /Never apply `ready` or any other Relevo label except `ready` after the separate question of step 7/);
   assert.match(body, /Create nothing before a clear yes/);
-  assert.ok(!/--add-label|--remove-label|--label/.test(body), 'the skill must not touch labels');
-  const edits = body.match(/gh issue edit[^\n]*/g) ?? [];
-  assert.ok(edits.length > 0);
-  edits.forEach((e) => assert.match(e, /--body-file/, 'gh issue edit may only replace the body'));
+  const beforeOffer = body.slice(0, body.indexOf('## 7. Offer `ready`'));
+  assert.ok(!/--add-label|--remove-label|--label/.test(beforeOffer), 'no label is touched before the separate question');
+  const edits = beforeOffer.match(/gh issue edit[^\n]*/g) ?? [];
+  edits.forEach((e) => assert.match(e, /--body-file/, 'before the offer gh issue edit may only replace the body'));
 });
 
 test('the check comes before creation, and creation is in dependency order', () => {
@@ -92,7 +92,8 @@ test('the issue template and the format doc describe the optional section', () =
 
 // ---------- update mode
 
-const update = body.slice(body.indexOf('## Updating an existing issue'), body.indexOf('## Never'));
+const reference = readFileSync(root('skills/issue/references/update.md'), 'utf8');
+const update = reference;
 
 test('Scenario: Number given - the mode comes from the argument', () => {
   assert.match(body, /starts with an issue number \(`42` or `#42`\)/);
@@ -111,7 +112,7 @@ test('Scenario: Approved - nothing is edited before a clear yes, labels are read
   assert.ok(update.indexOf('check-issue.mjs') < update.indexOf('gh issue edit'));
   assert.ok(update.indexOf('clear yes') < update.indexOf('gh issue edit'));
   assert.match(update, /Read the issue again with `gh issue view <n> --json state,labels`/);
-  assert.match(body, /Never change the labels, title, milestone or assignee of an existing issue/);
+  assert.match(body, /Never change the title, milestone or assignee of an existing issue, nor its labels except the swap offered in the update flow/);
 });
 
 test('Scenario: Dependency does not exist - every Depends-on is checked, and not against the issue itself', () => {
@@ -158,6 +159,62 @@ test('Scenario: Contract offered - the data contract of a dependency is read wit
 });
 
 test('the update flow rechecks external dependencies in the linked repository too', () => {
-  const text = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  const text = readFileSync(new URL('../skills/issue/references/update.md', import.meta.url), 'utf8');
   assert.match(text, /every `Depends-on: owner\/repo#N` an existing issue of a linked repository \(`gh issue view N --repo owner\/repo`\)/);
+});
+
+// ---------- issue format v2
+
+const offer = body.slice(body.indexOf('## 7. Offer `ready`'), body.indexOf('## Updating an existing issue'));
+
+test('Scenario: Offer after creating - one separate question, after the creation, naming every issue, with its own yes', () => {
+  assert.ok(body.indexOf('## 7. Offer `ready`') > body.indexOf('gh issue create'));
+  assert.match(offer, /Ask one more question, apart from the approval of the drafts and with its own yes or no/);
+  assert.match(offer, /Name every issue/);
+  assert.match(offer, /Never apply it on your own, and never take the approval of the drafts as the answer/);
+  assert.match(offer, /label-change\.mjs --to ready/);
+});
+
+test('Scenario: Declined / No write access - nothing is applied and the person is reminded or the label is left to someone else', () => {
+  assert.match(offer, /On no, or silence, apply nothing and remind the person/);
+  assert.match(offer, /gh api repos\/\{owner\}\/\{repo\} --jq \.permissions/);
+  assert.match(offer, /leave the label to someone who can/);
+});
+
+test('Scenario: Needs-spec swapped for ready - the update flow asks the same question and swaps the labels', () => {
+  assert.match(reference, /Offer `ready` for a `needs-spec` issue/);
+  assert.match(reference, /label-change\.mjs --to ready --current/);
+  assert.match(reference, /--add-label … --remove-label …/);
+});
+
+test('Scenario: A similar issue exists - open issues are searched before the draft and shown with a question', () => {
+  assert.ok(body.indexOf('gh issue list --state open --search') < body.indexOf('## 3. Write the drafts'));
+  assert.match(body, /ask(?:ing)? whether to go on, update that one/);
+});
+
+test('Scenario: An id with no destination - the coverage script runs after the check and the table is shown at approval', () => {
+  assert.match(body, /issue-coverage\.mjs --agreement/);
+  assert.ok(body.indexOf('issue-coverage.mjs') > body.indexOf('check-issue.mjs'));
+  assert.match(body, /WITHOUT DESTINATION/);
+  assert.match(body, /Show the coverage table with the drafts/);
+  assert.match(body, /An id is dropped only when the person says so/);
+});
+
+test('the new sections are asked for and written with their ids', () => {
+  ['Decisions', 'Constraints', 'Code pointers', 'Verification', 'Assumptions', 'Open questions'].forEach((h) => assert.match(body, new RegExp(h)));
+  assert.match(body, /### D<n>\. <title>/);
+  assert.match(body, /- C<n>: <limit>/);
+});
+
+test('OpenSpec is read only for the specifications the issue touches, with the closed commands', () => {
+  assert.match(body, /openspec list --specs --json/);
+  assert.match(body, /openspec show <spec> --type spec/);
+  assert.match(body, /never all of them/);
+});
+
+test('the update flow lives in the reference file, which SKILL.md points to, and still uses can-edit-issue', () => {
+  assert.ok(existsSync(root('skills/issue/references/update.md')));
+  assert.match(body, /skills\/issue\/references\/update\.md/);
+  assert.match(reference, /can-edit-issue\.mjs/);
+  assert.doesNotMatch(body, /can-edit-issue\.mjs --input/, 'the update steps are not in SKILL.md any more');
 });
