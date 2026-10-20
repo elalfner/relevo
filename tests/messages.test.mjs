@@ -206,10 +206,8 @@ test('Scenario: Issue changed after ready - the branch was not pushed, for a rea
   assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed' }, 'es'), /no se subió; el estado no avanzó/);
 });
 
-test('Scenario: Two platforms - the platform message names them and the next step, in both languages', () => {
-  const data = { issue: 12, actor: 'persona-a', platforms: 'web, api' };
-  const en = renderMessage('platform', data);
-  assert.match(en, /#12 was not started: this repository has several platforms \(web, api\)/);
-  assert.match(en, /@persona-a your next step: keep one platform in relevo\.yml/);
-  assert.match(renderMessage('platform', data, 'es'), /#12 no se inició: este repositorio tiene varias plataformas \(web, api\)/);
+test('the platform message of the previous change no longer exists: a missing platform is a missing part of the spec', () => {
+  assert.throws(() => renderMessage('platform', { issue: 1, actor: 'a', platforms: 'x' }), /unknown message kind "platform"/);
+  const text = renderMessage('needs_spec', { spec_writer: 'a', issue: 3, title: 'T', missing: 'Platform: line naming one of the platforms of relevo.yml (web, api)', reason: 'missing' });
+  assert.match(text, /What is missing: Platform: line naming one of the platforms of relevo\.yml \(web, api\)/);
 });

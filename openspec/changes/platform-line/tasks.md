@@ -9,8 +9,8 @@
 
 ## 2. Planner, messages and workflow output
 
-- [ ] 2.1 Replace the `platform` decision of `scripts/lib/plan.mjs` by the resolution of D1/D2: an unresolved platform joins the `needs-spec` path with the platform message in `missing`, and a resolved one adds `platform`, `stack`, `path` and `targets` to the `start` decision; remove the `platform` message kind and its text from `scripts/lib/messages.mjs`. Verify with `tests/plan.test.mjs` (the three `go` gate scenarios, one platform unchanged, the permission check still first) and `tests/messages.test.mjs` (the removed kind no longer exists, the `needs_spec` text carries the platform message in both languages).
-- [ ] 2.2 Write `platform`, `stack` and `path` to the `--github-output` file in `scripts/go-plan.mjs` (empty unless the decision is `start`). Verify with `tests/go-plan-output.test.mjs`: a Vue platform gives `stack=vue`, a non-start decision gives empty values, and the base64 decision still round-trips with the new fields.
+- [x] 2.1 Replace the `platform` decision of `scripts/lib/plan.mjs` by the resolution of D1/D2: an unresolved platform joins the `needs-spec` path with the platform message in `missing`, and a resolved one adds `platform`, `stack`, `path` and `targets` to the `start` decision; remove the `platform` message kind and its text from `scripts/lib/messages.mjs`. Verify with `tests/plan.test.mjs` (the three `go` gate scenarios, one platform unchanged, the permission check still first) and `tests/messages.test.mjs` (the removed kind no longer exists, the `needs_spec` text carries the platform message in both languages).
+- [x] 2.2 Write `platform`, `stack` and `path` to the `--github-output` file in `scripts/go-plan.mjs` (empty unless the decision is `start`). Verify with `tests/go-plan-output.test.mjs`: a Vue platform gives `stack=vue`, a non-start decision gives empty values, and the base64 decision still round-trips with the new fields.
 
 ## 3. Scope of a commit
 
