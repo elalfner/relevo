@@ -89,3 +89,18 @@ test('doctor points to init for the fixes and says what enforces approval when p
   assert.match(body, /\/relevo:init/);
   assert.match(body, /written confirmation `ship` asks for/);
 });
+
+test('Scenario: Monorepo - init asks for the stack, the folder and the targets of each platform and writes platforms', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /the platforms: for each one a name, its stack/);
+  assert.match(init, /`platforms` \(a map of name to `\{ stack, path, targets \}`\)/);
+  assert.match(init, /`stackProfiles`/);
+  assert.match(init, /`platform: flutter-android` line stays as it is/);
+  assert.doesNotMatch(init, /today `flutter-android`/);
+});
+
+test('the doctor skill says it reads the profile of each platform and the skills of each role', () => {
+  const doctor = readFileSync(new URL('../skills/doctor/SKILL.md', import.meta.url), 'utf8');
+  assert.match(doctor, /toolchain and the targets of each platform's stack profile/);
+  assert.match(doctor, /the extra skills of each role/);
+});

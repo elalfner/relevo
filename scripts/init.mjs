@@ -3,7 +3,7 @@
 //   node scripts/init.mjs plan  [--answers answers.json] [--repo owner/name] [--json]
 //   node scripts/init.mjs apply [--answers answers.json] [--repo owner/name] [--skip id,id] [--json]
 // `plan` changes nothing. `apply` carries out the planned changes except installs (the skill asks first).
-// answers.json: { "members": ["a","b"], "specWriter": "a", "reviewMode": "peer", "language": "en", "platform": "flutter-android" }
+// answers.json: { "members": ["a","b"], "specWriter": "a", "reviewMode": "peer", "language": "en", "platforms": { "app": { "stack": "flutter", "path": ".", "targets": ["android"] } }, "stackProfiles": [] }
 // It never reads or writes the model API key.
 // exit 0: done   exit 2: bad arguments or a failed change
 
@@ -48,7 +48,6 @@ const facts = gatherFacts({
   listDir: (p) => readdirSync(p),
   skillDirs: ['.claude/skills', '.agents/skills', `${homedir()}/.claude/skills`],
   repo,
-  platform: answers.platform ?? (existsSync('relevo.yml') ? (/^platform:\s*(\S+)/m.exec(readFileSync('relevo.yml', 'utf8')) ?? [])[1] : null) ?? 'flutter-android',
 });
 
 let admin = false;
@@ -67,6 +66,7 @@ const current = {
   workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, existsSync(`.github/workflows/${f}`) ? readFileSync(`.github/workflows/${f}`, 'utf8') : null])),
   gitignore: existsSync('.gitignore') ? readFileSync('.gitignore', 'utf8') : null,
   keepFiles: Object.fromEntries(keepPaths.map((p) => [p, existsSync(p)])),
+  stackProfiles: Object.fromEntries((answers.stackProfiles ?? []).map((s) => [s, existsSync(`.relevo/stacks/${s}.md`)])),
 };
 
 let items;

@@ -1,10 +1,17 @@
-# Relevo
+<div align="center">
 
-**An automatic issue-to-merge workflow where an agent builds and people verify.**
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/svg/relevo-lockup-horizontal-white.svg">
+  <img alt="Relevo" src="docs/brand/svg/relevo-lockup-horizontal-black.svg" width="420">
+</picture>
 
-English · [Español](README.es.md)
+**An automatic issue-to-merge workflow where AI agents build and people verify.**
 
-> *Relevo* is Spanish for "relay". Every step of the workflow is a handoff: the agent passes the baton to a person, and that person passes it to a peer.
+English · [Español](README.es.md) · [Documentation](docs/README.md)
+
+</div>
+
+> *Relevo* is Spanish for "relay". The issue goes in, AI agents build and check the work in the cloud, and you step in only to think, to test on a real device and to decide. Every step is a handoff: the agent passes the baton to a person, and that person passes it to a peer.
 
 > **Status: early development.** All the commands below exist. The solo cycle (`go`, `review`, `ship`) has run once on a real repository and a real Android device; the team features (peer review, review reminders and escalation, reviewer selection) are covered by tests only and have not run against a live team yet. See [pilot findings](docs/pilot-findings.md).
 
@@ -17,96 +24,49 @@ claude plugin marketplace add elalfner/relevo
 claude plugin install relevo@relevo
 ```
 
-Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing.
+Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing. What you need and the first steps are in [Install](docs/install.md).
 
-Relevo works together with a few tools it does not bundle: the [OpenSpec](https://github.com/Fission-AI/OpenSpec) command-line tool, `git`, the GitHub CLI (`gh`), the toolchain of your platform and, for `think`, the skills listed [below](#skills-that-think-uses). `/relevo:init` offers to install what is missing, one command at a time.
+## How it works
 
-## The idea
+<div align="center">
 
-Writing code is no longer the slow part. Verifying it is. Relevo puts the agent where it is fast (building and self-checking) and puts people where they are irreplaceable (testing on a real device, reviewing a peer's work, deciding to merge).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/animation/relevo-logo-animated-white.svg">
+  <img alt="Relevo" src="docs/brand/animation/relevo-logo-animated-black.svg" width="220">
+</picture>
 
-```
- spec writer        agent (cloud)           assignee              peer
- ready issues ───►  build + QA     ───►  review on device ───►  approve + merge
- in a milestone     no human wait         fix, open PR          then close the loop
-```
+*The logo is the flow: the issue comes in on the left, AI agents work inside the circle, and the feature goes out on the right. The circle turns black only when a person holds the baton: thinking and reviewing.*
 
-- **Specs first.** Detailed, spec-ready issues are the input. The agent builds against them and QA checks the diff against them.
+</div>
+
+|  | Command | What it does |
+|:---:|---|---|
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-init-white.svg"><img alt="init" src="docs/brand/states/relevo-state-init-black.svg" width="72"></picture> | `/relevo:init` | Sets up your repository once: config, labels, branch protection and workflows. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-feature-white.svg"><img alt="feature" src="docs/brand/states/relevo-state-feature-black.svg" width="72"></picture> | **feature** | Not a command, but the reason for the whole flow: the concept of what you want built. Every cycle starts here, and everything below turns it from idea into delivered work. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-think-white.svg"><img alt="think" src="docs/brand/states/relevo-state-think-black.svg" width="72"></picture> | `/relevo:think` | You and the AI explore the idea and settle every decision before any issue exists. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-issue-white.svg"><img alt="issue" src="docs/brand/states/relevo-state-issue-black.svg" width="72"></picture> | `/relevo:issue` | Turns the idea into issues that pass the spec check, or rewrites an issue that is not being built yet. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-go-white.svg"><img alt="go" src="docs/brand/states/relevo-state-go-black.svg" width="72"></picture> | `/relevo:go` | AI agents build the issue and QA checks it, automatically in the cloud, with nobody waiting. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-review-white.svg"><img alt="review" src="docs/brand/states/relevo-state-review-black.svg" width="72"></picture> | `/relevo:review` | You test on a real device while the agent captures and audits the logs. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-fix-white.svg"><img alt="fix" src="docs/brand/states/relevo-state-fix-black.svg" width="72"></picture> | `/relevo:fix` | Fixes what the review found, updating the spec first. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-ship-white.svg"><img alt="ship" src="docs/brand/states/relevo-state-ship-black.svg" width="72"></picture> | `/relevo:ship` | Verifies approval, archives the spec, merges and closes the loop. |
+
+Plus `/relevo:status` (who is waiting on what) and `/relevo:doctor` (checks your setup). Every command in detail: [Commands](docs/commands.md). A real run, from idea to merged pull request: [How it works](docs/how-it-works.md).
+
+## Why Relevo
+
+- **Specs first.** The agent builds against detailed issues, and QA checks the diff against them.
 - **Pull, not push.** A work-in-progress limit per person keeps the agent from burying the team in unreviewed branches.
 - **Humans decide.** Approving and merging are explicit human acts, enforced by branch protection, never by a prompt alone.
 - **Every handoff is one message** that says what happened, what is expected of you, and which command to run next.
 
-## See it work
+## Documentation
 
-A real run on the [sandbox](https://github.com/elalfner/relevo-sandbox), a small Flutter app, for [issue #5](https://github.com/elalfner/relevo-sandbox/issues/5), "Show the build number". One person played every role.
-
-| Step | The person | Relevo | Time |
-|---|---|---|---|
-| 1 | thinks the idea through (the exploration and grilling that `/relevo:think` runs) and approves the issue text | explores the code, asks until every decision is made, and drafts the issue: scenarios, edge cases and the new vocabulary in a `Documentation` section | a conversation |
-| 2 | labels the issue `relevo:ready` | the light `decide` job runs the gates and claims the issue | 17 s |
-| 3 | nothing | the `build` job writes the specification, the code and the tests, and QA checks them | 3 min 35 s |
-| 4 | reads the hand-off and runs `/relevo:review 5` on a phone | captures screens, audits the log, opens the [pull request](https://github.com/elalfner/relevo-sandbox/pull/16) | a few minutes |
-| 5 | runs `/relevo:ship 5` and confirms | merges, archives the specification, closes the issue | seconds |
-
-The hand-off the agent left on the issue, shortened:
-
-```
-@elalfner #5 "Show the build number" is built ✅
-
-What happened: 11 of 11 tasks done, QA passed.
-Branch: feature/5-show-the-build-number
-What to test: 8 scenarios (checklist below)
-Riskiest area, check it first: The real build number from an APK through the
-Android package_info_plus plugin (tests only use the mock), and how the two
-texts look on a small physical device.
-Your next step: /relevo:review 5
-```
-
-The glossary entries that came out of the conversation travelled in the issue and arrived in the same pull request as the feature, so nobody committed documentation by hand. Peer review, reminders and reviewer selection need a second person and were not part of this run.
-
-## Commands
-
-Distributed as a Claude Code plugin named `relevo`:
-
-| Command | What it does |
-|---|---|
-| `/relevo:init` | Sets up config, labels, branch protection and workflows (idempotent, shows a plan first) |
-| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `create`. It writes no files: the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
-| `/relevo:create` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build) |
-| `/relevo:go` | Builds a ready issue: spec check, build, QA with one retry (runs automatically in the cloud) |
-| `/relevo:review` | Guided on-device review: the person drives, the agent captures and audits logs |
-| `/relevo:fix` | Fixes review feedback, updating the spec first |
-| `/relevo:ship` | Verifies approval, archives the spec, merges, closes the loop |
-| `/relevo:status` | Who is waiting on what, plus a daily digest |
-| `/relevo:doctor` | Checks that the environment and repo settings are correct |
-
-## Configuration
-
-One `relevo.yml` per repository: branches, reviewers, work-in-progress limits, evidence policy, labels, language.
-
-## Built with OpenSpec and mattpocock/skills
-
-Relevo was specified and built the way it asks you to work: with [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT licensed), spec first, then code, then the pilot.
-
-- The design lives in `openspec/`. The specifications, as they stand now, are in [`specs/`](openspec/specs). [`changes/archive/2026-10-16-relevo-v1`](openspec/changes/archive/2026-10-16-relevo-v1) keeps the change that built them: the proposal, the design decisions (D1 to D16, each with the alternatives that were rejected), the eleven specifications as they were written and the task list. Later changes, such as `glossary-travels-with-the-issue`, follow the same path, and finished ones are archived under `openspec/changes/archive/`.
-- The history shows how it grew: the commits and pull requests, and the two pilots written up in [docs/pilot-findings.md](docs/pilot-findings.md), including what failed and how it was fixed. The [sandbox](https://github.com/elalfner/relevo-sandbox) is a small Flutter app where the whole cycle ran, and it is still there to read.
-- The thinking was done with the skills of [mattpocock/skills](https://github.com/mattpocock/skills) (MIT licensed), the same ones that `/relevo:think` runs for you.
-
-OpenSpec and those skills are also what the plugin works with: `think` runs them, and `go` and `ship` use the OpenSpec command line to write and archive the specification of each issue. The copies this repository keeps are development tooling and are not part of the plugin (see below).
-
-## Skills that `think` uses
-
-`/relevo:think` does not reimplement anything: it runs two existing skills directly, so their behaviour is exactly theirs.
-
-| Skill | Comes from | Role in `think` |
-|---|---|---|
-| `openspec-explore` | [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`openspec init`) | explores the idea and the code |
-| `grill-with-docs` | [mattpocock/skills](https://github.com/mattpocock/skills) | interviews you until every decision is made; the glossary and decision-record entries it settles are handed to `create`, not written |
-| `grilling`, `domain-modeling` | [mattpocock/skills](https://github.com/mattpocock/skills) | used by `grill-with-docs` |
-
-The plugin does not contain them: what `/plugin install` copies is `skills/`, `agents/` and `templates/`. Install them in your project (`openspec init`, and `npx skills add mattpocock/skills`); if one is missing, `think` stops and says which.
-
-This repository does keep copies for working on it: the OpenSpec skills and commands under `.claude/` (generated by OpenSpec 1.14.1; refresh them with `openspec update`) and the skills from mattpocock/skills under `.agents/skills/`, linked from `.claude/skills/` (installed with `npx skills add`, pinned in `skills-lock.json`). Their licence notices are in [NOTICE](NOTICE).
+- [Install](docs/install.md): what you need and the first steps.
+- [How it works](docs/how-it-works.md): the idea, and a real run from idea to merged pull request.
+- [Commands](docs/commands.md): the nine commands, and the skills that `think` uses.
+- [Configuration](docs/configuration.md): the `relevo.yml` file.
+- [Stacks and platforms](docs/stacks.md): declare your platforms and add your own rules.
+- [All the documentation](docs/README.md): reference, how it was built, and the brand.
 
 ## Acknowledgements
 
@@ -114,4 +74,4 @@ Relevo builds on [OpenSpec](https://github.com/Fission-AI/OpenSpec) and [mattpoc
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) for the software and the documentation. The Relevo name and logo are not covered by it: see [TRADEMARKS.md](TRADEMARKS.md).

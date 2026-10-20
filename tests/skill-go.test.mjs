@@ -109,3 +109,30 @@ test('Scenario: Glossary entries / A decision record - the skill copies the Docu
 test('Scenario: No documentation section - no task and nothing else is documented', () => {
   assert.match(body, /Add no other documentation\. If the issue has no such section, add no documentation task/);
 });
+
+test('Scenario: the skill runs the shared scripts for the rules that must not vary', () => {
+  ['preflight.mjs', 'issue-hash.mjs', 'branch-state.mjs', 'spec-ready.mjs', 'intent-to-add.mjs', 'commit-change.mjs', 'next-step.mjs']
+    .forEach((s) => assert.match(body, new RegExp(`scripts/${s.replace('.', '\\.')}`), `the skill does not run ${s}`));
+});
+
+test('the developer is driven by the apply instructions and the run is cut by the runner, not by the agent', () => {
+  assert.match(body, /openspec instructions apply --change/);
+  assert.doesNotMatch(body, /stay within `?run_max_turns/);
+});
+
+test('every failure reason of the specification is named in the failure path', () => {
+  ['branch already exists', 'specification invalid', 'specification incomplete', 'issue changed after ready', 'protected path in the diff',
+    'possible credential or temporary marker in the diff', 'QA rejected after the retries'].forEach((r) => assert.ok(body.includes(r), r));
+});
+
+test('Scenario: the profile and the role skills come from scripts, and the skill names no stack', () => {
+  assert.match(body, /scripts\/stack-profile\.mjs/);
+  assert.match(body, /scripts\/role-skills\.mjs --role dev/);
+  assert.match(body, /scripts\/role-skills\.mjs --role qa/);
+  assert.match(body, /failure path with the reason `profile not resolved`/);
+  assert.match(body, /`generated` list/);
+  assert.doesNotMatch(body, /\.g\.dart|\.freezed\.dart|flutter/i, 'the skill must not name the generated files or tools of one stack');
+  const source = readFileSync(root('scripts/role-skills.mjs'), 'utf8');
+  [...body.matchAll(/role-skills\.mjs([^\n`]*)/g)].flatMap((m) => [...m[1].matchAll(/--([a-z]+)/g)].map((f) => f[1]))
+    .forEach((f) => assert.ok(source.includes(`'${f}'`), `role-skills does not implement --${f}`));
+});

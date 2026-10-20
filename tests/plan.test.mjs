@@ -190,3 +190,60 @@ test('the summary counts decisions by action', () => {
   const issues = [issue({ number: 1, assignees: ['p1'] }), issue({ number: 2, milestone: null })];
   assert.deepEqual(plan(issues).summary, { start: 1, 'no-milestone': 1 });
 });
+
+// ---------- The text that was approved, and the dependency files the issue lets the change touch
+
+import { issueHash } from '../scripts/lib/issue-hash.mjs';
+
+test('Scenario: Issue unchanged - the start decision carries the hash of the text it claimed', () => {
+  const i = issue({ number: 40, title: 'Show the total', body: BODY });
+  const d = one([i]);
+  assert.equal(d.action, 'start');
+  assert.equal(d.issue_hash, issueHash({ title: 'Show the total', body: BODY }));
+  assert.match(d.issue_hash, /^[0-9a-f]{64}$/);
+});
+
+test('Scenario: Issue edited after ready - another text gives another hash, and whitespace does not', () => {
+  const base = one([issue({ title: 'Show the total', body: BODY })]).issue_hash;
+  assert.notEqual(one([issue({ title: 'Show the total', body: BODY.replace('b', 'c') })]).issue_hash, base);
+  assert.equal(one([issue({ title: 'Show the total', body: BODY.replace(/\n/g, '\r\n') })]).issue_hash, base);
+});
+
+test('Scenario: Lock file with permission - the Allow-paths line of the issue travels in the start decision', () => {
+  assert.deepEqual(one([issue({ body: `${BODY}\nAllow-paths: pubspec.yaml, pubspec.lock\n` })]).allow_paths, ['pubspec.yaml', 'pubspec.lock']);
+  assert.deepEqual(one([issue({ body: BODY })]).allow_paths, [], 'nothing is allowed by default');
+});
+
+test('only the start decision carries the hash and the allowed paths', () => {
+  const blocked = one([issue({ body: `${BODY}\nDepends-on: #1\nAllow-paths: pubspec.lock\n` })]);
+  assert.equal(blocked.action, 'block');
+  assert.equal('issue_hash' in blocked, false);
+  assert.equal('allow_paths' in blocked, false);
+});
+
+test('Scenario: Missing information - the needs-spec comment says the reason is missing', () => {
+  const d = one([issue({ body: 'no scenarios here' })]);
+  assert.equal(d.action, 'needs-spec');
+  assert.equal(d.comment.data.reason, 'missing');
+});
+
+test('Scenario: One platform builds as before, and the legacy setting counts as one', () => {
+  assert.equal(one([issue()]).action, 'start');
+  assert.equal(one([issue()], { config: 'platform: flutter-android\n' }).action, 'start');
+  assert.equal(one([issue()], { config: 'platforms:\n  app:\n    stack: flutter\n' }).action, 'start');
+});
+
+test('Scenario: Two platforms - no run, ready is removed, and the comment names the platforms', () => {
+  const i = issue();
+  const d = one([i], { config: 'platforms:\n  web:\n    stack: vue\n    path: apps/web\n  api:\n    stack: laravel\n    path: apps/api\n' });
+  assert.equal(d.action, 'platform');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready'] });
+  assert.equal(d.comment.kind, 'platform');
+  assert.equal(d.comment.data.platforms, 'web, api');
+  assert.equal(d.assign, null, 'nobody is assigned and nothing is claimed');
+});
+
+test('the platform gate comes after the permission check, so a stranger still gets the denial', () => {
+  const d = one([issue({ ready_by: 'stranger' })], { config: 'platforms:\n  a:\n    stack: vue\n  b:\n    stack: laravel\n' });
+  assert.equal(d.action, 'denied');
+});

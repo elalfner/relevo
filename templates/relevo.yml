@@ -8,7 +8,13 @@ branches:
 
 tracker: github        # github (more later)
 git_provider: github   # github (more later)
-platform: flutter-android
+platforms:                         # what is built and where; one entry per stack (see docs/stacks.md)
+  app:
+    stack: flutter                 # the profile in stacks/<stack>.md of the plugin, or in .relevo/stacks/
+    path: .                        # folder of the repository where this platform lives
+    targets: [android]             # flutter: android | ios | web
+    # checks:                      # replace a verification command of the profile, for example:
+    #   test: fvm flutter test
 
 team:
   members: []          # GitHub usernames of the people who build and review

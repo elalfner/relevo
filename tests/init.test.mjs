@@ -195,3 +195,50 @@ test('Scenario: Second run - secret scanning and the model credential are recogn
   assert.equal(get(plan(bare({ secretScanning: { scanning: true, pushProtection: false } })), 'secret-scanning').status, 'todo');
   assert.equal(get(plan(bare({ secrets: [] })), 'manual.api-key').status, 'manual');
 });
+
+test('Scenario: Monorepo - two platforms with different stacks and paths are written to relevo.yml and validate', () => {
+  const platforms = { web: { stack: 'vue', path: 'apps/web' }, api: { stack: 'laravel', path: 'apps/api' } };
+  const text = renderConfig(template, { ...ANSWERS, platform: undefined, platforms });
+  const { ok, config } = loadConfig(text);
+  assert.equal(ok, true);
+  assert.deepEqual(Object.keys(config.platforms), ['web', 'api']);
+  assert.equal(config.platforms.web.path, 'apps/web');
+  assert.ok(!/stack: flutter/.test(text), 'the template platform is replaced, not kept');
+  assert.match(text, /^team:/m, 'the rest of the file is intact');
+});
+
+test('Scenario: Flutter with targets - the targets are written as a list', () => {
+  const text = renderConfig(template, { ...ANSWERS, platform: undefined, platforms: { app: { stack: 'flutter', path: '.', targets: ['android', 'ios', 'web'] } } });
+  assert.deepEqual(loadConfig(text).config.platforms.app.targets, ['android', 'ios', 'web']);
+});
+
+test('the legacy answer platform: flutter-android still gives one flutter platform', () => {
+  const { config } = loadConfig(renderConfig(template, ANSWERS));
+  assert.deepEqual(config.platforms.app, { stack: 'flutter', path: '.', targets: ['android'] });
+});
+
+test('Scenario: Existing legacy configuration - init keeps relevo.yml as it is', () => {
+  const legacy = 'limits:\n  run_max_cost: 5\nplatform: flutter-android\n';
+  const facts = { configText: legacy, config: loadConfig(legacy).config, configErrors: [], openspecRoot: true, labels: allLabels, branches: { base: true, release: true }, skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1' };
+  const items = planInit({ facts, answers: { ...ANSWERS, platforms: { app: { stack: 'vue', path: '.' } } }, templates, current: empty(), admin: true });
+  assert.equal(items.find((i) => i.id === 'config').status, 'ok');
+  assert.equal(items.find((i) => i.id === 'config').content, undefined);
+});
+
+test('Scenario: the optional profile of the repository is created only when asked for, is not committed, and parses', async () => {
+  const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
+  const facts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: {} };
+  const without = planInit({ facts, answers: ANSWERS, templates, current: empty(), admin: true });
+  assert.equal(without.some((i) => i.id.startsWith('stack-profile.')), false);
+  const asked = planInit({ facts, answers: { ...ANSWERS, stackProfiles: ['flutter'] }, templates, current: empty(), admin: true }).find((i) => i.id === 'stack-profile.flutter');
+  assert.equal(asked.status, 'todo');
+  assert.equal(asked.path, '.relevo/stacks/flutter.md');
+  const parsed = parseProfile(asked.content);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.profile.stack, 'flutter');
+  const written = {};
+  applyPlan([asked], { repo: 'o/r', io: { write: (p, t) => { written[p] = t; }, gh: () => '' } });
+  assert.equal(Object.keys(written)[0], '.relevo/stacks/flutter.md');
+  const exists = planInit({ facts, answers: { ...ANSWERS, stackProfiles: ['flutter'] }, templates, current: { ...empty(), stackProfiles: { flutter: true } }, admin: true }).find((i) => i.id === 'stack-profile.flutter');
+  assert.equal(exists.status, 'ok');
+});

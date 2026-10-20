@@ -35,4 +35,8 @@
 <definition>
 _Avoid_: <words to avoid>
 
+<!-- Optional. Only when the change needs a new dependency: the manifest and lock files it may touch. Without this line an unattended run refuses to change them. -->
+
+Allow-paths: <dependency files the change may touch, for example pubspec.yaml, pubspec.lock>
+
 Depends-on: #<number>

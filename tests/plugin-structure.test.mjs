@@ -14,7 +14,7 @@ const KNOWN_SKILL_FIELDS = new Set(['name', 'description', 'when_to_use', 'argum
 
 // Skills that change a repository, spend money or start a build must never start on Claude's own initiative.
 // Read-only skills may. A new skill has to be classified here, which forces the decision to be made.
-const USER_ONLY = ['create', 'fix', 'go', 'init', 'review', 'ship', 'think'];
+const USER_ONLY = ['issue', 'fix', 'go', 'init', 'review', 'ship', 'think'];
 const READ_ONLY = ['doctor', 'status'];
 
 function frontmatter(text) {
@@ -114,4 +114,16 @@ test('CLAUDE.md tells every session to work on dev and to reach main only throug
   assert.match(rules, /`main` is the release branch\. It only receives a pull request from `dev`/);
   assert.match(rules, /Before every commit, check the branch/);
   assert.match(rules, /Never add attribution/, 'the earlier rule is kept');
+});
+
+test('every stack profile parses and has the header keys the scripts read', async () => {
+  const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
+  const files = readdirSync(`${root}stacks`).filter((f) => f.endsWith('.md'));
+  assert.ok(files.includes('flutter.md'), 'the plugin ships the flutter profile');
+  files.forEach((f) => {
+    const { profile, errors } = parseProfile(read(`stacks/${f}`));
+    assert.deepEqual(errors, [], f);
+    assert.equal(profile.stack, f.replace(/\.md$/, ''), `${f} names a different stack`);
+    ['analyze', 'test'].forEach((c) => assert.ok(profile.commands[c], `${f} has no "${c}" command`));
+  });
 });
