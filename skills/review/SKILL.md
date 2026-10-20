@@ -46,7 +46,15 @@ git merge --no-edit origin/<base>
 
 If the merge conflicts, run `git merge --abort`, leave the issue as `built`, tell the person which files conflict, and stop.
 
-If the merge brought in changes, launch the `relevo:qa` agent again on the result (same change folder, rules file `qa.rules_from`, base branch). If it rejects, stop and tell the person to run `/relevo:fix $ARGUMENTS`; the issue stays `built`.
+If the merge brought in changes, find the platform of the issue again and resolve its profile and QA skills:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/platform-of.mjs --issue $ARGUMENTS
+node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role qa --platform <platform>
+```
+
+If `platform-of.mjs` exits 1, stop and tell the person what it printed (they correct the `Platform:` line); the issue stays `built`. Otherwise launch the `relevo:qa` agent again on the result (same change folder, rules files `qa.rules_from`, base branch, and now the profile, the folder of the platform and the skill paths). If it rejects, stop and tell the person to run `/relevo:fix $ARGUMENTS`; the issue stays `built`.
 
 When the synchronisation succeeded, claim the issue: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to in-review --current "<current labels>"`, applied with `gh issue edit`.
 

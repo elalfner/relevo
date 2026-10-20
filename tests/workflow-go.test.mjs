@@ -146,3 +146,18 @@ test('Scenario: the template says a run may be cut at its limits and shows insta
   assert.match(t, /composer install --no-scripts/);
   assert.match(t, /`flutter pub get` and `dart pub get` run no install-time scripts/);
 });
+
+test('Scenario: Output for a start - the decide job exposes platform, stack and path, and the setup examples are guarded by the stack', () => {
+  ['platform', 'stack', 'path'].forEach((k) => assert.match(workflow, new RegExp(`${k}: \\$\\{\\{ steps\\.plan\\.outputs\\.${k} \\}\\}`), `decide does not expose ${k}`));
+  // The setup examples of the toolchains are comments; every one is guarded by the stack it installs.
+  const flat = workflow.replace(/\n\s*#\s*/g, '\n');
+  const guards = [...flat.matchAll(/- if: needs\.decide\.outputs\.stack == '([a-z-]+)'/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(guards)].sort(), ['flutter', 'laravel', 'vue']);
+  assert.match(workflow, /working-directory: \$\{\{ needs\.decide\.outputs\.path \}\}/);
+  assert.match(workflow, /npm ci --ignore-scripts/);
+});
+
+test('the guarded examples name only stacks the plugin ships or documents, and the build job still has no pull_request_target', () => {
+  assert.doesNotMatch(workflow, /pull_request_target/);
+  assert.match(workflow, /so an issue for the front does not install the back's tools/);
+});

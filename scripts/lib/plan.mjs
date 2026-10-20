@@ -17,6 +17,7 @@ import { parseIssueBody } from './issue-parse.mjs';
 import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
 import { issueHash } from './issue-hash.mjs';
+import { resolvePlatform } from './platform-of.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
 // In a public repository only maintainers may start work: anyone with write access could otherwise start a
@@ -77,6 +78,20 @@ export function planGo({ config, issues, completed = [], running = [], permissio
 
     const parsed = parseIssueBody(issue.body);
     const assignee = issue.assignees[0] ?? null;
+    // The platform the issue is for. When it cannot be resolved that is a missing part of the specification.
+    const platform = resolvePlatform({ platforms: config.platforms, body: issue.body });
+    const missing = platform.ok ? parsed.missing : [...parsed.missing, platform.message];
+    const needsSpec = () => {
+      const specWriter = config.team.spec_writer ?? issue.ready_by;
+      decision(issue, 'needs-spec', `the spec is incomplete: ${missing.join('; ')}`, {
+        labels: moveTo(issue, 'needs-spec'),
+        assign: [specWriter],
+        comment: {
+          kind: 'needs_spec',
+          data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: missing.join('; '), reason: 'missing' },
+        },
+      });
+    };
 
     if (has(issue, 'ready')) {
       // Trigger: only people with write access may start work.
@@ -86,15 +101,6 @@ export function planGo({ config, issues, completed = [], running = [], permissio
         decision(issue, 'denied', isPublic ? 'the ready label was not applied by a maintainer (trust is public)' : 'the ready label was not applied by someone with write access', {
           labels: dropReady(issue),
           comment: { kind: isPublic ? 'ready_denied_maintainer' : 'ready_denied', data: { issue: issue.number, actor: issue.ready_by ?? undefined } },
-        });
-        return;
-      }
-      // Until the issue can say which platform it belongs to, only a repository with one platform is built.
-      const platformNames = Object.keys(config.platforms);
-      if (platformNames.length > 1) {
-        decision(issue, 'platform', `the repository has several platforms (${platformNames.join(', ')}) and choosing one per issue is not available yet`, {
-          labels: dropReady(issue),
-          comment: { kind: 'platform', data: { issue: issue.number, actor: issue.ready_by, platforms: platformNames.join(', ') } },
         });
         return;
       }
@@ -113,16 +119,8 @@ export function planGo({ config, issues, completed = [], running = [], permissio
         return;
       }
       // Gate 1: the spec. The agent never invents scenarios.
-      if (parsed.missing.length > 0) {
-        const specWriter = config.team.spec_writer ?? issue.ready_by;
-        decision(issue, 'needs-spec', `the spec is incomplete: ${parsed.missing.join('; ')}`, {
-          labels: moveTo(issue, 'needs-spec'),
-          assign: [specWriter],
-          comment: {
-            kind: 'needs_spec',
-            data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: parsed.missing.join('; '), reason: 'missing' },
-          },
-        });
+      if (missing.length > 0) {
+        needsSpec();
         return;
       }
     }
@@ -161,6 +159,12 @@ export function planGo({ config, issues, completed = [], running = [], permissio
       return;
     }
 
+    // A queued or blocked issue was edited after it passed the gate: it goes back for the platform, not to a build.
+    if (!platform.ok) {
+      needsSpec();
+      return;
+    }
+
     freeSlots -= 1;
     runningSet.add(issue.number);
     decision(issue, 'start', 'all gates passed', {
@@ -178,6 +182,11 @@ export function planGo({ config, issues, completed = [], running = [], permissio
         issue_hash: issueHash({ title: issue.title, body: issue.body }),
         // Dependency files the issue lets the change touch (see "Protected paths").
         allow_paths: parsed.allowPaths,
+        // Which platform the build is for: the agents use its profile, its folder and its targets.
+        platform: platform.name,
+        stack: platform.entry.stack,
+        path: platform.entry.path,
+        targets: platform.entry.targets,
       },
     });
   });

@@ -67,13 +67,23 @@ Do not commit yet: the whole fix is committed together once QA passes.
 
 ### 3. Develop
 
-Launch the `relevo:dev` agent in **build** mode. Give it the change folder, the project rules file and the base branch. The original tasks are all done, so the only pending ones are the corrections, and those are all it should touch.
+Find the platform of the issue again from its text, then resolve the profile and the extra skills for it:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/platform-of.mjs --issue <issue>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role fix --platform <platform>
+```
+
+If `platform-of.mjs` exits 1, change nothing more and tell the person what it printed (the issue no longer names a valid platform: they correct the `Platform:` line and run `/relevo:fix` again). If `stack-profile.mjs` fails, show its message and stop.
+
+Launch the `relevo:dev` agent in **build** mode. Give it the change folder, the project rules files, the resolved profile, the folder of the platform (`path`), the skill paths and the base branch. The original tasks are all done, so the only pending ones are the corrections, and those are all it should touch.
 
 Read its report. If its open questions are not "none", they mean the specification is still unclear: ask the person, update the specification and run the guard again.
 
 ### 4. QA, with retries
 
-Launch the `relevo:qa` agent on the result, with the same change folder, rules file and base branch. Its first line is `QA PASSED` or `QA REJECTED`.
+Launch the `relevo:qa` agent on the result, with the same change folder, rules files, profile, folder of the platform, skill paths (for `fix`, those of `dev` and `qa` are in the output of `role-skills.mjs --role fix`) and base branch. Its first line is `QA PASSED` or `QA REJECTED`.
 
 On `QA REJECTED` you may retry up to `qa.retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, then `relevo:qa` again with the previous report, so it checks each earlier finding.
 
@@ -81,17 +91,13 @@ If QA still rejects after the retries: **make no commit and no push.** Leave the
 
 ### 5. Commit
 
-Stage exactly the files the developer reported plus the files changed under `openspec/changes/<change>/`, naming each one, with `node ${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs <paths>`. Never use `git add .` or `-A`.
-
-Scan what is staged:
+Commit exactly the files the developer reported plus the files changed under `openspec/changes/<change>/`, naming each one, through the script. Never use `git add .` or `-A`; the script refuses them.
 
 ```bash
-git diff --cached | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs
+node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "fix: <short summary> (#<issue>)" --within "<path>" --change "<change>" -- <paths>
 ```
 
-If it reports anything, unstage everything (`git restore --staged .`), show the person the file and line, and stop without pushing. The changes stay in the working tree.
-
-Otherwise commit with the message `fix: <short summary> (#<issue>)`. Do not add links to this session or attribution lines.
+The script stages the paths, refuses protected paths and files outside the folder of the platform, scans what is staged for temporary markers and credentials, and commits only when it finds nothing. If it exits 1 it has unstaged the paths and printed the file and line: show them to the person and stop without pushing. The changes stay in the working tree. Do not add links to this session or attribution lines to the message.
 
 ### 6. Push
 

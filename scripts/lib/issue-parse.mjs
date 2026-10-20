@@ -9,6 +9,7 @@ const THEN_RE = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?THEN(?:\*\*|__)?(?:\s|:)/i;
 const EDGE_RE = /\b(edge[ -]?cases?|casos?\s+(?:borde|l[ií]mite|extremos?))\b/i;
 const DEPENDS_RE = /^\s*(?:[-*+]\s+)?Depend(?:s[- ]on|e(?:\s+de)?):\s*(.+)$/i;
 const ALLOW_RE = /^\s*(?:[-*+]\s+)?Allow-paths:\s*(.+)$/i;
+const PLATFORM_RE = /^\s*(?:[-*+]\s+)?Platform:\s*(.+)$/i;
 
 /** Remove fenced code blocks so examples inside them are not counted. */
 function withoutCode(body) {
@@ -30,6 +31,7 @@ function withoutCode(body) {
  *   edgeCases: number,          // bullets under an "Edge cases" heading
  *   dependsOn: number[],        // issue numbers from "Depends-on: #N" lines
  *   allowPaths: string[],       // paths and globs from "Allow-paths:" lines (dependency files the change may touch)
+ *   platform: string[],         // every name written on a "Platform:" line, in order (the platform the issue is for)
  *   missing: string[],          // what the spec gate reports as absent
  * }
  */
@@ -71,9 +73,17 @@ export function parseIssueBody(body) {
     });
   });
 
+  // The platform(s) named by the issue; resolving them against relevo.yml is platform-of.mjs's job.
+  const platform = [];
+  lines.forEach((line) => {
+    const m = line.match(PLATFORM_RE);
+    if (!m) return;
+    m[1].split(',').map((p) => p.trim().replace(/^`+|`+$/g, '').trim()).filter(Boolean).forEach((p) => platform.push(p));
+  });
+
   const missing = [];
   if (scenarios === 0) missing.push('scenarios written as WHEN/THEN pairs');
   if (edgeCases === 0) missing.push('edge cases (a list under an "Edge cases" heading)');
 
-  return { scenarios, edgeCases, dependsOn, allowPaths, missing };
+  return { scenarios, edgeCases, dependsOn, allowPaths, platform, missing };
 }

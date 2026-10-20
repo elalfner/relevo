@@ -46,7 +46,7 @@ test('the check comes before creation, and creation is in dependency order', () 
 });
 
 test('the keywords go reads are kept in English and the language setting is honoured', () => {
-  assert.match(body, /Keep the keywords `WHEN`, `THEN`, `Edge cases` and `Depends-on`/);
+  assert.match(body, /Keep the keywords `WHEN`, `THEN`, `Edge cases`, `Depends-on` and `Platform`/);
   assert.match(body, /`language` in `relevo.yml`/);
 });
 
@@ -121,4 +121,16 @@ test('Scenario: Dependency does not exist - every Depends-on is checked, and not
 test('Scenario: Section not mentioned - the Documentation section is kept and still carries only glossary and decision records', () => {
   assert.match(update, /existing `## Documentation` section stays exactly as it is unless the person asks to change it/);
   assert.match(update, /only glossary entries and decision records/);
+});
+
+test('Scenario: the issue names its platform when the repository has several - deduced from paths, asked once, split when it needs two', () => {
+  const text = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  assert.match(text, /\*\*Platform \(only when `relevo\.yml` has more than one\)\.\*\*/);
+  assert.match(text, /the platform whose `path` is the longest prefix of a mentioned path/);
+  assert.match(text, /Ask only when no path decides it, once/);
+  assert.match(text, /always split a feature that needs two platforms/);
+  assert.match(text, /`Edge cases`, `Depends-on` and `Platform` exactly as they are/);
+  assert.match(text, /--platforms <names of the platforms of relevo\.yml, comma separated>/);
+  const script = readFileSync(new URL('../scripts/check-issue.mjs', import.meta.url), 'utf8');
+  assert.ok(script.includes("'platforms'"), 'check-issue does not implement --platforms');
 });

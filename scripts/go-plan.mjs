@@ -7,7 +7,8 @@
 // --only N  keeps only the decision for issue N (the whole queue is still planned, so limits stay correct).
 // --apply   carries out every decision except `start` (labels, assignees, comments).
 // --claim   also carries out the `start` decision of the issue given by --only (marks it as building).
-// --github-output FILE  appends `action=<decision action, or none>` and `decision_b64=<the decision as base64 JSON>`
+// --github-output FILE  appends `action=<decision action, or none>`, `decision_b64=<the decision as base64 JSON>` and, for a start,
+//                       `platform=`, `stack=` and `path=` (empty otherwise)
 //           to FILE (the GITHUB_OUTPUT file of a workflow step), so a later job can build without planning again.
 //           Needs --only: it describes the decision of one issue.
 // The `start` decisions are returned for the skill to build.
@@ -68,6 +69,8 @@ if (arg('github-output')) {
   if (only === null) fail('--github-output needs --only <issue>: it describes the decision of one issue');
   const decision = result.decisions[0] ?? null;
   const encoded = decision ? Buffer.from(JSON.stringify(decision), 'utf8').toString('base64') : '';
-  appendFileSync(arg('github-output'), `action=${decision ? decision.action : 'none'}\ndecision_b64=${encoded}\n`);
+  // The build job installs the toolchain of the stack of the platform; the values are empty unless the decision is `start`.
+  const start = decision?.action === 'start' ? decision : {};
+  appendFileSync(arg('github-output'), `action=${decision ? decision.action : 'none'}\ndecision_b64=${encoded}\nplatform=${start.platform ?? ''}\nstack=${start.stack ?? ''}\npath=${start.path ?? ''}\n`);
 }
 console.log(JSON.stringify(result, null, 2));
