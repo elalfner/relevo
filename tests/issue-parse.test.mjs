@@ -97,3 +97,35 @@ test('Platform lines: one name, several names, a name in a code block ignored, n
   assert.deepEqual(parseIssueBody(`${GOOD}\n\`\`\`\nPlatform: web\n\`\`\`\n`).platform, []);
   assert.deepEqual(parseIssueBody(GOOD).platform, []);
 });
+
+test('Scenario: External reference - acme/api#12 is an issue of another repository, no longer local issue 12', () => {
+  const p = parseIssueBody(`${GOOD}\nDepends-on: acme/api#12\n`);
+  assert.deepEqual(p.dependsOn, [], 'the old defect: it was read as local #12');
+  assert.deepEqual(p.dependsOnExternal, [{ repo: 'acme/api', number: 12 }]);
+  assert.deepEqual(p.dependsOnInvalid, []);
+});
+
+test('Scenario: Local reference and Mixed line', () => {
+  assert.deepEqual(parseIssueBody(`${GOOD}\nDepends-on: #12\n`).dependsOn, [12]);
+  const mixed = parseIssueBody(`${GOOD}\nDepends-on: #3, acme/api#12 and other.org/web-app#4\n`);
+  assert.deepEqual(mixed.dependsOn, [3]);
+  assert.deepEqual(mixed.dependsOnExternal, [{ repo: 'acme/api', number: 12 }, { repo: 'other.org/web-app', number: 4 }]);
+});
+
+test('repeated references are collapsed, in either form', () => {
+  const p = parseIssueBody(`${GOOD}\nDepends-on: #3, #3, acme/api#12\nDepends-on: acme/api#12, #3\n`);
+  assert.deepEqual(p.dependsOn, [3]);
+  assert.deepEqual(p.dependsOnExternal, [{ repo: 'acme/api', number: 12 }]);
+});
+
+test('a token that looks like a repository but has no #number is invalid; plain words are not', () => {
+  assert.deepEqual(parseIssueBody(`${GOOD}\nDepends-on: acme/api 12\n`).dependsOnInvalid, ['acme/api']);
+  assert.deepEqual(parseIssueBody(`${GOOD}\nDepends-on: https://github.com/acme/api/issues/12\n`).dependsOnInvalid.length, 1);
+  assert.deepEqual(parseIssueBody(`${GOOD}\nDepends-on: #12 (the endpoint, already specified)\n`).dependsOnInvalid, []);
+});
+
+test('references inside a code fence are ignored, and Spanish keywords keep working', () => {
+  const p = parseIssueBody(`${GOOD}\n\`\`\`\nDepends-on: acme/api#12\n\`\`\`\nDepende de: acme/api#5, #2\n`);
+  assert.deepEqual(p.dependsOnExternal, [{ repo: 'acme/api', number: 5 }]);
+  assert.deepEqual(p.dependsOn, [2]);
+});

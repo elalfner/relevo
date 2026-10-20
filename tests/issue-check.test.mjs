@@ -189,3 +189,24 @@ test('the template text of the Platform line is caught when it was not filled in
   const r = checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nPlatform: <name of a platform in relevo.yml>\n` });
   assert.match(r.problems.join('\n'), /still contains template text/);
 });
+
+test('Scenario: Not linked - a Depends-on on a repository outside links fails the check, naming it and the linked ones', () => {
+  const body = `${GOOD}\nDepends-on: other/repo#4\n`;
+  const r = checkIssueDraft({ title: 'Add a chart', body, links: ['acme/api', 'acme/design'] });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /Depends-on names other\/repo, which is not in links of relevo\.yml \(acme\/api, acme\/design\)/);
+  assert.deepEqual(r.dependsOnExternal, [{ repo: 'other/repo', number: 4 }]);
+  const none = checkIssueDraft({ title: 'Add a chart', body });
+  assert.match(none.problems.join('\n'), /no repository is linked/, 'without links every external reference is judged as not linked');
+});
+
+test('a linked repository passes, and a local reference needs no links', () => {
+  assert.equal(checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nDepends-on: acme/api#12, #3\n`, links: ['acme/api'] }).ok, true);
+  assert.equal(checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nDepends-on: #3\n` }).ok, true);
+});
+
+test('Scenario: Malformed - a token that looks like a repository but is not a reference fails, showing the accepted forms', () => {
+  const r = checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nDepends-on: acme/api 12\n`, links: ['acme/api'] });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /Depends-on has "acme\/api", which is not a reference; write #12 for an issue of this repository or owner\/repo#12/);
+});
