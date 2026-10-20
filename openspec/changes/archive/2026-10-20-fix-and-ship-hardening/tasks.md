@@ -17,5 +17,5 @@
 ## 3. Documentation and integration
 
 - [x] 3.1 Update `docs/commands.md` and `docs/commands.es.md` (stash on a failed fix, the checks, who may run `ship`, running `ship` again) and `CHANGELOG.md`. Verify with `tests/readme-sync.test.mjs` and the changelog test.
-- [ ] 3.2 Run `node --test tests/*.test.mjs` and `openspec validate --all`; both must pass.
-- [ ] 3.3 Try the pieces that can be tried without a second person on the sandbox: a `fix` that QA rejects (stash saved, tree clean, restored on the next start), `archive-state` on a real archived change, and `ship-check` on a real pull request reading the commit of its reviews. Record what happened in `docs/pilot-findings.md`, including what could not be tried (the archive conflict, a second approver).
+- [x] 3.2 Run `node --test tests/*.test.mjs` and `openspec validate --all`; both must pass.
+- [x] 3.3 Try the pieces that can be tried without a second person on the sandbox: a `fix` that QA rejects (stash saved, tree clean, restored on the next start), `archive-state` on a real archived change, and `ship-check` on a real pull request reading the commit of its reviews. Record what happened in `docs/pilot-findings.md`, including what could not be tried (the archive conflict, a second approver).

@@ -121,6 +121,12 @@ Not run in the cloud: a dependency that cannot be read (no token), a repository 
 - The agent runner's `execution_file` is a list of events whose `result` entry carries the turns, the cost and a `usage` object. The comment read "14 turns, about $0.43 (notional: a subscription is not billed per run), 5,207 tokens". The token count excludes tokens served from the prompt cache, which are reported apart.
 - Not seen: a real usage-limit failure, the no-credential comment in the cloud, and a real `/relevo:go --local` run.
 
+## `fix` and `ship` checks (task 3.3 of `fix-and-ship-hardening`)
+
+- `fix-stash.mjs` on the sandbox repository: with a modified tracked file and an untracked one, `save` left the tree clean, `find` returned the stash of the issue and `pop` brought both files back.
+- `archive-state.mjs` on the sandbox: a change archived in an earlier pilot reported `archived`; a change that does not exist reported `missing` with exit 1.
+- Not tried: `ship-check.mjs` against a real pull request. The GitHub command line was not logged in in this environment, so it is not confirmed that `gh pr view --json reviews` returns the commit of each review as `commit.oid`; the code treats a review without it as not stale and adds the warning `review-commit-unknown`. Also not tried: the conflict after the archive (a real merge conflict was simulated in tests only) and a second approver.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
