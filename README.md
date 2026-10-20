@@ -65,6 +65,7 @@ Plus `/relevo:status` (who is waiting on what) and `/relevo:doctor` (checks your
 - [How it works](docs/how-it-works.md): the idea, and a real run from idea to merged pull request.
 - [Commands](docs/commands.md): the nine commands, and the skills that `think` uses.
 - [Configuration](docs/configuration.md): the `relevo.yml` file.
+- [Stacks and platforms](docs/stacks.md): declare your platforms and add your own rules.
 - [All the documentation](docs/README.md): reference, how it was built, and the brand.
 
 ## Acknowledgements

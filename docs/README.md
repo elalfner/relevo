@@ -10,6 +10,7 @@ New here? Read [Install](install.md), then [How it works](how-it-works.md).
 - [How it works](how-it-works.md): the idea, and a real run from idea to merged pull request.
 - [Commands](commands.md): the nine commands, and the skills that `think` uses.
 - [Configuration](configuration.md): the `relevo.yml` file.
+- [Stacks and platforms](stacks.md): declare your platforms, the stack profiles and how to add your own rules.
 
 ## Reference
 

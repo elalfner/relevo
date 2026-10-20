@@ -31,9 +31,9 @@
 
 ## 6. Documentation and integration
 
-- [ ] 6.1 Add `docs/stacks.md` and `docs/stacks.es.md` (the registry, the profile header, the three layers, role skills and what is refused) and link them from the README and `docs/commands*.md`. Verify with `tests/readme-sync.test.mjs`.
-- [ ] 6.2 Add the entry to `CHANGELOG.md` under Unreleased (registry, profiles, layers, role skills, `skills-lock.json` protected, `qa.rules_from` as a list, `go` and several platforms). Verify with `tests/changelog.test.mjs`.
-- [ ] 6.3 Run `npm test`, `openspec validate --all` and `openspec validate platform-registry --strict`, and `claude plugin validate .` when available. Verify that every test passes and that validation reports no new error.
+- [x] 6.1 Add `docs/stacks.md` and `docs/stacks.es.md` (the registry, the profile header, the three layers, role skills and what is refused) and link them from the README and `docs/commands*.md`. Verify with `tests/readme-sync.test.mjs`.
+- [x] 6.2 Add the entry to `CHANGELOG.md` under Unreleased (registry, profiles, layers, role skills, `skills-lock.json` protected, `qa.rules_from` as a list, `go` and several platforms). Verify with `tests/changelog.test.mjs`.
+- [x] 6.3 Run `npm test`, `openspec validate --all` and `openspec validate platform-registry --strict`, and `claude plugin validate .` when available. Verify that every test passes and that validation reports no new error.
 - [ ] 6.4 In the sandbox repository, change `relevo.yml` to `platforms` with one `flutter` entry and `targets: [android]`, run `doctor`, and run `go` on one small issue. Verify by the run's outcome: the issue reaches `relevo:built` with the hand-off comment; record the result in `docs/pilot-findings.md`.
 
 ## Workflow follow-up

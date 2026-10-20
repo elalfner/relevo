@@ -65,6 +65,7 @@ Además, `/relevo:status` (quién espera a quién) y `/relevo:doctor` (comprueba
 - [Cómo funciona](docs/how-it-works.es.md): la idea, y una corrida real de la idea al pull request mergeado.
 - [Comandos](docs/commands.es.md): los nueve comandos, y las skills que usa `think`.
 - [Configuración](docs/configuration.es.md): el archivo `relevo.yml`.
+- [Stacks y plataformas](docs/stacks.es.md): declara tus plataformas y agrega tus propias reglas.
 - [Toda la documentación](docs/README.es.md): referencia, cómo se construyó y la marca.
 
 ## Agradecimientos
