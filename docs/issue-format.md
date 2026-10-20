@@ -1,5 +1,7 @@
 # Writing an issue Relevo can build
 
+English · [Español](issue-format.es.md)
+
 Relevo builds an issue without asking anyone questions, so the issue must already say what "done" means. `/relevo:go` checks three things before it starts, and sends the issue back to its writer if one fails.
 
 ## What the issue must contain
@@ -60,6 +62,8 @@ The number after the `+` in the `version` of `pubspec.yaml`, shown in the app ba
 _Avoid_: Build label, build, build version
 ```
 
+A glossary entry is a name, a definition of one or two sentences and the words to avoid. A decision record is a title and a text, without a number: it is numbered when it is written (the highest number in `docs/adr/` plus one). The section names only `GLOSSARY.md` and `docs/adr/`. It is not a scenario or an edge case, and an issue is valid with or without it.
+
 ### 5. Dependency files the change may touch (optional)
 
 An unattended run never changes workflows (`.github/`), `relevo.yml`, `.relevo/`, the folders of skills or the project rules file, and it does not change dependency manifests or lock files (`pubspec.yaml`, `pubspec.lock`, `package.json`, `composer.json` and their lock files) unless the issue says so. When the change needs a new dependency, list the files it may touch:
@@ -118,8 +122,6 @@ Discarded: sort by date (nobody asked for it).
 - **`Open questions` blocks the build.** An issue that has a question there, or the text `NEEDS CLARIFICATION` anywhere, fails the check and goes back to its writer as ambiguous. Answer the question and delete the section.
 - `Related: #14, #15` lists issues of the same idea. It only informs; `Depends-on:` is what blocks.
 - A body of more than about 8,000 characters passes with a warning: shorter, well delimited issues build better.
-
-A glossary entry is a name, a definition of one or two sentences and the words to avoid. A decision record is a title and a text, without a number: it is numbered when it is written (the highest number in `docs/adr/` plus one). The section names only `GLOSSARY.md` and `docs/adr/`. It is not a scenario or an edge case, and an issue is valid with or without it.
 
 ## What `go` also needs from the issue
 

@@ -67,6 +67,8 @@ Además, `/relevo:status` (quién espera a quién) y `/relevo:doctor` (comprueba
 - [Configuración](docs/configuration.es.md): el archivo `relevo.yml`.
 - [Stacks y plataformas](docs/stacks.es.md): declara tus plataformas y agrega tus propias reglas.
 - [Dónde corre `go`](docs/execution.es.md): la nube, tu máquina o ambas, y las dos credenciales.
+- [Guía](docs/guide.es.md): qué hacer después, y qué hacer cuando algo sale mal.
+- [Modelo de seguridad](docs/security.es.md): qué protege Relevo y qué no.
 - [Toda la documentación](docs/README.es.md): referencia, cómo se construyó y la marca.
 
 ## Agradecimientos

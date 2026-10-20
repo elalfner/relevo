@@ -164,7 +164,7 @@ try {
       break;
     }
     default:
-      fail('usage: review-state.mjs <init|set|capture|audit|agree|show|decide> [...]');
+      fail('usage: review-state.mjs <init|set|sync|capture|drain|audit|waive|waived|confirm-env|precheck|auto|auto-list|agree|show|decide> [...]');
   }
 } catch (err) {
   fail(err.message);
