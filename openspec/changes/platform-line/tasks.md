@@ -2,10 +2,10 @@
 
 ## 1. The platform line
 
-- [ ] 1.1 Parse `Platform:` in `scripts/lib/issue-parse.mjs` (`platform: string[]`, names in order, outside code fences) and describe the optional line in `templates/issue.md` and `docs/issue-format.md`. Verify with additions to `tests/issue-parse.test.mjs` and `tests/template.test.mjs`: one name, two names, a name inside a fenced block ignored, no line gives an empty list.
-- [ ] 1.2 Add `scripts/lib/platform-of.mjs` (`resolvePlatform({ platforms, body })`: `missing`, `unknown`, `conflict`, the one-platform default, messages that list the platforms). Verify with `tests/platform-of.test.mjs`: every scenario of the `platforms` delta (one platform without a line, several with a line, missing, unknown, two different lines, the same name twice is not a conflict).
-- [ ] 1.3 Add `scripts/platform-of.mjs --issue <n> [--repo owner/name] [--config relevo.yml] [--input file]` (prints the JSON of D3; exit 1 unresolved with the message on stderr, 2 bad usage). Verify with `tests/platform-of.test.mjs` using `--input`: the printed fields, the exit codes, and an invalid `relevo.yml`.
-- [ ] 1.4 Make the check fail a draft that needs the line or names a wrong one: `checkIssueDraft({ ..., platforms })` and `scripts/check-issue.mjs --platforms web,api`. Verify with additions to `tests/issue-check.test.mjs`: missing line with two platforms, unknown name, two names, no line with one platform passes, existing calls without `platforms` unchanged.
+- [x] 1.1 Parse `Platform:` in `scripts/lib/issue-parse.mjs` (`platform: string[]`, names in order, outside code fences) and describe the optional line in `templates/issue.md` and `docs/issue-format.md`. Verify with additions to `tests/issue-parse.test.mjs` and `tests/template.test.mjs`: one name, two names, a name inside a fenced block ignored, no line gives an empty list.
+- [x] 1.2 Add `scripts/lib/platform-of.mjs` (`resolvePlatform({ platforms, body })`: `missing`, `unknown`, `conflict`, the one-platform default, messages that list the platforms). Verify with `tests/platform-of.test.mjs`: every scenario of the `platforms` delta (one platform without a line, several with a line, missing, unknown, two different lines, the same name twice is not a conflict).
+- [x] 1.3 Add `scripts/platform-of.mjs --issue <n> [--repo owner/name] [--config relevo.yml] [--input file]` (prints the JSON of D3; exit 1 unresolved with the message on stderr, 2 bad usage). Verify with `tests/platform-of.test.mjs` using `--input`: the printed fields, the exit codes, and an invalid `relevo.yml`.
+- [x] 1.4 Make the check fail a draft that needs the line or names a wrong one: `checkIssueDraft({ ..., platforms })` and `scripts/check-issue.mjs --platforms web,api`. Verify with additions to `tests/issue-check.test.mjs`: missing line with two platforms, unknown name, two names, no line with one platform passes, existing calls without `platforms` unchanged.
 
 ## 2. Planner, messages and workflow output
 
