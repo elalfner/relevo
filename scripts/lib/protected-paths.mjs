@@ -93,8 +93,10 @@ export function hardPathsInAllow(allow, { rulesFile = null } = {}) {
 
 export function formatViolations(violations) {
   return violations
-    .map((v) => (v.tier === 'hard'
-      ? `${v.path}  protected path (${v.rule}): it is never changed by an unattended run`
-      : `${v.path}  dependency file: the issue must list it in an Allow-paths: line`))
+    .map((v) => {
+      if (v.tier === 'hard') return `${v.path}  protected path (${v.rule}): it is never changed by an unattended run`;
+      if (v.tier === 'scope') return `${v.path}  outside the platform (${v.rule}): an issue changes only its platform; list the path in an Allow-paths: line to allow it`;
+      return `${v.path}  dependency file: the issue must list it in an Allow-paths: line`;
+    })
     .join('\n');
 }

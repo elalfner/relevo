@@ -41,13 +41,13 @@ Never run `openspec init`, `archive`, `update` or `sync`, and never create files
 
 ## Failure path
 
-Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `possible credential or temporary marker in the diff`).
+Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `outside the platform`, `possible credential or temporary marker in the diff`).
 
-1. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, or an issue that changed after `ready`; and never touch a branch that already existed.
+1. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, a path outside the platform, or an issue that changed after `ready`; and never touch a branch that already existed.
 2. Move the issue to `qa-failed`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to qa-failed --current "<current labels, comma separated>"`, then apply the result with `gh issue edit`.
 3. Post one comment built by `render-message.mjs qa_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow), and `branch_state`:
    - `pushed` (the default) when you pushed the branch;
-   - `unsafe` when you did not push because of a possible credential, a temporary marker or a protected path;
+   - `unsafe` when you did not push because of a possible credential, a temporary marker, a protected path or a path outside the platform;
    - `not_pushed` when you did not push for another reason, such as an issue that changed after `ready`;
    - `existing` when the branch already existed, together with `recovery` (step 2).
 4. Stop. Do not open a pull request and do not advance the state.
@@ -84,8 +84,8 @@ This reads the queue from GitHub, applies the gates and limits, carries out labe
 
 Read the decision for the issue in the JSON it prints:
 
-- `start`: continue. It gives you `branch`, `change_id`, `base`, `assignee`, `title`, `qa_retries`, `run_max_turns`, `run_max_cost`, `issue_hash` (the text of the issue when it was claimed) and `allow_paths` (dependency files the issue lets the change touch).
-- anything else (`needs-spec`, `block`, `queue`, `denied`, `no-milestone`, `no-assignee`, `platform`, `skip`): that is a normal outcome, already applied. Report the decision and its reason in one line, and stop. Do not build.
+- `start`: continue. It gives you `branch`, `change_id`, `base`, `assignee`, `title`, `qa_retries`, `run_max_turns`, `run_max_cost`, `issue_hash` (the text of the issue when it was claimed), `allow_paths` (dependency files and folders the issue lets the change touch), and the platform the issue is for: `platform` (its name), `stack`, `path` (its folder) and `targets`.
+- anything else (`needs-spec`, `block`, `queue`, `denied`, `no-milestone`, `no-assignee`, `skip`): that is a normal outcome, already applied. Report the decision and its reason in one line, and stop. Do not build.
 
 ### 2. Branch
 
@@ -140,7 +140,7 @@ Then `openspec validate "<change_id>"`. If it fails, fix the artifacts and valid
 Commit the specification on its own:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "docs: specification for #<issue>" -- openspec/changes/<change_id>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "docs: specification for #<issue>" --within "<path>" --change "<change_id>" -- openspec/changes/<change_id>
 ```
 
 ### 4. Build
@@ -148,9 +148,9 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "docs: specificat
 First resolve the stack profile of the repository's platform and the extra skills of each role. The agents contain no knowledge of any stack; it comes from here:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs
-node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role dev
-node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role qa
+node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role dev --platform <platform>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role qa --platform <platform>
 ```
 
 If `stack-profile.mjs` fails, take the failure path with the reason `profile not resolved` and its message. `role-skills.mjs` prints each skill as a path or as left out with a reason: give the agent only the paths, and mention the skills left out in your final report.
@@ -161,7 +161,7 @@ Then:
 openspec instructions apply --change "<change_id>" --json
 ```
 
-If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the skill paths for `dev`, the base branch, and `allow_paths`.
+If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the folder of the platform (`path`), the skill paths for `dev`, the base branch, and `allow_paths`.
 
 Read its report. If its open questions are not "none", treat them as a spec defect, exactly as in step 3. Then run the instructions command again: if `progress.remaining` is above 0, take the failure path with the reason `tasks left unfinished`.
 
@@ -173,7 +173,7 @@ Make the new files of the developer visible to `git diff`, without staging them,
 node ${CLAUDE_PLUGIN_ROOT}/scripts/intent-to-add.mjs <files>
 ```
 
-Launch the `relevo:qa` agent on the result, giving it the same change directory, rules files and base branch, the resolved profile, the skill paths for `qa`, and the diff to review: the working tree against the base branch, without the generated files of the profile (add one `':(exclude)<pattern>'` for each pattern in its `generated` list).
+Launch the `relevo:qa` agent on the result, giving it the same change directory, rules files and base branch, the resolved profile, the folder of the platform (`path`), the skill paths for `qa`, and the diff to review: the working tree against the base branch, without the generated files of the profile (add one `':(exclude)<pattern>'` for each pattern in its `generated` list).
 
 ```bash
 git diff origin/<base> -- . ':(exclude)<pattern>' ...
@@ -190,10 +190,10 @@ If QA still rejects after the retries, take the failure path with the reason `QA
 Commit exactly the files the developer reported (created and modified) plus `tasks.md`, through the script. Never use `git add .` or `-A`; the script refuses them.
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "feat: <title> (#<issue>)" --allow "<allow_paths, comma separated>" -- <paths>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "feat: <title> (#<issue>)" --allow "<allow_paths, comma separated>" --within "<path>" --change "<change_id>" -- <paths>
 ```
 
-Leave out `--allow` when `allow_paths` is empty. The script stages the paths, refuses protected paths, scans what is staged for temporary markers and credentials, and commits only when it finds nothing. If it exits 1 it has unstaged the paths and printed the file and line: take the failure path with the reason `protected path in the diff` or `possible credential or temporary marker in the diff`, naming the file and line. **Do not push.**
+Leave out `--allow` when `allow_paths` is empty. The script stages the paths, refuses protected paths, scans what is staged for temporary markers and credentials, and commits only when it finds nothing. If it exits 1 it has unstaged the paths and printed the file and line: take the failure path with the reason `protected path in the diff`, `outside the platform` (a file outside the folder of the platform that the issue did not allow) or `possible credential or temporary marker in the diff`, naming the file and line. **Do not push.**
 
 Do not add links to this session or attribution lines to the message.
 
@@ -215,4 +215,4 @@ End with the next step, from the same table the comments use:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state <built|needs-spec|qa-failed|blocked|queued> --issue <issue>
 ```
 
-Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`, `platform`) the comment already says what to do.
+Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`) the comment already says what to do.
