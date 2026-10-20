@@ -67,6 +67,8 @@ Plus `/relevo:status` (who is waiting on what) and `/relevo:doctor` (checks your
 - [Configuration](docs/configuration.md): the `relevo.yml` file.
 - [Stacks and platforms](docs/stacks.md): declare your platforms and add your own rules.
 - [Where `go` runs](docs/execution.md): the cloud, your machine or both, and the two credentials.
+- [Guide](docs/guide.md): what to do next, and what to do when something goes wrong.
+- [Security model](docs/security.md): what Relevo protects and what it does not.
 - [All the documentation](docs/README.md): reference, how it was built, and the brand.
 
 ## Acknowledgements

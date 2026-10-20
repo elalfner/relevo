@@ -25,6 +25,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `review.merger` | quién ejecuta `/relevo:ship`: `author` o `approver` | `approver` |
 | `review.autopilot` | cuánto de la revisión puede conducir el agente: `off` (la persona lo hace todo), `precheck` (el agente recorre las líneas y anota su resultado; la persona confirma cada línea) o `verify` (el agente también puede marcar las líneas que probó con una aserción, un finder semántico o el log; la persona confirma el resto y da el acuerdo) | `off` |
 | `review.allowed_origins` | orígenes web que una revisión conducida puede visitar además de `localhost`, por ejemplo `https://staging.example.com` | `[]` |
+| `skills.allow_scripts` | nombres de las skills extra que tienen scripts y pueden usarse; una skill con scripts que no está en la lista se deja fuera, y `/relevo:doctor` lo dice | vacío |
 | `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando | 2 |
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |
@@ -38,3 +39,15 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `language` | idioma de los mensajes de traspaso (`en`, `es`) | `en` |
 | `trust` | `private-team` o `public` | `private-team` |
 | `labels` | renombra cualquier etiqueta; las claves son fijas, los nombres son tuyos | `relevo:ready`, `relevo:built`, … |
+
+## Plataformas, perfiles y comprobaciones
+
+- Cada entrada de `platforms` tiene un `stack`, un `path` y, para los stacks que los tienen, `targets`. [Stacks y plataformas](stacks.es.md) explica los perfiles que se incluyen.
+- El perfil de un stack viene en capas: el archivo `stacks/<stack>.md` del plugin, y después `.relevo/stacks/<stack>.md` de tu repositorio. El tuyo añade texto de higiene, herramientas, skills y comandos que el plugin no tiene; no puede reemplazar un comando del plugin.
+- Para reemplazar un comando, escríbelo en `platforms.<name>.checks`, a la vista, por ejemplo `analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse"`. Solo se pueden reemplazar los comandos que nombra el perfil (`analyze`, `test`, `format`).
+
+## Qué significan los límites
+
+- `limits.run_max_cost` es obligatorio y lo eliges tú. Con una clave de API es un tope real de gasto por ejecución. Con un token de suscripción el costo que reporta el log es nocional, así que es solo una red de seguridad contra una ejecución descontrolada.
+- `limits.run_max_turns` es el control principal con una suscripción, junto con un `limits.concurrent_agents` bajo: la cuota la comparten todas las ejecuciones y el uso interactivo de la cuenta.
+- Una ejecución que alcanza un límite de turnos o de costo se detiene y el issue pasa a `qa-failed` con el motivo. [Dónde corre `go`](execution.es.md) tiene el resto.

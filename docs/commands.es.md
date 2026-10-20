@@ -16,6 +16,82 @@ Se distribuye como un plugin de Claude Code llamado `relevo`:
 | `/relevo:status` | Quién espera a quién, más un resumen diario |
 | `/relevo:doctor` | Comprueba que el entorno y los ajustes del repositorio son correctos, incluidas las herramientas y skills que pide cada [perfil de stack](stacks.es.md) |
 
+## Cada comando, con sus argumentos
+
+### `/relevo:init`
+
+Sin argumentos. Mira el repositorio, propone las plataformas, los ajustes y los workflows, muestra un plan y lo aplica solo después de que estés de acuerdo. Es seguro ejecutarlo otra vez.
+
+```text
+/relevo:init
+```
+
+### `/relevo:think [idea or #issue]`
+
+Una idea, o el número de un issue que volvió con una pregunta abierta. Explora, después te entrevista, y termina con el acuerdo que `/relevo:issue` convierte en issues. No escribe ningún archivo.
+
+```text
+/relevo:think mostrar quién cumple años hoy en la pantalla de inicio
+/relevo:think #42
+```
+
+### `/relevo:issue [what to build, the path of a saved agreement, or the number of an issue to update]`
+
+Qué construir, la ruta de un acuerdo guardado, o el número de un issue que reescribir. Pregunta solo lo que falta, comprueba cada borrador, los muestra, los crea cuando los apruebas y después pregunta, como una pregunta aparte, si pone `ready`.
+
+```text
+/relevo:issue un botón de reinicio en la pantalla del contador
+/relevo:issue 42
+```
+
+### `/relevo:go [issue-number] [--local] [--decision <base64>]`
+
+El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `--local` lo construye en tu máquina en un worktree aparte. `--decision` lo pasa el workflow, no se escribe.
+
+```text
+/relevo:go 42 --local
+```
+
+### `/relevo:review [issue-number]`
+
+El número de un issue `built`. Empieza la revisión en el dispositivo o en un navegador, muestra un resumen corto, la lista de capturas y la lista de verificación, y te espera. Tú escribes `ok 1 2`, `fail 3 <qué pasó>`, `capture <nombre>`, `waive <n> <motivo>` o `done`.
+
+```text
+/relevo:review 42
+```
+
+### `/relevo:fix [issue-number] [what is wrong]`
+
+El issue y qué está mal, con tus palabras. Escribe primero el comportamiento correcto en la especificación, después el código, y devuelve el issue a donde estaba.
+
+```text
+/relevo:fix 42 el total muestra 3 cuando hay 4 clientes
+```
+
+### `/relevo:ship [issue-number]`
+
+El número de un issue `pr-open` cuyo pull request aprobó alguien que no es el autor. Muestra lo que va a pasar, pide un sí escrito, archiva la especificación, fusiona y cierra el issue.
+
+```text
+/relevo:ship 42
+```
+
+### `/relevo:status`
+
+Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cualquier construcción que dejó de reportar.
+
+```text
+/relevo:status
+```
+
+### `/relevo:doctor`
+
+Sin argumentos. Comprueba las herramientas, las skills, `relevo.yml`, los workflows y los ajustes del repositorio, y dice cómo arreglar cada problema.
+
+```text
+/relevo:doctor
+```
+
 ## El formato del issue
 
 `/relevo:issue` escribe el issue y `/relevo:go` lo construye, así que el issue es lo único que recibe quien construye. Además de los escenarios y los casos borde, puede llevar lo que el acuerdo dejó decidido, en secciones opcionales: `Outcome`, `Decisions` (cada una con un id `D1`, lo decidido, el porqué y lo descartado), `Constraints` (`C1`), `Code pointers`, `Verification`, `Assumptions` y `Open questions`. `go` las copia palabra por palabra al diseño del cambio, y QA rechaza una construcción que rompa una decisión o una restricción, citando su id. Un issue con una pregunta abierta, o con el texto `NEEDS CLARIFICATION`, vuelve a quien lo escribió como ambiguo. El formato está en [Writing an issue Relevo can build](issue-format.md).
