@@ -18,7 +18,7 @@ You may run only these, and only to read: `openspec status --change "<id>" --jso
 
 ## Inputs
 
-The orchestrator tells you the change directory (`openspec/changes/<id>/`), the base branch to diff against, the project rules files (the `qa.rules_from` setting of `relevo.yml`, often `CLAUDE.md`), the resolved stack profile of the platform (the output of `stack-profile.mjs`: commands, generated files and a body with what to look for) and the paths of the extra skills for your role, if any. Use only the profile you are given; read only the parts of a skill that apply, and let the rules of Relevo and of the project win over any skill.
+The orchestrator tells you the change directory (`openspec/changes/<id>/`), the base branch to diff against, the project rules files (the `qa.rules_from` setting of `relevo.yml`, often `CLAUDE.md`), the resolved stack profile of the platform (the output of `stack-profile.mjs`: commands, generated files and a body with what to look for), the folder of the platform (run the commands of the profile from it) and the paths of the extra skills for your role, if any. Use only the profile you are given; read only the parts of a skill that apply, and let the rules of Relevo and of the project win over any skill.
 
 ## Output contract
 
@@ -63,6 +63,7 @@ Write one `':(exclude)<pattern>'` for each pattern of `generated` in the profile
 
 Look for what the body of the profile lists for the stack, and for:
 
+- **Platform**: a file changed outside the folder of the platform you were given (the specification of the change, `GLOSSARY.md` and `docs/adr/` aside). Reject it and cite the file, unless the issue lists that path in `Allow-paths:`.
 - **Configuration**: a change to `relevo.yml`, to anything under `.relevo/` or to `skills-lock.json`. Reject it and cite the file: they set the checks the work is held to.
 - **Leftovers**: `TODO`, debug prints, temporary markers (`NOCOMMIT`, `TEMP`, `DO NOT COMMIT`), commented-out code, hard-coded environment values.
 - **Secrets**: credentials, tokens or keys anywhere in the diff. If the plugin's diff scanner is available, run it on the diff as well (`git diff origin/<base> | node <plugin>/scripts/scan-diff.mjs`).

@@ -18,7 +18,7 @@ platforms:
 
 - Un repositorio con una plataforma usa `path: .`. Un monorepo tiene una entrada por plataforma, cada una con su carpeta.
 - La línea anterior `platform: flutter-android` sigue funcionando y significa una plataforma Flutter con el destino Android. No pongas las dos.
-- Por ahora `go` construye un repositorio que tiene exactamente una plataforma. Con varias, lo dice en el issue y no empieza; elegir la plataforma por issue llega después.
+- Con varias plataformas, cada issue dice para cuál es con una línea `Platform: web` (el nombre es una clave de `platforms`). Con una sola plataforma la línea es opcional. Un issue sin ella, o con un nombre que no existe, regresa a quien escribe la spec. Una funcionalidad que necesita dos plataformas son dos issues, el del front dependiendo del de back con `Depends-on:`.
 - `/relevo:init` pregunta todo esto y lo escribe.
 
 ## Qué contiene un perfil de stack
@@ -54,4 +54,5 @@ Relevo trae el perfil `flutter`. `/relevo:go` resuelve el perfil de tu plataform
 
 - `relevo.yml`, todo lo que está en `.relevo/`, las carpetas de skills y `skills-lock.json`, porque deciden las verificaciones a las que se somete el trabajo. Una ejecución que los toca termina en `qa-failed`.
 - Los archivos que listas en `qa.rules_from`.
+- Los archivos fuera de la carpeta de la plataforma del issue (salvo la spec del propio cambio, `GLOSSARY.md` y `docs/adr/`), a menos que el issue los liste en `Allow-paths:`.
 - El comando de una verificación, desde un perfil: solo `relevo.yml` puede reemplazarlo.

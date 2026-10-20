@@ -94,3 +94,11 @@ test('Scenario: Another app logs an error - the audit is limited to the app unde
   assert.match(body, /ask the person to start the app, or restart it/i);
   assert.match(body, /may hold other apps' data/);
 });
+
+test('Scenario: QA after the sync - review finds the platform again and gives QA the profile and the folder', () => {
+  assert.match(body, /scripts\/platform-of\.mjs --issue \$ARGUMENTS/);
+  assert.match(body, /scripts\/stack-profile\.mjs --platform <platform>/);
+  assert.match(body, /scripts\/role-skills\.mjs --role qa --platform <platform>/);
+  assert.match(body, /If `platform-of\.mjs` exits 1, stop and tell the person what it printed/);
+  assert.match(body, /the profile, the folder of the platform and the skill paths/);
+});

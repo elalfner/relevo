@@ -155,3 +155,13 @@ test('Scenario: the agents have a read-only OpenSpec section and use the shared 
   assert.match(qa, /you never change the index or any file/);
   assert.match(qa, /You still run analysis and all tests/);
 });
+
+test('Scenario: Monorepo - both agents get the folder of the platform and the work stays inside it', () => {
+  const dev = load('dev').body;
+  const qa = load('qa').body;
+  assert.match(dev, /the folder of the platform \(`path` of the profile output\): run the commands of the profile from it, and change files only inside it/);
+  assert.match(dev, /the commit is refused for any other path/);
+  assert.match(qa, /the folder of the platform \(run the commands of the profile from it\)/);
+  assert.match(qa, /\*\*Platform\*\*: a file changed outside the folder of the platform/);
+  assert.match(qa, /unless the issue lists that path in `Allow-paths:`/);
+});

@@ -18,6 +18,7 @@ The orchestrator tells you:
 - the change to implement: a directory such as `openspec/changes/<id>/` with `proposal.md`, `design.md`, `specs/` and `tasks.md`;
 - the project rules files (the `qa.rules_from` setting of `relevo.yml`, often `CLAUDE.md`);
 - the resolved stack profile of the platform (the output of `stack-profile.mjs`): the commands that verify the code, the generated files, the tools and a body with the hygiene of the stack. Follow it; never look for another profile;
+- the folder of the platform (`path` of the profile output): run the commands of the profile from it, and change files only inside it, plus the documentation the issue carries. If the work needs a file outside it, report that as an open question: the commit is refused for any other path;
 - the paths of the extra skills for your role, if any. Read only the parts of a skill that apply to your task; the rules of Relevo and of the project win over any skill;
 - the mode: **build** (implement all pending tasks) or **fix** (correct the findings of a QA report, nothing else).
 

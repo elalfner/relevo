@@ -170,3 +170,22 @@ test('the CLI prints what the issue allows and takes the rules file from --rules
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /docs\/rules\.md/);
 });
+
+test('Scenario: the platform of a draft is checked when the registry is given', () => {
+  const two = { web: {}, api: {} };
+  const missing = checkIssueDraft({ title: 'Add a chart', body: GOOD, platforms: two });
+  assert.equal(missing.ok, false);
+  assert.match(missing.problems.join('\n'), /the body has no Platform: line naming one of the platforms of relevo\.yml \(web, api\)/);
+  const unknown = checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nPlatform: mobile\n`, platforms: two });
+  assert.match(unknown.problems.join('\n'), /Platform: mobile, which is not a platform of relevo\.yml/);
+  const both = checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nPlatform: web\nPlatform: api\n`, platforms: two });
+  assert.match(both.problems.join('\n'), /names two platforms/);
+  assert.equal(checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nPlatform: web\n`, platforms: two }).ok, true);
+  assert.equal(checkIssueDraft({ title: 'Add a chart', body: GOOD, platforms: { app: {} } }).ok, true, 'one platform needs no line');
+  assert.equal(checkIssueDraft({ title: 'Add a chart', body: GOOD }).ok, true, 'without the registry nothing about platforms is checked');
+});
+
+test('the template text of the Platform line is caught when it was not filled in', () => {
+  const r = checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\nPlatform: <name of a platform in relevo.yml>\n` });
+  assert.match(r.problems.join('\n'), /still contains template text/);
+});

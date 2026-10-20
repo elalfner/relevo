@@ -89,3 +89,11 @@ test('an Allow-paths line does not count as a scenario, an edge case or a depend
   const r = parseIssueBody(`${GOOD}\nAllow-paths: pubspec.yaml\n`);
   assert.deepEqual([r.scenarios, r.edgeCases, r.dependsOn, r.missing], [1, 2, [], []]);
 });
+
+test('Platform lines: one name, several names, a name in a code block ignored, none gives an empty list', () => {
+  assert.deepEqual(parseIssueBody(`${GOOD}\nPlatform: web\n`).platform, ['web']);
+  assert.deepEqual(parseIssueBody(`${GOOD}\n- Platform: \`api\`\n`).platform, ['api']);
+  assert.deepEqual(parseIssueBody(`${GOOD}\nPlatform: web, api\n`).platform, ['web', 'api']);
+  assert.deepEqual(parseIssueBody(`${GOOD}\n\`\`\`\nPlatform: web\n\`\`\`\n`).platform, []);
+  assert.deepEqual(parseIssueBody(GOOD).platform, []);
+});

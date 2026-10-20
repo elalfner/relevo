@@ -40,6 +40,10 @@ jobs:
     outputs:
       action: ${{ steps.plan.outputs.action }}
       decision_b64: ${{ steps.plan.outputs.decision_b64 }}
+      # The platform the issue is for (empty unless the decision is `start`): the build job installs only its toolchain.
+      platform: ${{ steps.plan.outputs.platform }}
+      stack: ${{ steps.plan.outputs.stack }}
+      path: ${{ steps.plan.outputs.path }}
     steps:
       # The repository holds relevo.yml; the plugin holds the scripts that apply the gates.
       - uses: actions/checkout@v4
@@ -106,12 +110,30 @@ jobs:
         with:
           node-version: 22
 
-      # The agent runs the project's own checks (QA runs them), so install the toolchain your platform needs here.
-      # For platform flutter-android, for example:
-      #   - uses: subosito/flutter-action@v2
+      # The agent runs the project's own checks (QA runs them), so install here the toolchain of the stack of the
+      # platform of the issue. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
+      # (`needs.decide.outputs.path`), so an issue for the front does not install the back's tools. Uncomment the
+      # examples your stacks need and adjust versions and caching; the names are the `stack` of relevo.yml:
+      #   - if: needs.decide.outputs.stack == 'flutter'
+      #     uses: subosito/flutter-action@v2
       #     with:
       #       channel: stable
       #       cache: true
+      #   - if: needs.decide.outputs.stack == 'vue'
+      #     uses: actions/setup-node@v4
+      #     with:
+      #       node-version: 22
+      #       cache: npm
+      #       cache-dependency-path: ${{ needs.decide.outputs.path }}/package-lock.json
+      #   - if: needs.decide.outputs.stack == 'laravel'
+      #     uses: shivammathur/setup-php@v2
+      #     with:
+      #       php-version: '8.3'
+      #       tools: composer
+      # Install the dependencies of the platform from its folder, for example:
+      #   - if: needs.decide.outputs.stack == 'vue'
+      #     working-directory: ${{ needs.decide.outputs.path }}
+      #     run: npm ci --ignore-scripts
       # Install dependencies without package scripts where the tool offers it, so a dependency cannot run code
       # while it is installed: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`,
       # `composer install --no-scripts`. `flutter pub get` and `dart pub get` run no install-time scripts of
