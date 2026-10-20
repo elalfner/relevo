@@ -16,6 +16,7 @@
 import { parseIssueBody } from './issue-parse.mjs';
 import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
+import { issueHash } from './issue-hash.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
 // In a public repository only maintainers may start work: anyone with write access could otherwise start a
@@ -88,6 +89,15 @@ export function planGo({ config, issues, completed = [], running = [], permissio
         });
         return;
       }
+      // Until the issue can say which platform it belongs to, only a repository with one platform is built.
+      const platformNames = Object.keys(config.platforms);
+      if (platformNames.length > 1) {
+        decision(issue, 'platform', `the repository has several platforms (${platformNames.join(', ')}) and choosing one per issue is not available yet`, {
+          labels: dropReady(issue),
+          comment: { kind: 'platform', data: { issue: issue.number, actor: issue.ready_by, platforms: platformNames.join(', ') } },
+        });
+        return;
+      }
       if (!issue.milestone) {
         decision(issue, 'no-milestone', 'the issue has no milestone', {
           labels: dropReady(issue),
@@ -110,7 +120,7 @@ export function planGo({ config, issues, completed = [], running = [], permissio
           assign: [specWriter],
           comment: {
             kind: 'needs_spec',
-            data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: parsed.missing.join('; ') },
+            data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: parsed.missing.join('; '), reason: 'missing' },
           },
         });
         return;
@@ -164,6 +174,10 @@ export function planGo({ config, issues, completed = [], running = [], permissio
         qa_retries: config.qa.retries,
         run_max_turns: config.limits.run_max_turns,
         run_max_cost: config.limits.run_max_cost,
+        // The text the issue had when it was claimed: `go` checks it before it writes the specification.
+        issue_hash: issueHash({ title: issue.title, body: issue.body }),
+        // Dependency files the issue lets the change touch (see "Protected paths").
+        allow_paths: parsed.allowPaths,
       },
     });
   });

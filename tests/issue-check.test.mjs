@@ -120,3 +120,53 @@ test('the Documentation section never hides a missing edge case', () => {
   assert.equal(r.ok, false);
   assert.match(r.problems.join('\n'), /edge case/i);
 });
+
+// ---------- Allow-paths: dependency files the change may touch
+
+const WITH_ALLOW = (line) => `${GOOD}\n${line}\n`;
+
+test('Scenario: Lock file with permission - an Allow-paths line naming dependency files passes the check', () => {
+  const r = checkIssueDraft({ title: 'Add a chart', body: WITH_ALLOW('Allow-paths: pubspec.yaml, pubspec.lock') });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.allowPaths, ['pubspec.yaml', 'pubspec.lock']);
+});
+
+test('Scenario: Workflow edited - an Allow-paths line that names a path that can never be allowed fails the check', () => {
+  const r = checkIssueDraft({ title: 'Add a chart', body: WITH_ALLOW('Allow-paths: pubspec.yaml, .github/workflows/ci.yml') });
+  assert.equal(r.ok, false);
+  assert.equal(r.problems.length, 1);
+  assert.match(r.problems[0], /Allow-paths lists "\.github\/workflows\/ci\.yml", which can never be allowed/);
+});
+
+test('a glob that would cover a protected path fails the check, and so does the project rules file', () => {
+  assert.equal(checkIssueDraft({ title: 'Add a chart', body: WITH_ALLOW('Allow-paths: **') }).ok, false);
+  assert.equal(checkIssueDraft({ title: 'Add a chart', body: WITH_ALLOW('Allow-paths: CLAUDE.md') }).ok, true, 'without a rules file it is an ordinary file');
+  const r = checkIssueDraft({ title: 'Add a chart', body: WITH_ALLOW('Allow-paths: CLAUDE.md'), rulesFile: 'CLAUDE.md' });
+  assert.equal(r.ok, false);
+  assert.match(r.problems[0], /"CLAUDE\.md"/);
+});
+
+test('an issue without the line stays valid and allows nothing', () => {
+  const r = checkIssueDraft({ title: 'Add a chart', body: GOOD });
+  assert.deepEqual([r.ok, r.allowPaths], [true, []]);
+});
+
+test('the template placeholders of Out of scope and Allow-paths are recognised as template text', () => {
+  const left = (text) => checkIssueDraft({ title: 'Add a chart', body: `${GOOD}\n${text}\n` }).problems.join(' ');
+  assert.match(left('- <what is deliberately left out, with the issue that covers it when there is one>'), /template text/);
+  assert.match(left('Allow-paths: <dependency files the change may touch, for example pubspec.yaml, pubspec.lock>'), /template text/);
+});
+
+test('the CLI prints what the issue allows and takes the rules file from --rules-file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-allow-'));
+  const file = join(dir, 'issue.md');
+  writeFileSync(file, WITH_ALLOW('Allow-paths: pubspec.lock'));
+  const cli = new URL('../scripts/check-issue.mjs', import.meta.url).pathname;
+  const ok = spawnSync('node', [cli, '--title', 'Add a chart', '--body-file', file], { encoding: 'utf8' });
+  assert.equal(ok.status, 0);
+  assert.match(ok.stdout, /allows changes to pubspec\.lock/);
+  writeFileSync(file, WITH_ALLOW('Allow-paths: docs/rules.md'));
+  const bad = spawnSync('node', [cli, '--title', 'Add a chart', '--body-file', file, '--rules-file', 'docs/rules.md'], { encoding: 'utf8' });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /docs\/rules\.md/);
+});

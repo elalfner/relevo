@@ -87,6 +87,10 @@ The template installs Node and OpenSpec only. QA runs `flutter analyze` and `flu
 
 Confirmed against the real run, no change needed: `plugins: relevo@relevo`, `prompt: /relevo:go <n>`, `claude_args` with `--max-turns`, `--max-budget-usd` and `--allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"`, `github_token`, and the `permissions` block. The `id-token: write` permission was not exercised by anything seen in the log. The issue `labeled` event runs the workflow file from the **default branch**, not from the base branch, so workflow changes must reach `main` to take effect.
 
+## `id-token: write` is not needed (task 6.2 of `harden-go-and-agents`)
+
+The build job of `relevo-go.yml` was run in the sandbox repository without `id-token: write`, from `main`. Issue #20 (a small change to the counter screen) went from `ready` to `relevo:built` in about 3 min 30 s, with the hand-off comment posted, QA passed, and every step of the `build` job green, including `claude-code-action`. The template passes `github_token`, so the action does not need the OIDC exchange. The permission was removed from the template.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

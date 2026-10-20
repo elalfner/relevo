@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, readOnlyGh, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
+import { readFileSync } from 'node:fs';
+import { resolveProfile } from '../scripts/lib/stack-profile.mjs';
+
+const PLUGIN_ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const FLUTTER = resolveProfile({ platform: { stack: 'flutter' }, pluginRoot: PLUGIN_ROOT, read: (path) => { try { return readFileSync(path, 'utf8'); } catch { return null; } } }).profile;
+/** The facts `doctor` gathers for one Flutter platform; `over` changes the tool and target-tool results. */
+function flutterPlatform({ flutter = true, targets = { android: 'adb' }, available = { adb: true }, name = 'app', profile = FLUTTER } = {}) {
+  return {
+    name, stack: 'flutter', path: '.', targets: Object.keys(targets), profile, errors: [],
+    tools: [{ tool: 'flutter', ok: flutter }],
+    targetTools: Object.entries(targets).map(([target, tool]) => ({ target, tool, ok: tool === '' ? true : Boolean(available[tool]) })),
+  };
+}
 
 const CONFIG_TEXT = 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\nplatform: flutter-android\n';
 const config = loadConfig(CONFIG_TEXT).config;
@@ -11,7 +24,7 @@ const PROTECTED = { protected: true, pullRequestRequired: true, approvals: 1, di
 
 function healthy(over = {}) {
   return {
-    repo: 'o/r', platform: 'flutter-android', node: '22.1.0', openspec: '1.14.1', git: true, gh: true, ghAuth: true, toolchain: true, adb: true,
+    repo: 'o/r', node: '22.1.0', openspec: '1.14.1', git: true, gh: true, ghAuth: true, platformFacts: [flutterPlatform()], macos: false, roleSkills: null, skillLockDifferences: [],
     skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])),
     configText: CONFIG_TEXT, config, configErrors: [], rulesFileMissing: false,
     openspecRoot: true, openspecRootTracked: true, evidenceIgnored: true,
@@ -67,7 +80,75 @@ test('Scenario: Skill missing - think needs openspec-explore, grill-with-docs, g
 });
 
 test('the device bridge is only a warning, because only review needs it', () => {
-  assert.equal(byId(runChecks(healthy({ adb: false })), 'tools.device-bridge').status, 'warn');
+  const bridge = (available) => byId(runChecks(healthy({ platformFacts: [flutterPlatform({ available })] })), 'tools.target.app.android');
+  assert.equal(bridge({ adb: false }).status, 'warn');
+  assert.match(bridge({ adb: false }).fix, /Android platform tools/);
+  assert.equal(bridge({ adb: true }).status, 'pass');
+});
+
+test('Scenario: Flutter with Android and web - doctor checks flutter and adb, reports both targets and does not require xcrun', () => {
+  const results = runChecks(healthy({ platformFacts: [flutterPlatform({ targets: { android: 'adb', web: '' }, available: { adb: true } })] }));
+  assert.equal(byId(results, 'tools.flutter').status, 'pass');
+  assert.equal(byId(results, 'tools.target.app.android').status, 'pass');
+  assert.match(byId(results, 'tools.target.app.web').message, /needs no extra tool/);
+  assert.equal(results.some((r) => /xcrun/.test(r.message)), false);
+  assert.match(byId(results, 'platform.app.profile').message, /profile = default of the plugin/);
+});
+
+test('the toolchain of a stack is a failure with its install hint', () => {
+  const r = byId(runChecks(healthy({ platformFacts: [flutterPlatform({ flutter: false })] })), 'tools.flutter');
+  assert.equal(r.status, 'fail');
+  assert.match(r.fix, /docs\.flutter\.dev/);
+});
+
+test('Scenario: iOS on Linux - a notice that iOS needs macOS, not a failure; on macOS the tool is checked', () => {
+  const ios = (macos, available) => byId(runChecks(healthy({ macos, platformFacts: [flutterPlatform({ targets: { ios: 'xcrun' }, available })] })), 'tools.target.app.ios');
+  assert.equal(ios(false, {}).status, 'pass');
+  assert.match(ios(false, {}).message, /only be built and reviewed on macOS/);
+  assert.equal(ios(true, {}).status, 'warn');
+  assert.equal(ios(true, { xcrun: true }).status, 'pass');
+});
+
+test('Scenario: Missing stack profile - doctor fails that check and says where to define one', () => {
+  const missing = { name: 'api', stack: 'laravel', path: 'apps/api', targets: [], profile: null, errors: ['no profile for stack "laravel": define one'], tools: [], targetTools: [] };
+  const r = byId(runChecks(healthy({ platformFacts: [missing] })), 'platform.api.profile');
+  assert.equal(r.status, 'fail');
+  assert.match(r.fix, /stacks\/laravel\.md in the plugin or \.relevo\/stacks\/laravel\.md in the repository/);
+});
+
+test('Scenario: A repository tries to remove a check - doctor warns that the value is ignored', () => {
+  const profile = { ...FLUTTER, layers: ['plugin', 'repository'], ignored: [{ key: 'commands.test', value: 'echo skipped', kept: 'flutter test' }] };
+  const results = runChecks(healthy({ platformFacts: [flutterPlatform({ profile })] }));
+  assert.match(byId(results, 'platform.app.profile').message, /default of the plugin \+ \.relevo\/stacks\/flutter\.md/);
+  const w = byId(results, 'platform.app.ignored.commands.test');
+  assert.equal(w.status, 'warn');
+  assert.match(w.fix, /platforms\.app\.checks/);
+});
+
+test('Scenario: Skill left out - doctor shows it with the reason; a skill with allowed scripts is a notice', () => {
+  const roleSkills = { app: { dev: [{ name: 'a', left_out: true, reason: 'not on the base branch' }, { name: 'b', path: '.agents/skills/b/SKILL.md', scripts: true, bytes: 100 }], qa: [], issue: [], review: [] } };
+  const results = runChecks(healthy({ roleSkills }));
+  assert.match(byId(results, 'skills.role.app.dev.a').message, /left out: not on the base branch/);
+  assert.equal(byId(results, 'skills.role.app.dev.a').status, 'warn');
+  assert.equal(byId(results, 'skills.scripts.app.dev.b').status, 'pass');
+});
+
+test('Scenario: Large skill set - 30 KB warns, 10 KB does not', () => {
+  const skills = (bytes) => ({ app: { dev: [{ name: 'a', path: 'p', scripts: false, bytes }], qa: [], issue: [], review: [] } });
+  const big = byId(runChecks(healthy({ roleSkills: skills(30 * 1024) })), 'skills.size.app.dev');
+  assert.equal(big.status, 'warn');
+  assert.match(big.message, /30 KB/);
+  assert.equal(byId(runChecks(healthy({ roleSkills: skills(10 * 1024) })), 'skills.size.app.dev'), undefined);
+});
+
+test('Scenario: Altered skill - doctor warns and names the skill', () => {
+  const r = byId(runChecks(healthy({ skillLockDifferences: ['laravel-best-practices'] })), 'skills.lock.laravel-best-practices');
+  assert.equal(r.status, 'warn');
+});
+
+test('Scenario: Missing file in the list - doctor warns and names it', () => {
+  const r = byId(runChecks(healthy({ rulesFileMissing: true, rulesFilesMissing: ['docs/backend.md'] })), 'config.rules-file');
+  assert.match(r.message, /"docs\/backend\.md"/);
 });
 
 test('Scenario: Approvals dismissed on push - a failure explaining that the archive commit would dismiss the approval', () => {
@@ -182,10 +263,12 @@ test('gatherFacts reads tools, skills, files and the GitHub state through the in
     tool: (name, args) => { if (name === 'openspec') return '1.14.1\n'; if (name === 'adb') throw new Error('not found'); return name === 'git' && args[0] === 'ls-files' ? 'openspec/config.yaml\n' : 'ok'; },
     gh: (args) => { const path = args[args.length - 1]; if (!(path in api)) throw new Error(`HTTP 404 ${path}`); return JSON.stringify(api[path]); },
     exists: (p) => p in files || dirs.has(p), read: (p) => files[p], listDir: () => ['relevo-go.yml', 'ci.yml'],
-    skillDirs: ['.claude/skills', '.agents/skills'], repo: 'o/r', platform: 'flutter-android',
+    skillDirs: ['.claude/skills', '.agents/skills'], repo: 'o/r',
   });
   assert.equal(f.openspec, '1.14.1');
-  assert.equal(f.adb, false);
+  assert.deepEqual(f.platformFacts[0].tools, [{ tool: 'flutter', ok: true }]);
+  assert.deepEqual(f.platformFacts[0].targetTools, [{ target: 'android', tool: 'adb', ok: false }], 'adb is missing in this machine');
+  assert.deepEqual(f.platformFacts[0].profile.layers, ['plugin']);
   assert.deepEqual(f.skills, { 'openspec-explore': true, 'grill-with-docs': false, grilling: true, 'domain-modeling': false });
   assert.equal(f.evidenceIgnored, true);
   assert.equal(f.hasCi, true);
@@ -264,7 +347,7 @@ test('a plugin_marketplaces URL that carries a credential is not reported as unr
   };
   const f = gatherFacts({
     tool: () => 'ok', gh: (args) => { const path = args[args.length - 1]; if (!(path in api)) throw new Error(`HTTP 404 ${path}`); return JSON.stringify(api[path]); },
-    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: 'o/r', platform: 'flutter-android',
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: 'o/r',
   });
   assert.equal(f.pluginMarketplaceHasToken, true);
   assert.equal(f.pluginRepoPrivate, true);
@@ -286,7 +369,7 @@ function probes({ localFiles, remote, files = {} }) {
       if (!(path in api) || api[path] === null) throw new Error(`HTTP 404 ${path}`);
       return JSON.stringify(api[path]);
     },
-    exists: (p) => p in all, read: (p) => all[p], listDir: () => Object.keys(localFiles), skillDirs: [], repo: 'o/r', platform: 'flutter-android',
+    exists: (p) => p in all, read: (p) => all[p], listDir: () => Object.keys(localFiles), skillDirs: [], repo: 'o/r',
   };
 }
 const CHECKOUT = (token) => `      - uses: actions/checkout@v4\n        with:\n          repository: o/relevo\n          ref: main\n          path: .relevo-plugin\n${token ? '          token: ${{ secrets.RELEVO_PLUGIN_TOKEN }}\n' : ''}\n`;
@@ -326,4 +409,87 @@ test('when the default branch cannot be read, doctor falls back to the working c
   const f = gatherFacts(failing);
   assert.equal(f.workflowSource, 'working copy');
   assert.equal(f.workflows['relevo-go.yml'].present, true);
+});
+
+// ---------- skills that only the person can launch
+
+const FM_RESERVED = '---\nname: grill-with-docs\ndescription: Grill the user\ndisable-model-invocation: true\n---\n\n# body\n';
+const FM_OPEN = '---\nname: grilling\ndescription: Grill the user\n---\n\n# disable-model-invocation: true in the body does not count\n';
+function skillFacts(files, dirs = ['.claude/skills', '.agents/skills']) {
+  return gatherFacts({
+    tool: () => 'ok', gh: () => '{}', exists: (p) => p in files, read: (p) => { if (!(p in files)) throw new Error('ENOENT'); return files[p]; }, listDir: () => [],
+    skillDirs: dirs, repo: null,
+  });
+}
+
+test('Scenario: Skill reserved for the person - doctor passes the check with a notice that it is launched by hand', () => {
+  const f = skillFacts({
+    '.claude/skills/grill-with-docs': true, '.claude/skills/grill-with-docs/SKILL.md': FM_RESERVED,
+    '.claude/skills/grilling': true, '.claude/skills/grilling/SKILL.md': FM_OPEN,
+    '.claude/skills/domain-modeling': true, '.claude/skills/domain-modeling/SKILL.md': FM_OPEN,
+    '.claude/skills/openspec-explore': true, '.claude/skills/openspec-explore/SKILL.md': FM_OPEN,
+  });
+  assert.deepEqual(f.manualOnlySkills, ['grill-with-docs']);
+  const results = runChecks({ ...healthy(), skills: f.skills, manualOnlySkills: f.manualOnlySkills });
+  const r = byId(results, 'skills.grill-with-docs');
+  assert.equal(r.status, 'pass');
+  assert.match(r.message, /reserved for you, so run \/grill-with-docs by hand/);
+  assert.equal(byId(results, 'skills.grilling').message, 'skill grilling is installed');
+  assert.deepEqual(failing(results), []);
+});
+
+test('only the frontmatter counts, an unreadable file counts as invocable, and a missing skill still fails', () => {
+  const f = skillFacts({ '.agents/skills/grill-with-docs': true }); // folder with no readable SKILL.md
+  assert.equal(f.skills['grill-with-docs'], true);
+  assert.deepEqual(f.manualOnlySkills, []);
+  const only = skillFacts({ '.claude/skills/grilling': true, '.claude/skills/grilling/SKILL.md': FM_OPEN });
+  assert.deepEqual(only.manualOnlySkills, [], 'a line in the body is not the frontmatter');
+  const results = runChecks({ ...healthy(), skills: { ...healthy().skills, 'domain-modeling': false }, manualOnlySkills: ['grill-with-docs'] });
+  assert.equal(byId(results, 'skills.domain-modeling').status, 'fail');
+  assert.equal(byId(results, 'skills.grill-with-docs').status, 'pass');
+});
+
+test('a skill found in the second folder is read from that folder', () => {
+  const f = skillFacts({ '.agents/skills/grill-with-docs': true, '.agents/skills/grill-with-docs/SKILL.md': FM_RESERVED });
+  assert.deepEqual(f.manualOnlySkills, ['grill-with-docs']);
+});
+
+test('gatherFacts resolves the role skills from the base branch and compares the skills lock', () => {
+  const files = {
+    'relevo.yml': 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: flutter\n    targets: [android, web]\n',
+    '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills:\n  dev: [good, mine]\n---\nOur rule.\n',
+    '.agents/skills/good/SKILL.md': '---\nname: good\n---\nbody of the skill\n',
+    'skills-lock.json': JSON.stringify({ version: 1, skills: { good: { computedHash: 'not-the-real-hash' } } }),
+  };
+  const tree = { '.agents/skills/good': '100644 blob abc\t.agents/skills/good/SKILL.md' };
+  const f = gatherFacts({
+    tool: () => 'ok',
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in files || p === '.agents/skills/good',
+    read: (p) => files[p], listDir: () => [], skillDirs: [],
+    git: (args) => {
+      if (args[0] === 'rev-parse') return 'abc\n';
+      if (args[0] === 'ls-tree') return tree[args[4]] ?? '';
+      if (args[0] === 'show') return files['.agents/skills/good/SKILL.md'];
+      throw new Error(`unexpected ${args.join(' ')}`);
+    },
+    readFolder: () => [{ path: 'SKILL.md', content: Buffer.from('body of the skill\n') }],
+    repo: 'o/r',
+  });
+  assert.deepEqual(f.platformFacts[0].profile.layers, ['plugin', 'repository']);
+  assert.deepEqual(f.platformFacts[0].targetTools.map((t) => t.target), ['android', 'web']);
+  const dev = f.roleSkills.app.dev;
+  assert.equal(dev[0].path, '.agents/skills/good/SKILL.md');
+  assert.ok(dev[0].bytes > 0);
+  assert.deepEqual(dev[1], { name: 'mine', left_out: true, reason: 'not on the base branch' });
+  assert.deepEqual(f.skillLockDifferences, ['good']);
+});
+
+test('gatherFacts reports an invalid target of the profile and skips the skills when the base branch is unknown', () => {
+  const files = { 'relevo.yml': 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: flutter\n    targets: [tv]\n' };
+  const f = gatherFacts({ tool: () => 'ok', gh: () => { throw new Error('x'); }, exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: null });
+  assert.equal(f.config, null);
+  assert.match(f.configErrors.join(' '), /unknown target "tv"/);
+  assert.deepEqual(f.platformFacts, []);
+  assert.equal(f.roleSkills, null);
 });

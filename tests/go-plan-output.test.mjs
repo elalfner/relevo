@@ -69,3 +69,31 @@ test('without --github-output nothing is written and the JSON on stdout is uncha
   const out = execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7'], { encoding: 'utf8' });
   assert.equal(JSON.parse(out).decisions[0].action, 'start');
 });
+
+test('Scenario: Run started by the workflow - the hash and the allowed paths survive the base64 round trip', () => {
+  const o = parse(plan({ body: `${BODY}\nAllow-paths: composer.json, composer.lock\n` }).out);
+  const decision = JSON.parse(Buffer.from(o.decision_b64, 'base64').toString('utf8'));
+  assert.match(decision.issue_hash, /^[0-9a-f]{64}$/);
+  assert.deepEqual(decision.allow_paths, ['composer.json', 'composer.lock']);
+});
+
+test('the decision printed on stdout for a run started by hand carries the same hash', () => {
+  const input = join(dir, 'state-hash.json');
+  writeFileSync(input, JSON.stringify(state()));
+  const out = JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7'], { encoding: 'utf8' }));
+  const viaWorkflow = JSON.parse(Buffer.from(parse(plan().out).decision_b64, 'base64').toString('utf8'));
+  assert.equal(out.decisions[0].issue_hash, viaWorkflow.issue_hash);
+});
+
+test('Scenario: Two platforms - the output says platform, nothing is built, and the issue loses ready', () => {
+  const many = join(dir, 'relevo-many.yml');
+  writeFileSync(many, 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\nplatforms:\n  web:\n    stack: vue\n  api:\n    stack: laravel\n');
+  const input = join(dir, 'state-many.json');
+  const out = join(dir, 'out-many.txt');
+  writeFileSync(input, JSON.stringify(state()));
+  const r = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', many, '--only', '7', '--github-output', out], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const o = parse(readFileSync(out, 'utf8'));
+  assert.equal(o.action, 'platform');
+  assert.notEqual(o.action, 'start', 'the workflow builds only when the action is start');
+});
