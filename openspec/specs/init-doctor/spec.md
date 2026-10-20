@@ -2,7 +2,9 @@
 
 ## Purpose
 TBD - created by archiving change check-plugin-token-secret. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Doctor checks the plugin credential secret
 When the plugin repository is private, `doctor` SHALL check that the repository has a secret named `RELEVO_PLUGIN_TOKEN` and SHALL report a failure, with the fix next to it, when it does not. The check SHALL read secret names only, never values. It SHALL NOT report anything when the plugin repository is public, when its visibility could not be determined, or when the repository secrets could not be listed.
 
@@ -39,11 +41,19 @@ Running `init` again SHALL not duplicate or overwrite existing correct configura
 - **THEN** it reports "nothing to do" for what is already correct
 
 ### Requirement: Init sets up the repository
-`init` SHALL: detect the repository, provider and platform; ask for team members, spec writer, review mode and language; write `relevo.yml`; create the lifecycle labels; create the base branch if missing; configure branch protection and secret scanning; add the workflows (`go`, queue, daily digest); add the evidence directory to the ignore file; and run `doctor`.
+`init` SHALL: detect the repository, provider and stack; ask for the platforms (name, stack, path and, where the stack has them, targets), team members, spec writer, review mode and language; write `relevo.yml` with `platforms`; create the lifecycle labels; create the base branch if missing; configure branch protection and secret scanning; add the workflows (`go`, queue, daily digest); add the evidence directory to the ignore file; offer, without committing it, a commented `.relevo/stacks/<stack>.md`; and run `doctor`.
 
 #### Scenario: Fresh repository
 - **WHEN** `init` runs on a repository with none of the above
 - **THEN** all items are created and `doctor` reports success
+
+#### Scenario: Monorepo
+- **WHEN** the person names two platforms with different stacks and paths
+- **THEN** `relevo.yml` has both entries and `doctor` checks the tools of both
+
+#### Scenario: Existing legacy configuration
+- **WHEN** `init` runs where `relevo.yml` has `platform: flutter-android`
+- **THEN** it keeps the setting as it is and changes nothing in it unless the person asks
 
 ### Requirement: Init protects the repository and keeps OpenSpec in git
 `init` SHALL add a ruleset on the base and release branches that blocks deletion and force pushes and requires a pull request, with approvals not dismissed when commits are pushed; SHALL stop workflows from approving pull requests; and SHALL leave `.gitkeep` files in the empty OpenSpec folders so git keeps them. It SHALL NOT create files under `openspec/` by hand: with no OpenSpec root it tells the person to run the OpenSpec tool's own `init`.
@@ -161,3 +171,24 @@ Relevo SHALL declare its external dependencies: the OpenSpec command-line tool (
 - **WHEN** `doctor` runs
 - **THEN** no write operation is performed
 
+### Requirement: Doctor reads the profile of each platform
+For each platform, `doctor` SHALL check the tools the profile requires, the tool of each target (a missing tool of a target is a warning, except `xcrun` on a machine that is not macOS, which is a notice), the skills the profile requires, and report which layers make up the profile (for example "flutter: plugin default + .relevo/stacks/flutter.md"). It SHALL fail when a platform's stack has no profile and warn about a value of the repository's profile that the plugin's profile ignores.
+
+#### Scenario: Flutter with Android and web
+- **WHEN** a platform has stack `flutter` and targets `android` and `web`
+- **THEN** `doctor` checks `flutter` and `adb`, reports `android` and `web` as targets, and does not require `xcrun`
+
+#### Scenario: Missing stack profile
+- **WHEN** a platform names a stack with no profile
+- **THEN** `doctor` fails that check and says where to define one
+
+#### Scenario: iOS on Linux
+- **WHEN** a platform has target `ios` and the machine is not macOS
+- **THEN** `doctor` shows a notice that iOS can only be built and reviewed on macOS, and does not fail
+
+### Requirement: Doctor reads the skills of the roles
+`doctor` SHALL list the skills resolved for each role, say which were left out and why, list the ones with scripts and whether they are allowed, warn when a role exceeds the size budget and warn when a skill folder differs from `skills-lock.json`.
+
+#### Scenario: Skill left out
+- **WHEN** a listed skill is not on the base branch
+- **THEN** `doctor` shows it as left out with the reason
