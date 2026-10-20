@@ -16,6 +16,18 @@ Distributed as a Claude Code plugin named `relevo`:
 | `/relevo:status` | Who is waiting on what, plus a daily digest |
 | `/relevo:doctor` | Checks that the environment and repo settings are correct, including the tools and skills each [stack profile](stacks.md) asks for |
 
+## What `fix` and `ship` check
+
+`fix` and `ship` change a branch after a person has looked at it, so scripts hold what must not vary.
+
+- **A fix that QA rejects is saved, not lost.** After the retries `fix` stashes the work under `relevo-fix #<n> iteration <k>` and leaves the tree clean. The next `/relevo:fix <n>` offers it back (the stash lives in that clone only). A conflict on restore stops and keeps the stash; discarding it needs your written confirmation.
+- **A branch with only the specification is not "fixed".** `fix` says to delete the remote branch and apply `relevo:ready` again.
+- **The task list is checked.** Before the developer runs, the only open tasks are the corrections; one of them starts with `Test:` (a regression test) unless every correction ends with `(device only)`. After QA, none is open.
+- **`ship` can be run again.** If the change is already archived on the branch, `ship` goes on from the merge. If the archive leaves conflicts only inside `openspec/`, it reverts the archive commit, brings in the base branch and archives again, with normal pushes. A conflict in code stops it.
+- **An approval counts for the code it saw.** An approval given on an older commit does not count; after the archive commit, the approval on the head recorded at the start still does.
+- **The issue must be `pr-open`**, and `ship` names the missing command (`/relevo:review` or `/relevo:fix`) otherwise. The change is validated and has no open task before it is archived.
+- **Who runs `ship`.** With `review.merger: approver`, a member of `team.members` who is not the author or the spec writer (and, in `roles` mode, one of `team.approvers`). Someone eligible who did not approve confirms in writing that they did not.
+
 ## Skills that `think` uses
 
 `/relevo:think` does not reimplement anything: it runs two existing skills directly, so their behaviour is exactly theirs.

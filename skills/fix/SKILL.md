@@ -17,7 +17,7 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 
 - Never edit application code in this session, and never edit anything outside the change folder before the developer has run.
 - Never change the project rules file (`qa.rules_from`) to make a defect fit. If the defect is a breach of a rule, the rule stays and the code is fixed.
-- Never commit or push if QA still rejects after the retries: keep the changes in the working tree and tell the person.
+- Never commit or push if QA still rejects after the retries: save the changes in a stash with `fix-stash.mjs` and tell the person.
 - Never approve, merge or open a pull request, never use `git add .` or `-A`, never force-push, and never push to a branch other than the issue's own.
 
 ## Steps
@@ -34,6 +34,11 @@ Stop with a clear message, changing nothing, if any of these fails:
 Find the repository (`$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner -q .nameWithOwner`), the issue's branch (`git branch -r --list "origin/feature/<issue>-*"`) and its change folder (`openspec/changes/<issue>-*`). If the branch is not on the remote, stop and say so: there is nothing to correct yet.
 
 Switch to the branch: `git fetch origin <branch>`, `git switch <branch>`, `git pull --ff-only origin <branch>`.
+
+Then check two things before reading the defect:
+
+- **Is there code to correct?** `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-work.mjs --base <base> --change <change>`. If it exits 1 the branch holds only the specification: change nothing, tell the person to delete the remote branch and apply the label relevo:ready again, and stop.
+- **Is there saved work?** `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-stash.mjs find --issue <issue>`. If it prints a stash, a previous fix was rejected by QA and its work was saved (in this clone only). Tell the person which iteration it was and offer to restore it. If they agree, run `fix-stash.mjs pop --issue <issue>`; when it exits 1 it names the conflicting files and keeps the stash: show them and stop. After a restore, read the specification and the corrections already written, and go on from step 3 (Develop). To start from scratch instead, the person must confirm in writing before you run `fix-stash.mjs drop --issue <issue>`.
 
 ### 1. Understand the defect
 
@@ -62,6 +67,7 @@ Update the change, writing no application code:
    node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-guard.mjs openspec/changes/<change>
    ```
    If it exits 1 it prints what is missing. Correct the specification and run it again. **Do not launch the developer until it exits 0.**
+6. Check the task list: `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-tasks.mjs --file openspec/changes/<change>/tasks.md --stage before`. The only unchecked tasks may be the corrections just added, and one of them must start with `Test:` (a regression test that fails without the fix), unless every correction ends with `(device only)` because it shows only on a device. If it exits 1, fix the task list and run it again.
 
 Do not commit yet: the whole fix is committed together once QA passes.
 
@@ -87,9 +93,11 @@ Launch the `relevo:qa` agent on the result, with the same change folder, rules f
 
 On `QA REJECTED` you may retry up to `qa.retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, then `relevo:qa` again with the previous report, so it checks each earlier finding.
 
-If QA still rejects after the retries: **make no commit and no push.** Leave the changes in the working tree, show the person the findings, leave the issue's labels untouched, and stop.
+If QA still rejects after the retries: **make no commit and no push.** Save the work with `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-stash.mjs save --issue <issue> --iteration <K>` (the tree is left clean, so the next `fix` can start), show the person the findings, say that `/relevo:fix <issue>` offers the saved work back, leave the issue's labels untouched, and stop.
 
 ### 5. Commit
+
+Before committing, check that every task is done: `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-tasks.mjs --file openspec/changes/<change>/tasks.md --stage after`. If it exits 1, a correction was left open: do not commit, and go back to step 3 for it.
 
 Commit exactly the files the developer reported plus the files changed under `openspec/changes/<change>/`, naming each one, through the script. Never use `git add .` or `-A`; the script refuses them.
 

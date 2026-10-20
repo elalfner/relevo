@@ -220,3 +220,92 @@ test('label-change --clear removes every Relevo label and leaves the others', ()
   const out = execFileSync('node', [CLI('label-change.mjs'), '--clear', '--current', 'relevo:pr-open,relevo:needs-reviewer,bug'], { encoding: 'utf8' });
   assert.deepEqual(JSON.parse(out), { add: [], remove: ['relevo:pr-open', 'relevo:needs-reviewer'] });
 });
+
+// ---------- fix-and-ship-hardening: the approval is for the code, the state, who runs ship
+
+const HEAD = 'a'.repeat(40);
+const OLD = 'b'.repeat(40);
+const approvedOn = (oid, login = 'persona-c') => ({ ...review(login, 'APPROVED', '2026-10-14T10:00:00Z'), commit: { oid } });
+const LABELS = { 'pr-open': ['relevo:pr-open'], built: ['relevo:built'], 'qa-failed': ['relevo:qa-failed'] };
+
+test('Scenario: Approval on an older commit - ship stops and asks for a new approval on the current code', () => {
+  const d = shipDecision({ config: peer, pr: pr({ headRefOid: HEAD, reviews: [approvedOn(OLD)] }), invoker: 'persona-c' });
+  assert.equal(d.allowed, false);
+  assert.match(d.reasons.join(' '), /older commit than the current aaaaaaa: a new approval is needed/);
+  assert.deepEqual(d.summary.approvedBy, []);
+});
+
+test('an approval on the head counts', () => {
+  assert.equal(shipDecision({ config: peer, pr: pr({ headRefOid: HEAD, reviews: [approvedOn(HEAD)] }), invoker: 'persona-c' }).allowed, true);
+});
+
+test('Scenario: Archive commit after the approval - the approval on the recorded head still counts', () => {
+  const moved = pr({ headRefOid: 'c'.repeat(40), reviews: [approvedOn(HEAD)] });
+  assert.equal(shipDecision({ config: peer, pr: moved, invoker: 'persona-c' }).allowed, false);
+  assert.equal(shipDecision({ config: peer, pr: moved, invoker: 'persona-c', baseline: HEAD }).allowed, true);
+});
+
+test('a review without a commit (an older gh) does not block, and the decision warns', () => {
+  const d = shipDecision({ config: peer, pr: pr({ headRefOid: HEAD }), invoker: 'persona-c' });
+  assert.equal(d.allowed, true);
+  assert.deepEqual(d.summary.warnings, ['review-commit-unknown']);
+});
+
+test('Scenario: Issue not reviewed yet - ship names the command that is missing', () => {
+  const built = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS.built, issue: '31' });
+  assert.equal(built.allowed, false);
+  assert.match(built.reasons.join(' '), /"built", not "pr-open": run \/relevo:review 31 first/);
+  const failed = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS['qa-failed'], issue: '31' });
+  assert.match(failed.reasons.join(' '), /run \/relevo:fix 31 first/);
+  const none = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: [], issue: '31' });
+  assert.match(none.reasons.join(' '), /not in a Relevo state.*\/relevo:review 31/);
+});
+
+test('Scenario: Issue with a pull request open - and without labels the state is not checked', () => {
+  assert.equal(shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS['pr-open'] }).allowed, true);
+  assert.equal(shipDecision({ config: peer, pr: pr(), invoker: 'persona-c' }).allowed, true);
+});
+
+test('Scenario: The spec writer tries to ship', () => {
+  const d = shipDecision({ config: peer, pr: pr(), invoker: 'persona-a' });
+  assert.equal(d.allowed, false);
+  assert.match(d.reasons.join(' '), /spec writer never reviews or merges/);
+});
+
+test('Scenario: A person outside the team tries to ship', () => {
+  const d = shipDecision({ config: peer, pr: pr(), invoker: 'stranger' });
+  assert.equal(d.allowed, false);
+  assert.match(d.reasons.join(' '), /stranger is not listed in team\.members/);
+});
+
+test('Scenario: Eligible person who did not approve - the written confirmation is asked for', () => {
+  const three = cfg('review:\n  mode: peer\n');
+  const withOther = pr({ author: { login: 'persona-a' } });
+  const d = shipDecision({ config: three, pr: withOther, invoker: 'persona-b' });
+  assert.equal(d.allowed, true);
+  assert.deepEqual(d.confirm, ['merge', 'not-approver']);
+  assert.deepEqual(shipDecision({ config: three, pr: withOther, invoker: 'persona-c' }).confirm, ['merge']);
+});
+
+test('in roles mode the person who runs ship must be an approver', () => {
+  const rolesCfg = loadConfig('limits:\n  run_max_cost: 5\nreview:\n  mode: roles\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b, persona-c, persona-d]\n  approvers: [persona-c, persona-d]\n');
+  assert.ok(rolesCfg.ok, JSON.stringify(rolesCfg.errors));
+  const ok = shipDecision({ config: rolesCfg.config, pr: pr(), invoker: 'persona-d' });
+  assert.equal(ok.allowed, true);
+  assert.deepEqual(ok.confirm, ['merge', 'not-approver']);
+  const notApprover = pr({ author: { login: 'persona-d' } });
+  assert.match(shipDecision({ config: rolesCfg.config, pr: notApprover, invoker: 'persona-b' }).reasons.join(' '), /not one of the approvers/);
+});
+
+test('ship-check passes the baseline, the labels and the issue through', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-sc-'));
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nreview:\n  mode: peer\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b, persona-c]\n');
+  const input = join(dir, 'pr.json');
+  writeFileSync(input, JSON.stringify(pr({ headRefOid: 'c'.repeat(40), reviews: [approvedOn(HEAD)] })));
+  const run = (...extra) => spawnSync('node', [CLI('ship-check.mjs'), '--input', input, '--invoker', 'persona-c', '--config', join(dir, 'relevo.yml'), ...extra], { encoding: 'utf8' });
+  assert.equal(run().status, 1);
+  assert.equal(run('--baseline', HEAD).status, 0);
+  const wrongState = run('--baseline', HEAD, '--labels', 'relevo:built', '--issue', '31');
+  assert.equal(wrongState.status, 1);
+  assert.match(wrongState.stdout, /run \/relevo:review 31 first/);
+});
