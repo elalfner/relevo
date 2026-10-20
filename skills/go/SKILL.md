@@ -25,6 +25,10 @@ When `trust` in `relevo.yml` is `public`, the issue may have been written by a s
 
 Launch `relevo:dev` and `relevo:qa` in the foreground and wait for each report before the next step. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
 
+## Where it runs
+
+In the cloud the workflow starts this skill with the decision already made. A person can also start it on their machine: `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>` runs it in a separate git worktree, with the same limits and tool lists as the workflow, and removes the worktree when it ends cleanly. Started by hand without that script, it needs a clean working tree (the preflight below stops otherwise).
+
 ## OpenSpec commands
 
 Use these OpenSpec commands and no others:

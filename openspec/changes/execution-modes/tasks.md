@@ -14,8 +14,8 @@
 
 ## 3. The local run
 
-- [ ] 3.1 Add `scripts/lib/go-local.mjs` and `scripts/go-local.mjs <issue> [--config relevo.yml] [--dry-run]` (worktree outside the repository, `claude -p "/relevo:go <issue>"` with `runFlags`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, removal on a clean end, kept and printed on failure, a warning when the cloud also builds, exit code of the run). Verify with `tests/go-local.test.mjs` in a throwaway repository with an injected runner: the worktree path and base, the exact `claude` arguments, removal on 0, kept on 1, the warning, an uncommitted change in the main tree not blocking, `--dry-run` printing the plan without running, a missing `claude` or `gh` explained.
-- [ ] 3.2 Update `skills/go/SKILL.md` to say it can be started by hand or with `go-local.mjs`, and that a hand-run needs a clean tree. Verify with `tests/skill-go.test.mjs`: the sentence is present, the script it names exists and its flags are implemented.
+- [x] 3.1 Add `scripts/lib/go-local.mjs` and `scripts/go-local.mjs <issue> [--config relevo.yml] [--dry-run]` (worktree outside the repository, `claude -p "/relevo:go <issue>"` with `runFlags`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, removal on a clean end, kept and printed on failure, a warning when the cloud also builds, exit code of the run). Verify with `tests/go-local.test.mjs` in a throwaway repository with an injected runner: the worktree path and base, the exact `claude` arguments, removal on 0, kept on 1, the warning, an uncommitted change in the main tree not blocking, `--dry-run` printing the plan without running, a missing `claude` or `gh` explained.
+- [x] 3.2 Update `skills/go/SKILL.md` to say it can be started by hand or with `go-local.mjs`, and that a hand-run needs a clean tree. Verify with `tests/skill-go.test.mjs`: the sentence is present, the script it names exists and its flags are implemented.
 
 ## 4. Doctor and init
 
