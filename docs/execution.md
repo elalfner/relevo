@@ -12,7 +12,7 @@ English · [Español](execution.es.md)
 
 ## Pause the cloud without a pull request
 
-Set the repository variable `RELEVO_CLOUD_GO` to `off` (Settings > Secrets and variables > Actions > Variables). A `ready` label then starts nothing and the queue dispatches nothing, and the issue stays `ready` for a local run. Delete the variable, or set anything else, to resume. It has to be a variable and not a file because a label event runs the workflows of the default branch, so a change to a file would need a pull request first.
+Set the repository variable `RELEVO_CLOUD_GO` to `off` (Settings > Secrets and variables > Actions > Variables). A `ready` label then starts nothing and the queue dispatches nothing, and the issue stays `ready` for a local run. Delete the variable, or set anything else, to resume, then apply `relevo:ready` again to each issue: the label events that were skipped are not replayed. It has to be a variable and not a file because a label event runs the workflows of the default branch, so a change to a file would need a pull request first.
 
 If you build by hand while the cloud is on, the cloud may start the same issue as soon as you label it `ready`: pause the cloud first.
 
