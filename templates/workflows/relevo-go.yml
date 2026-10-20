@@ -97,7 +97,6 @@ jobs:
       contents: write
       issues: write
       pull-requests: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:

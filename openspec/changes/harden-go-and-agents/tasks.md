@@ -34,7 +34,7 @@
 ## 6. Workflow template
 
 - [x] 6.1 Update `templates/workflows/relevo-go.yml`: the final-step comment says that the run may have reached its turn or cost limit; commented install examples without package scripts and a note that `pub` runs no install-time scripts. Verify with `tests/workflow-go.test.mjs` (limits still match `relevo.yml`, no `pull_request_target`, the final step still runs `if: always()`) and `tests/security.test.mjs`.
-- [ ] 6.2 In the sandbox repository, run the `go` workflow once with `id-token: write` removed from the build job and record the result in `docs/pilot-findings.md`. Verify by the run's outcome: remove the permission from the template only if the run built the issue and posted the hand-off; otherwise leave the template unchanged and record why.
+- [x] 6.2 In the sandbox repository, run the `go` workflow once with `id-token: write` removed from the build job and record the result in `docs/pilot-findings.md`. Verify by the run's outcome: remove the permission from the template only if the run built the issue and posted the hand-off; otherwise leave the template unchanged and record why.
 
 ## 7. Documentation and integration
 
