@@ -28,5 +28,5 @@ Verified on 2026-10-14 against the documentation and `action.yml` of `anthropics
 
 ## Open points
 
-- `permissions: id-token: write` is in the template. The action documents it for workload identity federation and the OIDC app-token exchange. Because the template passes `github_token`, it was not exercised in the pilot. It is a candidate to remove (least privilege) once a run without it has been seen to work.
+- `permissions: id-token: write` is no longer in the template. A run of `go` in the sandbox repository without it built the issue and posted the hand-off (see `docs/pilot-findings.md`), because the template passes `github_token`. Add it back only if you stop passing `github_token`.
 - The action documents `show_full_output` in `action.yml` but not on its usage page; treat it as available but sensitive.
