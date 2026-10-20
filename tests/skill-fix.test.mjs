@@ -24,7 +24,7 @@ test('frontmatter uses only documented fields; Claude can never start it on its 
 
 test('every script the skill runs exists', () => {
   const scripts = [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([\w.-]+)/g)].map((m) => m[1]);
-  ['fix-state.mjs', 'add-corrections.mjs', 'fix-guard.mjs', 'stage.mjs', 'scan-diff.mjs', 'render-message.mjs', 'review-state.mjs'].forEach((s) => assert.ok(scripts.includes(s), `the skill never uses ${s}`));
+  ['fix-state.mjs', 'add-corrections.mjs', 'fix-guard.mjs', 'commit-change.mjs', 'platform-of.mjs', 'stack-profile.mjs', 'role-skills.mjs', 'render-message.mjs', 'review-state.mjs'].forEach((s) => assert.ok(scripts.includes(s), `the skill never uses ${s}`));
   new Set(scripts).forEach((s) => assert.ok(existsSync(root(`scripts/${s}`)), `scripts/${s} is referenced but does not exist`));
 });
 
@@ -71,4 +71,19 @@ test('the review skill supports what fix relies on: retest and sync', () => {
 
 test('the skill mentions neither private sources nor personal data', () => {
   assert.doesNotMatch(text, /claude\.ai|session_[0-9A-Za-z]{6}|co-authored/i);
+});
+
+test('Scenario: Monorepo fix - the platform is found again from the issue, the agents get the profile and folder, the commit stays inside', () => {
+  assert.match(body, /scripts\/platform-of\.mjs --issue <issue>/);
+  assert.match(body, /scripts\/stack-profile\.mjs --platform <platform>/);
+  assert.match(body, /scripts\/role-skills\.mjs --role fix --platform <platform>/);
+  assert.match(body, /the resolved profile, the folder of the platform \(`path`\), the skill paths/);
+  assert.match(body, /--within "<path>" --change "<change>"/);
+  const wrapper = readFileSync(root('scripts/commit-change.mjs'), 'utf8');
+  ['within', 'change', 'message'].forEach((f) => assert.ok(wrapper.includes(`'${f}'`), `commit-change does not implement --${f}`));
+});
+
+test('Scenario: Platform not resolvable - fix changes nothing and tells the person to correct the Platform line', () => {
+  assert.match(body, /If `platform-of\.mjs` exits 1, change nothing more and tell the person what it printed/);
+  assert.match(body, /correct the `Platform:` line and run `\/relevo:fix` again/);
 });

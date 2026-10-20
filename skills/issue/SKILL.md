@@ -24,7 +24,7 @@ Before asking anything, collect what exists:
 - the agreement reached with `/relevo:think`, in this conversation or in a file whose path is given in `$ARGUMENTS`: take its decided scenarios, edge cases, dependencies and splits as already answered, and resolve its open questions with the person before writing;
 - the part of that agreement named **To document** (the terms and decision records `think` settled): take it as text the person already approved, and ask again only about what is missing from it;
 - `GLOSSARY.md`, if present: use its terms in the issues and avoid the words it lists to avoid;
-- `relevo.yml` (`language`, `team.members`, `team.spec_writer`, `branches.base`). If it is missing, continue without it and ask the language and the assignee.
+- `relevo.yml` (`language`, `team.members`, `team.spec_writer`, `branches.base` and `platforms`). If it is missing, continue without it and ask the language and the assignee.
 
 Tell the person in two or three lines what you already have, so they see their earlier work was used. Then ask only about what is still missing. Never ask again what is already answered.
 
@@ -42,13 +42,15 @@ Ask in small groups, at most four questions at a time. Skip every group that is 
 
 **Data contract (when data is read or written).** For each endpoint or source: method and path, how the caller authenticates, request fields, a realistic response with every field typed, and which values may be null and how the app treats them. Never put real keys, tokens or personal data in an example; use made-up values.
 
-**Size.** If the feature spans work that can be built and verified separately, propose splitting it. Every resulting issue needs its own scenarios and edge cases, and the order is written with `Depends-on`. The person decides how many to create.
+**Platform (only when `relevo.yml` has more than one).** Each issue is for one platform and says so with a `Platform: <name>` line. Decide it from the paths the idea mentions: the platform whose `path` is the longest prefix of a mentioned path. Ask only when no path decides it, once, offering the names of the platforms. When the repository has one platform, leave the line out.
+
+**Size.** If the feature spans work that can be built and verified separately, propose splitting it, and always split a feature that needs two platforms (the front issue depends on the back one with `Depends-on`). Every resulting issue needs its own scenarios and edge cases, and the order is written with `Depends-on`. The person decides how many to create.
 
 ## 3. Write the drafts
 
 Fill `${CLAUDE_PLUGIN_ROOT}/templates/issue.md` for each issue, keeping the sections that apply and deleting the optional ones that do not. Rules:
 
-- Write in the language of `language` in `relevo.yml`, unless the person asks for another. Keep the keywords `WHEN`, `THEN`, `Edge cases` and `Depends-on` exactly as they are: `go` reads them.
+- Write in the language of `language` in `relevo.yml`, unless the person asks for another. Keep the keywords `WHEN`, `THEN`, `Edge cases`, `Depends-on` and `Platform` exactly as they are: `go` reads them.
 - The title is short, plain and has no emoji or tag suffixes (it must stay readable in lists and boards). Emojis are allowed inside the body only if the person wants them.
 - The body states facts from the person; where you had to choose a wording, keep the person's meaning.
 - Nothing secret goes in an issue, however it is phrased: issues are readable by everyone with access.
@@ -61,7 +63,7 @@ Save each draft under the scratchpad or a temporary directory outside the reposi
 For every draft:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/check-issue.mjs --title "<title>" --body-file <file>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/check-issue.mjs --title "<title>" --body-file <file> --platforms <names of the platforms of relevo.yml, comma separated>
 ```
 
 It applies the rules `go` applies and a few more: at least one complete scenario, at least one edge case, no leftover template text, no emoji in the title, a title of at most 72 characters, and nothing that looks like a credential. If it reports problems, fix them with the person (ask for the missing information; do not fill it in yourself) and check again. Create nothing while any draft fails.
@@ -90,7 +92,7 @@ Finish with the links of the issues created and one reminder: `go` starts for an
 2. **Ask whether it may be edited.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/can-edit-issue.mjs --input <file>`. Exit 0 prints `editable`. Exit 1 prints the label found and why: change nothing and tell the person that the text is what `go` builds, name the label, and give the way forward: remove `ready` by hand, edit, and apply `ready` again, which is also the last point to reread the issue. If `building` is the label, they must wait for the build to finish or fail first. Only an open issue with no lifecycle label, or with `needs-spec` alone, is editable.
 3. **Start from the current body.** Ask only what the person wants to change, keep every part they did not mention, and do not invent scenarios or edge cases. An existing `## Documentation` section stays exactly as it is unless the person asks to change it; it still carries only glossary entries and decision records.
 4. **Recheck the dependencies.** Every `Depends-on: #N` in the new body must name an existing issue (`gh issue view N`) other than this one. Fix a missing or self-referencing line with the person before going on.
-5. **Check.** Save the new body outside the working tree and run `check-issue.mjs --title "<current title>" --body-file <file>`. Fix every problem with the person; apply nothing while it fails.
+5. **Check.** Save the new body outside the working tree and run `check-issue.mjs --title "<current title>" --body-file <file> --platforms <names>`; an update keeps the `Platform:` line unless the person changes it. Fix every problem with the person; apply nothing while it fails.
 6. **Approve.** Show the new text next to the current one, the `Documentation` section whole, and ask for explicit approval. If the person asks for more changes, revise, check and show it again. Apply nothing before a clear yes.
 7. **Apply.** Read the issue again with `gh issue view <n> --json state,labels` and run `can-edit-issue.mjs` on it. If it is no longer editable, apply nothing and explain the refusal as above. Otherwise `gh issue edit <n> --body-file <file>`, then print the issue link.
 
