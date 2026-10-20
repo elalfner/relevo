@@ -110,3 +110,12 @@ test('Scenario: Front and back - init asks for the linked repositories and write
   assert.match(init, /the repositories this one depends on, if any \(`owner\/repo`/);
   assert.match(init, /`links` \(a list of `owner\/repo`, possibly none\)/);
 });
+
+test('Scenario: init asks where go runs and with which credential, and says what decides it', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /where `go` builds: in the cloud, on each person's machine, or both \(the default\)/);
+  assert.match(init, /with an API key from the Anthropic Console \(the default\) or with a subscription token/);
+  assert.match(init, /`limits\.concurrent_agents` to 1/);
+  assert.match(init, /repository variable `RELEVO_CLOUD_GO` \(`off` pauses the cloud at once, with no pull request\)/);
+  assert.match(init, /`runs` \(`cloud`, `local` or `both`\), `credential` \(`api_key` or `subscription`\)/);
+});
