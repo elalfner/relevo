@@ -21,6 +21,7 @@ const eEnter = bez(0, 0, .2, 1), eExit = bez(.6, 0, .35, 1), eWipe = bez(.76, 0,
 const DASH0 = 16 / (2 * Math.PI * 50 / 10) * 10;
 
 const DUR = 4600, FPS = 30;
+const SPEED = 0.5;   // velocidad de reproducción: 0.5 = el doble de lento (la animación dura DUR / SPEED)
 // Bucle: el logo se queda en ship HOLD s, se desvanece en FADE s, deja GAP s en blanco y vuelve a empezar.
 // Así, quien llega al logo al hacer scroll lo ve moverse en pocos segundos (un SVG no sabe cuándo está a la vista).
 const HOLD = 7.6, FADE = 0.4, GAP = 0.3;
@@ -61,8 +62,8 @@ function state(t) {
 }
 
 // ---- muestreo ----
-const N = Math.ceil(DUR * FPS / 1000);
-const frames = []; for (let k = 0; k <= N; k++) frames.push(state(Math.min(DUR, k * 1000 / FPS)));
+const N = Math.ceil(DUR / SPEED * FPS / 1000);
+const frames = []; for (let k = 0; k <= N; k++) frames.push(state(Math.min(DUR, k * 1000 / FPS * SPEED)));
 const final = state(DUR);
 const secs = (N / FPS).toFixed(3) + 's';
 const f2 = x => { const s = x.toFixed(2); return s === '-0.00' ? '0' : String(parseFloat(s)); };
