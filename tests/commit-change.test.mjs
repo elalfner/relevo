@@ -148,3 +148,12 @@ test('bad arguments exit 2: no message, no paths, nothing to commit', () => {
   assert.equal(none.status, 2);
   assert.match(none.stderr, /nothing to commit/);
 });
+
+test('Scenario: Several rules files - qa.rules_from as a list protects every file', () => {
+  const dir = repo({ 'relevo.yml': 'limits:\n  run_max_cost: 5\nqa:\n  rules_from: [CLAUDE.md, docs/backend.md]\n', 'CLAUDE.md': 'a\n', 'docs/backend.md': 'b\n' });
+  put(dir, 'docs/backend.md', 'b changed\n');
+  const r = run(dir, '--message', 'fix: rules', '--', 'docs/backend.md');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /docs\/backend\.md {2}protected path/);
+  assert.equal(run(dir, '--message', 'fix: rules', '--rules-file', 'CLAUDE.md,x.md', '--', 'docs/backend.md').status, 0);
+});

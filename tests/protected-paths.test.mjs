@@ -74,3 +74,20 @@ test('the report names the path and the reason, and what to do', () => {
   assert.match(text, /\.github\/a\.yml {2}protected path/);
   assert.match(text, /composer\.lock {2}dependency file: the issue must list it in an Allow-paths: line/);
 });
+
+test('Scenario: Lock file in the diff - skills-lock.json is hard-protected even when the issue lists it', () => {
+  const r = checkProtected(['skills-lock.json'], { allow: ['skills-lock.json'] });
+  assert.equal(r.ok, false);
+  assert.equal(r.violations[0].tier, 'hard');
+  assert.deepEqual(hardPathsInAllow(['skills-lock.json']), ['skills-lock.json']);
+});
+
+test('Scenario: Several rules files - every listed file is protected, a single name still works', () => {
+  const list = ['CLAUDE.md', '.ai/rules/backend.md'];
+  assert.equal(checkProtected(['.ai/rules/backend.md'], { rulesFile: list }).violations[0].tier, 'hard');
+  assert.equal(checkProtected(['CLAUDE.md'], { rulesFile: list }).violations[0].tier, 'hard');
+  assert.equal(checkProtected(['README.md'], { rulesFile: list }).ok, true);
+  assert.equal(checkProtected(['CLAUDE.md'], { rulesFile: 'CLAUDE.md' }).ok, false);
+  assert.equal(checkProtected(['CLAUDE.md'], { rulesFile: [] }).ok, true);
+  assert.deepEqual(hardPathsInAllow(['.ai/rules/backend.md'], { rulesFile: list }), ['.ai/rules/backend.md']);
+});

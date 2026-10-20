@@ -5,6 +5,7 @@ import { parse, YamlLiteError } from './yaml-lite.mjs';
 import { LABEL_KEYS } from './labels.mjs';
 import { SUPPORTED_LANGUAGES } from './messages.mjs';
 import { findCredentials } from './scan.mjs';
+import { normalizePlatforms } from './platforms.mjs';
 
 // One entry per supported setting. `required: true` means there is no default.
 export const SETTINGS = [
@@ -12,7 +13,6 @@ export const SETTINGS = [
   { path: 'branches.release', type: 'string', default: 'main' },
   { path: 'tracker', type: 'enum', allowed: ['github'], default: 'github' },
   { path: 'git_provider', type: 'enum', allowed: ['github'], default: 'github' },
-  { path: 'platform', type: 'enum', allowed: ['flutter-android'], default: 'flutter-android' },
   { path: 'team.members', type: 'string[]', default: [] },
   { path: 'team.spec_writer', type: 'string', default: null },
   { path: 'team.approvers', type: 'string[]', default: [] },
@@ -24,7 +24,8 @@ export const SETTINGS = [
   { path: 'limits.run_max_turns', type: 'int', min: 1, default: 100 },
   { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true },
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
-  { path: 'qa.rules_from', type: 'string', default: null },
+  { path: 'qa.rules_from', type: 'path-list', default: [] },
+  { path: 'skills.allow_scripts', type: 'string[]', default: [] },
   { path: 'evidence.policy', type: 'enum', allowed: ['attach_to_pr', 'local_only'], default: 'attach_to_pr' },
   { path: 'digest.issue', type: 'int', min: 1, default: null },
   { path: 'language', type: 'string', default: 'en' },
@@ -33,7 +34,7 @@ export const SETTINGS = [
 
 const GROUPS = new Set(SETTINGS.filter((s) => s.path.includes('.')).map((s) => s.path.split('.')[0]));
 const TOP_SCALARS = new Set(SETTINGS.filter((s) => !s.path.includes('.')).map((s) => s.path));
-const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels']);
+const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels', 'platform', 'platforms']);
 const LANGUAGE_RE = /^[a-z]{2}(-[A-Z]{2})?$/;
 const GITHUB_LABEL_MAX = 50;
 
@@ -66,6 +67,11 @@ function checkType(setting, value, errors) {
     case 'string[]':
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
         errors.push({ path, message: `${path} must be a list of non-empty strings (got ${JSON.stringify(value)})` });
+      }
+      break;
+    case 'path-list':
+      if (!Array.isArray(value) || value.length === 0 || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
+        errors.push({ path, message: `${path} must be a file name or a list of file names (got ${JSON.stringify(value)})` });
       }
       break;
     case 'enum':
@@ -103,7 +109,7 @@ function collectStrings(value, path, out) {
  * Validate a parsed configuration object.
  * Returns { ok, errors, warnings, config } where config has defaults applied.
  */
-export function validateConfig(raw) {
+export function validateConfig(raw, { knownTargets = null, knownChecks = null } = {}) {
   const errors = [];
   const warnings = [];
   const user = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -144,9 +150,25 @@ export function validateConfig(raw) {
       setPath(config, setting.path, structuredClone(setting.default));
       return;
     }
-    checkType(setting, value, errors);
-    setPath(config, setting.path, value);
+    // A single file name is the same as a list of one.
+    const given = setting.type === 'path-list' && typeof value === 'string' ? [value] : value;
+    checkType(setting, given, errors);
+    setPath(config, setting.path, given);
   });
+
+  // Platforms: the registry, or the legacy shortcut turned into one entry.
+  const normalized = normalizePlatforms({ platform: user.platform, platforms: user.platforms }, { knownTargets });
+  errors.push(...normalized.errors);
+  config.platforms = normalized.platforms;
+  if (knownChecks) {
+    Object.entries(config.platforms).forEach(([name, entry]) => {
+      const valid = knownChecks(entry.stack);
+      if (!valid) return;
+      Object.keys(entry.checks ?? {}).filter((c) => !valid.includes(c)).forEach((c) => {
+        errors.push({ path: `platforms.${name}.checks.${c}`, message: `platforms.${name}.checks has unknown command "${c}"; the stack "${entry.stack}" defines: ${valid.join(', ')}` });
+      });
+    });
+  }
 
   // Labels: renameable, unique, within GitHub's length limit.
   const labels = user.labels;
@@ -233,7 +255,7 @@ export function validateConfig(raw) {
 }
 
 /** Parse relevo.yml text and validate it. Parse errors are returned as errors. */
-export function loadConfig(text) {
+export function loadConfig(text, options = {}) {
   let raw;
   try {
     raw = parse(text);
@@ -243,5 +265,5 @@ export function loadConfig(text) {
     }
     throw err;
   }
-  return validateConfig(raw);
+  return validateConfig(raw, options);
 }

@@ -92,3 +92,71 @@ test('a file that is not valid YAML is reported as an error, not a crash', () =>
   assert.equal(ok, false);
   assert.match(errors[0].message, /not valid/);
 });
+
+test('Scenario: Legacy setting - platform: flutter-android is one platform with stack flutter, path . and targets android', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}platform: flutter-android\n`);
+  assert.equal(ok, true);
+  assert.deepEqual(config.platforms, { app: { stack: 'flutter', path: '.', targets: ['android'] } });
+  assert.equal('platform' in config, false, 'the commands read platforms, never platform');
+});
+
+test('no platform set: the default is the legacy platform', () => {
+  assert.deepEqual(loadConfig(MINIMAL).config.platforms.app, { stack: 'flutter', path: '.', targets: ['android'] });
+});
+
+test('Scenario: Monorepo - two platforms with different stacks and paths', () => {
+  const text = `${MINIMAL}platforms:\n  web:\n    stack: vue\n    path: apps/web\n  api:\n    stack: laravel\n    path: apps/api\n`;
+  const { ok, config } = loadConfig(text);
+  assert.equal(ok, true);
+  assert.deepEqual(Object.keys(config.platforms), ['web', 'api']);
+  assert.deepEqual(config.platforms.web, { stack: 'vue', path: 'apps/web', targets: [] });
+});
+
+test('Scenario: Both forms - platform and platforms together fail and say to keep platforms', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}platform: flutter-android\nplatforms:\n  app:\n    stack: flutter\n`);
+  assert.equal(ok, false);
+  assert.match(errors.find((e) => e.path === 'platforms').message, /keep only platforms/);
+});
+
+test('Scenario: Bad path or target - names the platform, the value and the targets the stack defines', () => {
+  const abs = loadConfig(`${MINIMAL}platforms:\n  web:\n    stack: vue\n    path: /etc\n`);
+  assert.match(abs.errors.find((e) => e.path === 'platforms.web.path').message, /platforms\.web\.path.*"\/etc"/);
+  const up = loadConfig(`${MINIMAL}platforms:\n  web:\n    stack: vue\n    path: ../x\n`);
+  assert.equal(up.ok, false);
+  const known = (stack) => (stack === 'flutter' ? ['android', 'ios', 'web'] : null);
+  const bad = loadConfig(`${MINIMAL}platforms:\n  app:\n    stack: flutter\n    targets: [android, tv]\n`, { knownTargets: known });
+  const e = bad.errors.find((x) => x.path === 'platforms.app.targets');
+  assert.match(e.message, /"tv"/);
+  assert.match(e.message, /android, ios, web/);
+  assert.equal(loadConfig(`${MINIMAL}platforms:\n  app:\n    stack: flutter\n    targets: [android, ios]\n`, { knownTargets: known }).ok, true);
+});
+
+test('platform entries are checked: unknown keys, missing stack, bad name', () => {
+  assert.equal(loadConfig(`${MINIMAL}platforms:\n  app:\n    path: .\n`).ok, false);
+  assert.equal(loadConfig(`${MINIMAL}platforms:\n  app:\n    stack: flutter\n    colour: red\n`).ok, false);
+  assert.equal(loadConfig(`${MINIMAL}platforms:\n  Bad_Name:\n    stack: flutter\n`).ok, false);
+  assert.equal(loadConfig(`${MINIMAL}platform: android-only\n`).ok, false);
+});
+
+test('qa.rules_from is a file name or a list, and is always a list once validated', () => {
+  assert.deepEqual(loadConfig(MINIMAL).config.qa.rules_from, []);
+  assert.deepEqual(loadConfig(`${MINIMAL}qa:\n  rules_from: CLAUDE.md\n`).config.qa.rules_from, ['CLAUDE.md']);
+  assert.deepEqual(loadConfig(`${MINIMAL}qa:\n  rules_from: [CLAUDE.md, .ai/rules/backend.md]\n`).config.qa.rules_from, ['CLAUDE.md', '.ai/rules/backend.md']);
+  assert.equal(loadConfig(`${MINIMAL}qa:\n  rules_from: []\n`).ok, false);
+});
+
+test('Scenario: Checks override - checks are kept per platform and an unknown command fails when the profile is known', () => {
+  const text = `${MINIMAL}platforms:\n  web:\n    stack: vue\n    checks:\n      test: pnpm test\n`;
+  assert.deepEqual(loadConfig(text).config.platforms.web.checks, { test: 'pnpm test' });
+  const valid = (stack) => (stack === 'vue' ? ['analyze', 'test', 'format'] : null);
+  assert.equal(loadConfig(text, { knownChecks: valid }).ok, true);
+  const bad = loadConfig(text.replace('test: pnpm test', 'tset: pnpm test'), { knownChecks: valid });
+  assert.equal(bad.ok, false);
+  assert.match(bad.errors[0].message, /analyze, test, format/);
+});
+
+test('skills.allow_scripts is a list of skill names', () => {
+  assert.deepEqual(loadConfig(MINIMAL).config.skills.allow_scripts, []);
+  assert.deepEqual(loadConfig(`${MINIMAL}skills:\n  allow_scripts: [laravel-best-practices]\n`).config.skills.allow_scripts, ['laravel-best-practices']);
+  assert.equal(loadConfig(`${MINIMAL}skills:\n  allow_scripts: 5\n`).ok, false);
+});

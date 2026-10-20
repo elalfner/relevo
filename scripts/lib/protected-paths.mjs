@@ -5,7 +5,7 @@
 //         the file with the project rules (a defect is fixed in the code, not by rewriting the rule).
 //   soft  dependency manifests and lock files: allowed only when the issue lists them in an `Allow-paths:` line.
 
-export const HARD_PATTERNS = ['.github/', 'relevo.yml', '.relevo/', '.claude/skills/', '.agents/skills/'];
+export const HARD_PATTERNS = ['.github/', 'relevo.yml', '.relevo/', '.claude/skills/', '.agents/skills/', 'skills-lock.json'];
 
 export const SOFT_FILES = [
   'pubspec.yaml', 'pubspec.lock',
@@ -44,8 +44,11 @@ export function matchesGlob(path, pattern) {
   return globToRegExp(pattern).test(clean(path));
 }
 
+/** The rules file setting is one name or a list (`qa.rules_from`); both give a list of cleaned names. */
+const ruleFiles = (rulesFile) => [].concat(rulesFile ?? []).filter(Boolean).map(clean);
+
 function hardPatterns(rulesFile) {
-  return rulesFile ? [...HARD_PATTERNS, clean(rulesFile)] : HARD_PATTERNS;
+  return [...HARD_PATTERNS, ...ruleFiles(rulesFile)];
 }
 
 // Hard patterns are anchored at the root of the repository; `relevo.yml` and the rules file are exact files.
@@ -84,7 +87,7 @@ export function checkProtected(paths, { allow = [], rulesFile = null } = {}) {
 
 /** Entries of an `Allow-paths:` list that name (or would cover) a hard-protected path: they can never be allowed. */
 export function hardPathsInAllow(allow, { rulesFile = null } = {}) {
-  const probes = [...HARD_PATTERNS.map((pattern) => (pattern.endsWith('/') ? `${pattern}x` : pattern)), rulesFile ? clean(rulesFile) : null].filter(Boolean);
+  const probes = [...HARD_PATTERNS.map((pattern) => (pattern.endsWith('/') ? `${pattern}x` : pattern)), ...ruleFiles(rulesFile)].filter(Boolean);
   return (allow ?? []).filter((entry) => hardRule(entry, { rulesFile }) || probes.some((probe) => matchesGlob(probe, entry)));
 }
 

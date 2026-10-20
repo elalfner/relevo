@@ -17,11 +17,12 @@ if (!existsSync(target)) {
 
 const result = loadConfig(readFileSync(target, 'utf8'));
 
-if (result.ok && result.config.qa.rules_from) {
-  const rules = resolve(dirname(target), result.config.qa.rules_from);
-  if (!existsSync(rules)) {
-    result.warnings.push({ path: 'qa.rules_from', message: `qa.rules_from points to "${result.config.qa.rules_from}", which does not exist` });
-  }
+if (result.ok) {
+  result.config.qa.rules_from.forEach((file) => {
+    if (!existsSync(resolve(dirname(target), file))) {
+      result.warnings.push({ path: 'qa.rules_from', message: `qa.rules_from points to "${file}", which does not exist` });
+    }
+  });
 }
 
 if (flags.has('--json')) {
