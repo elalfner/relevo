@@ -24,7 +24,7 @@
 
 ## 5. Status
 
-- [ ] 5.1 Show the `ready` issues of the person with `/relevo:go <n>` when the cloud is not building, and the alert for an issue on `building` with no activity for `limits.building_alert_hours`, in `scripts/lib/status.mjs`, `scripts/lib/status-data.mjs` and the digest; update `skills/status/SKILL.md`. Verify with additions to `tests/status.test.mjs`: the four scenarios of the `status` delta, Spanish, and the digest listing the alert.
+- [x] 5.1 Show the `ready` issues of the person with `/relevo:go <n>` when the cloud is not building, and the alert for an issue on `building` with no activity for `limits.building_alert_hours`, in `scripts/lib/status.mjs`, `scripts/lib/status-data.mjs` and the digest; update `skills/status/SKILL.md`. Verify with additions to `tests/status.test.mjs`: the four scenarios of the `status` delta, Spanish, and the digest listing the alert.
 
 ## 6. Documentation and integration
 
