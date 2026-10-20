@@ -1,6 +1,6 @@
 {
   "name": "relevo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Relevo: an automatic issue-to-merge workflow where an agent builds and people verify.",
   "type": "module",
