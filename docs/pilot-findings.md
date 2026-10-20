@@ -91,6 +91,14 @@ Confirmed against the real run, no change needed: `plugins: relevo@relevo`, `pro
 
 The build job of `relevo-go.yml` was run in the sandbox repository without `id-token: write`, from `main`. Issue #20 (a small change to the counter screen) went from `ready` to `relevo:built` in about 3 min 30 s, with the hand-off comment posted, QA passed, and every step of the `build` job green, including `claude-code-action`. The template passes `github_token`, so the action does not need the OIDC exchange. The permission was removed from the template.
 
+## `go` with `platforms` and the stack profile (task 6.4 of `platform-registry`)
+
+With `platforms` (one `flutter` entry, target `android`) in the `relevo.yml` of the sandbox repository, and the plugin of `main` with the generic agents, issue #23 (a small change to the counter screen) went from `ready` to `relevo:built` with the hand-off comment, 2 of 2 tasks done and QA passed. The comment quotes the hash of the issue text (`Built from the issue text: de609816`), which shows the `go` of the hardened version was the one that ran.
+
+The first run did not build: the planner queued the issue because the same person already had one built issue waiting (`built_unreviewed_per_person` is 1 in the sandbox). Closing that issue started the queued one on the next queue evaluation, a few seconds later, as designed.
+
+Not seen directly: the log lines of `stack-profile.mjs` and `role-skills.mjs` in the build job; the result is what shows they ran without failing (a failed profile ends the run in `qa-failed` with the reason `profile not resolved`).
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
