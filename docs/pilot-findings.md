@@ -177,6 +177,14 @@ Run in a throwaway repository with a `relevo.yml` that links `elalfner/relevo`, 
 - **Not tried**: the download of a real pasted attachment. No issue of the sandbox or of this repository has one, and GitHub has no API to create one, so the redirect from `github.com/user-attachments/assets/<id>` to the signed host, and whether the token of the workflow can read an attachment of a private repository, are unverified. The fetcher reports a refusal with "the token may not read it" on a 403 or 404, and the way out is to commit the picture to the repository. To try it, a person pastes a small screenshot into an issue of the sandbox, turns on `design.images` and runs `design-fetch.mjs --issue <n>`.
 - **Not tried either**: a build that reads the image with `Read` inside `go`, and `qa` judging an image; both are behaviour of the agents that needs a live run.
 
+## Reading Get started as a newcomer (task 3.2 of `get-started`)
+
+The page was followed as written as far as a cloud session allows, against a fresh shallow clone of the sandbox and an empty repository whose remote is the sandbox: `/relevo:doctor` (the script) and `/relevo:init` in plan mode, with an answers file for a one-person Flutter repository.
+
+- **Corrected**: the page said the doctor prints `[pass]` and `[FAIL]` lines; it also prints `[warn]` lines (for example that `adb` is missing), which a newcomer will see, so it says so. The page said the plan "lists `relevo.yml`, the labels and the workflows"; the real plan has one line per change, tagged `[will do]` (what `init` does itself: install the missing skills, create the labels, the branch `dev`, two rulesets, secret scanning, five workflows, the `.gitignore` line) or `[by hand]` (what only the person can do: create the secret of the model, commit and push the new files to the default branch, and, in an empty project, run `openspec init`), and the step now describes exactly that. The `openspec init` case is in its "If not". The quoted tags are checked against the code by a test.
+- **Confirmed**: the plan ends by telling the person to commit and push the new files to the default branch because a workflow only runs from there, and to create the API key and store it as the secret `ANTHROPIC_API_KEY` by hand, which is what steps 3 and 4 say.
+- **Not followed here**: installing the plugin (`claude plugin ...`), creating the secret, the cloud build, the review on a device and `ship`; they are the parts of the page that no test or run in this environment has exercised. The expected build time ("a few minutes") comes from the first pilot.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
+import { renderReport } from '../scripts/lib/doctor.mjs';
+import { checkIssueDraft } from '../scripts/lib/issue-check.mjs';
 import { LABELS } from '../scripts/lib/labels.mjs';
 import { NEXT_STEP_REASONS, NEXT_STEP_STATES, nextStep } from '../scripts/lib/next-step.mjs';
 
@@ -11,7 +13,7 @@ const root = new URL('../', import.meta.url).pathname;
 const read = (p) => readFileSync(`${root}${p}`, 'utf8');
 
 // Pages with a Spanish twin. The pilot findings and the action parameters are English-only logs and are not checked here.
-const PAGES = ['install', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format'];
+const PAGES = ['get-started', 'install', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format'];
 const FILES = ['README.md', 'README.es.md', 'docs/README.md', 'docs/README.es.md', ...PAGES.flatMap((n) => [`docs/${n}.md`, `docs/${n}.es.md`])];
 const exists = (f) => existsSync(`${root}${f}`);
 
@@ -134,5 +136,94 @@ test('the security page names the measures by files, settings and labels that ex
     const page = read(f);
     ['trust', 'run_max_cost', 'RELEVO_LINKS_TOKEN', 'Allow-paths', 'allow_scripts', 'review.mode'].forEach((w) => assert.ok(page.includes(w), `${f} does not mention ${w}`));
     assert.match(page, /prompt injection|inyecci[oó]n de prompts/i, `${f}: the risk that has no complete defence`);
+  });
+});
+
+// ---------- get started
+
+const STEPS = {
+  'docs/get-started.md': { before: /^## Before you start$/m, steps: /^## (\d+)\. .+$/gm, next: /^## What next$/m, trouble: /^## If something goes wrong$/m, see: '**You should see**', not: '**If not**' },
+  'docs/get-started.es.md': { before: /^## Antes de empezar$/m, steps: /^## (\d+)\. .+$/gm, next: /^## Qué sigue$/m, trouble: /^## Si algo sale mal$/m, see: '**Deberías ver**', not: '**Si no**' },
+};
+const stepBodies = (page, re) => {
+  const heads = [...page.matchAll(re)];
+  return heads.map((h, i) => ({ n: Number(h[1]), title: h[0], text: page.slice(h.index, heads[i + 1]?.index ?? page.indexOf('\n## ', h.index + 1)) }));
+};
+
+test('Scenario: A step - the page has the sections in order, and eight numbered steps', () => {
+  Object.entries(STEPS).filter(([f]) => exists(f)).forEach(([f, m]) => {
+    const page = read(f);
+    const at = (re) => page.search(re);
+    assert.ok(at(m.before) > 0, `${f}: before you start`);
+    const steps = stepBodies(page, m.steps);
+    assert.deepEqual(steps.map((x) => x.n), [1, 2, 3, 4, 5, 6, 7, 8], `${f}: eight steps in order`);
+    assert.ok(at(m.before) < page.indexOf(steps[0].title), `${f}: before you start comes first`);
+    assert.ok(page.indexOf(steps[7].title) < at(m.next) && at(m.next) < at(m.trouble), `${f}: what next, then the problems`);
+  });
+});
+
+test('every step has the command to copy, what you should see and what to do if not, and links the page that explains it', () => {
+  Object.entries(STEPS).filter(([f]) => exists(f)).forEach(([f, m]) => {
+    stepBodies(read(f), m.steps).forEach((step) => {
+      assert.match(step.text, /```(?:bash|text)\n[\s\S]*?```/, `${f} step ${step.n}: a command to copy`);
+      assert.ok(step.text.includes(`- ${m.see}`), `${f} step ${step.n}: ${m.see}`);
+      assert.ok(step.text.includes(`- ${m.not}`), `${f} step ${step.n}: ${m.not}`);
+    });
+    const page = read(f);
+    [8, 4, 3].forEach((n) => assert.match(stepBodies(page, m.steps)[n - 1].text, /\]\((?:[a-z-]+)(?:\.es)?\.md/, `${f} step ${n} links a page`));
+  });
+});
+
+test('Scenario: the commands run in the order of the lifecycle', () => {
+  ['docs/get-started.md', 'docs/get-started.es.md'].filter(exists).forEach((f) => {
+    const page = read(f);
+    const order = ['doctor', 'init', 'issue', 'review', 'ship'].map((c) => page.indexOf(`/relevo:${c}`));
+    order.forEach((i, k) => assert.ok(i >= 0, `${f}: /relevo:${['doctor', 'init', 'issue', 'review', 'ship'][k]} is never named`));
+    assert.deepEqual([...order].sort((a, b) => a - b), order, `${f}: the commands come in the order of the lifecycle`);
+  });
+});
+
+test('Scenario: The credential - both secrets are named, the person creates them, and the value never goes in a file or the conversation', () => {
+  ['docs/get-started.md', 'docs/get-started.es.md'].filter(exists).forEach((f) => {
+    const page = read(f);
+    ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'gh secret set'].forEach((w) => assert.ok(page.includes(w), `${f}: ${w}`));
+    assert.ok(/never|nunca/i.test(page.slice(page.indexOf('ANTHROPIC_API_KEY') - 600, page.indexOf('ANTHROPIC_API_KEY') + 1200)), `${f}: it says the value is never written down`);
+  });
+});
+
+test('the example issue of the page passes the check Relevo applies', () => {
+  ['docs/get-started.md', 'docs/get-started.es.md'].filter(exists).forEach((f) => {
+    const m = STEPS[f];
+    const step5 = stepBodies(read(f), m.steps)[4].text;
+    const title = step5.match(/^(?:Title|Título): (.+)$/m)?.[1];
+    const body = step5.match(/```markdown\n([\s\S]*?)```/)?.[1];
+    assert.ok(title && body, `${f}: step 5 gives a title and an issue in a markdown block`);
+    const r = checkIssueDraft({ title, body });
+    assert.deepEqual(r.problems, [], `${f}: the example issue fails its own check`);
+    assert.ok(r.scenarios >= 1 && r.edgeCases >= 1, `${f}: scenarios and edge cases`);
+  });
+});
+
+test('the output the page quotes is output the code produces', () => {
+  const messages = read('scripts/lib/messages.mjs');
+  const initSource = ['scripts/init.mjs', 'scripts/lib/init.mjs'].map((f) => read(f)).join('\n');
+  const doctor = renderReport([{ status: 'pass', message: 'a' }, { status: 'fail', message: 'b', fix: 'c' }]);
+  [['docs/get-started.md', ['is built', 'Your next step']], ['docs/get-started.es.md', ['está construida', 'Tu siguiente paso']]].filter(([f]) => exists(f)).forEach(([f, quoted]) => {
+    const page = read(f);
+    [...quoted.map((q) => [q, messages]), ['[pass]', doctor], ['[FAIL]', doctor], ['fix:', doctor], ['[will do]', initSource], ['[by hand]', initSource]].forEach(([phrase, source]) => {
+      assert.ok(page.includes(phrase), `${f} does not quote "${phrase}"`);
+      const needle = source === initSource ? phrase.slice(1, -1) : phrase; // init writes the tag between brackets
+      assert.ok(source.includes(needle), `the code never produces "${phrase}"`);
+    });
+  });
+});
+
+test('Scenario: A problem - the table names the causes and the fix, and What next links the other pages', () => {
+  Object.entries(STEPS).filter(([f]) => exists(f)).forEach(([f, m]) => {
+    const page = read(f);
+    const trouble = page.slice(page.search(m.trouble));
+    assert.ok((trouble.match(/^\|/gm) ?? []).length >= 7, `${f}: a table of at least five problems`);
+    const next = page.slice(page.search(m.next), page.search(m.trouble));
+    ['guide', 'security', 'stacks', 'execution'].forEach((p) => assert.ok(next.includes(`${p}`), `${f}: What next links ${p}`));
   });
 });
