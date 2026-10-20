@@ -14,8 +14,8 @@
 
 ## 3. Role skills
 
-- [ ] 3.1 Add `scripts/lib/role-skills.mjs` and `scripts/role-skills.mjs --role <role> --platform <name> [--base origin/dev]` (reads the base branch with `git cat-file` and `git ls-tree`; output per skill: path, or left out with its reason; exit 0 even when some are left out, 2 on bad usage). Verify with `tests/role-skills.test.mjs` in a throwaway repository: a skill on the base branch, one only in the working tree, one with `disable-model-invocation`, one with a script left out, the same one allowed by `skills.allow_scripts`, and `fix` using the lists of `dev` and `qa`.
-- [ ] 3.2 Add the size budget and the lock comparison as pure functions (`skillBytes(paths)`, `lockDifferences(lock, hashes)`) used by `doctor`. Verify with `tests/role-skills.test.mjs`: 30 KB gives the warning, 10 KB does not, a changed folder is named, a missing lock file gives no difference.
+- [x] 3.1 Add `scripts/lib/role-skills.mjs` and `scripts/role-skills.mjs --role <role> --platform <name> [--base origin/dev]` (reads the base branch with `git cat-file` and `git ls-tree`; output per skill: path, or left out with its reason; exit 0 even when some are left out, 2 on bad usage). Verify with `tests/role-skills.test.mjs` in a throwaway repository: a skill on the base branch, one only in the working tree, one with `disable-model-invocation`, one with a script left out, the same one allowed by `skills.allow_scripts`, and `fix` using the lists of `dev` and `qa`.
+- [x] 3.2 Add the size budget and the lock comparison as pure functions (`skillBytes(paths)`, `lockDifferences(lock, hashes)`) used by `doctor`. Verify with `tests/role-skills.test.mjs`: 30 KB gives the warning, 10 KB does not, a changed folder is named, a missing lock file gives no difference.
 
 ## 4. Agents and go
 
