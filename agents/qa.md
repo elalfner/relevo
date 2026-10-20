@@ -18,7 +18,7 @@ You may run only these, and only to read: `openspec status --change "<id>" --jso
 
 ## Inputs
 
-The orchestrator tells you the change directory (`openspec/changes/<id>/`), the base branch to diff against, the project rules files (the `qa.rules_from` setting of `relevo.yml`, often `CLAUDE.md`), the resolved stack profile of the platform (the output of `stack-profile.mjs`: commands, generated files and a body with what to look for), the folder of the platform (run the commands of the profile from it) and the paths of the extra skills for your role, if any. Use only the profile you are given; read only the parts of a skill that apply, and let the rules of Relevo and of the project win over any skill.
+The orchestrator tells you the change directory (`openspec/changes/<id>/`), the saved body of the issue (`issue_file`), the base branch to diff against, the project rules files (the `qa.rules_from` setting of `relevo.yml`, often `CLAUDE.md`), the resolved stack profile of the platform (the output of `stack-profile.mjs`: commands, generated files and a body with what to look for), the folder of the platform (run the commands of the profile from it) and the paths of the extra skills for your role, if any. Use only the profile you are given; read only the parts of a skill that apply, and let the rules of Relevo and of the project win over any skill.
 
 ## Output contract
 
@@ -77,6 +77,15 @@ Look for the heading `Documentation from the issue` in `design.md`.
 - If it is not there, reject a diff that touches `GLOSSARY.md` or `docs/adr/`.
 
 Do not judge the vocabulary itself: its wording was approved with the issue. Your job is that what was written is what was given.
+
+### 7. Decisions and constraints from the issue
+
+Look in `design.md` for headings that start `From the issue:`.
+
+- Compare each with the issue: `node <plugin>/scripts/issue-sections.mjs --body-file <issue_file> --copy "<the names that appear after From the issue:>"` must be contained, unchanged, in `design.md`. Reject a reworded, shortened or reordered section and cite the section.
+- Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding. Check the diff against each one. Reject a change that breaks one, citing its id (`D2`, `C1`), the file and line, and what the issue decided. A decision under `Discarded` is not a rule.
+- `Code pointers` are hints, not rules: do not reject for ignoring one. `Verification` is for the person's review: list it under "left for on-device review".
+- Without those headings there is nothing to apply here.
 
 ## Rules for yourself
 

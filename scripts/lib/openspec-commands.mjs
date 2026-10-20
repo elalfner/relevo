@@ -10,6 +10,9 @@ export const OPENSPEC_COMMANDS = {
   // The developer and QA only read the state of the change; they never create or archive anything.
   dev: ['status', 'instructions apply'],
   qa: ['status', 'instructions apply'],
+  // `think` and `issue` only read: the specifications and the changes that exist.
+  think: ['list', 'show', 'status'],
+  issue: ['list', 'show'],
 };
 
 /** Subcommands that no unattended run may use, whatever the list says. */
@@ -32,7 +35,7 @@ export function openspecSubcommand(tokens) {
   return first;
 }
 
-/** Is the command (the tokens after `openspec`) allowed for `part` (`go`, `dev` or `qa`)? */
+/** Is the command (the tokens after `openspec`) allowed for `part` (`go`, `dev`, `qa`, `think` or `issue`)? */
 export function isAllowed(part, tokens) {
   const sub = openspecSubcommand(tokens);
   return Boolean(sub) && (OPENSPEC_COMMANDS[part] ?? []).includes(sub);

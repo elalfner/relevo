@@ -31,6 +31,7 @@ const links = (arg('links') ?? '').split(',').map((f) => f.trim()).filter(Boolea
 const r = checkIssueDraft({ title, body, platforms, links, rulesFile: (arg('rules-file') ?? '').split(',').map((f) => f.trim()).filter(Boolean) });
 const allows = r.allowPaths.length ? `, allows changes to ${r.allowPaths.join(', ')}` : '';
 console.log(`${r.scenarios} scenario(s), ${r.edgeCases} edge case(s), depends on ${[...r.dependsOn.map((n) => `#${n}`), ...r.dependsOnExternal.map((d) => `${d.repo}#${d.number}`)].join(', ') || 'nothing'}${allows}`);
+r.warnings.forEach((w) => console.error(`warning: ${w}`));
 if (r.ok) {
   console.log('ready to create');
   process.exit(0);

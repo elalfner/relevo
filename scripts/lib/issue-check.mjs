@@ -7,12 +7,13 @@ import { hardPathsInAllow } from './protected-paths.mjs';
 import { findCredentials } from './scan.mjs';
 
 export const TITLE_MAX = 72;
+export const BODY_WARN = 8000;
 // Text that only exists in templates/issue.md; finding it means the template was not filled in.
-export const PLACEHOLDERS = ['<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '<what is deliberately left out', '<dependency files the change may touch', '<name of a platform in relevo.yml>', '#<number>', '**<term>**', '<definition>', '<words to avoid>'];
+export const PLACEHOLDERS = ['<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '<what is deliberately left out', '<dependency files the change may touch', '<name of a platform in relevo.yml>', '#<number>', '**<term>**', '<definition>', '<words to avoid>', '<decision title>', '<what was decided>', '<the reason>', '<the alternative', '<a concrete limit', '<path/to/file>', '<why it matters>', '<what only a person can check', '<an assumption'];
 const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
 
 /**
- * Returns { ok, problems: string[], scenarios, edgeCases, dependsOn, allowPaths } for a drafted title and body.
+ * Returns { ok, problems: string[], warnings: string[], scenarios, edgeCases, dependsOn, allowPaths } for a drafted title and body.
  * `rulesFile` is the `qa.rules_from` file (or files) of the project, which can never be listed in an `Allow-paths:` line.
  * `platforms` is the registry of relevo.yml ({ name: { ... } }); when given, the platform of the draft is checked too.
  * `links` is the `links` list of relevo.yml: a `Depends-on:` that names a repository outside it is a problem.
@@ -26,6 +27,12 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
 
   const parsed = parseIssueBody(body);
   parsed.missing.forEach((m) => problems.push(`the body has no ${m}`));
+  if (parsed.openQuestions.length > 0) problems.push(`the body has open questions (${parsed.openQuestions.length}): answer them or remove the "Open questions" section; the first is "${parsed.openQuestions[0].replace(/^[-*+]\s+/, '').slice(0, 80)}"`);
+  if (parsed.needsClarification) problems.push('the body contains NEEDS CLARIFICATION: resolve it before the issue can be built');
+  parsed.idProblems.forEach((p) => problems.push(p));
+  const warnings = [];
+  const size = String(body ?? '').length;
+  if (size > BODY_WARN) warnings.push(`the body is ${size} characters; about ${BODY_WARN} or fewer reads better for an unattended build`);
   const left = PLACEHOLDERS.filter((p) => String(body ?? '').includes(p));
   if (left.length) problems.push(`the body still contains template text: ${left.join(', ')}`);
   findCredentials(String(body ?? '')).forEach(({ name }) => problems.push(`the body contains something that looks like a credential (${name}); issues are readable by everyone with access`));
@@ -41,5 +48,5 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
     if (!r.ok) problems.push(r.reason === 'missing' ? `the body has no ${r.message}` : r.message);
   }
 
-  return { ok: problems.length === 0, problems, scenarios: parsed.scenarios, edgeCases: parsed.edgeCases, dependsOn: parsed.dependsOn, dependsOnExternal: parsed.dependsOnExternal, allowPaths: parsed.allowPaths };
+  return { ok: problems.length === 0, problems, warnings, scenarios: parsed.scenarios, edgeCases: parsed.edgeCases, dependsOn: parsed.dependsOn, dependsOnExternal: parsed.dependsOnExternal, allowPaths: parsed.allowPaths };
 }

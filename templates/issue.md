@@ -2,6 +2,10 @@
 
 <!-- What this does, who it is for and why, in two or three sentences. -->
 
+## Outcome
+
+<!-- Optional. The observable result that shows the issue is done, in one or two sentences. -->
+
 ## Scenarios
 
 - **WHEN** <the situation>
@@ -15,7 +19,44 @@
 
 - <what is deliberately left out, with the issue that covers it when there is one>
 
-<!-- Optional sections: delete what does not apply. -->
+<!-- Optional sections: delete what does not apply. Headings stay in English; write the contents in the language of the repository. -->
+
+## Decisions
+
+<!-- Optional. One block per decision the agreement settled, with an id. Words that were rejected go under Discarded. -->
+
+### D1. <decision title>
+Decided: <what was decided>
+Why: <the reason>
+Discarded: <the alternative> (<why not>)
+
+## Constraints
+
+<!-- Optional. A concrete limit per line, with an id: security, performance, data, integration, business rule or accessibility. -->
+
+- C1: <a concrete limit>
+
+## Code pointers
+
+<!-- Optional. What the exploration found in the code; the builder checks it before trusting it. -->
+
+- `<path/to/file>`: <why it matters>
+
+## Verification
+
+<!-- Optional. What only a person can check on a device or in a browser. Test data by name, never secrets. -->
+
+- <what only a person can check, and with which data>
+
+## Assumptions
+
+<!-- Optional. What the person approved without being sure. -->
+
+- <an assumption>
+
+## Open questions
+
+<!-- Anything written here sends the issue back to its writer: answer it first, then delete the section. -->
 
 ## Screens and behaviour
 
@@ -42,6 +83,10 @@ Platform: <name of a platform in relevo.yml>
 <!-- Optional. Only when the change needs a new dependency: the manifest and lock files it may touch. Without this line an unattended run refuses to change them. -->
 
 Allow-paths: <dependency files the change may touch, for example pubspec.yaml, pubspec.lock>
+
+<!-- Optional. Related issues of the same idea; it only informs. -->
+
+Related: #<number>
 
 <!-- Optional. #<number> is an issue of this repository; owner/repo#<number> is an issue of a repository listed in links of relevo.yml. -->
 

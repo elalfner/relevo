@@ -118,7 +118,13 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       ...[...new Set(externalDeps.map((d) => d.repo))].filter((r) => !linked.some((l) => l.toLowerCase() === r.toLowerCase()))
         .map((r) => `a Depends-on that names ${r}, which is not in links of relevo.yml (${linked.length ? linked.join(', ') : 'no repository is linked'})`),
     ];
-    const missing = [...parsed.missing, ...(platform.ok ? [] : [platform.message]), ...linkProblems];
+    // A question left open in the issue is an ambiguity, not a missing part: the writer has to decide, not just add text.
+    const openQuestion = parsed.openQuestions[0]?.replace(/^[-*+]\s+/, '').slice(0, 120);
+    const ambiguity = [
+      ...(openQuestion ? [`an answer to the open question "${openQuestion}"`] : []),
+      ...(parsed.needsClarification ? ['the text NEEDS CLARIFICATION resolved'] : []),
+    ];
+    const missing = [...parsed.missing, ...(platform.ok ? [] : [platform.message]), ...linkProblems, ...ambiguity];
     const needsSpec = () => {
       const specWriter = config.team.spec_writer ?? issue.ready_by;
       decision(issue, 'needs-spec', `the spec is incomplete: ${missing.join('; ')}`, {
@@ -126,7 +132,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         assign: [specWriter],
         comment: {
           kind: 'needs_spec',
-          data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: missing.join('; '), reason: 'missing' },
+          data: { spec_writer: specWriter, issue: issue.number, title: issue.title, missing: missing.join('; '), reason: ambiguity.length > 0 ? 'ambiguous' : 'missing' },
         },
       });
     };
