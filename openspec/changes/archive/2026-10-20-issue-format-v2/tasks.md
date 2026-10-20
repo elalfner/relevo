@@ -22,4 +22,4 @@
 
 - [x] 4.1 Update `docs/commands.md`, `docs/commands.es.md` and `CHANGELOG.md` (including that `Design reference` is a follow-up). Verify with `tests/readme-sync.test.mjs` and the changelog test.
 - [x] 4.2 Run `node --test tests/*.test.mjs` and `openspec validate --all`; both must pass.
-- [ ] 4.3 Try it where it can be tried: run `check-issue` and `issue-sections` on the real issues of the sandbox, and draft two new v2 issues for the sandbox (one with an open question) to see the check and the `needs-spec` path; the cloud build of a v2 issue waits for the change to reach `main`. Record what happened, and what could not be tried, in `docs/pilot-findings.md`.
+- [x] 4.3 Try it where it can be tried: run `check-issue` and `issue-sections` on the real issues of the sandbox, and draft two new v2 issues for the sandbox (one with an open question) to see the check and the `needs-spec` path; the cloud build of a v2 issue waits for the change to reach `main`. Record what happened, and what could not be tried, in `docs/pilot-findings.md`.
