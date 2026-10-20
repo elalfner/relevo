@@ -66,6 +66,7 @@ Además, `/relevo:status` (quién espera a quién) y `/relevo:doctor` (comprueba
 - [Comandos](docs/commands.es.md): los nueve comandos, y las skills que usa `think`.
 - [Configuración](docs/configuration.es.md): el archivo `relevo.yml`.
 - [Stacks y plataformas](docs/stacks.es.md): declara tus plataformas y agrega tus propias reglas.
+- [Dónde corre `go`](docs/execution.es.md): la nube, tu máquina o ambas, y las dos credenciales.
 - [Toda la documentación](docs/README.es.md): referencia, cómo se construyó y la marca.
 
 ## Agradecimientos

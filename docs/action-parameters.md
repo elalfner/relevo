@@ -14,6 +14,12 @@ Verified on 2026-10-14 against the documentation and `action.yml` of `anthropics
 | `allowed_bots` | `github-actions` (only) | the queue starts builds with `gh workflow run`, so the actor is the Actions bot and the action refuses it otherwise (seen in the sandbox: "Workflow initiated by non-human actor"); never `*` |
 | `plugins`, `plugin_marketplaces` | `relevo@relevo` and the plugin repository URL | a private repository needs a read-only token in the URL |
 
+## Output the template reads
+
+| Output | Use in the template | Notes |
+|---|---|---|
+| `execution_file` | the path of the agent's execution log, given to `scripts/run-usage.mjs` (turns, cost and tokens for a comment) and `scripts/usage-limit.mjs` (to tell a usage limit from another failure) | listed in `action.yml`; its content is not documented, so both readers are tolerant and say nothing when they find nothing. The real shape is recorded in [pilot-findings.md](pilot-findings.md) once a run has shown it |
+
 ## Inputs the template must never set
 
 | Input | Why |
