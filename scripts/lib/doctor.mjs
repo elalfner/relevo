@@ -6,8 +6,13 @@
 //   runChecks(facts)     pure: turns the facts into a list of results
 // The probes are injected so everything here is testable without a network.
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { labelDefinitions } from './labels.mjs';
+import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget } from './role-skills.mjs';
+import { ROLES, profileLocations, profileLookups, resolveProfile } from './stack-profile.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
 export const SKILL_INSTALL = {
@@ -19,7 +24,16 @@ export const SKILL_INSTALL = {
 export const OPENSPEC_INSTALL = 'npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'];
 const REQUIRED_WORKFLOWS = new Set(['relevo-go.yml']);
-const TOOLCHAIN = { 'flutter-android': { command: 'flutter', install: 'install Flutter: https://docs.flutter.dev/get-started/install' } };
+// How to ask a tool that it is there (most answer --version), and how to install the ones Relevo knows.
+const TOOL_PROBE = { adb: ['version'] };
+const TOOL_INSTALL = {
+  flutter: 'install Flutter: https://docs.flutter.dev/get-started/install',
+  adb: 'install the Android platform tools',
+  xcrun: 'install the Xcode command line tools (macOS only)',
+  node: 'install Node.js 20.19 or newer',
+  php: 'install PHP and Composer',
+};
+const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const pass = (id, message) => ({ id, status: 'pass', message });
 const fail = (id, message, fix) => ({ id, status: 'fail', message, fix });
@@ -90,10 +104,11 @@ export function summarizeProtection({ rulesets = [], classic = null, branch, def
  *   gh(args) -> stdout (read-only GitHub calls)
  *   exists(path) -> boolean       read(path) -> string
  *   skillDirs -> directories that may hold skills
- *   repo, platform
+ *   repo
+ *   git(args) -> stdout (optional)   readFolder(dir) -> [{ path, content }] (optional)   os, pluginRoot (optional)
  */
 export function gatherFacts(p) {
-  const f = { repo: p.repo ?? null, platform: p.platform ?? null };
+  const f = { repo: p.repo ?? null };
   const tryRun = (fn, fallback = null) => {
     try {
       return fn();
@@ -107,10 +122,6 @@ export function gatherFacts(p) {
   f.git = tryRun(() => Boolean(p.tool('git', ['--version'])), false);
   f.gh = tryRun(() => Boolean(p.tool('gh', ['--version'])), false);
   f.ghAuth = f.gh ? tryRun(() => { p.tool('gh', ['auth', 'status']); return true; }, false) : false;
-  const tc = TOOLCHAIN[f.platform];
-  f.toolchain = tc ? tryRun(() => { p.tool(tc.command, ['--version']); return true; }, false) : null;
-  f.adb = tryRun(() => Boolean(p.tool('adb', ['version'])), false);
-
   f.skills = {};
   f.manualOnlySkills = [];
   REQUIRED_SKILLS.forEach((name) => {
@@ -122,11 +133,13 @@ export function gatherFacts(p) {
   });
 
   f.configText = p.exists('relevo.yml') ? p.read('relevo.yml') : null;
-  const loaded = f.configText === null ? null : loadConfig(f.configText);
+  const loaded = f.configText === null ? null : loadConfig(f.configText, profileLookups({ pluginRoot: p.pluginRoot ?? PLUGIN_ROOT, read: readerFor(p, tryRun) }));
   f.config = loaded?.ok ? loaded.config : null;
   f.configErrors = loaded && !loaded.ok ? loaded.errors.map((e) => e.message) : [];
   f.rulesFilesMissing = (f.config?.qa?.rules_from ?? []).filter((file) => !p.exists(file));
   f.rulesFileMissing = f.rulesFilesMissing.length > 0;
+
+  gatherPlatforms(f, p, tryRun);
 
   f.openspecRoot = p.exists('openspec/config.yaml') || p.exists('openspec/config.yml');
   f.openspecRootTracked = tryRun(() => String(p.tool('git', ['ls-files', 'openspec'])).trim().length > 0, false);
@@ -229,7 +242,124 @@ export function gatherFacts(p) {
   }
 }
 
-// ---------- checks
+/** Reads a file: the plugin's own files from disk, the repository's through the probes. Null when absent. */
+function readerFor(p, tryRun) {
+  const pluginRoot = p.pluginRoot ?? PLUGIN_ROOT;
+  return (path) => {
+    if (path.startsWith(`${pluginRoot}/`)) return tryRun(() => readFileSync(path, 'utf8'), null);
+    return p.exists(path) ? p.read(path) : null;
+  };
+}
+
+/**
+ * The platforms of relevo.yml: the profile each one resolves to, the tools and target tools it needs, the extra
+ * skills of each role and the state of the skills lock. The plugin's own files are read from disk, the
+ * repository's through the probes.
+ */
+function gatherPlatforms(f, p, tryRun) {
+  f.platformFacts = [];
+  f.macos = (p.os ?? process.platform) === 'darwin';
+  f.roleSkills = null;
+  f.skillLockDifferences = [];
+  if (!f.config) return;
+
+  const pluginRoot = p.pluginRoot ?? PLUGIN_ROOT;
+  const read = readerFor(p, tryRun);
+  const probed = new Map();
+  const available = (tool) => {
+    if (!probed.has(tool)) probed.set(tool, tryRun(() => Boolean(p.tool(tool, TOOL_PROBE[tool] ?? ['--version'])), false));
+    return probed.get(tool);
+  };
+
+  Object.entries(f.config.platforms).forEach(([name, platform]) => {
+    const resolved = resolveProfile({ platform, pluginRoot, read });
+    const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets, profile: resolved.ok ? resolved.profile : null, errors: resolved.ok ? [] : resolved.errors, tools: [], targetTools: [] };
+    if (resolved.ok) {
+      entry.tools = resolved.profile.tools.map((tool) => ({ tool, ok: available(tool) }));
+      entry.targetTools = platform.targets.map((target) => {
+        const tool = resolved.profile.targets[target] ?? '';
+        return { target, tool, ok: tool === '' ? true : available(tool) };
+      });
+    }
+    f.platformFacts.push(entry);
+  });
+
+  // Extra skills per role, read from the base branch the way `go` reads them.
+  if (p.git) {
+    const baseRef = `origin/${f.config.branches.base}`;
+    if (tryRun(() => { p.git(['rev-parse', '--verify', '--quiet', baseRef]); return true; }, false)) {
+      f.roleSkills = {};
+      f.platformFacts.filter((e) => e.profile).forEach((e) => {
+        f.roleSkills[e.name] = {};
+        ROLES.forEach((role) => {
+          const skills = resolveRoleSkills({ role, profile: e.profile, git: p.git, baseRef, allowScripts: f.config.skills.allow_scripts });
+          skills.forEach((s) => { if (s.path) s.bytes = tryRun(() => Buffer.byteLength(String(read(s.path) ?? '')), 0); });
+          f.roleSkills[e.name][role] = skills;
+        });
+      });
+    }
+  }
+
+  // The skills lock: each skill folder must still have the hash it was installed with.
+  if (p.exists('skills-lock.json') && p.readFolder) {
+    const lock = tryRun(() => JSON.parse(p.read('skills-lock.json')), null);
+    const hashes = {};
+    Object.keys(lock?.skills ?? {}).forEach((name) => {
+      const dir = SKILL_DIRS.find((d) => p.exists(`${d}/${name}`));
+      hashes[name] = dir ? tryRun(() => folderHash(p.readFolder(`${dir}/${name}`)), null) : null;
+    });
+    f.skillLockDifferences = lockDifferences(lock, hashes);
+  }
+}
+
+/** What the profile of each platform asks for: tools, targets, layers, skills. */
+function platformChecks(f) {
+  const r = [];
+  const seen = new Set();
+  (f.platformFacts ?? []).forEach((e) => {
+    if (!e.profile) {
+      r.push(fail(`platform.${e.name}.profile`, `platform ${e.name}: ${e.errors.join('; ')}`, `define the profile of "${e.stack}": ${profileLocations(e.stack)}`));
+      return;
+    }
+    const layers = e.profile.layers.map((l) => (l === 'plugin' ? 'default of the plugin' : `.relevo/stacks/${e.stack}.md`)).join(' + ');
+    r.push(pass(`platform.${e.name}.profile`, `platform ${e.name} (${e.stack}, ${e.path}): profile = ${layers}`));
+    (e.profile.ignored ?? []).forEach((x) => {
+      r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
+    });
+    e.tools.forEach(({ tool, ok }) => {
+      if (seen.has(`tool:${tool}`)) return;
+      seen.add(`tool:${tool}`);
+      r.push(ok ? pass(`tools.${tool}`, `${tool} is installed`) : fail(`tools.${tool}`, `${tool} is not installed (platform ${e.name}, stack ${e.stack})`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+    });
+    e.targetTools.forEach(({ target, tool, ok }) => {
+      const id = `tools.target.${e.name}.${target}`;
+      if (tool === '') r.push(pass(id, `target ${target} of ${e.name} needs no extra tool`));
+      else if (tool === 'xcrun' && !f.macos) r.push(pass(id, `target ${target} of ${e.name}: iOS can only be built and reviewed on macOS (a notice, not a problem)`));
+      else if (ok) r.push(pass(id, `target ${target} of ${e.name}: ${tool} is installed`));
+      else r.push(warn(id, `target ${target} of ${e.name}: ${tool} is not installed; \`review\` needs it for this target`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+    });
+    e.profile.requires_skills.forEach((name) => {
+      if (f.skills[name] === undefined) r.push(warn(`skills.${name}`, `platform ${e.name} requires the skill ${name}; it was not checked`, SKILL_INSTALL[name] ?? `install the skill ${name}`));
+    });
+  });
+
+  Object.entries(f.roleSkills ?? {}).forEach(([platform, roles]) => {
+    Object.entries(roles).forEach(([role, skills]) => {
+      skills.filter((s) => s.left_out).forEach((s) => {
+        r.push(warn(`skills.role.${platform}.${role}.${s.name}`, `skill ${s.name} (${role}, ${platform}) is left out: ${s.reason}`, 'fix the reason, or remove the skill from the profile'));
+      });
+      skills.filter((s) => s.path && s.scripts).forEach((s) => {
+        r.push(pass(`skills.scripts.${platform}.${role}.${s.name}`, `skill ${s.name} has scripts and is allowed by skills.allow_scripts (a notice)`));
+      });
+      const budget = skillBudget(skills.filter((s) => s.path).map((s) => s.bytes ?? 0));
+      if (budget.over) r.push(warn(`skills.size.${platform}.${role}`, `the skills of ${role} (${platform}) add up to ${Math.round(budget.bytes / 1024)} KB, over the ${SIZE_BUDGET_BYTES / 1024} KB budget; the agent reads them at every run`, 'keep the skills of a role small, or list fewer'));
+    });
+  });
+  (f.skillLockDifferences ?? []).forEach((name) => {
+    r.push(warn(`skills.lock.${name}`, `the skill ${name} differs from the hash in skills-lock.json`, 'review the change to the skill, then run `npx skills` to refresh the lock, or restore the skill'));
+  });
+  return r;
+}
 
 /** Turn facts into results. Pure. */
 export function runChecks(f) {
@@ -241,11 +371,7 @@ export function runChecks(f) {
   r.push(f.git ? pass('tools.git', 'git is installed') : fail('tools.git', 'git is not installed', 'install git'));
   r.push(f.gh ? pass('tools.gh', 'the GitHub CLI is installed') : fail('tools.gh', 'the GitHub CLI (gh) is not installed', 'install it from https://cli.github.com'));
   if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
-  if (f.toolchain !== null) {
-    const tc = TOOLCHAIN[f.platform];
-    r.push(f.toolchain ? pass('tools.toolchain', `${tc.command} is installed`) : fail('tools.toolchain', `${tc.command} is not installed (platform ${f.platform})`, tc.install));
-  }
-  r.push(f.adb ? pass('tools.device-bridge', 'adb is installed') : warn('tools.device-bridge', 'adb is not installed; `review` needs it', 'install the Android platform tools'));
+  r.push(...platformChecks(f));
 
   // skills that think invokes
   REQUIRED_SKILLS.forEach((name) => {
