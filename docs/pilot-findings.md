@@ -185,6 +185,17 @@ The page was followed as written as far as a cloud session allows, against a fre
 - **Confirmed**: the plan ends by telling the person to commit and push the new files to the default branch because a workflow only runs from there, and to create the API key and store it as the secret `ANTHROPIC_API_KEY` by hand, which is what steps 3 and 4 say.
 - **Not followed here**: installing the plugin (`claude plugin ...`), creating the secret, the cloud build, the review on a device and `ship`; they are the parts of the page that no test or run in this environment has exercised. The expected build time ("a few minutes") comes from the first pilot.
 
+## First cloud build of an issue in format v2 (sandbox #34)
+
+Issue "Show a message when the counter is nineteen" with Outcome, Decisions D1, Constraints C1, Code pointers, Verification, Assumptions and a Design reference (`lib/main.dart`), created with `relevo:ready` and milestone Pilot 1.
+
+- The build finished in about 3 minutes: `built` label, 3 of 3 tasks, QA passed, no pull request (as designed, `ship` opens it).
+- `design.md` on the branch has the builder's own Context, Decisions and Assumptions, followed by "From the issue: Decisions / Constraints / Code pointers / Design reference / Verification / Assumptions", copied verbatim.
+- The `built` comment lists 5 scenarios, the last one "Matches the reference lib/main.dart", so the Design reference became a checkable scenario.
+- The run comment says 14 turns, about $0.49 notional.
+- Not seen from this session: the QA report text and the citations of D1/C1 (no access to the run log); the branch has no review evidence yet.
+- Not exercised: the repo-file and pasted-image paths of `design-fetch` (the reference was a file of the repository itself).
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
