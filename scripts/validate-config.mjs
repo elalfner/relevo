@@ -4,7 +4,9 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
+import { profileLookups } from './lib/stack-profile.mjs';
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
@@ -15,7 +17,13 @@ if (!existsSync(target)) {
   process.exit(2);
 }
 
-const result = loadConfig(readFileSync(target, 'utf8'));
+// Targets and `checks` are checked against the profile of each stack, when a profile can be read.
+const read = (path) => {
+  const file = path.startsWith('/') ? path : resolve(dirname(target), path);
+  return existsSync(file) ? readFileSync(file, 'utf8') : null;
+};
+const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const result = loadConfig(readFileSync(target, 'utf8'), profileLookups({ pluginRoot, read }));
 
 if (result.ok) {
   result.config.qa.rules_from.forEach((file) => {

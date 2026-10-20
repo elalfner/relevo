@@ -160,3 +160,16 @@ test('skills.allow_scripts is a list of skill names', () => {
   assert.deepEqual(loadConfig(`${MINIMAL}skills:\n  allow_scripts: [laravel-best-practices]\n`).config.skills.allow_scripts, ['laravel-best-practices']);
   assert.equal(loadConfig(`${MINIMAL}skills:\n  allow_scripts: 5\n`).ok, false);
 });
+
+test('validate-config checks targets against the profile of the stack', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(`${tmpdir()}/relevo-vc-`);
+  writeFileSync(`${dir}/relevo.yml`, `${MINIMAL}platforms:\n  app:\n    stack: flutter\n    targets: [android, tv]\n`);
+  const bad = spawnSync('node', [new URL('../scripts/validate-config.mjs', import.meta.url).pathname, `${dir}/relevo.yml`], { encoding: 'utf8' });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /unknown target "tv".*android, ios, web/);
+  writeFileSync(`${dir}/relevo.yml`, `${MINIMAL}platforms:\n  app:\n    stack: flutter\n    targets: [android, ios]\n    checks:\n      test: fvm flutter test\n`);
+  assert.equal(spawnSync('node', [new URL('../scripts/validate-config.mjs', import.meta.url).pathname, `${dir}/relevo.yml`], { encoding: 'utf8' }).status, 0);
+});
