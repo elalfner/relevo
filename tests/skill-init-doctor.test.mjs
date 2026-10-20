@@ -119,3 +119,12 @@ test('Scenario: init asks where go runs and with which credential, and says what
   assert.match(init, /repository variable `RELEVO_CLOUD_GO` \(`off` pauses the cloud at once, with no pull request\)/);
   assert.match(init, /`runs` \(`cloud`, `local` or `both`\), `credential` \(`api_key` or `subscription`\)/);
 });
+
+// ---------- stack profiles
+
+test('Scenario: init names the three stacks the plugin ships, their folders and targets', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /are the stacks Relevo ships with: `flutter`, `vue` and `laravel`/);
+  assert.match(init, /for Vue: `web`; Laravel has none/);
+  ['flutter', 'vue', 'laravel'].forEach((stack) => assert.ok(existsSync(new URL(`../stacks/${stack}.md`, import.meta.url)), `stacks/${stack}.md exists`));
+});

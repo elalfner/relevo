@@ -31,7 +31,21 @@ A profile is the file `stacks/<stack>.md` of the plugin. Its header is read by s
 - The skills it requires and the extra skills for each role.
 - A text with the hygiene the developer follows and what QA looks for in the diff.
 
-Relevo ships the `flutter` profile. `/relevo:go` resolves the profile of your platform and hands it to the developer and QA agents.
+Relevo ships the `flutter`, `vue` and `laravel` profiles. `/relevo:go` resolves the profile of your platform and hands it to the developer and QA agents.
+
+## The profiles Relevo ships
+
+| Stack | `analyze` | `test` | `format` | Target |
+|---|---|---|---|---|
+| `flutter` | `flutter analyze --no-pub` | `flutter test --reporter=compact --no-pub` | `dart format` | `android`, `ios`, `web` |
+| `vue` | `vue-tsc --build` then `eslint . --cache` | `vitest run` | `prettier --write src/` | `web` |
+| `laravel` | `vendor/bin/pint --test` | `php artisan test` | `vendor/bin/pint` | none |
+
+- The commands QA runs never rewrite your code. This matters for Vue: the `lint` script that `npm create vue` generates uses `--fix`, so the profile calls the tools directly (through `npx --no-install`, with the versions your project pins) and does not use `npm run lint`.
+- Each profile was run on a project created for it (`npm create vue@latest` with TypeScript, Vitest, ESLint and Prettier; `composer create-project laravel/laravel`). The Vue `analyze` fails on a type error, a `v-for` without `:key`, an unused variable, an explicit `any` and a single-word component name, and does not fail on `v-html`, a listener that is never removed or props copied out of reactivity. The Laravel `analyze` and `test` fail on a style problem and on a failing test, and do not fail on a mass-assignment hole, an N+1 query or a missing authorisation. The text of each profile tells QA which of those to look for by reading.
+- A project that uses `pnpm` or `yarn`, `oxlint`, or PHPStan replaces the command in `relevo.yml`, for example `checks: { analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse" }`.
+- The profiles require no extra skill. To give the developer or QA a skill of your own (a Laravel best-practices skill, say), list it in `.relevo/stacks/<stack>.md` under `skills`.
+- A profile can have a section `Questions for the issue writer`. `/relevo:issue` asks those the idea leaves open (for a backend: who is authorised and what an error looks like); the developer and QA never receive it.
 
 ## Adding your own rules
 

@@ -218,3 +218,15 @@ test('the update flow lives in the reference file, which SKILL.md points to, and
   assert.match(reference, /can-edit-issue\.mjs/);
   assert.doesNotMatch(body, /can-edit-issue\.mjs --input/, 'the update steps are not in SKILL.md any more');
 });
+
+// ---------- stack profiles
+
+test('Scenario: Laravel issue / Already answered - the questions of the stack are read with --role issue and asked once, with the rest', () => {
+  assert.match(body, /\*\*Questions of the stack\.\*\*/);
+  assert.match(body, /stack-profile\.mjs --platform <name> --role issue/);
+  assert.match(body, /Ask, together with the other groups and never twice, the ones the idea leaves open/);
+  assert.match(body, /Skip every question the idea or the agreement already answers/);
+  const script = readFileSync(root('scripts/stack-profile.mjs'), 'utf8');
+  assert.ok(script.includes("arg('role') === 'issue'"), 'the script implements --role issue');
+  assert.ok(body.indexOf('Questions of the stack') < body.indexOf('## 3. Write the drafts'));
+});

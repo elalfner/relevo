@@ -22,7 +22,23 @@ const emptyProfile = (stack) => ({
   skills: Object.fromEntries(ROLES.map((r) => [r, []])),
   targets: {},
   body: '',
+  questions: '',
 });
+
+export const QUESTIONS_HEADING = 'Questions for the issue writer';
+
+/** Split the section "## Questions for the issue writer" (up to the next heading of level 2) out of a body. */
+export function splitQuestions(text) {
+  const lines = String(text).split('\n');
+  const start = lines.findIndex((l) => /^##\s+/.test(l) && l.replace(/^##\s+/, '').trim().toLowerCase() === QUESTIONS_HEADING.toLowerCase());
+  if (start === -1) return { body: text, questions: '' };
+  let end = lines.findIndex((l, i) => i > start && /^##\s+/.test(l));
+  if (end === -1) end = lines.length;
+  return {
+    body: [...lines.slice(0, start), ...lines.slice(end)].join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+    questions: lines.slice(start + 1, end).join('\n').trim(),
+  };
+}
 
 /**
  * Read the text of a profile file. Returns { profile, errors }.
@@ -68,7 +84,10 @@ export function parseProfile(text) {
     if (!isMap(raw.targets) || Object.values(raw.targets).some((v) => typeof v !== 'string')) errors.push('"targets" must map a target to the tool it needs (empty when none)');
     else profile.targets = { ...raw.targets };
   }
-  profile.body = (match[2] ?? '').trim();
+  // The questions for the issue writer are kept apart from the body: dev and qa never receive them.
+  const { body, questions } = splitQuestions((match[2] ?? '').trim());
+  profile.body = body;
+  profile.questions = questions;
   return { profile: errors.length ? null : profile, errors };
 }
 
@@ -93,6 +112,7 @@ export function mergeProfiles(plugin, repository) {
     });
   });
   out.body = [plugin.body, repository.body].filter(Boolean).join('\n\n');
+  out.questions = [plugin.questions, repository.questions].filter(Boolean).join('\n\n');
   return { ...out, layers: ['plugin', 'repository'], ignored };
 }
 

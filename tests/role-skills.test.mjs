@@ -140,8 +140,9 @@ test('the command exits 2 without a role or with a platform it does not know, an
   const dir = repo({ 'relevo.yml': CONFIG });
   assert.equal(spawnSync('node', [CLI], { encoding: 'utf8', cwd: dir }).status, 2);
   assert.equal(spawnSync('node', [CLI, '--role', 'dev', '--platform', 'zzz'], { encoding: 'utf8', cwd: dir }).status, 2);
-  const none = spawnSync('node', [CLI, '--role', 'dev'], { encoding: 'utf8', cwd: dir });
-  assert.equal(none.status, 1, 'the vue profile is not shipped yet and the repository defines none');
-  assert.match(none.stderr, /no profile for stack "vue"/);
+  const cobol = repo({ 'relevo.yml': 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: cobol\n' });
+  const none = spawnSync('node', [CLI, '--role', 'dev'], { encoding: 'utf8', cwd: cobol });
+  assert.equal(none.status, 1, 'the plugin ships no cobol profile and the repository defines none');
+  assert.match(none.stderr, /no profile for stack "cobol"/);
   assert.ok(PLUGIN_ROOT);
 });

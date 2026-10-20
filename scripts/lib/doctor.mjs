@@ -32,7 +32,9 @@ const TOOL_INSTALL = {
   adb: 'install the Android platform tools',
   xcrun: 'install the Xcode command line tools (macOS only)',
   node: 'install Node.js 20.19 or newer',
-  php: 'install PHP and Composer',
+  php: 'install PHP 8.2 or newer: https://www.php.net/downloads',
+  composer: 'install Composer: https://getcomposer.org/download/',
+  npm: 'install Node.js, which includes npm: https://nodejs.org/',
 };
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

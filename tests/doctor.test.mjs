@@ -679,3 +679,48 @@ test('Scenario: Autopilot off - doctor adds no autopilot check', () => {
   assert.equal(f.autopilot, null);
   assert.deepEqual(autopilotChecks(f), []);
 });
+
+// ---------- Vue and Laravel profiles
+
+function stackFacts(platforms, missing = []) {
+  const text = `limits:\n  run_max_cost: 5\nplatforms:\n${platforms}`;
+  return gatherFacts({
+    tool: (name) => {
+      if (missing.includes(name)) throw new Error(`${name}: not found`);
+      return 'ok';
+    },
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p === 'relevo.yml', read: (p) => text, listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const stackChecks = (f) => runChecks({ ...healthy(), ...f, config: f.config });
+const TW = '  web:\n    stack: vue\n    path: apps/web\n    targets: [web]\n';
+const TA = '  api:\n    stack: laravel\n    path: apps/api\n';
+
+test('Scenario: Vue and Laravel - the shipped profiles resolve, their tools are probed and all pass when present', () => {
+  const f = stackFacts(`${TW}${TA}`);
+  assert.deepEqual(f.platformFacts.map((e) => [e.name, e.profile !== null]), [['web', true], ['api', true]]);
+  assert.deepEqual(f.platformFacts[0].tools.map((t) => t.tool), ['node', 'npm']);
+  assert.deepEqual(f.platformFacts[1].tools.map((t) => t.tool), ['php', 'composer']);
+  const results = stackChecks(f);
+  assert.equal(byId(results, 'platform.web.profile').status, 'pass');
+  assert.match(byId(results, 'platform.api.profile').message, /default of the plugin/);
+  ['tools.node', 'tools.npm', 'tools.php', 'tools.composer'].forEach((id) => assert.equal(byId(results, id).status, 'pass', id));
+  assert.equal(byId(results, 'tools.target.web.web').status, 'pass', 'the web target needs no extra tool');
+});
+
+test('a missing npm or composer fails naming the platform and the install hint', () => {
+  const npm = byId(stackChecks(stackFacts(TW, ['npm'])), 'tools.npm');
+  assert.equal(npm.status, 'fail');
+  assert.match(npm.message, /npm is not installed \(platform web, stack vue\)/);
+  assert.match(npm.fix, /Node\.js, which includes npm/);
+  const composer = byId(stackChecks(stackFacts(TA, ['composer'])), 'tools.composer');
+  assert.equal(composer.status, 'fail');
+  assert.match(composer.fix, /getcomposer\.org/);
+  assert.equal(byId(stackChecks(stackFacts(TA, ['composer'])), 'tools.php').status, 'pass');
+});
+
+test('a Laravel platform with a target is refused by validation, so doctor never probes one', () => {
+  const f = stackFacts('  api:\n    stack: laravel\n    path: apps/api\n    targets: [web]\n');
+  assert.equal(f.config, null);
+});
