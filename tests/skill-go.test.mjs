@@ -136,3 +136,16 @@ test('Scenario: the profile and the role skills come from scripts, and the skill
   [...body.matchAll(/role-skills\.mjs([^\n`]*)/g)].flatMap((m) => [...m[1].matchAll(/--([a-z]+)/g)].map((f) => f[1]))
     .forEach((f) => assert.ok(source.includes(`'${f}'`), `role-skills does not implement --${f}`));
 });
+
+test('Scenario: Monorepo - go reads the platform from the decision, passes it on and commits inside its folder', () => {
+  assert.match(body, /`platform` \(its name\), `stack`, `path` \(its folder\) and `targets`/);
+  assert.match(body, /stack-profile\.mjs --platform <platform>/);
+  assert.match(body, /role-skills\.mjs --role dev --platform <platform>/);
+  assert.match(body, /role-skills\.mjs --role qa --platform <platform>/);
+  assert.match(body, /--within "<path>" --change "<change_id>"/);
+  assert.match(body, /`outside the platform`/);
+  assert.match(body, /the folder of the platform \(`path`\)/);
+  assert.doesNotMatch(body, /`platform`, `skip`/, 'the decision platform of the previous change is gone');
+  const wrapper = readFileSync(root('scripts/commit-change.mjs'), 'utf8');
+  ['within', 'change'].forEach((f) => assert.ok(wrapper.includes(`'${f}'`), `commit-change does not implement --${f}`));
+});

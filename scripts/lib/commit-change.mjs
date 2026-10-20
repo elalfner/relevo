@@ -3,6 +3,7 @@
 //
 // `git(args) -> stdout` is injected so the logic can be tested; the command-line wrapper runs the real git.
 
+import { checkScope } from './platform-scope.mjs';
 import { checkProtected, formatViolations } from './protected-paths.mjs';
 import { formatFindings, scanDiff } from './scan.mjs';
 import { explicitStageArgs } from './staging.mjs';
@@ -13,10 +14,12 @@ import { explicitStageArgs } from './staging.mjs';
  *   paths      the files or folders to commit, named one by one (never "." or "-A")
  *   allow      globs from the `Allow-paths:` line of the issue (dependency files only)
  *   rulesFile  the project rules file (`qa.rules_from`), which is never changed
+ *   within     the folder of the platform of the issue: files outside it are refused (`.` or null: no limit)
+ *   change     the change id, whose specification folder may always be committed
  * Returns { ok, commit, findings, violations }. When something is found nothing is committed and the named paths
  * are unstaged again (files that were staged for other reasons stay staged).
  */
-export function commitChange({ git, message, paths, allow = [], rulesFile = null }) {
+export function commitChange({ git, message, paths, allow = [], rulesFile = null, within = null, change = null }) {
   if (!String(message ?? '').trim()) throw new Error('give a commit message');
   const addArgs = explicitStageArgs(paths);
 
@@ -29,7 +32,10 @@ export function commitChange({ git, message, paths, allow = [], rulesFile = null
 
   // The folders named above may hold protected files: check what is really staged under them.
   const staged = git(['diff', '--cached', '--name-only', '--', ...paths]).split('\n').filter(Boolean);
-  const violations = checkProtected(staged, { allow, rulesFile }).violations;
+  const violations = [
+    ...checkProtected(staged, { allow, rulesFile }).violations,
+    ...checkScope(staged, { within, change, allow }).violations,
+  ];
   const findings = scanDiff(git(['diff', '--cached', '-U0', '--', ...paths]));
   if (violations.length > 0 || findings.length > 0) {
     unstage();

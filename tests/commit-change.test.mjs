@@ -157,3 +157,33 @@ test('Scenario: Several rules files - qa.rules_from as a list protects every fil
   assert.match(r.stderr, /docs\/backend\.md {2}protected path/);
   assert.equal(run(dir, '--message', 'fix: rules', '--rules-file', 'CLAUDE.md,x.md', '--', 'docs/backend.md').status, 0);
 });
+
+test('Scenario: Front issue touches the back - --within refuses a file outside the platform and unstages only the named paths', () => {
+  const dir = repo({ 'apps/web/a.vue': 'a\n', 'apps/api/b.php': 'b\n' });
+  put(dir, 'apps/web/a.vue', 'a2\n');
+  put(dir, 'apps/api/b.php', 'b2\n');
+  put(dir, 'notes.txt', 'mine\n');
+  git(dir, 'add', 'notes.txt');
+  const r = run(dir, '--message', 'feat: header', '--within', 'apps/web', '--change', '12-header', '--', 'apps/web/a.vue', 'apps/api/b.php');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /apps\/api\/b\.php {2}outside the platform \(apps\/web\)/);
+  assert.deepEqual(staged(dir), ['notes.txt'], 'the named paths are unstaged, the other staged file stays');
+  assert.equal(run(dir, '--message', 'feat: header', '--within', 'apps/web', '--change', '12-header', '--', 'apps/web/a.vue').status, 0);
+});
+
+test('--within accepts the specification of the change, GLOSSARY.md, and a path listed in --allow', () => {
+  const dir = repo({ 'apps/web/a.vue': 'a\n' });
+  put(dir, 'openspec/changes/12-header/tasks.md', '- [x] 1\n');
+  put(dir, 'GLOSSARY.md', 'term\n');
+  put(dir, 'packages/shared/x.ts', 'x\n');
+  const args = ['--message', 'feat: header', '--within', 'apps/web', '--change', '12-header'];
+  assert.equal(run(dir, ...args, '--', 'openspec/changes/12-header', 'GLOSSARY.md').status, 0);
+  assert.equal(run(dir, ...args, '--', 'packages/shared/x.ts').status, 1);
+  assert.equal(run(dir, ...args, '--allow', 'packages/shared/**', '--', 'packages/shared/x.ts').status, 0);
+});
+
+test('without --within nothing is restricted by folder', () => {
+  const dir = repo({ 'apps/api/b.php': 'b\n' });
+  put(dir, 'apps/api/b.php', 'b2\n');
+  assert.equal(run(dir, '--message', 'feat: x', '--', 'apps/api/b.php').status, 0);
+});

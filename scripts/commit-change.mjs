@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Commits named files, and nothing else, after checking them. Usage:
-//   node scripts/commit-change.mjs --message "feat: title (#42)" [--allow pubspec.yaml,pubspec.lock] [--rules-file CLAUDE.md,docs/rules.md] -- path [path ...]
+//   node scripts/commit-change.mjs --message "feat: title (#42)" [--allow pubspec.yaml,pubspec.lock] [--rules-file CLAUDE.md,docs/rules.md]
+//     [--within apps/web --change 42-title] -- path [path ...]
+// --within is the folder of the platform of the issue: files outside it are refused, except the specification of --change, GLOSSARY.md and docs/adr/.
 // It stages the paths, refuses protected paths, scans the staged diff for temporary markers and credentials, and
 // commits only when nothing was found. With no --rules-file it reads qa.rules_from from relevo.yml, if there is one.
 //   exit 0: committed (prints the short hash)   exit 1: refused, nothing committed (prints what and where)
@@ -35,7 +37,7 @@ const allow = (opt('allow') ?? '').split(',').map((p) => p.trim()).filter(Boolea
 const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 try {
-  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile });
+  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile, within: opt('within') ?? null, change: opt('change') ?? null });
   if (result.ok) {
     console.log(result.commit);
     process.exit(0);
