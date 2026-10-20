@@ -34,7 +34,9 @@ permissions:
 
 jobs:
   decide:
-    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User')
+    # The repository variable RELEVO_CLOUD_GO set to `off` pauses the cloud: a ready label starts nothing and the issue
+    # stays ready for a local run (/relevo:go <n>). It is read at run time, so changing it needs no pull request.
+    if: vars.RELEVO_CLOUD_GO != 'off' && (github.event_name == 'workflow_dispatch' || (github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -73,7 +75,9 @@ jobs:
           GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
-        run: node .relevo-plugin/scripts/go-plan.mjs --repo "$GITHUB_REPOSITORY" --only "$ISSUE" --apply --claim --github-output "$GITHUB_OUTPUT"
+          # Without a model credential the cloud cannot build: the issue stays ready and a comment says to run it locally.
+          HAS_CREDENTIAL: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: node .relevo-plugin/scripts/go-plan.mjs --repo "$GITHUB_REPOSITORY" --only "$ISSUE" --apply --claim --credential "$HAS_CREDENTIAL" --github-output "$GITHUB_OUTPUT"
 
       # See the same step in `build`. A failure before the issue is claimed (the plugin cannot be cloned, the
       # scripts fail) leaves it ready or queued with nobody told.
@@ -148,7 +152,8 @@ jobs:
         env:
           OPENSPEC_TELEMETRY: '0'
 
-      - uses: anthropics/claude-code-action@v1
+      - id: agent
+        uses: anthropics/claude-code-action@v1
         env:
           OPENSPEC_TELEMETRY: '0'
           GH_TOKEN: ${{ github.token }}
@@ -187,6 +192,36 @@ jobs:
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
             --disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)"
 
+      # The scripts of the next two steps come from the plugin. It is checked out only now, after the agent has
+      # finished, because the agent's preflight needs a clean working tree and a checkout inside it would not be.
+      - name: Check out the Relevo scripts for the reports
+        if: always()
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: elalfner/relevo
+          ref: main
+          path: .relevo-plugin
+          token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}
+
+      # What the run used, read from the agent's execution log. The format of that log is not documented, so the
+      # reader is tolerant: when it finds nothing it posts nothing, and this step can never fail the job.
+      - name: Report what the run used
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          # With a subscription token and no API key the cost is notional.
+          ONLY_SUBSCRIPTION: ${{ secrets.ANTHROPIC_API_KEY == '' && secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          [ -n "$EXECUTION_FILE" ] || exit 0
+          flag=""; [ "$ONLY_SUBSCRIPTION" = "true" ] && flag="--subscription"
+          line=$(node .relevo-plugin/scripts/run-usage.mjs --file "$EXECUTION_FILE" $flag)
+          [ -n "$line" ] && gh issue comment "$ISSUE" --body "$line"
+          exit 0
+
       # A run can end without telling anyone: the plugin cannot be cloned, the login fails, preflight stops, the
       # run reached --max-turns or --max-budget-usd (the runner cuts it; the agent cannot see those counters and
       # does not stop itself), or the agent ends its session early (all seen in the pilot, see docs/pilot-findings.md). If the issue is still
@@ -199,6 +234,7 @@ jobs:
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
           JOB_STATUS: ${{ job.status }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
         run: |
           labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
           # A run the queue dispatched that fails before it claims the issue leaves it `queued`: report that
@@ -211,4 +247,9 @@ jobs:
           fi
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
           gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
-          gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          # A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
+          if [ -n "$EXECUTION_FILE" ] && node .relevo-plugin/scripts/usage-limit.mjs --file "$EXECUTION_FILE"; then
+            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:qa-failed\`: $RUN_URL"
+          else
+            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          fi

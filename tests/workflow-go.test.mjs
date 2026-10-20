@@ -103,7 +103,7 @@ const jobText = (name) => {
 test('Scenario: Issue not ready to build - only the light decide job runs, and it never installs a toolchain or starts the agent', () => {
   const decide = jobText('decide');
   assert.ok(!/flutter-action|install --global|claude-code-action/.test(decide.replace(/^\s*#.*$/gm, '')), 'decide must stay light');
-  assert.match(decide, /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --apply --claim --github-output "\$GITHUB_OUTPUT"/);
+  assert.match(decide, /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --apply --claim --credential "\$HAS_CREDENTIAL" --github-output "\$GITHUB_OUTPUT"/);
   assert.match(decide, /timeout-minutes: 10/);
   assert.match(decide, /action: \$\{\{ steps\.plan\.outputs\.action \}\}/);
   assert.match(decide, /decision_b64: \$\{\{ steps\.plan\.outputs\.decision_b64 \}\}/);
@@ -120,7 +120,7 @@ test('Scenario: Gates pass - the build job runs only when the decision is start 
 
 test('the event gate is on decide, so build is skipped with it', () => {
   const decide = jobText('decide');
-  assert.match(decide, /if: github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.label\.name == 'relevo:ready' && github\.event\.sender\.type == 'User'\)/);
+  assert.match(decide, /if: vars\.RELEVO_CLOUD_GO != 'off' && \(github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.label\.name == 'relevo:ready' && github\.event\.sender\.type == 'User'\)\)/);
   assert.ok(!/^\s+if: github\.event_name/m.test(jobText('build')));
 });
 
@@ -173,4 +173,47 @@ test('Scenario: Private linked repository - the gate step of go and the queue st
   // The token that can push stays the default one.
   assert.doesNotMatch(workflow, /github_token: \$\{\{ secrets\.RELEVO_LINKS_TOKEN/);
   assert.match(workflow, /never to write/);
+});
+
+test('Scenario: Paused - RELEVO_CLOUD_GO=off is read by the gate of go and by the queue, and the missing credential is passed on', () => {
+  const queue = readFileSync(`${root}templates/workflows/relevo-queue.yml`, 'utf8');
+  assert.match(jobText('decide'), /if: vars\.RELEVO_CLOUD_GO != 'off'/);
+  assert.match(queue, /requeue:\n[^\n]*\n\s+if: vars\.RELEVO_CLOUD_GO != 'off'/);
+  const credential = /HAS_CREDENTIAL: \$\{\{ secrets\.ANTHROPIC_API_KEY != '' \|\| secrets\.CLAUDE_CODE_OAUTH_TOKEN != '' \}\}/;
+  assert.match(jobText('decide'), credential);
+  assert.match(queue, credential);
+  assert.match(queue, /requeue\.mjs --repo "\$GITHUB_REPOSITORY" --credential "\$HAS_CREDENTIAL"/);
+  // Only the presence of the secrets is tested; their values are never mapped into an environment variable.
+  [jobText('decide'), queue].forEach((t) => assert.doesNotMatch(t.replace(credential, ''), /secrets\.(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)/));
+  assert.match(workflow, /pauses the cloud/);
+});
+
+test('Scenario: Limit reached / Another failure - the final step tells a usage limit from other failures, and keeps running always', () => {
+  const build = jobText('build');
+  const finalStep = build.slice(build.indexOf('name: Report a run that ended without an outcome'));
+  assert.match(finalStep, /if: always\(\)/);
+  assert.match(finalStep, /EXECUTION_FILE: \$\{\{ steps\.agent\.outputs\.execution_file \}\}/);
+  assert.match(finalStep, /usage-limit\.mjs --file "\$EXECUTION_FILE"/);
+  assert.match(finalStep, /usage limit \(or the credit\) of the model account was reached/);
+  assert.match(finalStep, /The run ended without a result \(job status: \$JOB_STATUS\)/, 'the generic text stays for any other failure');
+  assert.match(build, /- id: agent\n\s+uses: anthropics\/claude-code-action@v1/);
+});
+
+test('Scenario: Log with usage / without usage - the consumption step runs after the agent, cannot fail the job and posts only what it finds', () => {
+  const build = jobText('build');
+  const step = build.slice(build.indexOf('name: Report what the run used'));
+  assert.ok(build.indexOf('name: Report what the run used') > build.indexOf('uses: anthropics/claude-code-action@v1'), 'after the agent');
+  assert.match(step, /if: always\(\)\n\s+continue-on-error: true/);
+  assert.match(step, /run-usage\.mjs --file "\$EXECUTION_FILE" \$flag/);
+  assert.match(step, /ONLY_SUBSCRIPTION: \$\{\{ secrets\.ANTHROPIC_API_KEY == '' && secrets\.CLAUDE_CODE_OAUTH_TOKEN != '' \}\}/);
+  assert.match(step, /\[ -n "\$line" \] && gh issue comment/);
+  assert.match(step, /exit 0/);
+});
+
+test('the Relevo scripts for the reports are checked out after the agent, never before (the agent needs a clean tree)', () => {
+  const build = jobText('build');
+  const checkout = build.indexOf('name: Check out the Relevo scripts for the reports');
+  assert.ok(checkout > build.indexOf('uses: anthropics/claude-code-action@v1'));
+  assert.match(build.slice(checkout, checkout + 400), /continue-on-error: true/);
+  assert.equal((build.match(/path: \.relevo-plugin/g) ?? []).length, 1, 'once in the build job, and only after the agent');
 });

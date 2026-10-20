@@ -31,6 +31,26 @@ function byReadyAt(a, b) {
   return a.number - b.number;
 }
 
+/**
+ * Without a model credential in the repository the cloud cannot build: a `start` decision becomes `local`, which
+ * claims nothing and moves no label, and says to run `go` on a machine or to add the secret.
+ * Every other decision is returned as it is.
+ */
+export function withoutCredential(decisions, issues = []) {
+  return decisions.map((d) => {
+    if (d.action !== 'start') return d;
+    const issue = issues.find((i) => i.number === d.issue);
+    return {
+      issue: d.issue,
+      action: 'local',
+      reason: 'the repository has no model credential, so the cloud cannot build it',
+      labels: { add: [], remove: [] },
+      comment: { kind: 'cloud_not_configured', data: { issue: d.issue, actor: issue?.ready_by ?? d.assignee } },
+      assign: null,
+    };
+  });
+}
+
 export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {} }) {
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);

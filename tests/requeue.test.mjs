@@ -101,3 +101,13 @@ test('Scenario: Dependency finishes in the other repository - the scheduled run 
   assert.deepEqual(run({}).start, [], 'still waiting');
   assert.deepEqual(run({ completedExternal: ['acme/api#12'] }).start, [1], 'the other repository finished');
 });
+
+test('Scenario: No credential - the queue dispatches nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'requeue-nocred-'));
+  writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub'));
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [issue(1, ['relevo:queued'])], completed: [], running: [], permissions: {} }));
+  const run = (...extra) => JSON.parse(spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json'), ...extra], { encoding: 'utf8' }).stdout);
+  assert.deepEqual(run().start, [1]);
+  assert.deepEqual(run('--credential', 'false').start, []);
+  assert.deepEqual(run('--credential', 'true').start, [1]);
+});

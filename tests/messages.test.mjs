@@ -211,3 +211,16 @@ test('the platform message of the previous change no longer exists: a missing pl
   const text = renderMessage('needs_spec', { spec_writer: 'a', issue: 3, title: 'T', missing: 'Platform: line naming one of the platforms of relevo.yml (web, api)', reason: 'missing' });
   assert.match(text, /What is missing: Platform: line naming one of the platforms of relevo\.yml \(web, api\)/);
 });
+
+test('Scenario: No credential - the cloud_not_configured message names the local command and both secrets, in both languages', () => {
+  const data = { issue: 42, actor: 'persona-a' };
+  const en = renderMessage('cloud_not_configured', data);
+  assert.match(en, /#42 is ready, but the cloud cannot build it: this repository has no model credential/);
+  assert.match(en, /@persona-a your next step: run `\/relevo:go 42` on your machine/);
+  assert.match(en, /ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN/);
+  assert.match(en, /The issue stays ready/);
+  const es = renderMessage('cloud_not_configured', data, 'es');
+  assert.match(es, /#42 está listo, pero la nube no puede construirlo/);
+  assert.match(es, /`\/relevo:go 42` en tu máquina/);
+  assert.throws(() => renderMessage('cloud_not_configured', { issue: 1 }), /actor/);
+});
