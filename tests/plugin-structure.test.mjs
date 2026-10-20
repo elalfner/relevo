@@ -115,3 +115,15 @@ test('CLAUDE.md tells every session to work on dev and to reach main only throug
   assert.match(rules, /Before every commit, check the branch/);
   assert.match(rules, /Never add attribution/, 'the earlier rule is kept');
 });
+
+test('every stack profile parses and has the header keys the scripts read', async () => {
+  const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
+  const files = readdirSync(`${root}stacks`).filter((f) => f.endsWith('.md'));
+  assert.ok(files.includes('flutter.md'), 'the plugin ships the flutter profile');
+  files.forEach((f) => {
+    const { profile, errors } = parseProfile(read(`stacks/${f}`));
+    assert.deepEqual(errors, [], f);
+    assert.equal(profile.stack, f.replace(/\.md$/, ''), `${f} names a different stack`);
+    ['analyze', 'test'].forEach((c) => assert.ok(profile.commands[c], `${f} has no "${c}" command`));
+  });
+});
