@@ -6,10 +6,47 @@
 // init never reads or writes the model API key.
 
 import { loadConfig } from './config.mjs';
+import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WORKFLOW_FILES } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
+
+/** The text of a `platforms:` block for { name: { stack, path, targets } }. */
+export function platformsBlock(platforms) {
+  const lines = ['platforms:'];
+  Object.entries(platforms).forEach(([name, p]) => {
+    if (!p) throw new Error(`unknown platform "${name}"`);
+    lines.push(`  ${name}:`, `    stack: ${p.stack}`, `    path: ${p.path ?? '.'}`);
+    if (p.targets?.length) lines.push(`    targets: [${p.targets.join(', ')}]`);
+  });
+  return `${lines.join('\n')}\n`;
+}
+
+/** Replace the `platforms:` block of the template (up to the next blank line) with the person's platforms. */
+function setPlatforms(text, platforms) {
+  const re = /^platforms:[^\n]*\n(?:[ \t]+[^\n]*\n|[ \t]*#[^\n]*\n)*/m;
+  if (!re.test(text)) throw new Error('the template has no "platforms" block');
+  return text.replace(re, platformsBlock(platforms));
+}
+
+/** A commented `.relevo/stacks/<stack>.md` that adds to the plugin's profile. It adds; it never replaces. */
+export function stackProfileTemplate(stack) {
+  return `---
+stack: ${stack}
+# Lists are added to the plugin's profile; a command that the plugin sets cannot be replaced here (use
+# platforms.<name>.checks in relevo.yml for that).
+# generated: ['coverage/**']
+# tools: []
+# skills:
+#   dev: []
+#   qa: []
+---
+
+<!-- Hygiene of this project for ${stack}, in plain sentences. The developer follows it and QA audits against it.
+     It is added after the plugin's text for the stack. -->
+`;
+}
 
 /** relevo.yml from the template and the person's answers. Throws when the result does not validate. */
 export function renderConfig(template, answers = {}) {
@@ -21,7 +58,8 @@ export function renderConfig(template, answers = {}) {
   let out = template;
   if (answers.base) out = set(out, 'base', answers.base);
   if (answers.release) out = set(out, 'release', answers.release);
-  if (answers.platform) out = set(out, 'platform', answers.platform);
+  const platforms = answers.platforms ?? (answers.platform ? { app: LEGACY_PLATFORMS[answers.platform] } : null);
+  if (platforms) out = setPlatforms(out, platforms);
   if (answers.members) out = set(out, 'members', `[${answers.members.join(', ')}]`);
   if (answers.specWriter !== undefined) out = set(out, 'spec_writer', answers.specWriter ?? 'null');
   if (answers.reviewMode) out = set(out, 'mode', answers.reviewMode);
@@ -99,7 +137,7 @@ const item = (id, status, description, extra = {}) => ({ id, status, description
 /**
  * Plan every change. `ctx`:
  *   facts      from gatherFacts (doctor)
- *   answers    the person's answers (members, specWriter, reviewMode, language, platform, base, release, merger)
+ *   answers    the person's answers (members, specWriter, reviewMode, language, platforms, stackProfiles, base, release, merger)
  *   templates  { config: text, workflows: { file: text } }
  *   current    { workflows: { file: text|null }, gitignore: text|null, keepFiles: { path: boolean } }
  *   admin      true when the person has administrator permission on the repository
@@ -120,6 +158,13 @@ export function planInit({ facts, answers, templates, current, admin }) {
   // relevo.yml
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));
   else items.push(item('config', 'todo', 'Create relevo.yml from the answers', { content: renderConfig(templates.config, { base, release, ...answers }) }));
+
+  // optional stack profiles of the repository (created only when asked for, and never committed by init)
+  (answers.stackProfiles ?? []).forEach((stack) => {
+    const path = `.relevo/stacks/${stack}.md`;
+    if ((current.stackProfiles ?? {})[stack]) items.push(item(`stack-profile.${stack}`, 'ok', `${path} exists`));
+    else items.push(item(`stack-profile.${stack}`, 'todo', `Create ${path}, a commented profile that adds to the plugin's (not committed)`, { path, content: stackProfileTemplate(stack) }));
+  });
 
   // labels
   const missing = (facts.labels ?? null) === null ? names : names.filter((l) => !facts.labels.includes(l.name));
@@ -231,7 +276,7 @@ export function applyPlan(items, { repo, io }) {
           it.paths.forEach((p) => io.write(p, ''));
           break;
         default:
-          if (it.id.startsWith('workflow.')) io.write(it.path, it.content);
+          if (it.id.startsWith('workflow.') || it.id.startsWith('stack-profile.')) io.write(it.path, it.content);
           else throw new Error(`no way to apply "${it.id}"`);
       }
       results.push({ id: it.id, ok: true, message: it.description });
