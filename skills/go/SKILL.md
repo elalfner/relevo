@@ -116,7 +116,7 @@ First check that the issue is the one that was claimed:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/issue-hash.mjs --repo <owner/name> --issue <issue> --expect <issue_hash>
 ```
 
-If it exits 1, the text was edited after `ready`: take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`.
+If it exits 1, the text was edited after `ready`: take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`, and save its body to a file outside the working tree (call it `<issue_file>`): the sections are copied from it by a script, never retyped.
 
 Write the change specification from the issue, with the OpenSpec command line, without the pauses of the interactive `propose` workflow (it asks questions and stops after planning; you must not). The issue is the source of truth.
 
@@ -129,7 +129,16 @@ What to write:
 - **Scenarios** come from the issue's WHEN/THEN pairs, faithfully. Each edge case in the issue becomes a scenario too. Do not add behaviour the issue does not ask for.
 - **design.md** is short and grounded in the code you read in this repository. Record every small assumption you make under an "Assumptions" heading.
 - **tasks.md** has small, verifiable tasks that cover every scenario.
+- **Sections of the issue, word for word.** After `design.md` is written, append the sections the issue carries, copied by the script and not by you:
+
+  ```bash
+  node ${CLAUDE_PLUGIN_ROOT}/scripts/issue-sections.mjs --body-file <issue_file> --copy "Decisions,Constraints,Code pointers,Screens and behaviour,Data contract,Verification,Assumptions" >> openspec/changes/<change_id>/design.md
+  ```
+
+  Each section lands under `## From the issue: <Section>`; one the issue does not have is left out. The decisions (`D1`...) and constraints (`C1`...) are binding for the developer and for QA. Do not edit, summarise or reorder what the script wrote. The `Outcome` and `Out of scope` sections feed `proposal.md` as they are, and the `Related:` line is only information.
 - **Documentation.** If the issue has a `## Documentation` section, copy it word for word into `design.md` under the heading `Documentation from the issue` (it is the only place the developer and QA can read it), and add one task to `tasks.md`: write that documentation exactly as given. Add no other documentation. If the issue has no such section, add no documentation task.
+
+If the issue has an `Open questions` section with content, or the text `NEEDS CLARIFICATION`, it is ambiguous by its own words: the planner sends such an issue back before a build starts, but if you meet one here (a hand-run) take the same path below.
 
 If the issue is ambiguous in a way that changes visible behaviour (not a detail), do not guess. Treat it as a spec defect: move the issue to `needs-spec` (`label-change.mjs --to needs-spec`), post `render-message.mjs needs_spec` with what is unclear in `missing` and `reason` `ambiguous`, assign it to `team.spec_writer`, and stop without pushing.
 
@@ -179,7 +188,7 @@ Make the new files of the developer visible to `git diff`, without staging them,
 node ${CLAUDE_PLUGIN_ROOT}/scripts/intent-to-add.mjs <files>
 ```
 
-Launch the `relevo:qa` agent on the result, giving it the same change directory, rules files and base branch, the resolved profile, the folder of the platform (`path`), the skill paths for `qa`, and the diff to review: the working tree against the base branch, without the generated files of the profile (add one `':(exclude)<pattern>'` for each pattern in its `generated` list).
+Launch the `relevo:qa` agent on the result, giving it the same change directory, `<issue_file>` (the saved body of the issue, to compare the copied sections), rules files and base branch, the resolved profile, the folder of the platform (`path`), the skill paths for `qa`, and the diff to review: the working tree against the base branch, without the generated files of the profile (add one `':(exclude)<pattern>'` for each pattern in its `generated` list).
 
 ```bash
 git diff origin/<base> -- . ':(exclude)<pattern>' ...

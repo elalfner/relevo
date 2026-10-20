@@ -80,6 +80,45 @@ Platform: web
 
 The name is one of the keys of `platforms` in `relevo.yml`. With one platform the line is optional. An issue belongs to one platform; a feature that needs two is two issues, the front depending on the back with `Depends-on:`. Without the line, or with a name that does not exist, the issue goes back to the spec writer with the list of platforms. An unattended run changes only files inside the folder of the platform (plus the change's own specification, `GLOSSARY.md` and `docs/adr/`); to let it touch a shared folder, list it in `Allow-paths:`.
 
+### 7. What the agreement settled (optional sections)
+
+These sections carry what `/relevo:think` decided beyond the scenarios. `go` copies them word for word into the change's `design.md` under "From the issue: <Section>", and QA rejects a build that breaks a decision or a constraint, citing its id. Headings are always in English; the contents are in the language of the repository.
+
+```markdown
+## Outcome
+The list shows today's birthdays and nothing else.
+
+## Decisions
+
+### D1. Sort by name
+Decided: the list is sorted by name.
+Why: people look for a person, not a date.
+Discarded: sort by date (nobody asked for it).
+
+## Constraints
+
+- C1: the list loads in under one second with 500 clients.
+
+## Code pointers
+
+- `lib/clients/repository.dart`: where the clients are read.
+
+## Verification
+
+- On a device with the test account "demo", the list scrolls without jumps.
+
+## Assumptions
+
+- Birthdays are read from the clients table.
+
+## Open questions
+```
+
+- A decision is `### D<number>. <title>`, a constraint is `- C<number>: <limit>`. Ids are not repeated.
+- **`Open questions` blocks the build.** An issue that has a question there, or the text `NEEDS CLARIFICATION` anywhere, fails the check and goes back to its writer as ambiguous. Answer the question and delete the section.
+- `Related: #14, #15` lists issues of the same idea. It only informs; `Depends-on:` is what blocks.
+- A body of more than about 8,000 characters passes with a warning: shorter, well delimited issues build better.
+
 A glossary entry is a name, a definition of one or two sentences and the words to avoid. A decision record is a title and a text, without a number: it is numbered when it is written (the highest number in `docs/adr/` plus one). The section names only `GLOSSARY.md` and `docs/adr/`. It is not a scenario or an edge case, and an issue is valid with or without it.
 
 ## What `go` also needs from the issue

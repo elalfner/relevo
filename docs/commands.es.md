@@ -16,6 +16,16 @@ Se distribuye como un plugin de Claude Code llamado `relevo`:
 | `/relevo:status` | Quién espera a quién, más un resumen diario |
 | `/relevo:doctor` | Comprueba que el entorno y los ajustes del repositorio son correctos, incluidas las herramientas y skills que pide cada [perfil de stack](stacks.es.md) |
 
+## El formato del issue
+
+`/relevo:issue` escribe el issue y `/relevo:go` lo construye, así que el issue es lo único que recibe quien construye. Además de los escenarios y los casos borde, puede llevar lo que el acuerdo dejó decidido, en secciones opcionales: `Outcome`, `Decisions` (cada una con un id `D1`, lo decidido, el porqué y lo descartado), `Constraints` (`C1`), `Code pointers`, `Verification`, `Assumptions` y `Open questions`. `go` las copia palabra por palabra al diseño del cambio, y QA rechaza una construcción que rompa una decisión o una restricción, citando su id. Un issue con una pregunta abierta, o con el texto `NEEDS CLARIFICATION`, vuelve a quien lo escribió como ambiguo. El formato está en [Writing an issue Relevo can build](issue-format.md).
+
+- `/relevo:think` escribe lo que dejó decidido con ids antes de pedirte que ejecutes la entrevista, y `/relevo:issue` muestra una tabla de qué id fue a qué sección; un id solo se descarta si tú lo dices.
+- `/relevo:think #42` parte de un issue que volvió con una pregunta abierta.
+- Tras crear los issues, `/relevo:issue` hace una pregunta aparte: ¿pongo `ready` ahora? Nada empieza sin tu sí.
+- Antes de redactar, `/relevo:issue` busca issues abiertos parecidos.
+- `/relevo:review` empieza con un resumen corto (qué se pidió, el resultado, qué revisar primero) calculado a partir del issue.
+
 ## Qué comprueban `fix` y `ship`
 
 `fix` y `ship` cambian una rama después de que una persona la miró, así que las reglas que no deben variar están en scripts.

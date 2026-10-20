@@ -60,6 +60,10 @@ When `design.md` has a heading `Documentation from the issue`, write exactly the
 
 Do not reword an entry, do not touch any other line of those files and do not change an existing record. Without that heading, never touch `GLOSSARY.md` or `docs/adr/`.
 
+## Decisions and constraints from the issue
+
+Headings in `design.md` that start `From the issue:` hold what the issue decided. Treat each decision (`D1`...) and constraint (`C1`...) as binding, and the `Code pointers` as hints to check in the code before trusting them. If one of them cannot be met, or conflicts with the specification or the code, do not choose: report it as an open question with its id. Never edit those sections.
+
 ## Fix mode
 
 You receive the QA report. Fix exactly the findings it lists, each at its file and line, without refactoring around them or touching unrelated code. Re-run the checks. If you disagree with a finding, do not ignore it: explain with evidence in your report and let QA decide.

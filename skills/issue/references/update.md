@@ -1,0 +1,15 @@
+<!-- Loaded by skills/issue/SKILL.md when the argument is an issue number. -->
+
+# Updating an existing issue
+
+`go` builds exactly what an issue says, so its text is only free to change while Relevo has not committed to a build. The mode is the issue number in `$ARGUMENTS`; you edit the description only, never the title, labels, milestone or assignee.
+
+1. **Read it.** `gh issue view <n> --json number,title,body,state,labels > <file>` (the file goes outside the working tree). If the issue does not exist, say so and stop.
+2. **Ask whether it may be edited.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/can-edit-issue.mjs --input <file>`. Exit 0 prints `editable`. Exit 1 prints the label found and why: change nothing and tell the person that the text is what `go` builds, name the label, and give the way forward: remove `ready` by hand, edit, and apply `ready` again, which is also the last point to reread the issue. If `building` is the label, they must wait for the build to finish or fail first. Only an open issue with no lifecycle label, or with `needs-spec` alone, is editable.
+3. **Start from the current body.** Ask only what the person wants to change, keep every part they did not mention, and do not invent scenarios or edge cases. An existing `## Documentation` section stays exactly as it is unless the person asks to change it; it still carries only glossary entries and decision records.
+4. **Recheck the dependencies.** Every `Depends-on: #N` in the new body must name an existing issue (`gh issue view N`) other than this one, and every `Depends-on: owner/repo#N` an existing issue of a linked repository (`gh issue view N --repo owner/repo`). Fix a missing or self-referencing line with the person before going on.
+5. **Check.** Save the new body outside the working tree and run `check-issue.mjs --title "<current title>" --body-file <file> --platforms <names> --links <links>`; an update keeps the `Platform:` line unless the person changes it. Fix every problem with the person; apply nothing while it fails.
+6. **Approve.** Show the new text next to the current one, the `Documentation` section whole, and ask for explicit approval. If the person asks for more changes, revise, check and show it again. Apply nothing before a clear yes.
+7. **Apply.** Read the issue again with `gh issue view <n> --json state,labels` and run `can-edit-issue.mjs` on it. If it is no longer editable, apply nothing and explain the refusal as above. Otherwise `gh issue edit <n> --body-file <file>`, then print the issue link.
+8. **Offer `ready` for a `needs-spec` issue.** Only when the issue carried `needs-spec`, ask one separate yes/no question: "Replace `needs-spec` with `ready` on #<n>? It starts a build." Follow the rules of "Offer ready" in `SKILL.md` (permission, one question, nothing without a clear yes). On yes, take the changes from `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to ready --current "<the labels>"` and apply them with `gh issue edit <n> --add-label … --remove-label …`. On no, leave the labels as they are and remind that `go` starts when `ready` is applied.
+

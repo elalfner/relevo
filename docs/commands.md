@@ -16,6 +16,16 @@ Distributed as a Claude Code plugin named `relevo`:
 | `/relevo:status` | Who is waiting on what, plus a daily digest |
 | `/relevo:doctor` | Checks that the environment and repo settings are correct, including the tools and skills each [stack profile](stacks.md) asks for |
 
+## The issue format
+
+`/relevo:issue` writes the issue and `/relevo:go` builds it, so the issue is the only thing the builder is given. Besides the scenarios and edge cases, it can carry what the agreement settled, in optional sections: `Outcome`, `Decisions` (each with an id `D1`, what was decided, why and what was discarded), `Constraints` (`C1`), `Code pointers`, `Verification`, `Assumptions` and `Open questions`. `go` copies them word for word into the change's design, and QA rejects a build that breaks a decision or a constraint, citing its id. An issue with an open question, or with the text `NEEDS CLARIFICATION`, is sent back to its writer as ambiguous. The format is in [Writing an issue Relevo can build](issue-format.md).
+
+- `/relevo:think` writes what it settled with ids before it asks you to run the interview, and `/relevo:issue` shows a table of which id went to which section; an id is dropped only if you say so.
+- `/relevo:think #42` starts from an issue that came back with an open question.
+- After creating issues, `/relevo:issue` asks one separate question: apply `ready` now? Nothing starts without your yes.
+- Before drafting, `/relevo:issue` searches the open issues for similar ones.
+- `/relevo:review` begins with a short brief (what was asked, the outcome, what to check first) computed from the issue.
+
 ## What `fix` and `ship` check
 
 `fix` and `ship` change a branch after a person has looked at it, so scripts hold what must not vary.

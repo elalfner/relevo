@@ -210,3 +210,112 @@ test('Scenario: Malformed - a token that looks like a repository but is not a re
   assert.equal(r.ok, false);
   assert.match(r.problems.join('\n'), /Depends-on has "acme\/api", which is not a reference; write #12 for an issue of this repository or owner\/repo#12/);
 });
+
+// ---------- issue format v2
+
+const V2 = `${GOOD}
+## Outcome
+The list shows today's birthdays.
+
+## Decisions
+
+### D1. Sort by name
+Decided: by name
+Why: people look for a person
+Discarded: by date (nobody asked)
+
+## Constraints
+
+- C1: the list loads in under one second
+
+## Assumptions
+
+- Birthdays are read from the clients table.
+`;
+
+test('Scenario: Earlier issue - a body with only the earlier sections passes as it did', () => {
+  assert.equal(checkIssueDraft({ title: 'Birthday list', body: GOOD }).ok, true);
+});
+
+test('Scenario: Decision with its reason - a draft with the new sections passes and reports the ids', () => {
+  const r = checkIssueDraft({ title: 'Birthday list', body: V2 });
+  assert.deepEqual(r.problems, []);
+  const parsed = parseIssueBody(V2);
+  assert.deepEqual(parsed.decisionIds, ['D1']);
+  assert.deepEqual(parsed.constraintIds, ['C1']);
+});
+
+test('Scenario: Open question - a question under Open questions fails the check and names the section', () => {
+  const r = checkIssueDraft({ title: 'Birthday list', body: `${V2}\n## Open questions\n\n- Should clients without a phone be listed?\n` });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /open questions \(1\).*Should clients without a phone be listed/);
+});
+
+test('an Open questions section that says none, or holds only a comment, does not block', () => {
+  assert.equal(checkIssueDraft({ title: 'Birthday list', body: `${V2}\n## Open questions\n\nNone\n` }).ok, true);
+  assert.equal(checkIssueDraft({ title: 'Birthday list', body: `${V2}\n## Open questions\n\n<!-- questions that are still open -->\n` }).ok, true);
+});
+
+test('NEEDS CLARIFICATION anywhere outside code blocks fails; inside a code block it does not', () => {
+  assert.match(checkIssueDraft({ title: 'x', body: `${GOOD}\nNEEDS CLARIFICATION: the order\n` }).problems.join('\n'), /NEEDS CLARIFICATION/);
+  assert.equal(checkIssueDraft({ title: 'x', body: `${GOOD}\n\`\`\`\nNEEDS CLARIFICATION\n\`\`\`\n` }).ok, true);
+});
+
+test('Scenario: Repeated id - two decisions with the same id fail, and so does a malformed one', () => {
+  const twice = checkIssueDraft({ title: 'x', body: `${GOOD}\n## Decisions\n\n### D1. A\nDecided: a\n\n### D1. B\nDecided: b\n` });
+  assert.match(twice.problems.join('\n'), /decision id D1 is repeated/);
+  const bad = checkIssueDraft({ title: 'x', body: `${GOOD}\n## Decisions\n\n### D. A\nDecided: a\n` });
+  assert.match(bad.problems.join('\n'), /is not a decision/);
+  assert.equal(checkIssueDraft({ title: 'x', body: `${GOOD}\n## Decisions\n\n### Database choice\nDecided: sqlite\n` }).ok, true, 'a heading that merely starts with D is not an id');
+  const c = checkIssueDraft({ title: 'x', body: `${GOOD}\n## Constraints\n\n- C1: fast\n- C1: also fast\n- C2 slow\n` });
+  assert.match(c.problems.join('\n'), /constraint id C1 is repeated/);
+  assert.match(c.problems.join('\n'), /is not a constraint/);
+});
+
+test('Scenario: Long body - it passes with a warning about the length', () => {
+  const long = checkIssueDraft({ title: 'x', body: `${GOOD}\n## Assumptions\n\n${'a long line of text. '.repeat(500)}\n` });
+  assert.equal(long.ok, true);
+  assert.match(long.warnings.join('\n'), /characters/);
+  assert.deepEqual(checkIssueDraft({ title: 'x', body: GOOD }).warnings, []);
+});
+
+test('the CLI prints the warning and still exits 0', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
+  writeFileSync(join(dir, 'long.md'), `${GOOD}\n## Assumptions\n\n${'a long line of text. '.repeat(500)}\n`);
+  const r = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'x', '--body-file', join(dir, 'long.md')], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /warning:.*characters/);
+});
+
+// ---------- the template and the format page
+
+test('the template with its placeholders filled in and its optional comments kept passes the check', () => {
+  const template = readFileSync(new URL('../templates/issue.md', import.meta.url), 'utf8');
+  const filled = template
+    .replace('<the situation>', 'a client has a birthday today')
+    .replace('<the result a person can observe>', 'the list shows the name')
+    .replace('<unusual input or state>: <what must happen>', 'no phone: the send button is disabled')
+    .replace(/<what is deliberately left out[^>]*>/, 'sending messages: another issue')
+    .replace('<decision title>', 'Sort by name')
+    .replace('<what was decided>', 'by name')
+    .replace('<the reason>', 'people look for a person')
+    .replace('<the alternative> (<why not>)', 'by date (nobody asked)')
+    .replace('<a concrete limit>', 'loads in under one second')
+    .replace('`<path/to/file>`: <why it matters>', '`lib/clients.dart`: reads the clients')
+    .replace('<what only a person can check, and with which data>', 'scroll with the account demo')
+    .replace('<an assumption>', 'birthdays come from the clients table')
+    // the optional lines for other cases are removed
+    .replace(/## Documentation[\s\S]*$/, '');
+  const r = checkIssueDraft({ title: 'Something', body: filled });
+  assert.deepEqual(r.problems, []);
+});
+
+test('every section heading the format page shows in a code block is one the scripts can read', () => {
+  const page = readFileSync(new URL('../docs/issue-format.md', import.meta.url), 'utf8');
+  const known = new Set(['Summary', 'Outcome', 'Scenarios', 'Edge cases', 'Out of scope', 'Decisions', 'Constraints', 'Code pointers', 'Verification',
+    'Assumptions', 'Open questions', 'Screens and behaviour', 'Data contract', 'Documentation']);
+  const shown = [...page.matchAll(/^## (.+)$/gm)].map((m) => m[1]).filter((h) => !h.startsWith('What ') && !h.startsWith('Writing'));
+  shown.forEach((h) => assert.ok(known.has(h), `docs/issue-format.md shows a section "${h}" that the format does not define`));
+  [...known].filter((h) => ['Outcome', 'Decisions', 'Constraints', 'Code pointers', 'Verification', 'Assumptions', 'Open questions'].includes(h))
+    .forEach((h) => assert.ok(page.includes(`## ${h}`), `docs/issue-format.md does not show ${h}`));
+});

@@ -68,6 +68,7 @@ Otherwise: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs init openspec/ch
 
 Tell the person to start the app on the device themselves (for example `flutter run -d <serial>` in another terminal). Then show:
 
+0. The **brief**, computed and not written by you: save the issue body and the `built` comment outside the working tree (`gh issue view $ARGUMENTS --json title,body,comments`), then `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-brief.mjs --issue $ARGUMENTS --title "<title>" --body-file <body> --built-file <the built comment> --language <language>`. It prints about five lines: what was asked, the outcome, what to check first and how many lines there are to check. Show them as they are.
 1. A **shot list**: two or three screenshots worth taking, named like `01_initial`, `02_action`, `03_result`, taken from the scenarios. For a change with nothing visible, say there are no screenshots to take and the log will be audited anyway.
 2. The **checklist**: `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change folder>`, one numbered line per scenario, edge cases included. Point out any step the person must do outside the app, because you will not do it.
 3. What they can write: `capture <name>`, `ok <numbers>` (or `ok all`), `fail <number> <what went wrong>`, `retest <numbers>`, `done`. They may write in any language; understand the intent.
