@@ -6,6 +6,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Added
 
+- **`Platform:` line** in the issue: an issue names the one platform it is for (required with several platforms in `relevo.yml`, optional with one). `go` resolves it, passes the platform, stack and folder to the agents, and a draft without it fails the check. `fix` and `review` find the platform again with the new `platform-of.mjs`.
+- **Scope of a commit**: `commit-change.mjs --within <folder> --change <id>` refuses files outside the folder of the platform (the change's specification, `GLOSSARY.md`, `docs/adr/` and `Allow-paths:` aside); the reason is "outside the platform".
 - **Scripts** that hold the rules `go` must not vary: `preflight`, `issue-hash`, `branch-state`, `spec-ready`, `intent-to-add`, `commit-change` and `next-step`, plus the protected-paths and OpenSpec-command tables they and the tests share.
 - **`Allow-paths:` line** (optional) in the issue format: the dependency files a change may touch. The files that control the workflow (`.github/`, `relevo.yml`, `.relevo/`, skills, the project rules file) can never be listed.
 
@@ -16,11 +18,13 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Changed
 
+- **`go` with several platforms** builds the platform the issue names instead of refusing; an issue that does not name a valid platform goes to `needs-spec` with the list of platforms. The decision `platform` and its message of the previous release are gone.
+- **`fix` commits through `commit-change.mjs`** (protected paths, scan and the platform folder in one step) instead of staging and scanning by hand.
+- **The `go` workflow template** exposes `platform`, `stack` and `path` from the `decide` job, and its setup examples are guarded by the stack (Flutter, Vue, Laravel); copy `relevo-go.yml` again to get them.
 - **Agents `dev` and `qa` are generic**: the Flutter text moved to the Flutter profile, and `go` hands them the resolved profile. They do not edit `relevo.yml`, `.relevo/` or `skills-lock.json`, and `qa` rejects a diff that touches them.
 - **`qa.rules_from`** accepts a list of files; every listed file is protected. `skills-lock.json` is a protected path.
 - **`doctor`** reads the toolchain and the targets from the profile of each platform. The checks `tools.toolchain` and `tools.device-bridge` are now `tools.<tool>` (for example `tools.flutter`) and `tools.target.<platform>.<target>`.
 - **`init`** asks for the platforms (name, stack, folder, targets) and writes `platforms`; it can create a commented `.relevo/stacks/<stack>.md`, which it never commits.
-- **`go` with several platforms** does not start: it removes `ready` and comments, until the issue can name its platform.
 - **`go` is hardened**: it checks that the issue text is the one that was approved (hash), refuses protected paths and temporary markers or credentials in what it commits, never touches a branch that already exists (the comment says how to recover, by its content), reads the progress of the build from `openspec instructions apply`, uses only a closed list of OpenSpec commands, and ends every comment with the next step from one table in English and Spanish.
 - **Agents `dev` and `qa`** run only `openspec status` and `openspec instructions apply`; QA reviews the diff of the working tree against `origin/<base>`, and on a retry still runs analysis and all tests.
 - **Workflow template**: copy `relevo-go.yml` again to get the new wording of the final step (a run can be cut at its turn or cost limit) and the install examples without package scripts.

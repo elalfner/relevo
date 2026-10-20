@@ -18,7 +18,7 @@ platforms:
 
 - A repository with one platform uses `path: .`. A monorepo has one entry per platform, each with its folder.
 - The older line `platform: flutter-android` still works and means one Flutter platform with the Android target. Do not set both.
-- For now `go` builds a repository that has exactly one platform. With several, it says so on the issue and does not start; choosing the platform per issue comes later.
+- With several platforms, each issue says which one it is for with a line `Platform: web` (the name is a key of `platforms`). With one platform the line is optional. An issue without it, or with a name that does not exist, goes back to the spec writer. A feature that needs two platforms is two issues, the front depending on the back with `Depends-on:`.
 - `/relevo:init` asks for all of this and writes it.
 
 ## What a stack profile holds
@@ -54,4 +54,5 @@ Relevo ships the `flutter` profile. `/relevo:go` resolves the profile of your pl
 
 - `relevo.yml`, everything under `.relevo/`, the folders of skills and `skills-lock.json`, because they decide the checks the work is held to. A run that touches them ends in `qa-failed`.
 - The files you list in `qa.rules_from`.
+- Files outside the folder of the platform of the issue (apart from the change's own specification, `GLOSSARY.md` and `docs/adr/`), unless the issue lists them in `Allow-paths:`.
 - The command of a check, from a profile: only `relevo.yml` can replace one.
