@@ -17,7 +17,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
-import { applyDecisions, gather, realGh } from './lib/github.mjs';
+import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
 import { planGo } from './lib/plan.mjs';
 
 function arg(name) {
@@ -45,10 +45,10 @@ if (arg('input')) {
   state.running = [...(state.running ?? []), ...running];
 } else {
   if (!repo) fail('give --repo owner/name (or set GITHUB_REPOSITORY), or --input state.json');
-  state = gather({ gh: realGh, repo, config, running });
+  state = gather({ gh: realGh, ghLinks: realGhLinks(), repo, config, running });
 }
 
-const result = planGo({ config, ...state });
+const result = planGo({ config, repo, ...state });
 
 const only = arg('only') ? Number(arg('only')) : null;
 if (only !== null) {

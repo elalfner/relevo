@@ -12,6 +12,20 @@ export function realGh(args) {
   return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
+/**
+ * The client for linked repositories. It is the ordinary client, except that the token of the process (`GH_TOKEN`)
+ * is replaced by `GH_LINKS_TOKEN` when that is set: a read-only token for private linked repositories. Without it
+ * public repositories are still read. `run` and `env` are injectable for the tests.
+ */
+export function realGhLinks({ env = process.env, run = execFileSync } = {}) {
+  const token = env.GH_LINKS_TOKEN;
+  return (args) => run('gh', args, {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    ...(token ? { env: { ...env, GH_TOKEN: token } } : {}),
+  });
+}
+
 function apiJson(gh, path, { paginate = false } = {}) {
   const args = ['api'];
   if (paginate) args.push('--paginate', '--slurp');
@@ -42,10 +56,11 @@ export function readyEvent(timeline, readyName) {
 }
 
 /**
- * Collect everything `planGo` needs. Returns { issues, completed, running, permissions }.
- * `running` is supplied by the caller (workflow runs in progress).
+ * Collect everything `planGo` needs. Returns { issues, completed, completedExternal, unreadable, running, permissions }.
+ * `running` is supplied by the caller (workflow runs in progress). `ghLinks` reads issues of linked repositories
+ * (`config.links` only; a repository outside the list is never asked).
  */
-export function gather({ gh, repo, config, running = [] }) {
+export function gather({ gh, ghLinks = gh, repo, config, running = [] }) {
   const names = resolveLabelNames(config.labels);
   const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built'];
 
@@ -65,11 +80,32 @@ export function gather({ gh, repo, config, running = [] }) {
   });
 
   const wanted = new Set();
-  candidates.forEach((i) => parseIssueBody(i.body).dependsOn.forEach((n) => wanted.add(n)));
+  const wantedExternal = new Set();
+  const linked = new Set((config.links ?? []).map((l) => l.toLowerCase()));
+  candidates.forEach((i) => {
+    const parsed = parseIssueBody(i.body);
+    parsed.dependsOn.forEach((n) => wanted.add(n));
+    parsed.dependsOnExternal.forEach(({ repo: other, number }) => {
+      // The own repository written in full is a local reference; a repository outside `links` is never read.
+      if (other.toLowerCase() === String(repo).toLowerCase()) wanted.add(number);
+      else if (linked.has(other.toLowerCase())) wantedExternal.add(`${other}#${number}`);
+    });
+  });
   const completed = [];
   wanted.forEach((n) => {
     const dep = apiJson(gh, `repos/${repo}/issues/${n}`);
     if (dep.state === 'closed' && dep.state_reason === 'completed') completed.push(n);
+  });
+  const completedExternal = [];
+  const unreadable = [];
+  wantedExternal.forEach((ref) => {
+    const [other, number] = ref.split('#');
+    try {
+      const dep = apiJson(ghLinks, `repos/${other}/issues/${number}`);
+      if (dep.state === 'closed' && dep.state_reason === 'completed') completedExternal.push(ref);
+    } catch {
+      unreadable.push(ref);
+    }
   });
 
   const permissions = {};
@@ -81,7 +117,7 @@ export function gather({ gh, repo, config, running = [] }) {
     }
   });
 
-  return { issues, completed, running, permissions };
+  return { issues, completed, completedExternal, unreadable, running, permissions };
 }
 
 /** The `gh` commands that carry out one decision (labels, assignees and comment). Pure. */
