@@ -11,6 +11,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { labelDefinitions } from './labels.mjs';
+import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget } from './role-skills.mjs';
 import { ROLES, profileLocations, profileLookups, resolveProfile } from './stack-profile.mjs';
 
@@ -193,6 +194,7 @@ export function gatherFacts(p) {
 
     f.canApprove = tryRun(() => api(`repos/${f.repo}/actions/permissions/workflow`).can_approve_pull_request_reviews, null);
     f.secrets = tryRun(() => api(`repos/${f.repo}/actions/secrets`).secrets.map((s) => s.name));
+    f.cloudVariable = tryRun(() => api(`repos/${f.repo}/actions/variables/${CLOUD_VARIABLE}`).value, null);
     // The repositories this one may depend on: can they be read, and are they private (then a token is needed)?
     f.links = (f.config?.links ?? []).map((link) => {
       const info = tryRun(() => api(`repos/${link}`), null);
@@ -238,6 +240,7 @@ export function gatherFacts(p) {
     f.pluginMarketplaceHasToken = marketplace !== null && /^https:\/\/.*@github\.com\//.test(marketplace);
     f.pluginMarketplace = marketplace;
     // Workflows that check out the plugin repository for its scripts: do they pass a token that can read it?
+    WORKFLOW_FILES.forEach((file) => { if (typeof texts[file] === 'string') f.workflows[file].text = texts[file]; });
     f.pluginCheckouts = [];
     Object.entries(texts).forEach(([file, text]) => {
       const m = /repository:\s*([\w.-]+\/[\w.-]+)\s*\n([\s\S]*?)path:\s*\.relevo-plugin/.exec(text);
@@ -315,6 +318,39 @@ function gatherPlatforms(f, p, tryRun) {
     });
     f.skillLockDifferences = lockDifferences(lock, hashes);
   }
+}
+
+/**
+ * Where `go` builds: the credential mode from the secret names, the repository variable that pauses the cloud, a
+ * reminder about the policy for a subscription, and the quota warning for a subscription with many agents.
+ */
+function executionChecks(f) {
+  if (!Array.isArray(f.secrets)) return [];
+  const r = [];
+  const { mode } = credentialMode(f.secrets);
+  const goWorkflow = f.workflows?.['relevo-go.yml'];
+  const installed = Boolean(goWorkflow?.present);
+  // The credential line the workflow uses, when its text is known (the one that is not commented out).
+  const text = goWorkflow?.text ?? '';
+  const used = /^\s*claude_code_oauth_token:/m.test(text) ? 'subscription' : /^\s*anthropic_api_key:/m.test(text) ? 'api_key' : null;
+
+  if (mode === 'both') r.push(warn('execution.credential', `both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN exist${used ? `; the workflow uses the ${used === 'api_key' ? 'API key' : 'subscription token'}` : ''}`, 'keep only the secret the workflow uses, so that it is clear which account pays'));
+  else if (mode === 'api_key') r.push(pass('execution.credential', 'the cloud builds with an API key: run_max_cost is a real ceiling on spending'));
+  else if (mode === 'subscription') r.push(pass('execution.credential', 'the cloud builds with a subscription token: run_max_cost is only a notional ceiling, and the quota is shared with the use of the account that owns the token'));
+  else r.push(pass('execution.credential', installed ? 'no model credential: the cloud cannot build (see the warning about the secret)' : 'no model credential and no go workflow: go builds on machines only'));
+
+  if (mode === 'subscription' || (mode === 'both' && used === 'subscription')) {
+    r.push(pass('execution.policy', 'reminder: read the current Anthropic terms on automated use of a subscription token (and the README of claude-code-action) before relying on it for a team'));
+    if ((f.config?.limits?.concurrent_agents ?? 1) > 1) {
+      r.push(warn('execution.concurrency', `limits.concurrent_agents is ${f.config.limits.concurrent_agents} with a subscription, whose quota is shared by every run and by the interactive use of the account`, 'set limits.concurrent_agents to 1'));
+    }
+  }
+
+  const variable = f.cloudVariable ?? null;
+  if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
+  else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
+  else r.push(pass('execution.cloud', 'the go workflow is not installed: ready issues are built on machines with /relevo:go'));
+  return r;
 }
 
 /**
@@ -464,7 +500,7 @@ export function runChecks(f) {
   // automation readiness
   if (f.secrets === null) r.push(warn('automation.secret', 'could not list the repository secrets', 'check that you may read them, or look in Settings > Secrets'));
   else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) r.push(pass('automation.secret', 'a model credential secret exists'));
-  else r.push(fail('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret', 'add one to the repository secrets (init never touches it); for a subscription token remove all whitespace before storing it'));
+  else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
 
   Object.entries(f.workflows).forEach(([file, w]) => {
     const required = REQUIRED_WORKFLOWS.has(file);
@@ -485,6 +521,7 @@ export function runChecks(f) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
   r.push(...linkChecks(f));
+  r.push(...executionChecks(f));
   if (f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
     if (f.secrets.includes('RELEVO_PLUGIN_TOKEN')) r.push(pass('automation.plugin-secret', 'the RELEVO_PLUGIN_TOKEN secret exists for the private plugin repository'));
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));

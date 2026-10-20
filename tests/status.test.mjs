@@ -167,3 +167,65 @@ test('gatherStatus reads each external dependency of the blocked issues once thr
   assert.deepEqual(data.externalBlocks, { 7: [{ ref: 'acme/api#12', state: 'open', lifecycle: 'in-review' }, { ref: 'acme/api#14', state: 'unreadable', lifecycle: null }] });
   assert.equal('body' in data.issues[0], false, 'the text of the issue is not part of the status data');
 });
+
+// ---------- ready issues to build by hand, and builds that stopped reporting
+
+const aged = (number, labels, updated_at, assignee = 'ana') => ({ ...issue(number, labels, assignee), updated_at });
+
+test('Scenario: Cloud paused - the ready issues of the person are listed with the command to build them', () => {
+  const issues = [issue(42, ['relevo:ready']), issue(43, ['relevo:ready'], 'beto'), issue(44, ['relevo:built'])];
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues, cloudBuilds: false });
+  assert.deepEqual(r.readyForMe, [{ number: 42, title: 'Issue 42', command: '/relevo:go 42' }]);
+  const text = renderStatus(r);
+  assert.match(text, /Ready, for you to build \(the cloud is not building\):\n  #42 Issue 42 → \/relevo:go 42/);
+  assert.match(renderStatus(r, 'es'), /Listas, para que las construyas \(la nube no está construyendo\):\n  #42 Issue 42 → \/relevo:go 42/);
+});
+
+test('Scenario: Cloud building - no such section, and the default is the cloud building', () => {
+  const issues = [issue(42, ['relevo:ready'])];
+  assert.deepEqual(buildStatus({ config, me: 'ana', now: NOW, issues, cloudBuilds: true }).readyForMe, []);
+  assert.deepEqual(buildStatus({ config, me: 'ana', now: NOW, issues }).readyForMe, []);
+  assert.doesNotMatch(renderStatus(buildStatus({ config, me: 'ana', now: NOW, issues })), /Ready, for you to build/);
+  assert.deepEqual(buildStatus({ config, now: NOW, issues, cloudBuilds: false }).readyForMe, [], 'the team view has no person');
+});
+
+test('Scenario: Stuck build / Recent activity - an alert after limits.building_alert_hours, with the way to restart', () => {
+  const issues = [aged(7, ['relevo:building'], '2026-03-10T05:00:00Z'), aged(8, ['relevo:building'], '2026-03-10T10:30:00Z'), aged(9, ['relevo:built'], '2026-03-01T00:00:00Z')];
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues });
+  assert.deepEqual(r.alerts, [{ type: 'stuck-build', issue: 7, hours: 7, command: '/relevo:go 7' }], 'default 3 hours; recent activity and other states give none');
+  assert.match(renderStatus(r), /#7 build with no activity for 7h: remove relevo:building and apply relevo:ready again, or run \/relevo:go 7/);
+  assert.match(renderStatus(r, 'es'), /#7 construcción sin actividad desde hace 7h: quita relevo:building y vuelve a poner relevo:ready, o ejecuta \/relevo:go 7/);
+  assert.match(renderDigest(r), /- #7 build with no activity for 7h/);
+  assert.match(renderDigest(r, 'es'), /- #7 construcción sin actividad desde hace 7h/);
+});
+
+test('the alert threshold comes from the configuration, and an issue without a date is never reported', () => {
+  const strict = loadConfig(tpl.replace('building_alert_hours: 3', 'building_alert_hours: 1')).config;
+  const issues = [aged(8, ['relevo:building'], '2026-03-10T10:30:00Z')];
+  assert.equal(buildStatus({ config: strict, now: NOW, issues }).alerts.length, 1);
+  assert.equal(buildStatus({ config, now: NOW, issues: [issue(5, ['relevo:building'])] }).alerts.length, 0);
+});
+
+test('gatherStatus reads whether the cloud builds: the workflow on the default branch and the variable', () => {
+  const ghWith = ({ workflow, variable }) => (args) => {
+    const path = args[args.length - 1];
+    if (path.includes('issues?')) return JSON.stringify([[]]);
+    if (path.includes('/pulls?')) return '[]';
+    if (path.endsWith('.github/workflows/relevo-go.yml')) { if (!workflow) throw new Error('HTTP 404 Not Found'); return '{}'; }
+    if (path.endsWith('/actions/variables/RELEVO_CLOUD_GO')) { if (variable === null) throw new Error('HTTP 404'); return JSON.stringify({ value: variable }); }
+    throw new Error(`unexpected ${path}`);
+  };
+  const cloud = (over) => gatherStatus({ gh: ghWith(over), repo: 'acme/app', config }).cloudBuilds;
+  assert.equal(cloud({ workflow: true, variable: null }), true);
+  assert.equal(cloud({ workflow: true, variable: 'off' }), false);
+  assert.equal(cloud({ workflow: false, variable: null }), false);
+  const unreadable = gatherStatus({ gh: (args) => { const p = args[args.length - 1]; if (p.includes('issues?')) return JSON.stringify([[]]); if (p.includes('/pulls?')) return '[]'; throw new Error('HTTP 500 server error'); }, repo: 'acme/app', config });
+  assert.equal(unreadable.cloudBuilds, true, 'when the answer cannot be read the cautious one is kept');
+});
+
+test('the status skill describes the new rows and the stuck-build alert', () => {
+  const skill = readFileSync(`${root}skills/status/SKILL.md`, 'utf8');
+  assert.match(skill, /the `ready` issues assigned to the person with `\/relevo:go <n>` \(only when the cloud is not building/);
+  assert.match(skill, /`RELEVO_CLOUD_GO` is `off`/);
+  assert.match(skill, /`limits\.building_alert_hours`/);
+});

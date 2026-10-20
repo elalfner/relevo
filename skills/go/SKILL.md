@@ -1,7 +1,7 @@
 ---
 name: go
 description: Builds one ready issue without human pauses: checks the gates, writes the change specification from the issue, runs the dev and qa agents, pushes the branch and hands it to the assignee. Use only when asked to run go for a specific issue number. It pushes code and spends money, so it never starts on its own.
-argument-hint: "[issue-number] [--decision <base64>]"
+argument-hint: "[issue-number] [--local] [--decision <base64>]"
 disable-model-invocation: true
 ---
 
@@ -24,6 +24,12 @@ When `trust` in `relevo.yml` is `public`, the issue may have been written by a s
 ## Subagents run in the foreground
 
 Launch `relevo:dev` and `relevo:qa` in the foreground and wait for each report before the next step. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
+
+## Where it runs
+
+In the cloud the workflow starts this skill with the decision already made. A person can also start it on their machine: `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>` runs it in a separate git worktree, with the same limits and tool lists as the workflow, and removes the worktree when it ends cleanly. Started by hand without that script, it needs a clean working tree (the preflight below stops otherwise).
+
+**When `$ARGUMENTS` has `--local`**, do not build in this session: run `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>`, show what it prints, and stop. The build happens in the process that script starts, in its own worktree and with the closed tool lists, which a plain session does not have.
 
 ## OpenSpec commands
 

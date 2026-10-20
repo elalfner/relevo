@@ -191,3 +191,13 @@ test('a configuration without links still validates and links is an empty list',
   assert.deepEqual(loadConfig(MINIMAL).config.links, []);
   assert.deepEqual(loadConfig(`${MINIMAL}links: []\n`).config.links, []);
 });
+
+test('Scenario: Alert for a build that stopped reporting - default 3, and 0 or 2.5 are rejected naming the setting', () => {
+  assert.equal(loadConfig(MINIMAL).config.limits.building_alert_hours, 3);
+  assert.equal(loadConfig(`limits:\n  run_max_cost: 5\n  building_alert_hours: 6\n`).config.limits.building_alert_hours, 6);
+  ['0', '2.5', 'soon'].forEach((v) => {
+    const r = loadConfig(`limits:\n  run_max_cost: 5\n  building_alert_hours: ${v}\n`);
+    assert.equal(r.ok, false, v);
+    assert.equal(r.errors[0].path, 'limits.building_alert_hours');
+  });
+});

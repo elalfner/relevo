@@ -11,6 +11,7 @@
 - [Comandos](commands.es.md): los nueve comandos, y las skills que usa `think`.
 - [Configuración](configuration.es.md): el archivo `relevo.yml`.
 - [Stacks y plataformas](stacks.es.md): declara tus plataformas, los perfiles de stack y cómo agregar tus propias reglas.
+- [Dónde corre `go`](execution.es.md): la nube, tu máquina o ambas, la variable de pausa y las dos credenciales.
 
 ## Referencia
 

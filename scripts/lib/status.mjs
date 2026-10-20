@@ -28,11 +28,12 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
     needsReviewer: i.labels.includes(names['needs-reviewer']),
+    updatedAt: i.updated_at ?? null,
     ...(externalBlocks[i.number] ? { blockedBy: externalBlocks[i.number] } : {}),
   })).filter((e) => e.state);
 
@@ -77,7 +78,17 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     return out;
   });
 
+  // When the cloud is not building, the ready issues assigned to the person are theirs to build.
+  const readyForMe = !cloudBuilds && me
+    ? mine.filter((e) => e.state === 'ready').map((e) => ({ number: e.number, title: e.title, command: `/relevo:go ${e.number}` }))
+    : [];
+
   const alerts = [];
+  // A build that stopped reporting: nothing happened on the issue for longer than limits.building_alert_hours.
+  entries.filter((e) => e.state === 'building' && e.updatedAt).forEach((e) => {
+    const hours = Math.floor((new Date(now).getTime() - Date.parse(e.updatedAt)) / HOUR);
+    if (hours >= config.limits.building_alert_hours) alerts.push({ type: 'stuck-build', issue: e.number, hours, command: `/relevo:go ${e.number}` });
+  });
   prs.forEach((p) => {
     if (!p.approved && p.reviewer && p.requested_at) {
       const hours = Math.floor((new Date(now).getTime() - Date.parse(p.requested_at)) / HOUR);
@@ -104,7 +115,7 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
 
   return {
     me, view: isSpecWriter ? 'spec-writer' : 'person',
-    onMe, toReview, toShip, waitingOnOthers, specWriter: specWriterView,
+    onMe, toReview, toShip, readyForMe, waitingOnOthers, specWriter: specWriterView,
     milestones: summaries, alerts, waiting,
     readOnly: true,
   };
@@ -117,6 +128,7 @@ const T = {
     noDue: 'has no due date, so no capacity warning is computed', merged: 'merged', inReview: 'in review', queued: 'queued', warn: 'capacity warning: more work than the team can review before the due date',
     alerts: 'Alerts', staleReview: 'review waiting', staleBranch: 'branch behind the base by',
     waitingFor: 'waiting for', open: 'open', closed: 'closed, not completed', unreadable: 'could not be read',
+    readyForMe: 'Ready, for you to build (the cloud is not building)', stuck: 'build with no activity for', restart: 'remove relevo:building and apply relevo:ready again, or run',
   },
   es: {
     nothing: 'Nada espera por ti.', onMe: 'Esperando por ti', review: 'Pull requests por revisar', ship: 'Aprobadas, listas para entregar',
@@ -124,6 +136,7 @@ const T = {
     noDue: 'no tiene fecha límite, así que no se calcula la advertencia de capacidad', merged: 'fusionadas', inReview: 'en revisión', queued: 'en cola', warn: 'advertencia de capacidad: hay más trabajo del que el equipo puede revisar antes de la fecha límite',
     alerts: 'Alertas', staleReview: 'revisión esperando', staleBranch: 'rama atrasada respecto a la base por',
     waitingFor: 'esperando', open: 'abierto', closed: 'cerrado, sin completar', unreadable: 'no se pudo leer',
+    readyForMe: 'Listas, para que las construyas (la nube no está construyendo)', stuck: 'construcción sin actividad desde hace', restart: 'quita relevo:building y vuelve a poner relevo:ready, o ejecuta',
   },
 };
 
@@ -143,6 +156,7 @@ export function renderStatus(report, language = 'en') {
     section(t.needsReviewer, sw.needsReviewer.map((e) => `#${e.number} ${e.title}`));
   }
   section(t.onMe, report.onMe.map((e) => `#${e.number} ${e.title} → ${e.command}`));
+  section(t.readyForMe, report.readyForMe.map((e) => `#${e.number} ${e.title} → ${e.command}`));
   section(t.review, report.toReview.map((r) => `#${r.number} ${r.pr}`));
   section(t.ship, report.toShip.map((r) => `#${r.number} → ${r.command}`));
   section(t.others, report.waitingOnOthers.map((e) => withWaits(e, `#${e.number} ${e.title} (${e.state})`)));
@@ -153,9 +167,12 @@ export function renderStatus(report, language = 'en') {
     else if (m.warning) out.push(`  ⚠ ${t.warn} (${m.queued + m.inFlight} > ${m.capacity.reviews})`);
   });
   if (report.milestones.length) out.push('');
-  section(t.alerts, report.alerts.map((a) => (a.type === 'stale-review'
-    ? `#${a.issue} ${t.staleReview} ${a.hours}h (@${a.reviewer}) ${a.pr}`
-    : `#${a.issue} ${t.staleBranch} ${a.behind} ${a.pr}`)));
+  section(t.alerts, report.alerts.map((a) => {
+    if (a.type === 'stuck-build') return `#${a.issue} ${t.stuck} ${a.hours}h: ${t.restart} ${a.command}`;
+    return a.type === 'stale-review'
+      ? `#${a.issue} ${t.staleReview} ${a.hours}h (@${a.reviewer}) ${a.pr}`
+      : `#${a.issue} ${t.staleBranch} ${a.behind} ${a.pr}`;
+  }));
   while (out.length && out[out.length - 1] === '') out.pop();
   return out.join('\n');
 }
@@ -171,9 +188,12 @@ export function renderDigest(report, language = 'en') {
   });
   if (report.alerts.length) {
     lines.push('', `${es ? 'Alertas' : 'Alerts'}:`);
-    report.alerts.forEach((a) => lines.push(a.type === 'stale-review'
-      ? `- #${a.issue} ${es ? 'revisión esperando' : 'review waiting'} ${a.hours}h (@${a.reviewer})`
-      : `- #${a.issue} ${es ? 'rama atrasada por' : 'branch behind the base by'} ${a.behind}`));
+    report.alerts.forEach((a) => {
+      if (a.type === 'stuck-build') lines.push(`- #${a.issue} ${es ? 'construcción sin actividad desde hace' : 'build with no activity for'} ${a.hours}h`);
+      else lines.push(a.type === 'stale-review'
+        ? `- #${a.issue} ${es ? 'revisión esperando' : 'review waiting'} ${a.hours}h (@${a.reviewer})`
+        : `- #${a.issue} ${es ? 'rama atrasada por' : 'branch behind the base by'} ${a.behind}`);
+    });
   }
   return lines.join('\n');
 }

@@ -99,3 +99,18 @@ When `qa.rules_from` names a file, or a list of files, the QA agent SHALL read e
 #### Scenario: Validated configuration
 - **WHEN** a configuration with the legacy `platform: flutter-android` is validated
 - **THEN** the result has `platforms` with one entry and the commands read `platforms`, never `platform`
+
+### Requirement: Linked repositories setting
+`relevo.yml` SHALL support `links`, a list of `owner/repo` names (default: empty). A malformed name or a repeated one SHALL fail validation naming the entry.
+
+#### Scenario: Valid list
+- **WHEN** `links` is `[acme/api, acme/design]`
+- **THEN** validation passes and both are linked
+
+#### Scenario: Malformed name
+- **WHEN** `links` contains `acme` or `acme/api/extra`
+- **THEN** validation fails and says the form is `owner/repo`
+
+#### Scenario: Repeated name
+- **WHEN** `links` lists `acme/api` twice
+- **THEN** validation fails naming `acme/api`

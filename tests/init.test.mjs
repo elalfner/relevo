@@ -262,3 +262,61 @@ test('init reminds about the read-only secret by name only, and only when there 
   const done = planInit({ facts: { ...facts, secrets: ['RELEVO_LINKS_TOKEN'] }, answers: { ...ANSWERS, links: ['acme/api'] }, templates, current: empty(), admin: true }).find((i) => i.id === 'manual.links-token');
   assert.equal(done.status, 'ok');
 });
+
+// ---------- where go runs
+
+import { CREDENTIALS, RUNS, credentialLine } from '../scripts/lib/init.mjs';
+
+const goTemplate = workflows['relevo-go.yml'];
+const wf = (items, file) => items.find((i) => i.id === `workflow.${file}`);
+const factsFor = (over = {}) => ({ configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: [], ...over });
+const planWith = (answers, facts = factsFor()) => planInit({ facts, answers: { ...ANSWERS, ...answers }, templates, current: empty(), admin: true });
+
+test('the credential line is switched on the real template, and the API key is the default', () => {
+  assert.match(goTemplate, /^ {10}anthropic_api_key: /m);
+  assert.equal(credentialLine(goTemplate, 'api_key'), goTemplate);
+  const sub = credentialLine(goTemplate, 'subscription');
+  assert.match(sub, /^ {10}claude_code_oauth_token: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}/m);
+  assert.match(sub, /^ {10}# anthropic_api_key: /m);
+  assert.doesNotMatch(sub, /^ {10}anthropic_api_key: /m);
+  assert.throws(() => credentialLine('nothing to switch', 'subscription'), /no credential lines to switch/);
+  assert.deepEqual([RUNS, CREDENTIALS], [['cloud', 'local', 'both'], ['api_key', 'subscription']]);
+});
+
+test('Scenario: Subscription in the cloud - the workflow uses the token, concurrent_agents is 1, and the secret is only reminded by name', () => {
+  const items = planWith({ runs: 'cloud', credential: 'subscription' });
+  assert.match(wf(items, 'relevo-go.yml').content, /^ {10}claude_code_oauth_token:/m);
+  const secret = items.find((i) => i.id === 'manual.api-key');
+  assert.equal(secret.status, 'manual');
+  assert.match(secret.description, /claude setup-token.*store it yourself as the secret CLAUDE_CODE_OAUTH_TOKEN; init never reads or writes it/);
+  assert.match(secret.description, /Anthropic terms on automated use of a subscription/);
+  assert.doesNotMatch(secret.description, /sk-ant|ghp_|github_pat_/);
+  assert.equal(loadConfig(renderConfig(template, { ...ANSWERS, credential: 'subscription' })).config.limits.concurrent_agents, 1);
+  assert.equal(loadConfig(renderConfig(template, { ...ANSWERS, credential: 'subscription', concurrentAgents: 2 })).config.limits.concurrent_agents, 2);
+  assert.equal(loadConfig(renderConfig(template, ANSWERS)).config.limits.concurrent_agents, 3, 'an API key keeps the default');
+});
+
+test('Scenario: Local only - the go and queue workflows are not added and the plan says how to build', () => {
+  const items = planWith({ runs: 'local' });
+  assert.equal(wf(items, 'relevo-go.yml'), undefined);
+  assert.equal(wf(items, 'relevo-queue.yml'), undefined);
+  assert.equal(wf(items, 'relevo-review.yml').status, 'todo', 'the workflows that do not use the model are still added');
+  assert.match(items.find((i) => i.id === 'execution').description, /Run \/relevo:go <n>, or node scripts\/go-local\.mjs <n>/);
+  assert.equal(items.find((i) => i.id === 'manual.api-key').status, 'ok');
+});
+
+test('Scenario: Default - both with an API key: every workflow, the API key line, and a reminder for ANTHROPIC_API_KEY', () => {
+  const items = planWith({});
+  assert.equal(wf(items, 'relevo-go.yml').content, goTemplate);
+  assert.equal(wf(items, 'relevo-queue.yml').status, 'todo');
+  assert.equal(items.some((i) => i.id === 'execution'), false);
+  assert.match(items.find((i) => i.id === 'manual.api-key').description, /Anthropic Console.*secret ANTHROPIC_API_KEY/);
+});
+
+test('an installed workflow for the chosen credential is up to date, and an invalid answer is refused', () => {
+  const current = { ...empty(), workflows: { ...empty().workflows, 'relevo-go.yml': credentialLine(goTemplate, 'subscription') } };
+  const items = planInit({ facts: factsFor(), answers: { ...ANSWERS, credential: 'subscription' }, templates, current, admin: true });
+  assert.equal(wf(items, 'relevo-go.yml').status, 'ok');
+  assert.throws(() => planWith({ runs: 'moon' }), /runs must be one of cloud, local, both/);
+  assert.throws(() => planWith({ credential: 'cash' }), /credential must be one of api_key, subscription/);
+});

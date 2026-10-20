@@ -121,3 +121,26 @@ test('Scenario: Blocked by another repository - go-plan prints the block naming 
   assert.equal(waiting.printed.decisions[0].reason, 'waiting for acme/api#12');
   assert.equal(run({ completedExternal: ['acme/api#12'] }).out.action, 'start');
 });
+
+test('Scenario: No credential - a start becomes local: nothing claimed, the issue keeps ready, one comment says what to do', () => {
+  const run = (extra, over) => {
+    const input = join(dir, `state-${Math.random().toString(36).slice(2)}.json`);
+    const out = join(dir, `out-${Math.random().toString(36).slice(2)}.txt`);
+    writeFileSync(input, JSON.stringify(state(over)));
+    const r = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7', '--github-output', out, ...extra], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return { printed: JSON.parse(r.stdout), out: parse(readFileSync(out, 'utf8')) };
+  };
+  const without = run(['--credential', 'false']);
+  assert.equal(without.out.action, 'local');
+  const d = without.printed.decisions[0];
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.equal(d.comment.kind, 'cloud_not_configured');
+  assert.equal(d.comment.data.actor, 'persona-a');
+  assert.deepEqual([without.out.platform, without.out.stack, without.out.path], ['', '', ''], 'the build job gets nothing to start');
+  assert.deepEqual(without.printed.summary, { local: 1 });
+  assert.equal(run(['--credential', 'true']).out.action, 'start', 'with a credential nothing changes');
+  assert.equal(run([]).out.action, 'start');
+  // Every other decision is applied as usual.
+  assert.equal(run(['--credential', 'false'], { milestone: null }).out.action, 'no-milestone');
+});

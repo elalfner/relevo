@@ -27,6 +27,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |
 | `limits.run_max_turns` | turnos por ejecución sin supervisión | 100 |
+| `limits.building_alert_hours` | horas sin actividad antes de reportar como atascado un issue en `building` ([Dónde corre `go`](execution.es.md)) | 3 |
 | `limits.run_max_cost` | **obligatorio**: dólares por ejecución sin supervisión; elige el tuyo | 5 |
 | `qa.retries` | intentos del desarrollador después de que QA rechaza | 1 |
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |

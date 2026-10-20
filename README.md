@@ -66,6 +66,7 @@ Plus `/relevo:status` (who is waiting on what) and `/relevo:doctor` (checks your
 - [Commands](docs/commands.md): the nine commands, and the skills that `think` uses.
 - [Configuration](docs/configuration.md): the `relevo.yml` file.
 - [Stacks and platforms](docs/stacks.md): declare your platforms and add your own rules.
+- [Where `go` runs](docs/execution.md): the cloud, your machine or both, and the two credentials.
 - [All the documentation](docs/README.md): reference, how it was built, and the brand.
 
 ## Acknowledgements

@@ -6,6 +6,11 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Added
 
+- **Where `go` builds** is derived, not configured: from the workflows that are installed, the model secret that exists and the new repository variable `RELEVO_CLOUD_GO` (`off` pauses the cloud at once, with no pull request; the queue pauses with it). A cloud without a credential no longer fails: the issue stays `ready` and a comment says to run `/relevo:go <n>` on a machine or to add the secret. See [Where `go` runs](docs/execution.md).
+- **`go-local.mjs <issue>`** (and `/relevo:go <n> --local`) builds an issue on a person's machine, in a separate git worktree, with the same turn and cost limits and the same closed tool lists as the workflow (written once in `scripts/lib/run-flags.mjs` and compared with the template by a test).
+- **Two credentials**: `doctor` deduces `api_key` or `subscription` from the secret name, warns when both exist, shows the state of the pause variable, reminds to read Anthropic's current terms for a subscription, and warns when a subscription is used with more than one concurrent agent. `init` asks where `go` runs and with which credential, switches the credential line of the workflow and sets `concurrent_agents` to 1 for a subscription.
+- **After each cloud run** a comment gives the turns, the cost (notional with a subscription) and the tokens read from the agent's execution log, when it has them; a run that stopped at a usage limit or an empty credit says so and tells you to label the issue `ready` again later. The log format and the limit messages are not documented, so both readers are tolerant and say nothing when unsure.
+- **`status`** lists the `ready` issues assigned to you with `/relevo:go <n>` when the cloud is not building, and alerts about an issue stuck on `building` (`limits.building_alert_hours`, default 3).
 - **Dependencies between repositories**: `Depends-on: owner/repo#N` names an issue of another repository, and the new `links` setting of `relevo.yml` is the closed list of repositories an issue may depend on. The gate waits until the other issue is closed as completed, notices on the queue's schedule, and reads private repositories with a read-only token stored as the secret `RELEVO_LINKS_TOKEN` (public ones need none). An issue that names a repository outside `links`, or whose dependency cannot be read, says so instead of building.
 - **`status`, `doctor` and `init` know the links**: `status` shows what a blocked issue waits for in another repository and its state; `doctor` checks that each linked repository can be read and that the secret exists (its name only); `init` asks for `links` and reminds about the secret.
 - **`issue` drafts the other side**: when a feature depends on work in a linked repository it drafts that issue, shows it whole, creates it there only if asked, and offers to reuse the `## Data contract` of the issue it depends on.
@@ -21,6 +26,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Changed
 
+- **`doctor` no longer fails when no model secret exists**: the cloud cannot build, but a local build can, so it warns. Copy the `go` and queue workflows again to get the pause variable, the credential check and the new report steps.
 - **`Depends-on: acme/api#12` is no longer read as issue 12 of this repository.** Until now every `#number` of a `Depends-on:` line was taken as local, which could unblock the wrong issue. Copy the workflows again to get `GH_LINKS_TOKEN` in the gate and the queue.
 - **`go` with several platforms** builds the platform the issue names instead of refusing; an issue that does not name a valid platform goes to `needs-spec` with the list of platforms. The decision `platform` and its message of the previous release are gone.
 - **`fix` commits through `commit-change.mjs`** (protected paths, scan and the platform folder in one step) instead of staging and scanning by hand.

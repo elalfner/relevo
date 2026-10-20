@@ -90,7 +90,10 @@ test('the go workflow uses only documented inputs of the action and none of the 
   const start = activeLines.findIndex((l) => /uses: anthropics\/claude-code-action@v1/.test(l));
   assert.ok(start !== -1);
   const withIdx = activeLines.findIndex((l, i) => i > start && /^\s+with:\s*$/.test(l));
-  const inputs = activeLines.slice(withIdx + 1).map((l) => /^ {10}([a-z_]+):/.exec(l)?.[1]).filter(Boolean);
+  // The inputs of the action end where the next step of the job begins.
+  const rest = activeLines.slice(withIdx + 1);
+  const end = rest.findIndex((l) => /^ {6}- /.test(l));
+  const inputs = (end === -1 ? rest : rest.slice(0, end)).map((l) => /^ {10}([a-z_]+):/.exec(l)?.[1]).filter(Boolean);
   assert.ok(inputs.length >= 5);
   inputs.forEach((i) => assert.ok(DOCUMENTED.has(i), `input "${i}" is not in the verified list`));
   DEPRECATED.forEach((d) => assert.ok(!inputs.includes(d), `deprecated input "${d}"`));
