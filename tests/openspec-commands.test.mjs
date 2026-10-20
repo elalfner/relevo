@@ -49,13 +49,14 @@ test('the agents use only their own lists', () => {
   });
 });
 
-test('think and issue use only their own read-only lists', () => {
-  ['think', 'issue'].forEach((part) => {
-    const files = part === 'issue' ? ['skills/issue/SKILL.md', 'skills/issue/references/update.md'] : ['skills/think/SKILL.md'];
+test('think, issue and review use only their own read-only lists', () => {
+  ['think', 'issue', 'review'].forEach((part) => {
+    const files = { issue: ['skills/issue/SKILL.md', 'skills/issue/references/update.md'], think: ['skills/think/SKILL.md'], review: ['skills/review/SKILL.md'] }[part];
     files.forEach((f) => commandsIn(read(f).replace(/## 1\. Check the skills first[\s\S]*?\n## 2\./, '## 2.')).forEach(({ line, tokens }) => {
       if (/\b(never|do not|Do not|Never)\b/.test(line)) return;
       assert.ok(isAllowed(part, tokens), `${part} uses "openspec ${tokens.join(' ')}" in ${f}, which is not on its list`);
     }));
   });
   assert.deepEqual(OPENSPEC_COMMANDS.think, ['list', 'show', 'status']);
+  assert.deepEqual(OPENSPEC_COMMANDS.review, ['list']);
 });

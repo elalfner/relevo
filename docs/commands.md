@@ -26,6 +26,17 @@ Distributed as a Claude Code plugin named `relevo`:
 - Before drafting, `/relevo:issue` searches the open issues for similar ones.
 - `/relevo:review` begins with a short brief (what was asked, the outcome, what to check first) computed from the issue.
 
+## What `review` checks
+
+`review` is where a person closes the loop, so its guards do not pass by accident.
+
+- **An empty log proves nothing.** If the device log is empty, or none of its lines was written by the app, the audit says `REVIEW INCONCLUSIVE`. It is not a pass and it cannot be waived: start the app again, repeat the steps and audit once more.
+- **You can accept a known finding, in writing.** `waive <number> <reason>` is yours alone; the agent never suggests it. When every finding is waived the verdict reads `REVIEW PASSED (with waivers)` and the pull request body lists them with your reasons. A finding you did not waive still blocks, and waivers are cleared if a fix changes the specification.
+- **The log is kept as you test**, so a long review does not lose lines to the device's buffer.
+- **A micro-fix is a commit** before the pull request opens.
+- **It tests the current code**: it brings in the remote branch before it merges the base, and it asks you to confirm in writing if you are not the assignee.
+- **No second pull request**: an existing one for the branch is reused, and a rejected push stops with the reason.
+
 ## What `fix` and `ship` check
 
 `fix` and `ship` change a branch after a person has looked at it, so scripts hold what must not vary.

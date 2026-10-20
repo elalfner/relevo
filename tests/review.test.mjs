@@ -365,12 +365,15 @@ test('an error written by the app under review is still found', () => {
   assert.equal(auditLog(text).verdict, 'REVIEW REJECTED');
 });
 
-test('Scenario: The application process is not in the log - the whole log is audited and the report says so', () => {
+test('Scenario: The application process is not in the log - the verdict is inconclusive and the report says why', () => {
   const log = '10-14 12:00:03.000  7777  7777 E flutter : Unhandled Exception: other app crashed';
   const { text, scope } = filterByApp(log, { package: APP });
   assert.equal(text, log);
   assert.deepEqual(scope.pids, []);
-  assert.match(auditReport(auditLog(text), { scope }), /whole device log.*not found/);
+  const audit = auditLog(text, { scope });
+  assert.equal(audit.verdict, 'REVIEW INCONCLUSIVE');
+  assert.match(auditReport(audit, { scope }), /proves nothing: no line of the log was written by com\.example\.counter.*cannot be waived/);
+  assert.ok(!auditReport(audit, { scope }).includes('other app crashed'), 'a foreign line is never quoted');
 });
 
 test('process ids come from the log, from crash headers and from --pid, in both logcat formats', () => {
@@ -381,4 +384,53 @@ test('process ids come from the log, from crash headers and from --pid, in both 
   const { scope } = filterByApp('10-14 12:00:00.000  55  55 E flutter : Unhandled Exception: x', { package: APP, pids: ['55'] });
   assert.deepEqual(scope.pids, [55]);
   assert.deepEqual(pidsForPackage(`Start proc 1:${APP}.other/u0`, APP), [], 'a different package that starts with the same prefix is not the app');
+});
+
+// ---------- review-hardening: an audit without evidence is not a pass
+
+test('Scenario: Empty log - the verdict is inconclusive, not a pass', () => {
+  ['', '   \n\n', undefined].forEach((log) => {
+    const a = auditLog(log);
+    assert.equal(a.verdict, 'REVIEW INCONCLUSIVE');
+    assert.match(a.reason, /empty/);
+    assert.deepEqual(a.findings, []);
+  });
+});
+
+test('Scenario: Only other apps in the log - inconclusive, and the person is told to restart the app', () => {
+  const { text, scope } = filterByApp('10-14 12:00:03.000  7777  7777 I Other : hello', { package: APP });
+  const a = auditLog(text, { scope });
+  assert.equal(a.verdict, 'REVIEW INCONCLUSIVE');
+  assert.match(a.reason, /restart the app and repeat the steps/);
+});
+
+test('an app log without errors still passes, and so does a non-empty log when no application id is known', () => {
+  const { text, scope } = filterByApp(MIXED, { package: APP });
+  assert.equal(auditLog(text, { scope }).verdict, 'REVIEW PASSED');
+  assert.equal(auditLog('I/flutter ( 1): fine\n').verdict, 'REVIEW PASSED');
+});
+
+test('Scenario: Inconclusive audit - decide refuses it with its own reason, and the CLI stores it', () => {
+  const state = twoItems();
+  setItem(state, 1, 'ok');
+  setItem(state, 2, 'ok');
+  state.agreed = true;
+  state.audit = { verdict: 'REVIEW INCONCLUSIVE', counts: {}, findings: [] };
+  const d = decidePr(state);
+  assert.equal(d.open, false);
+  assert.match(d.reasons.join(' '), /inconclusive/);
+  assert.doesNotMatch(d.reasons.join(' '), /found problems/);
+
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
+  const file = join(dir, 'evidence', 'review-state.json');
+  const run = (input, ...args) => spawnSync('node', [CLI('review-state.mjs'), ...args, '--state', file], { input, encoding: 'utf8' });
+  mkdirSync(join(dir, 'change', 'specs', 'cap'), { recursive: true });
+  writeFileSync(join(dir, 'change', 'specs', 'cap', 'spec.md'), SPEC);
+  run('', 'init', join(dir, 'change'));
+  const r = run('10-14 12:00:03.000  7777  7777 I Other : hello', 'audit', '--package', APP);
+  assert.match(r.stdout, /REVIEW INCONCLUSIVE/);
+  assert.match(r.stdout, /no line of the log was written by com\.example\.counter/);
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).audit.verdict, 'REVIEW INCONCLUSIVE');
+  assert.equal(run('', 'decide').status, 1);
+  assert.equal(run('', 'audit').stdout.split('\n')[0], 'REVIEW INCONCLUSIVE', 'an empty stdin without a package is inconclusive too');
 });

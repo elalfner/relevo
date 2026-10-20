@@ -134,6 +134,12 @@ Not run in the cloud: a dependency that cannot be read (no token), a repository 
 - Writing the draft showed why `Code pointers` say "check before trusting": the pointer I first wrote (`lib/screens/counter_screen.dart`) does not exist in the sandbox; the parity text is built in `lib/main.dart`.
 - Not tried: a cloud build of a v2 issue, which needs this change on `main` (label events run the workflows of the default branch, and the plugin is installed from it); `QA` rejecting a broken decision by id; `think` in two moments and `think #n` and the `ready` offer, which are skill behaviour that needs a live conversation.
 
+## `review` hardening (task 3.3 of `review-hardening`)
+
+- Run through `review-state.mjs` on logcat-format samples (both `threadtime` lines and a process start line): an empty log, a log of another app only and a log of the app with no error gave `REVIEW INCONCLUSIVE`, `REVIEW INCONCLUSIVE` and `REVIEW PASSED`; an app log with an unhandled exception and a layout overflow gave `REVIEW REJECTED` with the findings numbered; waiving one then both with a reason gave `REVIEW REJECTED` and then `REVIEW PASSED (with waivers)`, and `decide` accepted it; `waived` printed the section for the pull request body and `sync` cleared the waivers.
+- Before this change the same empty log gave `REVIEW PASSED` and a log without the app's process was audited as a whole, which is what R1 found by running `auditLog('')`.
+- Not tried: the circular buffer of a real device (so it is not known how many lines a long review loses without `drain`), `adb` itself (none here), `review-who.mjs` against `gh api user` (the GitHub command line was not logged in), and a real pull request found or reused by the lookup.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

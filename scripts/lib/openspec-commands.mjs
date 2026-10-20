@@ -13,6 +13,8 @@ export const OPENSPEC_COMMANDS = {
   // `think` and `issue` only read: the specifications and the changes that exist.
   think: ['list', 'show', 'status'],
   issue: ['list', 'show'],
+  // `review` only finds the change folder.
+  review: ['list'],
 };
 
 /** Subcommands that no unattended run may use, whatever the list says. */
@@ -35,7 +37,7 @@ export function openspecSubcommand(tokens) {
   return first;
 }
 
-/** Is the command (the tokens after `openspec`) allowed for `part` (`go`, `dev`, `qa`, `think` or `issue`)? */
+/** Is the command (the tokens after `openspec`) allowed for `part` (`go`, `dev`, `qa`, `think`, `issue` or `review`)? */
 export function isAllowed(part, tokens) {
   const sub = openspecSubcommand(tokens);
   return Boolean(sub) && (OPENSPEC_COMMANDS[part] ?? []).includes(sub);

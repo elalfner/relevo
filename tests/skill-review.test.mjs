@@ -90,9 +90,8 @@ test('the skill mentions neither private sources nor personal data', () => {
 
 test('Scenario: Another app logs an error - the audit is limited to the app under review', () => {
   assert.match(body, /app-id\.mjs/);
-  assert.match(body, /audit --package "\$package"/);
+  assert.match(body, /audit --accumulated --package "\$package"/);
   assert.match(body, /ask the person to start the app, or restart it/i);
-  assert.match(body, /may hold other apps' data/);
 });
 
 test('Scenario: QA after the sync - review finds the platform again and gives QA the profile and the folder', () => {
@@ -111,4 +110,62 @@ test('Scenario: Brief shown first - the review shows the computed brief before t
   assert.match(body, /computed and not written by you/);
   assert.match(body, /Show them as they are/);
   assert.ok(existsSync(root('scripts/review-brief.mjs')));
+});
+
+// ---------- review-hardening
+
+test('Scenario: Empty log / Only other apps - inconclusive is not a pass, cannot be waived, and the person repeats the steps', () => {
+  assert.match(body, /`REVIEW INCONCLUSIVE`/);
+  assert.match(body, /it proves nothing, it is not a pass and it cannot be waived/);
+  assert.match(body, /Ask the person to start the app again, repeat the steps, and audit once more/);
+  assert.doesNotMatch(body, /may hold other apps' data/);
+});
+
+test('Scenario: Waiver with a reason - the waiver is the person\'s, the agent never proposes one', () => {
+  assert.match(body, /Never waive a finding, and never suggest or hint that one could be waived/);
+  assert.match(body, /`waive <number> <reason>`: the person's decision/);
+  assert.match(body, /review-state\.mjs waive <number> <reason>/);
+  assert.match(body, /`REVIEW PASSED \(with waivers\)`/);
+  assert.match(body, /review-state\.mjs waived/);
+  assert.ok(body.indexOf('review-state.mjs waived') > body.indexOf('Write the body to a file'), 'the waived section goes into the pull request body');
+});
+
+test('Scenario: Micro-fix accepted - the fix is committed through the script before the audit repeats', () => {
+  const commit = body.indexOf('commit-change.mjs --message "fix: <summary> (#$ARGUMENTS)"');
+  assert.ok(commit > 0);
+  assert.ok(commit < body.indexOf('ask the person to restart the app and repeat the affected steps'));
+  assert.match(body, /it stages exactly those files, scans them and refuses on a finding/);
+});
+
+test('Scenario: Long review - the log is drained after every message and the audit reads what was kept', () => {
+  assert.match(body, /After \*\*each\*\* message of the person/);
+  assert.match(body, /logcat -d -v threadtime \| node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/review-state\.mjs drain/);
+  assert.match(body, /audit --accumulated/);
+  const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
+  assert.ok(source.includes("case 'drain'") && source.includes("'--accumulated'") && source.includes("case 'waive'") && source.includes("case 'waived'"));
+});
+
+test('Scenario: Someone else runs the review - the assignee is compared with the login and a written confirmation is asked', () => {
+  assert.match(body, /review-who\.mjs --assignee/);
+  assert.match(body, /gh api user --jq \.login/);
+  assert.match(body, /ask the person for a written confirmation that they are reviewing it themselves/);
+  assert.ok(existsSync(root('scripts/review-who.mjs')));
+});
+
+test('Scenario: Branch pushed from another machine - the branch is pulled before the base is merged, and a divergence stops it', () => {
+  const pull = body.indexOf('git pull --ff-only origin <branch>');
+  assert.ok(pull > 0 && pull < body.indexOf('git merge --no-edit origin/<base>'));
+  assert.match(body, /never rebase, reset or force anything/);
+});
+
+test('Scenario: Pull request already open / Push rejected - the lookup comes before gh pr create, and nothing is forced', () => {
+  const lookup = body.indexOf('gh pr list --head <branch> --state open --json number,url');
+  assert.ok(lookup > 0 && lookup < body.indexOf('gh pr create --base <base>'));
+  assert.match(body, /If `git push` was rejected, stop/);
+  assert.match(body, /never a force-push/);
+  assert.doesNotMatch(body, /git push[^\n]*--force/);
+});
+
+test('the change folder comes from openspec list, which is on the closed list of review', () => {
+  assert.match(body, /`openspec list --json` names that starts with `\$ARGUMENTS-`/);
 });
