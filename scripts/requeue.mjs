@@ -2,7 +2,7 @@
 // Re-evaluates the queue. Carries out every decision except `start` (labels, comments) and prints
 // which issues may start now, so a workflow can dispatch one build run for each.
 //
-//   node scripts/requeue.mjs --repo owner/name [--config relevo.yml] [--dry-run]
+//   node scripts/requeue.mjs --repo owner/name [--config relevo.yml] [--dry-run] [--credential false]
 //   node scripts/requeue.mjs --input state.json [--config relevo.yml]
 //   prints {"start":[12,15],"summary":{...}}
 //   exit 0: evaluated   exit 2: invalid or missing configuration, or bad arguments
@@ -49,4 +49,5 @@ decisions.forEach((d) => {
 });
 const dry = process.argv.includes('--dry-run') || Boolean(arg('input'));
 if (!dry) applyDecisions(decisions, { gh: realGh, repo, config });
-console.log(JSON.stringify({ start: startable(decisions), summary }));
+// Without a model credential the cloud cannot build, so nothing is dispatched (and nothing would be commented again every run).
+console.log(JSON.stringify({ start: arg('credential') === 'false' ? [] : startable(decisions), summary }));

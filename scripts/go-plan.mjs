@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Plans what `go` should do. Reads GitHub (or a JSON file), prints the decisions as JSON.
 //
-//   node scripts/go-plan.mjs --repo owner/name [--config relevo.yml] [--running 12,13] [--only 31] [--apply] [--claim] [--github-output file]
+//   node scripts/go-plan.mjs --repo owner/name [--config relevo.yml] [--credential false] [--running 12,13] [--only 31] [--apply] [--claim] [--github-output file]
 //   node scripts/go-plan.mjs --input state.json  [--config relevo.yml]
 //
 // --only N  keeps only the decision for issue N (the whole queue is still planned, so limits stay correct).
@@ -18,7 +18,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
-import { planGo } from './lib/plan.mjs';
+import { planGo, withoutCredential } from './lib/plan.mjs';
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -49,6 +49,12 @@ if (arg('input')) {
 }
 
 const result = planGo({ config, repo, ...state });
+// `--credential false`: the workflow found no model credential, so nothing may be claimed for a cloud build.
+if (arg('credential') === 'false') {
+  result.decisions = withoutCredential(result.decisions, state.issues);
+  result.summary = {};
+  result.decisions.forEach((d) => { result.summary[d.action] = (result.summary[d.action] ?? 0) + 1; });
+}
 
 const only = arg('only') ? Number(arg('only')) : null;
 if (only !== null) {

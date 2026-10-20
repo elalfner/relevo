@@ -27,6 +27,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `limits.concurrent_agents` | unattended runs at the same time | 3 |
 | `limits.review_sla_hours` | hours before a reminder, and the same time again before escalation | 8 |
 | `limits.run_max_turns` | turns per unattended run | 100 |
+| `limits.building_alert_hours` | hours without activity before an issue on `building` is reported as stuck ([Where `go` runs](execution.md)) | 3 |
 | `limits.run_max_cost` | **required**: US dollars per unattended run; choose your own | 5 |
 | `qa.retries` | developer attempts after QA rejects | 1 |
 | `qa.rules_from` | project rules QA reads at every run: one file or a list | `CLAUDE.md` |

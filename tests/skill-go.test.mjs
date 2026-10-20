@@ -18,7 +18,7 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 test('frontmatter uses only documented fields', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
   assert.equal(meta.name, 'go');
-  assert.equal(meta['argument-hint'], '[issue-number] [--decision <base64>]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--decision <base64>]');
 });
 
 test('go pushes code and spends money, so Claude can never start it on its own', () => {
@@ -148,4 +148,18 @@ test('Scenario: Monorepo - go reads the platform from the decision, passes it on
   assert.doesNotMatch(body, /`platform`, `skip`/, 'the decision platform of the previous change is gone');
   const wrapper = readFileSync(root('scripts/commit-change.mjs'), 'utf8');
   ['within', 'change'].forEach((f) => assert.ok(wrapper.includes(`'${f}'`), `commit-change does not implement --${f}`));
+});
+
+test('Scenario: the skill says where it runs - in the cloud with a decision, or on a machine with go-local.mjs in its own worktree', () => {
+  assert.match(body, /## Where it runs/);
+  assert.match(body, /scripts\/go-local\.mjs <issue>/);
+  assert.match(body, /separate git worktree, with the same limits and tool lists as the workflow/);
+  assert.match(body, /Started by hand without that script, it needs a clean working tree/);
+  assert.ok(existsSync(root('scripts/go-local.mjs')));
+});
+
+test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does not build in the session', () => {
+  assert.match(body, /\*\*When `\$ARGUMENTS` has `--local`\*\*, do not build in this session: run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`/);
+  assert.match(body, /show what it prints, and stop/);
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--decision <base64>]');
 });

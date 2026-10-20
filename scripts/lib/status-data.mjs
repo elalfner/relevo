@@ -4,6 +4,7 @@
 import { issueFromBranch } from './branch.mjs';
 import { LABELS, resolveLabelNames } from './labels.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
+import { cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 
 const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
@@ -14,7 +15,7 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
     paged(gh, `repos/${repo}/issues?state=open&per_page=100&labels=${encodeURIComponent(names[l.key])}`)
       .filter((i) => !i.pull_request)
       .forEach((i) => byNumber.set(i.number, {
-        number: i.number, title: i.title, labels: i.labels.map((x) => (typeof x === 'string' ? x : x.name)),
+        number: i.number, title: i.title, updated_at: i.updated_at ?? null, labels: i.labels.map((x) => (typeof x === 'string' ? x : x.name)),
         assignees: (i.assignees ?? []).map((a) => a.login), milestone: i.milestone?.number ?? null,
         // Only blocked issues need their text: it names what they wait for in other repositories.
         ...(i.labels.some((x) => (typeof x === 'string' ? x : x.name) === names.blocked) ? { body: i.body ?? '' } : {}),
@@ -53,7 +54,7 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
       approved: approvedBy.length > 0, behind_by: behind,
     });
   });
-  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }) };
+  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }), cloudBuilds: readCloudBuilds({ gh, repo }) };
 }
 
 /**
@@ -82,4 +83,27 @@ function readExternalBlocks({ ghLinks, issues, repo, config, names }) {
     if (waits.length) out[i.number] = waits;
   });
   return out;
+}
+
+/**
+ * Does the cloud build? The go workflow is on the default branch and the repository variable that pauses the cloud
+ * is not `off`. When the workflow cannot be read the answer is `true` (the cautious one: no extra rows, no claim
+ * that a person must build by hand).
+ */
+function readCloudBuilds({ gh, repo }) {
+  let workflowPresent;
+  try {
+    gh(['api', `repos/${repo}/contents/.github/workflows/relevo-go.yml`]);
+    workflowPresent = true;
+  } catch (err) {
+    if (!/404|Not Found/i.test(String(err.stderr ?? err.message ?? err))) return true;
+    workflowPresent = false;
+  }
+  let variable = null;
+  try {
+    variable = JSON.parse(gh(['api', `repos/${repo}/actions/variables/${CLOUD_VARIABLE}`])).value ?? null;
+  } catch {
+    variable = null;
+  }
+  return cloudBuilds({ workflowPresent, variable });
 }

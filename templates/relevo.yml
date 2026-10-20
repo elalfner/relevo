@@ -32,6 +32,7 @@ limits:
   concurrent_agents: 3             # unattended runs at the same time
   review_sla_hours: 8              # reminder, then escalation after the same time again
   run_max_turns: 100               # per unattended run
+  building_alert_hours: 3          # hours without activity before an issue on `building` is reported as stuck
   run_max_cost: 5                  # REQUIRED: US dollars per unattended run; choose your own
 
 qa:
