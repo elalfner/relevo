@@ -19,7 +19,7 @@ test('the template documents every supported setting', () => {
   const text = readFileSync(TEMPLATE, 'utf8');
   ['base:', 'release:', 'tracker:', 'git_provider:', 'platforms:', 'links:', 'building_alert_hours:', 'members:', 'spec_writer:', 'approvers:', 'mode:', 'merger:', 'autopilot:', 'allowed_origins:',
     'built_unreviewed_per_person:', 'concurrent_agents:', 'review_sla_hours:', 'run_max_turns:', 'run_max_cost:', 'retries:',
-    'rules_from:', 'policy:', 'language:', 'trust:', 'labels:'].forEach((key) => assert.ok(text.includes(key), `template is missing ${key}`));
+    'rules_from:', 'policy:', 'language:', 'trust:', 'labels:', 'images:'].forEach((key) => assert.ok(text.includes(key), `template is missing ${key}`));
 });
 
 test('Scenario: Missing configuration - the CLI stops and tells the user to run /relevo:init', () => {

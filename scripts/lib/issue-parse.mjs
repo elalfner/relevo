@@ -3,6 +3,9 @@
 
 import { section } from './issue-sections.mjs';
 
+export const ATTACHMENT_HOSTS = ['github.com', 'user-images.githubusercontent.com', 'private-user-images.githubusercontent.com'];
+export const MAX_REFERENCES = 5;
+
 const FENCE_RE = /^\s*(```|~~~)/;
 const HEADING_RE = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 const BULLET_RE = /^\s*(?:[-*+]|\d+[.)])\s+\S/;
@@ -25,6 +28,60 @@ function withoutCode(body) {
     if (!inFence) out.push(line);
   });
   return out;
+}
+
+/**
+ * The "Design reference" section: a bullet per reference, `- <target>: <what must match>`, plus fenced example code.
+ * <target> is a backticked path of the repository, a backticked owner/repo:path of a linked repository, or a link.
+ * Returns { present, references: [{ kind, target, repo?, path?, allowed?, match }], code, problems }.
+ */
+export function parseDesign(body) {
+  const found = section(body, 'Design reference');
+  if (!found) return { present: false, references: [], code: 0, problems: [] };
+  let code = 0;
+  let inFence = false;
+  const references = [];
+  const problems = [];
+  found.text.split('\n').forEach((line) => {
+    if (FENCE_RE.test(line)) {
+      if (!inFence) code += 1;
+      inFence = !inFence;
+      return;
+    }
+    if (inFence || !/^\s*[-*+]\s+/.test(line)) return;
+    const bullet = line.replace(/^\s*[-*+]\s+/, '').trim();
+    const tick = bullet.match(/^`([^`]+)`\s*(?::\s*(.*))?$/);
+    const link = bullet.match(/^<?(https?:\/\/[^\s>]+?)>?\s*(?::\s+(.*))?$/);
+    const m = tick ?? link;
+    if (!m) {
+      problems.push(`"${bullet.slice(0, 60)}" is not a reference: write \`path\`: what must match`);
+      return;
+    }
+    const target = m[1].trim();
+    const match = (m[2] ?? '').trim();
+    const ref = { target, match };
+    if (/^https?:\/\//.test(target)) {
+      let host = '';
+      try {
+        host = new URL(target).hostname;
+      } catch { /* not a URL */ }
+      const ok = ATTACHMENT_HOSTS.includes(host) && (host !== 'github.com' || new URL(target).pathname.startsWith('/user-attachments/'));
+      Object.assign(ref, { kind: 'attachment', allowed: ok });
+    } else if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+:[^\s]+$/.test(target)) {
+      const [repo, ...rest] = target.split(':');
+      Object.assign(ref, { kind: 'repo-file', repo, path: rest.join(':') });
+    } else {
+      Object.assign(ref, { kind: 'path', path: target });
+    }
+    const path = ref.path;
+    if (path !== undefined && (path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.split(/[\\/]/).includes('..'))) {
+      problems.push(`"${target}" leaves the repository: use a path inside it`);
+      return;
+    }
+    if (match === '') problems.push(`"${target}" does not say what must match (structure, spacing, typography, colour, states)`);
+    references.push(ref);
+  });
+  return { present: true, references, code, problems };
 }
 
 /**
@@ -132,5 +189,6 @@ export function parseIssueBody(body) {
   if (scenarios === 0) missing.push('scenarios written as WHEN/THEN pairs');
   if (edgeCases === 0) missing.push('edge cases (a list under an "Edge cases" heading)');
 
-  return { scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
+  const design = parseDesign(body);
+  return { design, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
 }

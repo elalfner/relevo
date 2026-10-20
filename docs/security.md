@@ -19,6 +19,7 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 | A secret or a temporary marker reaches a commit | the diff is scanned before every commit and push (`scan-diff.mjs`) and the commit is aborted on a match | a script |
 | A run spends without limit | every run has turn and cost limits (`limits.run_max_turns`, `limits.run_max_cost`), and a run that reaches one stops | the runner |
 | Text from a linked repository carries instructions | it is read as data, with a read-only token (`RELEVO_LINKS_TOKEN`) | the runner, and a closed list of repositories |
+| A picture in an issue shows customer data to the model, or a download goes somewhere it should not | pasted pictures are downloaded only when `design.images` is on; a script, not the agent, downloads them, from the GitHub attachment domains and linked repositories only, with size and type limits and the token sent only to GitHub; the files stay out of git | a script |
 | A driven review reaches a site it should not | the agent's browser is clean and can reach only `localhost`, the page under review and `review.allowed_origins`, and test credentials are passed by variable name and redacted | a script |
 
 ## What it does not protect

@@ -123,6 +123,24 @@ Discarded: sort by date (nobody asked for it).
 - `Related: #14, #15` lists issues of the same idea. It only informs; `Depends-on:` is what blocks.
 - A body of more than about 8,000 characters passes with a warning: shorter, well delimited issues build better.
 
+### 8. Design reference (optional)
+
+When the screen has to look like something, point to it. One bullet per reference, at most five, each saying after the colon what must match (structure, spacing, typography, colour, states):
+
+```markdown
+## Design reference
+
+- `design/home.png`: structure, spacing and colour of the list
+- https://github.com/user-attachments/assets/0a1b2c3d-1111-2222-3333-444455556666: the empty state
+- `acme/design:components/Card.vue`: the card to reuse; keep its states
+```
+
+- A file of this repository is written in backticks and must exist; it is always available to the builder.
+- A file of another repository is written `owner/repo:path`, and the repository must be in `links` of `relevo.yml`.
+- A picture is pasted into the issue from its web page (GitHub has no way to attach one from a tool) and GitHub writes the link. It is downloaded and shown to the model only when `design.images` is `true` in `relevo.yml`, because a screenshot can show customer data. Otherwise commit the picture to the repository and point to the file.
+- Example code goes in a fenced block in the same section.
+- `go` copies the section to the design, adds a scenario "Matches the reference <name>" for each bullet, and QA checks the code against it. In the review that scenario is a line you confirm by looking at your screen. If a reference cannot be fetched, the issue goes back to its writer saying which one.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.
