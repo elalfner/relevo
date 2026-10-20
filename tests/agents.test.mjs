@@ -187,3 +187,16 @@ test('the developer treats the decisions and constraints as binding and reports 
   assert.match(dev, /report it as an open question with its id/);
   assert.match(dev, /Never edit those sections/);
 });
+
+// ---------- review-autopilot
+
+test('QA reviews a review script: real assertions, allowed origins, no credential values, nothing about appearance', () => {
+  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  const section = qa.slice(qa.indexOf('### 8. A review script'), qa.indexOf('## Rules for yourself'));
+  assert.match(section, /would fail if the behaviour of checklist line `n` did not exist/);
+  assert.match(section, /only loads the page, or asserts something always true, is rejected/);
+  assert.match(section, /nothing outside `localhost`, the address under review and `review\.allowed_origins`/);
+  assert.match(section, /credentials\("NAME"\)/);
+  assert.match(section, /appearance, animation or fidelity to an image must not be asserted/);
+  assert.match(section, /You only read it/);
+});

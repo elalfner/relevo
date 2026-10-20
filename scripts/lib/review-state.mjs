@@ -5,9 +5,14 @@ export const STATUSES = ['pending', 'ok', 'fail'];
 
 const same = (a, b) => a.class === b.class && a.excerpt === b.excerpt;
 
-export function newState(items) {
+export const AUTOPILOT_MODES = ['off', 'precheck', 'verify'];
+
+export function newState(items, { autopilot = 'off' } = {}) {
+  if (!AUTOPILOT_MODES.includes(autopilot)) throw new Error(`autopilot must be one of ${AUTOPILOT_MODES.join(', ')}`);
   return {
-    items: items.map((i) => ({ id: i.id, title: i.title, status: 'pending', note: null })),
+    autopilot,
+    envConfirmed: false,
+    items: items.map((i) => ({ id: i.id, title: i.title, status: 'pending', note: null, precheck: null, auto: null })),
     captures: [],
     audit: null,
     waivers: [],
@@ -66,8 +71,9 @@ export function syncState(state, items) {
   const before = new Map(state.items.map((i) => [i.title, i]));
   state.items = items.map((i) => {
     const old = before.get(i.title);
-    const keep = old && old.status === 'ok';
-    return { id: i.id, title: i.title, status: keep ? 'ok' : 'pending', note: null };
+    // A line confirmed by the person stays; one the agent verified automatically does not: the code under it changed.
+    const keep = old && old.status === 'ok' && !old.auto;
+    return { id: i.id, title: i.title, status: keep ? 'ok' : 'pending', note: null, precheck: null, auto: null };
   });
   state.audit = null;
   state.waivers = [];
@@ -81,7 +87,55 @@ export function setItem(state, id, status, note = null) {
   if (!item) throw new Error(`there is no checklist item ${id}`);
   item.status = status;
   item.note = note;
+  // What the person decides replaces what the agent recorded: a confirmation is theirs, a failure or a retest starts again.
+  item.auto = null;
+  if (status !== 'ok') item.precheck = null;
   return state;
+}
+
+const driving = (state) => {
+  const mode = state.autopilot ?? 'off';
+  if (mode === 'off') throw new Error('the agent does not drive the review: review.autopilot is "off"');
+  if (!state.envConfirmed) throw new Error('the person has not confirmed in writing that the app points to non-production data: run "confirm-env" after they do');
+  return mode;
+};
+
+/** The person confirmed that the app under review does not point to production data. */
+export function confirmEnv(state) {
+  state.envConfirmed = true;
+  return state;
+}
+
+/** The agent's own result for a line, apart from the person's confirmation. Modes precheck and verify only. */
+export function precheckItem(state, id, result, note = null) {
+  driving(state);
+  if (!['ok', 'fail'].includes(result)) throw new Error('a pre-check result is ok or fail');
+  const item = state.items.find((i) => i.id === id);
+  if (!item) throw new Error(`there is no checklist item ${id}`);
+  item.precheck = result;
+  if (note) item.note = note;
+  return state;
+}
+
+/** The agent marks a line as verified automatically, saying how. Mode verify only; the line becomes ok but stays labelled. */
+export function autoItem(state, id, how) {
+  const mode = driving(state);
+  if (mode !== 'verify') throw new Error(`a line can be verified automatically only when review.autopilot is "verify" (it is "${mode}")`);
+  const why = String(how ?? '').trim();
+  if (!why) throw new Error('say how the line was verified: auto <number> <the assertion, finder or log that proved it>');
+  const item = state.items.find((i) => i.id === id);
+  if (!item) throw new Error(`there is no checklist item ${id}`);
+  item.status = 'ok';
+  item.precheck = 'ok';
+  item.auto = why;
+  return state;
+}
+
+/** The "Verified automatically" section of the pull request body; empty when no line was. */
+export function autoSection(state) {
+  const lines = state.items.filter((i) => i.auto);
+  if (lines.length === 0) return '';
+  return ['## Verified automatically', '', ...lines.map((i) => `- ${i.id}. ${i.title}: ${i.auto}`), ''].join('\n');
 }
 
 /**

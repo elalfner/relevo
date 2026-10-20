@@ -55,13 +55,14 @@ export function checklistFromChange(changeDir) {
 }
 
 /** Markdown checklist, optionally with the items already confirmed ticked. */
-export function checklistMarkdown(items, statuses = {}) {
+export function checklistMarkdown(items, statuses = {}, autos = {}) {
   return items
     .map((s) => {
       const mark = statuses[s.id] === 'ok' ? 'x' : ' ';
       const detail = [s.when.join(' and '), s.then.join(' and ')].filter(Boolean);
       const text = detail.length === 2 ? `when ${detail[0]}, then ${detail[1]}` : detail.join('');
-      return `- [${mark}] ${s.id}. **${s.title}**: ${text}`;
+      const auto = autos[s.id] ? ` _(verified automatically: ${autos[s.id]})_` : '';
+      return `- [${mark}] ${s.id}. **${s.title}**: ${text}${auto}`;
     })
     .join('\n');
 }

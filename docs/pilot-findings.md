@@ -140,6 +140,14 @@ Not run in the cloud: a dependency that cannot be read (no token), a repository 
 - Before this change the same empty log gave `REVIEW PASSED` and a log without the app's process was audited as a whole, which is what R1 found by running `auditLog('')`.
 - Not tried: the circular buffer of a real device (so it is not known how many lines a long review loses without `drain`), `adb` itself (none here), and a real pull request found or reused by the lookup. `review-who.mjs` was tried against the real login of `gh api user --jq .login` and recognised it, whatever the case of the assignee. In this cloud session `gh pr view --json` and `gh pr list --json` fail (they use GraphQL, which this environment blocks; only `gh api` REST calls work), so `ship-check.mjs` and the pull request lookup of `review` could not be run against a real pull request here, as in the pilot of `fix-and-ship-hardening`; they run on a person's machine, where `gh` is not restricted.
 
+## Browser review and the autopilot (task 5.3 of `review-autopilot`)
+
+- Run for real in this environment's Chromium: a small counter page (plain HTML, no Vue) served locally, a Playwright script written the way the agent would (two lines checked, one scenario about appearance left out), `review-state.mjs init --autopilot verify`, `confirm-env`, `web-review.mjs`, then `auto` for the two lines the runner reported `auto-ok`, `audit --package web` on `evidence/web-log.txt` and `decide`. `auto` was refused before `confirm-env`; the audit passed; `decide` refused until the third line (appearance) was confirmed by the person and the person agreed; the checklist showed the two automatic lines marked, and `auto-list` printed the section for the pull request body.
+- In the tests the same runner blocked a request to another origin and recorded it, redacted a secret that the page echoed in the console, refused a script that imported `node:fs` before starting a browser, and wrote an empty log (so the audit is inconclusive) when the script never loaded a page.
+- One thing found by running it: the browser also logs "Failed to load resource" for every blocked or failed request, which repeated what the request and response events already said and made a duplicate finding; the runner now skips that message.
+- Another: a run with no page loaded had a log with only the header line and would have passed the audit; the runner now writes an empty log in that case.
+- Not tried: the Flutter driver flow (no Flutter, no `adb`, no device and no Dart MCP server here), `precheck` and `verify` against a real app, a real Vue project (the page was plain HTML), iOS, and a review script written by a model rather than by hand. The default stays `off` for that reason.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

@@ -37,6 +37,16 @@ Distributed as a Claude Code plugin named `relevo`:
 - **It tests the current code**: it brings in the remote branch before it merges the base, and it asks you to confirm in writing if you are not the assignee.
 - **No second pull request**: an existing one for the branch is reused, and a rejected push stops with the reason.
 
+## Letting the agent help with the review
+
+By default the person does everything in `review` and the agent only observes. With `review.autopilot` set to `precheck` or `verify` the agent may also walk the checklist, and the person still confirms the lines and gives the agreement before a pull request opens.
+
+- **Where it works.** A Flutter app on an Android device is driven through `flutter_driver` (the app needs `lib/main_driver.dart` with `enableFlutterDriverExtension()`); a web app (Vue, or Flutter on the web) is driven in a browser of its own by a Playwright script that the agent writes from the scenarios and `qa` reads first. A web target has no manual review, so it needs `precheck` or `verify`. The review of iOS is not available yet.
+- **What it may not do.** It never uses coordinates, `adb shell input`, Appium or Maestro, never your own browser, never a site that is not `localhost`, the page under review or in `review.allowed_origins`, and never sends a message or makes a call in another app. Before it starts you confirm in writing that the app points to data that is not production. A test login is given as the name of an environment variable; the agent never sees the value.
+- **What it records.** In `precheck` it records its own result per line and you confirm each one. In `verify` it can mark a line `ok (auto)` only when the `THEN` was proved by an assertion, a finder or the log, and the pull request lists those lines. Appearance, animation and fidelity to an image stay yours.
+- **The default is `off`** because the driven review has not yet run against a real app; a repository turns it on.
+- **A script is not sandboxed.** The runner refuses a script that reaches the file system, the process or the network outside the browser, but that is a tripwire; read a script that will touch anything sensitive.
+
 ## What `fix` and `ship` check
 
 `fix` and `ship` change a branch after a person has looked at it, so scripts hold what must not vary.

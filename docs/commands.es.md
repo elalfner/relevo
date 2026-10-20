@@ -37,6 +37,16 @@ Se distribuye como un plugin de Claude Code llamado `relevo`:
 - **Prueba el código actual**: trae la rama remota antes de fusionar la base, y te pide confirmar por escrito si no eres la persona asignada.
 - **Sin un segundo pull request**: se reutiliza el que ya exista para la rama, y un push rechazado se detiene con el motivo.
 
+## Dejar que el agente ayude con la revisión
+
+Por defecto la persona lo hace todo en `review` y el agente solo observa. Con `review.autopilot` en `precheck` o `verify` el agente también puede recorrer la lista, y la persona sigue confirmando las líneas y dando el acuerdo antes de que se abra un pull request.
+
+- **Dónde funciona.** Una app Flutter en un dispositivo Android se maneja con `flutter_driver` (la app necesita `lib/main_driver.dart` con `enableFlutterDriverExtension()`); una app web (Vue, o Flutter en web) se maneja en un navegador propio con un script de Playwright que el agente escribe a partir de los escenarios y que `qa` lee antes. Un destino web no tiene revisión manual, así que necesita `precheck` o `verify`. La revisión de iOS aún no está disponible.
+- **Qué no puede hacer.** Nunca usa coordenadas, `adb shell input`, Appium ni Maestro, nunca tu navegador, nunca un sitio que no sea `localhost`, la página en revisión o uno de `review.allowed_origins`, y nunca envía un mensaje ni hace una llamada en otra app. Antes de empezar confirmas por escrito que la app apunta a datos que no son de producción. Un usuario de prueba se da como el nombre de una variable de entorno; el agente nunca ve el valor.
+- **Qué registra.** En `precheck` anota su propio resultado por línea y tú confirmas cada una. En `verify` puede marcar una línea `ok (auto)` solo cuando el `THEN` lo probó una aserción, un finder o el log, y el pull request lista esas líneas. El aspecto, la animación y la fidelidad a una imagen siguen siendo tuyos.
+- **El valor por defecto es `off`** porque la revisión conducida aún no se ha ejecutado contra una app real; el repositorio la activa.
+- **Un script no está aislado.** El ejecutor rechaza un script que toque el sistema de archivos, el proceso o la red fuera del navegador, pero eso es una alarma, no un aislamiento; lee un script que vaya a tocar algo sensible.
+
 ## Qué comprueban `fix` y `ship`
 
 `fix` y `ship` cambian una rama después de que una persona la miró, así que las reglas que no deben variar están en scripts.

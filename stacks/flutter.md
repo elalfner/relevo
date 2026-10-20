@@ -48,6 +48,6 @@ Do not claim the code compiles, analyses clean or passes tests unless you ran th
 
 ## Targets
 
-- `android`: needs `adb`. The bridge to the device for the on-device review.
-- `ios`: needs `xcrun`. It runs only on macOS; builds and reviews for iOS are done there.
-- `web`: needs a browser; no extra tool.
+- `android`: needs `adb`. The bridge to the device for the on-device review. With `review.autopilot`, the agent can drive the app through `flutter_driver`; it needs `lib/main_driver.dart` with `enableFlutterDriverExtension()` and the `flutter_driver` dependency.
+- `ios`: needs `xcrun`. It runs only on macOS; builds and reviews for iOS are done there. The review of iOS is not available yet.
+- `web`: needs a browser; no extra tool. The review of a web target is always driven (`review.autopilot` must be `precheck` or `verify`) and uses the browser runner.

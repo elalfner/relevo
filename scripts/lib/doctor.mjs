@@ -267,6 +267,7 @@ function readerFor(p, tryRun) {
 function gatherPlatforms(f, p, tryRun) {
   f.platformFacts = [];
   f.macos = (p.os ?? process.platform) === 'darwin';
+  f.autopilot = null;
   f.roleSkills = null;
   f.skillLockDifferences = [];
   if (!f.config) return;
@@ -291,6 +292,26 @@ function gatherPlatforms(f, p, tryRun) {
     }
     f.platformFacts.push(entry);
   });
+
+  // What the Autopilot of `review` needs, only when the repository asks for it.
+  const mode = f.config.review?.autopilot ?? 'off';
+  if (mode !== 'off') {
+    const join = (dir, file) => (dir === '.' || dir === '' ? file : `${dir}/${file}`);
+    f.autopilot = {
+      mode,
+      platforms: Object.entries(f.config.platforms).map(([name, platform]) => {
+        const entry = { name, stack: platform.stack, path: platform.path };
+        if (platform.stack === 'flutter') {
+          entry.driverEntry = p.exists(join(platform.path, 'lib/main_driver.dart'));
+          const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
+          entry.driverDependency = /^\s*flutter_driver\s*:/m.test(pubspec ?? '');
+        } else if (platform.stack === 'vue') {
+          entry.playwright = tryRun(() => Boolean(p.tool('node', ['-e', "require.resolve('playwright')"])), false);
+        }
+        return entry;
+      }),
+    };
+  }
 
   // Extra skills per role, read from the base branch the way `go` reads them.
   if (p.git) {
@@ -420,6 +441,19 @@ function platformChecks(f) {
       const budget = skillBudget(skills.filter((s) => s.path).map((s) => s.bytes ?? 0));
       if (budget.over) r.push(warn(`skills.size.${platform}.${role}`, `the skills of ${role} (${platform}) add up to ${Math.round(budget.bytes / 1024)} KB, over the ${SIZE_BUDGET_BYTES / 1024} KB budget; the agent reads them at every run`, 'keep the skills of a role small, or list fewer'));
     });
+  });
+  (f.autopilot?.platforms ?? []).forEach((e) => {
+    if (e.stack === 'flutter') {
+      if (!e.driverEntry) r.push(warn(`autopilot.${e.name}.entrypoint`, `review.autopilot is ${f.autopilot.mode} but platform ${e.name} has no lib/main_driver.dart, so the agent cannot drive the app`, 'add lib/main_driver.dart that calls enableFlutterDriverExtension() and then runs the app'));
+      else r.push(pass(`autopilot.${e.name}.entrypoint`, `platform ${e.name}: lib/main_driver.dart exists`));
+      if (!e.driverDependency) r.push(warn(`autopilot.${e.name}.dependency`, `platform ${e.name} does not depend on flutter_driver (dev_dependencies), which the driven review needs`, 'add flutter_driver: { sdk: flutter } under dev_dependencies in pubspec.yaml'));
+      else r.push(pass(`autopilot.${e.name}.dependency`, `platform ${e.name} depends on flutter_driver`));
+    } else if (e.stack === 'vue') {
+      if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, 'npm install -D playwright && npx playwright install chromium'));
+      else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
+    } else {
+      r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
+    }
   });
   (f.skillLockDifferences ?? []).forEach((name) => {
     r.push(warn(`skills.lock.${name}`, `the skill ${name} differs from the hash in skills-lock.json`, 'review the change to the skill, then run `npx skills` to refresh the lock, or restore the skill'));
