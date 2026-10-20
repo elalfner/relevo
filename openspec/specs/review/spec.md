@@ -2,7 +2,9 @@
 
 ## Purpose
 TBD - created by archiving change relevo-v1. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Local session with a device
 `review` SHALL run in a local session with a connected device. When no device is connected it SHALL stop and say so.
 
@@ -154,3 +156,9 @@ Before pushing, `review` SHALL scan the diff against the base branch for tempora
 - **WHEN** the diff contains a credential pattern
 - **THEN** the push is aborted and the file is named
 
+### Requirement: Review uses the platform of the issue when QA runs again
+When `review` launches `relevo:qa` again after bringing in changes from the base branch, it SHALL resolve the platform of the issue from its text and give QA the profile and the folder of the platform, as `go` does.
+
+#### Scenario: QA after the sync
+- **WHEN** the merge from the base branch brought in changes and the issue is for `web`
+- **THEN** QA receives the profile of the stack of `web` and its folder

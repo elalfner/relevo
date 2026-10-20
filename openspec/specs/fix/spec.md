@@ -2,7 +2,9 @@
 
 ## Purpose
 TBD - created by archiving change relevo-v1. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Specification first
 `fix` SHALL update the change's specification, design and task list to describe the corrected behaviour before any code is written, and the main session SHALL NOT edit application code.
 
@@ -53,3 +55,13 @@ After a successful fix the issue SHALL keep its current state (`in-review`, `qa-
 - **WHEN** the staged diff contains a temporary marker
 - **THEN** the commit is aborted
 
+### Requirement: Fix uses the platform of the issue
+`fix` SHALL resolve the platform of the issue again from its text, resolve the profile and the role skills for it, and give them to `relevo:dev` and `relevo:qa` with the folder of the platform. When the platform cannot be resolved it SHALL stop before changing anything and say why.
+
+#### Scenario: Monorepo fix
+- **WHEN** `fix` runs on an issue for `api`
+- **THEN** the agents receive the profile of the stack of `api` and its folder
+
+#### Scenario: Platform not resolvable
+- **WHEN** the issue no longer names a valid platform in a repository with several
+- **THEN** `fix` changes nothing and tells the person to correct the `Platform:` line
