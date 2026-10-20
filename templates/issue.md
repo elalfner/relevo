@@ -66,6 +66,12 @@ Discarded: <the alternative> (<why not>)
 
 <!-- For each endpoint or data source: method and path, how the caller authenticates, request fields, a realistic response with types, and which values may be null. -->
 
+## Design reference
+
+<!-- Optional. What the screen must look like: one bullet per reference, saying what must match (structure, spacing, typography, colour, states). A file of this repository, a picture pasted into this issue, a file of a linked repository written owner/repo:path, or example code in a fenced block. At most five. -->
+
+- `<path/to/reference>`: <what must match>
+
 ## Documentation
 
 <!-- Optional. Only when the agreement settled terms or decisions to record; leave it out otherwise. Exact text, nothing but glossary entries and decision records. -->
