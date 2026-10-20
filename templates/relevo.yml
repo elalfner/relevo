@@ -16,6 +16,8 @@ platforms:                         # what is built and where; one entry per stac
     # checks:                      # replace a verification command of the profile, for example:
     #   test: fvm flutter test
 
+links: []              # repositories an issue may depend on (Depends-on: owner/repo#N); private ones need the secret RELEVO_LINKS_TOKEN
+
 team:
   members: []          # GitHub usernames of the people who build and review
   spec_writer: null    # writes the specs; never reviews or merges

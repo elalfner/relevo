@@ -242,3 +242,23 @@ test('Scenario: the optional profile of the repository is created only when aske
   const exists = planInit({ facts, answers: { ...ANSWERS, stackProfiles: ['flutter'] }, templates, current: { ...empty(), stackProfiles: { flutter: true } }, admin: true }).find((i) => i.id === 'stack-profile.flutter');
   assert.equal(exists.status, 'ok');
 });
+
+test('Scenario: Front and back - the linked repositories are written to links and validate', () => {
+  const text = renderConfig(template, { ...ANSWERS, links: ['acme/api', 'acme/design'] });
+  assert.deepEqual(loadConfig(text).config.links, ['acme/api', 'acme/design']);
+  assert.deepEqual(loadConfig(renderConfig(template, ANSWERS)).config.links, [], 'no answer, no links');
+  assert.throws(() => renderConfig(template, { ...ANSWERS, links: ['acme'] }), /invalid relevo\.yml.*owner\/repo/);
+});
+
+test('init reminds about the read-only secret by name only, and only when there are links', () => {
+  const facts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: [] };
+  const none = planInit({ facts, answers: ANSWERS, templates, current: empty(), admin: true });
+  assert.equal(none.some((i) => i.id === 'manual.links-token'), false);
+  const asked = planInit({ facts, answers: { ...ANSWERS, links: ['acme/api'] }, templates, current: empty(), admin: true }).find((i) => i.id === 'manual.links-token');
+  assert.equal(asked.status, 'manual');
+  assert.match(asked.description, /RELEVO_LINKS_TOKEN/);
+  assert.match(asked.description, /init never reads or writes it/);
+  assert.doesNotMatch(asked.description, /ghp_|github_pat_/);
+  const done = planInit({ facts: { ...facts, secrets: ['RELEVO_LINKS_TOKEN'] }, answers: { ...ANSWERS, links: ['acme/api'] }, templates, current: empty(), admin: true }).find((i) => i.id === 'manual.links-token');
+  assert.equal(done.status, 'ok');
+});

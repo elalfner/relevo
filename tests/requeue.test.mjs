@@ -91,7 +91,7 @@ test('the script ignores a ready issue even when it would start', () => {
 
 test('Scenario: Dependency finishes in the other repository - the scheduled run starts the blocked issue once the state says it is completed', () => {
   const dir = mkdtempSync(join(tmpdir(), 'requeue-links-'));
-  writeFileSync(join(dir, 'relevo.yml'), `${template.replace('[]          # GitHub', '[ana]       # GitHub')}\nlinks: [acme/api]\n`);
+  writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub').replace('links: []', 'links: [acme/api]'));
   const run = (state) => {
     writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [issue(1, ['relevo:blocked'], { body: `${BODY}\nDepends-on: acme/api#12\n` })], completed: [], running: [], permissions: { luz: 'write' }, ...state }));
     const r = spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' });

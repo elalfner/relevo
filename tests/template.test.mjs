@@ -17,7 +17,7 @@ test('the shipped template is itself a valid configuration', () => {
 
 test('the template documents every supported setting', () => {
   const text = readFileSync(TEMPLATE, 'utf8');
-  ['base:', 'release:', 'tracker:', 'git_provider:', 'platforms:', 'members:', 'spec_writer:', 'approvers:', 'mode:', 'merger:',
+  ['base:', 'release:', 'tracker:', 'git_provider:', 'platforms:', 'links:', 'members:', 'spec_writer:', 'approvers:', 'mode:', 'merger:',
     'built_unreviewed_per_person:', 'concurrent_agents:', 'review_sla_hours:', 'run_max_turns:', 'run_max_cost:', 'retries:',
     'rules_from:', 'policy:', 'language:', 'trust:', 'labels:'].forEach((key) => assert.ok(text.includes(key), `template is missing ${key}`));
 });

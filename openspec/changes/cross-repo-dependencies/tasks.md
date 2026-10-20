@@ -15,9 +15,9 @@
 
 ## 3. Status, doctor and init
 
-- [ ] 3.1 Show external blocks in `status`: `gatherStatus` reads each external dependency of the blocked issues (through `ghLinks`) and `buildStatus`/`renderStatus` print "waiting for acme/api#12 (in-review)", "(open)" or "(could not be read)" in both languages. Verify with additions to `tests/status.test.mjs`: the three states, a local-only block unchanged, Spanish.
-- [ ] 3.2 Add the links checks to `scripts/lib/doctor.mjs`: each link readable and public or private, the secret name present, the rule of the delta (private without the secret fails, public without it warns, no links says nothing). Verify with additions to `tests/doctor.test.mjs`: the three scenarios plus an unreachable link.
-- [ ] 3.3 Make `init` ask for `links` (answers `links`, written to `relevo.yml`) and remind about `RELEVO_LINKS_TOKEN` without reading it; update `templates/relevo.yml` with a commented `links:` line and `skills/init/SKILL.md`. Verify with additions to `tests/init.test.mjs`, `tests/template.test.mjs` and `tests/skill-init-doctor.test.mjs`: the answer is written and validates, the reminder names only the secret, and the template still validates.
+- [x] 3.1 Show external blocks in `status`: `gatherStatus` reads each external dependency of the blocked issues (through `ghLinks`) and `buildStatus`/`renderStatus` print "waiting for acme/api#12 (in-review)", "(open)" or "(could not be read)" in both languages. Verify with additions to `tests/status.test.mjs`: the three states, a local-only block unchanged, Spanish.
+- [x] 3.2 Add the links checks to `scripts/lib/doctor.mjs`: each link readable and public or private, the secret name present, the rule of the delta (private without the secret fails, public without it warns, no links says nothing). Verify with additions to `tests/doctor.test.mjs`: the three scenarios plus an unreachable link.
+- [x] 3.3 Make `init` ask for `links` (answers `links`, written to `relevo.yml`) and remind about `RELEVO_LINKS_TOKEN` without reading it; update `templates/relevo.yml` with a commented `links:` line and `skills/init/SKILL.md`. Verify with additions to `tests/init.test.mjs`, `tests/template.test.mjs` and `tests/skill-init-doctor.test.mjs`: the answer is written and validates, the reminder names only the secret, and the template still validates.
 
 ## 4. The issue skill
 
