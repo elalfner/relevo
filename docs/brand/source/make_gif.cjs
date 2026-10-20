@@ -7,7 +7,7 @@ const path = require('path');
 
 const ROOT = process.env.RELEVO_OUT || path.join(__dirname, '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'relevo-gif-'));
-const N = 138;   // 30 fps durante 4.6 s
+const N = 276;   // 30 fps durante 9.2 s (la animación va a 0.5x)
 
 (async () => {
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});

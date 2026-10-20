@@ -5,7 +5,7 @@ El logo es **ship**: la issue entra (la rayita), agentes de IA hacen el trabajo 
 - `guia-de-uso.md`: la hoja de uso, que se ve directo en GitHub (hay también una versión interactiva, `guia-de-uso.html`). Qué significa, construcción, versiones, tamaños mínimos, espacio libre, color y qué no hacer.
 - `svg/`: logos finales, con trazos convertidos en formas y el texto en curvas (no necesitan la fuente Nunito).
 - `states/`: una ilustración por comando del flujo (init, think, issue, go, review, fix, ship) más feature, que no es un comando sino el motivo del flujo, en negro y en blanco. Son las del README.
-- `animation/`: el logo animado corto (4,6 s, sin texto, se queda en ship, se desvanece y vuelve a empezar): SVG en negro y en blanco, y un GIF con fondo blanco.
+- `animation/`: el logo animado corto (9,2 s a media velocidad, sin texto, se queda en ship, se desvanece y vuelve a empezar): SVG en negro y en blanco, y un GIF con fondo blanco.
 - `source/`: los scripts para regenerar todo (ver `source/README.md`).
 - `png/` y `favicon.ico`: exportaciones listas para avatar, favicon, iconos y vista previa social de GitHub.
 
