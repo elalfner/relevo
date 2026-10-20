@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Checks that this machine, the repository and GitHub are ready for Relevo and reports every check as pass, fail or warning, with the fix next to each failure. It covers the required tools (OpenSpec, git, the GitHub CLI, the platform toolchain, the device bridge), the skills that /relevo:think invokes, relevo.yml, labels and branches, branch protection and approvals, the automation secret and workflows, and a CI check. Read-only: it never changes anything. Use when asked to check, diagnose or verify the Relevo setup.
+description: Checks that this machine, the repository and GitHub are ready for Relevo and reports every check as pass, fail or warning, with the fix next to each failure. It covers the required tools (OpenSpec, git, the GitHub CLI, the toolchain and the targets of each platform's stack profile), the skills that /relevo:think invokes, the extra skills of each role, relevo.yml, labels and branches, branch protection and approvals, the automation secret and workflows, and a CI check. Read-only: it never changes anything. Use when asked to check, diagnose or verify the Relevo setup.
 argument-hint: ""
 ---
 
