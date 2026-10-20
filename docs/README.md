@@ -11,11 +11,13 @@ New here? Read [Install](install.md), then [How it works](how-it-works.md).
 - [Commands](commands.md): the nine commands, and the skills that `think` uses.
 - [Configuration](configuration.md): the `relevo.yml` file.
 - [Stacks and platforms](stacks.md): declare your platforms, the stack profiles and how to add your own rules.
+- [Guide](guide.md): what to do next, and what to do when a review finds a failure, QA fails or the quota runs out.
 - [Where `go` runs](execution.md): the cloud, your machine or both, the pause variable and the two credentials.
+- [Security model](security.md): what Relevo protects and what it does not.
 
 ## Reference
 
-- [Writing an issue Relevo can build](issue-format.md): what an issue must contain so that `go` can build it. In English only.
+- [Writing an issue Relevo can build](issue-format.md): what an issue must contain so that `go` can build it.
 - [Parameters of the agent runner](action-parameters.md): the inputs of the `go` workflow, verified against the action. In English only.
 
 ## How it was built

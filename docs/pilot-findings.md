@@ -159,6 +159,14 @@ Run on two projects created for this: a Vue project from `npm create vue@latest`
 - **Tried**: the questions for the issue writer come out of `stack-profile.mjs --role issue` for the Laravel platform and are not in the output for `dev` and `qa`.
 - **Not tried**: a cloud build of an issue for either stack (the workflow template has the install steps commented out; trying them needs this change on `main`), a model-written change on either project, a Laravel review (there is no adapter), Playwright against the Vue project, and `pnpm`, `yarn`, `oxlint` or PHPStan variants.
 
+## Reading the guide against the sandbox (task 3.2 of `documentation-guide`)
+
+The commands the guide and the commands page name were run from the sandbox clone: `go-local.mjs 33 --dry-run` printed the worktree and the `claude -p` line with the limits and the closed tool lists that `docs/execution.md` describes; `next-step.mjs` printed the line for a `qa-failed` issue whose branch has only the specification, as the guide says; `stack-profile.mjs`, `platform-of.mjs`, `review-adapter.mjs`, `archive-state.mjs` and `doctor` had been run in the earlier passes.
+
+- **Corrected**: `review-state.mjs` printed a usage line that listed seven of its commands, so a person who typed it without arguments could not learn `waive`, `precheck` or `drain`; it lists all of them now.
+- **Seen and not fixed**: `status.mjs --repo owner/name` printed "Nothing is waiting on you." right after `gh` refused one of its reads (HTTP 403 on the Actions path, which this cloud session blocks). The message is true for the issues it could read, but it does not say that part of the data is missing. A person would want to be told; left as a follow-up.
+- **Not tried**: a person new to Relevo following the guide from the start; the guide was read against the code, not used by someone who did not write it.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

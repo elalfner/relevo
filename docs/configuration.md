@@ -25,6 +25,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `review.merger` | who runs `/relevo:ship`: `author` or `approver` | `approver` |
 | `review.autopilot` | how much of the review the agent may drive: `off` (the person does everything), `precheck` (the agent walks the lines and records its result; the person confirms every line) or `verify` (the agent may also mark lines it proved with an assertion, a semantic finder or the log; the person confirms the rest and agrees) | `off` |
 | `review.allowed_origins` | web origins a driven review may visit besides `localhost`, for example `https://staging.example.com` | `[]` |
+| `skills.allow_scripts` | names of the extra skills that have scripts and may be used; a skill with scripts that is not listed is left out, and `/relevo:doctor` says so | empty |
 | `limits.built_unreviewed_per_person` | built issues one person may have waiting | 2 |
 | `limits.concurrent_agents` | unattended runs at the same time | 3 |
 | `limits.review_sla_hours` | hours before a reminder, and the same time again before escalation | 8 |
@@ -38,3 +39,15 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `language` | language of the hand-off messages (`en`, `es`) | `en` |
 | `trust` | `private-team` or `public` | `private-team` |
 | `labels` | rename any label; the keys are fixed, the names are yours | `relevo:ready`, `relevo:built`, … |
+
+## Platforms, profiles and checks
+
+- Each entry of `platforms` has a `stack`, a `path` and, for stacks that have them, `targets`. [Stacks and platforms](stacks.md) explains the shipped profiles.
+- The profile of a stack comes in layers: the file `stacks/<stack>.md` of the plugin, then `.relevo/stacks/<stack>.md` of your repository. Yours adds hygiene text, tools, skills and commands the plugin does not have; it cannot replace a command of the plugin.
+- To replace a command, write it in `platforms.<name>.checks`, in the open, for example `analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse"`. Only the commands the profile names (`analyze`, `test`, `format`) can be replaced.
+
+## What the limits mean
+
+- `limits.run_max_cost` is required and you choose it. With an API key it is a real ceiling on spending per run. With a subscription token the cost the log reports is notional, so it is only a safety net against a runaway run.
+- `limits.run_max_turns` is the main control with a subscription, together with a low `limits.concurrent_agents`: the quota is shared by every run and by the interactive use of the account.
+- A run that reaches a turn or cost limit stops and the issue becomes `qa-failed` with the reason. [Where `go` runs](execution.md) has the rest.
