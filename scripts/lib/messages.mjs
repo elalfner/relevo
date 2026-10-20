@@ -24,7 +24,6 @@ const REQUIRED = {
   review_reminder: ['reviewer', 'issue', 'pr', 'hours'],
   review_escalation: ['spec_writer', 'issue', 'pr', 'reviewer', 'hours'],
   no_milestone: ['actor', 'issue'],
-  platform: ['actor', 'issue', 'platforms'],
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
   ready_denied_maintainer: ['issue'],
@@ -102,12 +101,6 @@ const CATALOG = {
       '',
       'Pull request: {{pr}}',
       'Your next step: decide who reviews it.',
-    ],
-    platform: [
-      '#{{issue}} was not started: this repository has several platforms ({{platforms}})',
-      '',
-      'Choosing the platform of an issue is not available yet, so only a repository with one platform is built.',
-      '@{{actor}} your next step: keep one platform in relevo.yml, then label the issue ready again.',
     ],
     no_milestone: [
       '#{{issue}} was not started: it has no milestone',
@@ -209,12 +202,6 @@ const CATALOG = {
       '',
       'Pull request: {{pr}}',
       'Tu siguiente paso: decide quién lo revisa.',
-    ],
-    platform: [
-      '#{{issue}} no se inició: este repositorio tiene varias plataformas ({{platforms}})',
-      '',
-      'Elegir la plataforma de un issue aún no está disponible, así que solo se construye un repositorio con una plataforma.',
-      '@{{actor}} tu siguiente paso: deja una sola plataforma en relevo.yml y márcalo como ready otra vez.',
     ],
     no_milestone: [
       '#{{issue}} no se inició: no tiene milestone',

@@ -233,17 +233,40 @@ test('Scenario: One platform builds as before, and the legacy setting counts as 
   assert.equal(one([issue()], { config: 'platforms:\n  app:\n    stack: flutter\n' }).action, 'start');
 });
 
-test('Scenario: Two platforms - no run, ready is removed, and the comment names the platforms', () => {
-  const i = issue();
-  const d = one([i], { config: 'platforms:\n  web:\n    stack: vue\n    path: apps/web\n  api:\n    stack: laravel\n    path: apps/api\n' });
-  assert.equal(d.action, 'platform');
-  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready'] });
-  assert.equal(d.comment.kind, 'platform');
-  assert.equal(d.comment.data.platforms, 'web, api');
-  assert.equal(d.assign, null, 'nobody is assigned and nothing is claimed');
+const TWO = 'platforms:\n  web:\n    stack: vue\n    path: apps/web\n  api:\n    stack: laravel\n    path: apps/api\n';
+
+test('Scenario: Platform resolved - the start decision carries platform, stack, path and targets', () => {
+  const d = one([issue({ body: `${BODY}\nPlatform: web\n` })], { config: TWO });
+  assert.equal(d.action, 'start');
+  assert.deepEqual([d.platform, d.stack, d.path, d.targets], ['web', 'vue', 'apps/web', []]);
+  const single = one([issue()]);
+  assert.deepEqual([single.platform, single.stack, single.path, single.targets], ['app', 'flutter', '.', ['android']], 'one platform and no line');
 });
 
-test('the platform gate comes after the permission check, so a stranger still gets the denial', () => {
-  const d = one([issue({ ready_by: 'stranger' })], { config: 'platforms:\n  a:\n    stack: vue\n  b:\n    stack: laravel\n' });
+test('Scenario: Several platforms and no line - needs-spec names the platforms and says to add the line', () => {
+  const d = one([issue()], { config: TWO });
+  assert.equal(d.action, 'needs-spec');
+  assert.deepEqual(d.labels.add, ['relevo:needs-spec']);
+  assert.deepEqual(d.assign, ['persona-a']);
+  assert.match(d.comment.data.missing, /Platform: line naming one of the platforms of relevo\.yml \(web, api\)/);
+  assert.equal(d.platform, undefined, 'nothing is claimed');
+});
+
+test('an unknown platform and two different platforms also go back to the spec writer', () => {
+  const unknown = one([issue({ body: `${BODY}\nPlatform: mobile\n` })], { config: TWO });
+  assert.equal(unknown.action, 'needs-spec');
+  assert.match(unknown.comment.data.missing, /Platform: mobile, which is not a platform/);
+  const both = one([issue({ body: `${BODY}\nPlatform: web\nPlatform: api\n` })], { config: TWO });
+  assert.match(both.comment.data.missing, /names two platforms/);
+  assert.equal(one([issue({ body: `${BODY}\nPlatform: web\n` })]).action, 'needs-spec', 'with one platform a wrong name is still wrong');
+});
+
+test('an issue that was queued and then edited so its platform no longer resolves goes back instead of building', () => {
+  const d = one([issue({ labels: ['relevo:queued'], body: `${BODY}\nPlatform: mobile\n` })], { config: TWO });
+  assert.equal(d.action, 'needs-spec');
+});
+
+test('the permission check still comes before the platform check, so a stranger still gets the denial', () => {
+  const d = one([issue({ ready_by: 'stranger' })], { config: TWO });
   assert.equal(d.action, 'denied');
 });

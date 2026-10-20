@@ -85,15 +85,22 @@ test('the decision printed on stdout for a run started by hand carries the same 
   assert.equal(out.decisions[0].issue_hash, viaWorkflow.issue_hash);
 });
 
-test('Scenario: Two platforms - the output says platform, nothing is built, and the issue loses ready', () => {
+test('Scenario: Output for a start - platform, stack and path are written next to the action', () => {
   const many = join(dir, 'relevo-many.yml');
-  writeFileSync(many, 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\nplatforms:\n  web:\n    stack: vue\n  api:\n    stack: laravel\n');
-  const input = join(dir, 'state-many.json');
-  const out = join(dir, 'out-many.txt');
-  writeFileSync(input, JSON.stringify(state()));
-  const r = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', many, '--only', '7', '--github-output', out], { encoding: 'utf8' });
-  assert.equal(r.status, 0, r.stderr);
-  const o = parse(readFileSync(out, 'utf8'));
-  assert.equal(o.action, 'platform');
-  assert.notEqual(o.action, 'start', 'the workflow builds only when the action is start');
+  writeFileSync(many, 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\nplatforms:\n  web:\n    stack: vue\n    path: apps/web\n  api:\n    stack: laravel\n    path: apps/api\n');
+  const run = (over) => {
+    const input = join(dir, `state-${Math.random().toString(36).slice(2)}.json`);
+    const out = join(dir, `out-${Math.random().toString(36).slice(2)}.txt`);
+    writeFileSync(input, JSON.stringify(state(over)));
+    const r = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', many, '--only', '7', '--github-output', out], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return parse(readFileSync(out, 'utf8'));
+  };
+  const start = run({ body: `${BODY}\nPlatform: web\n` });
+  assert.deepEqual([start.action, start.platform, start.stack, start.path], ['start', 'web', 'vue', 'apps/web']);
+  const decision = JSON.parse(Buffer.from(start.decision_b64, 'base64').toString('utf8'));
+  assert.deepEqual([decision.platform, decision.stack, decision.path, decision.targets], ['web', 'vue', 'apps/web', []]);
+  const back = run({});
+  assert.equal(back.action, 'needs-spec');
+  assert.deepEqual([back.platform, back.stack, back.path], ['', '', ''], 'empty unless the decision is a start');
 });
