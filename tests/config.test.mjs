@@ -11,6 +11,8 @@ test('Scenario: Defaults - absent optional settings use the documented defaults'
   assert.equal(config.branches.release, 'main');
   assert.equal(config.review.mode, 'peer');
   assert.equal(config.review.merger, 'approver');
+  assert.equal(config.review.autopilot, 'off');
+  assert.deepEqual(config.review.allowed_origins, []);
   assert.equal(config.limits.built_unreviewed_per_person, 2);
   assert.equal(config.limits.concurrent_agents, 3);
   assert.equal(config.limits.review_sla_hours, 8);
@@ -200,4 +202,27 @@ test('Scenario: Alert for a build that stopped reporting - default 3, and 0 or 2
     assert.equal(r.ok, false, v);
     assert.equal(r.errors[0].path, 'limits.building_alert_hours');
   });
+});
+
+// ---------- review autopilot
+
+test('Scenario: Invalid autopilot value - validation names review.autopilot and the allowed values', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}review:\n  autopilot: always\n`);
+  assert.equal(ok, false);
+  const e = errors.find((x) => x.path === 'review.autopilot');
+  assert.ok(e);
+  assert.match(e.message, /"off", "precheck", "verify"/);
+  ['off', 'precheck', 'verify'].forEach((v) => assert.equal(loadConfig(`${MINIMAL}review:\n  autopilot: ${v}\n`).config.review.autopilot, v));
+});
+
+test('Scenario: Origins - a list of web origins is read, and an entry that is not an origin is rejected', () => {
+  const good = loadConfig(`${MINIMAL}review:\n  allowed_origins: [https://staging.example.com, http://localhost:5173]\n`);
+  assert.equal(good.ok, true, JSON.stringify(good.errors));
+  assert.deepEqual(good.config.review.allowed_origins, ['https://staging.example.com', 'http://localhost:5173']);
+  ['staging.example.com', 'https://staging.example.com/app', 'ftp://example.com', 'https://'].forEach((bad) => {
+    const r = loadConfig(`${MINIMAL}review:\n  allowed_origins: ["${bad}"]\n`);
+    assert.equal(r.ok, false, bad);
+    assert.ok(r.errors.some((e) => e.path === 'review.allowed_origins' && e.message.includes(bad)), bad);
+  });
+  assert.equal(loadConfig(`${MINIMAL}review:\n  allowed_origins: nope\n`).ok, false);
 });

@@ -26,6 +26,8 @@ team:
 review:
   mode: peer           # none (solo) | peer | roles
   merger: approver     # author | approver: who runs /relevo:ship
+  autopilot: off       # off | precheck | verify: how much of the on-device review the agent may drive (the person always closes it)
+  allowed_origins: []  # web origins a driven review may visit besides localhost, e.g. https://staging.example.com
 
 limits:
   built_unreviewed_per_person: 2   # built issues one person may have waiting

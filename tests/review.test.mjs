@@ -74,6 +74,7 @@ test('Scenario: Console errors - every named class is detected and means REVIEW 
     exception: 'E/flutter ( 1): [ERROR] Unhandled Exception: type \'Null\' is not a subtype',
     'network-data': 'E/flutter ( 1): Unhandled Exception: PostgrestException(message: boom)',
     'missing-activity': 'android.content.ActivityNotFoundException: No Activity found to handle Intent',
+    'console-error': '10-14 12:00:00.000  1  1 E web : console.error Warning: key prop missing',
   };
   assert.deepEqual(Object.keys(cases).sort(), [...ERROR_CLASSES].sort(), 'every error class has a test');
   Object.entries(cases).forEach(([cls, line]) => {

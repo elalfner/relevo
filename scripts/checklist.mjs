@@ -18,10 +18,12 @@ else if (process.argv.includes('--json')) console.log(JSON.stringify(items, null
 else {
   const si = process.argv.indexOf('--state');
   const statuses = {};
+  const autos = {};
   if (si !== -1 && existsSync(process.argv[si + 1])) {
     JSON.parse(readFileSync(process.argv[si + 1], 'utf8')).items.forEach((i) => {
       statuses[i.id] = i.status;
+      if (i.auto) autos[i.id] = i.auto;
     });
   }
-  console.log(checklistMarkdown(items, statuses));
+  console.log(checklistMarkdown(items, statuses, autos));
 }

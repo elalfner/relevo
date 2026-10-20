@@ -617,3 +617,65 @@ test('gatherFacts reads the variable that pauses the cloud, and keeps the text o
   assert.equal(f.cloudVariable, 'off');
   assert.match(f.workflows['relevo-go.yml'].text, /anthropic_api_key/);
 });
+
+// ---------- review autopilot
+
+function autopilotFacts({ mode, platforms, files = {}, playwright = true }) {
+  const text = `limits:\n  run_max_cost: 5\nreview:\n  autopilot: ${mode}\nplatforms:\n${platforms}`;
+  const all = { 'relevo.yml': text, ...files };
+  return gatherFacts({
+    tool: (name, args) => {
+      if (name === 'node' && args[0] === '-e' && /playwright/.test(args[1]) && !playwright) throw new Error('Cannot find module');
+      return 'ok';
+    },
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in all, read: (p) => all[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const AP_FLUTTER = '  app:\n    stack: flutter\n    targets: [android]\n';
+const AP_VUE = '  site:\n    stack: vue\n    path: apps/site\n    targets: [web]\n';
+const autopilotChecks = (f) => runChecks({ ...healthy(), ...f, config: f.config }).filter((r) => r.id.startsWith('autopilot.'));
+
+test('Scenario: Flutter without the driver entry point - doctor warns and says to add it with enableFlutterDriverExtension()', () => {
+  const f = autopilotFacts({ mode: 'precheck', platforms: AP_FLUTTER, files: { 'pubspec.yaml': 'dev_dependencies:\n  flutter_driver:\n    sdk: flutter\n' } });
+  const results = autopilotChecks(f);
+  const entry = results.find((r) => r.id === 'autopilot.app.entrypoint');
+  assert.equal(entry.status, 'warn');
+  assert.match(entry.fix, /enableFlutterDriverExtension\(\)/);
+  assert.equal(results.find((r) => r.id === 'autopilot.app.dependency').status, 'pass');
+});
+
+test('a Flutter platform with the entry point and the dependency passes both, and a missing dependency warns', () => {
+  const ok = autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_FLUTTER, files: { 'lib/main_driver.dart': '', 'pubspec.yaml': 'dev_dependencies:\n  flutter_driver:\n    sdk: flutter\n' } }));
+  assert.deepEqual(ok.map((r) => r.status), ['pass', 'pass']);
+  const missing = autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_FLUTTER, files: { 'lib/main_driver.dart': '', 'pubspec.yaml': 'dependencies:\n  flutter:\n    sdk: flutter\n' } }));
+  const dep = missing.find((r) => r.id === 'autopilot.app.dependency');
+  assert.equal(dep.status, 'warn');
+  assert.match(dep.fix, /flutter_driver/);
+});
+
+test('the entry point is looked for inside the folder of the platform', () => {
+  const platforms = '  app:\n    stack: flutter\n    path: apps/mobile\n    targets: [android]\n';
+  const f = autopilotFacts({ mode: 'precheck', platforms, files: { 'apps/mobile/lib/main_driver.dart': '', 'apps/mobile/pubspec.yaml': 'dev_dependencies:\n  flutter_driver:\n    sdk: flutter\n' } });
+  assert.deepEqual(autopilotChecks(f).map((r) => r.status), ['pass', 'pass']);
+});
+
+test('Scenario: Vue without Playwright - doctor warns and gives the install command', () => {
+  const results = autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_VUE, playwright: false }));
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, 'warn');
+  assert.match(results[0].fix, /npm install -D playwright/);
+  assert.equal(autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_VUE, playwright: true }))[0].status, 'pass');
+});
+
+test('a stack without a driven review says so instead of staying silent', () => {
+  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  api:\n    stack: laravel\n    path: apps/api\n' }));
+  assert.equal(r[0].status, 'warn');
+  assert.match(r[0].message, /driven review of the stack laravel .* is not available/);
+});
+
+test('Scenario: Autopilot off - doctor adds no autopilot check', () => {
+  const f = autopilotFacts({ mode: 'off', platforms: `${AP_FLUTTER}${AP_VUE}` });
+  assert.equal(f.autopilot, null);
+  assert.deepEqual(autopilotChecks(f), []);
+});

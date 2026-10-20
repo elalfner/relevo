@@ -23,6 +23,8 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `team.approvers` | quién puede aprobar, solo se usa cuando `review.mode` es `roles` | vacío |
 | `review.mode` | `none` (en solitario), `peer` o `roles` | `peer` |
 | `review.merger` | quién ejecuta `/relevo:ship`: `author` o `approver` | `approver` |
+| `review.autopilot` | cuánto de la revisión puede conducir el agente: `off` (la persona lo hace todo), `precheck` (el agente recorre las líneas y anota su resultado; la persona confirma cada línea) o `verify` (el agente también puede marcar las líneas que probó con una aserción, un finder semántico o el log; la persona confirma el resto y da el acuerdo) | `off` |
+| `review.allowed_origins` | orígenes web que una revisión conducida puede visitar además de `localhost`, por ejemplo `https://staging.example.com` | `[]` |
 | `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando | 2 |
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |

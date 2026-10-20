@@ -11,13 +11,16 @@ const UNHANDLED_CONTEXT = /E\/flutter|Unhandled Exception|EXCEPTION CAUGHT|FATAL
 const RULES = [
   { cls: 'layout', re: /RenderFlex overflowed|BoxConstraints forces an infinite|was given unbounded (height|width)|unbounded (height|width)/i },
   { cls: 'lifecycle', re: /setState\(\) called (during build|after dispose)|called after dispose\(\)|deactivated widget's ancestor/i },
-  { cls: 'exception', re: /Unhandled Exception|EXCEPTION CAUGHT BY|FATAL EXCEPTION|NoSuchMethodError|\bTypeError\b|\bFlutterError\b/ },
+  { cls: 'exception', re: /Unhandled Exception|EXCEPTION CAUGHT BY|FATAL EXCEPTION|NoSuchMethodError|\bTypeError\b|\bFlutterError\b|\bUncaught\b|\bReferenceError\b|\bSyntaxError\b|Unhandled (?:promise )?rejection/ },
   // A network or data exception only counts when it was not handled: it shows up as an error in the log.
   { cls: 'network-data', re: /\b(DioException|SocketException|HttpException|ClientException|PostgrestException|AuthException)\b/, needs: UNHANDLED_CONTEXT },
+  // A driven browser: a console.error call, a request that failed, an error response, or one the origin guard stopped. Written by web-review.mjs.
+  { cls: 'network-data', re: /\brequestfailed\b|\bresponse [45]\d\d\b|\bblocked request\b/ },
+  { cls: 'console-error', re: /\bconsole\.error\b/ },
   { cls: 'missing-activity', re: /ActivityNotFoundException/ },
 ];
 
-export const ERROR_CLASSES = RULES.map((r) => r.cls);
+export const ERROR_CLASSES = [...new Set(RULES.map((r) => r.cls))];
 export const PASSED = 'REVIEW PASSED';
 export const PASSED_WITH_WAIVERS = 'REVIEW PASSED (with waivers)';
 export const REJECTED = 'REVIEW REJECTED';
