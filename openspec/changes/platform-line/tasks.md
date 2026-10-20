@@ -25,9 +25,9 @@
 
 ## 5. Workflow template, documentation and integration
 
-- [ ] 5.1 Expose `platform`, `stack` and `path` from the `decide` job of `templates/workflows/relevo-go.yml` and guard the commented setup steps with `needs.decide.outputs.stack`, adding commented Vue and Laravel examples. Verify with `tests/workflow-go.test.mjs`: the outputs exist, every guarded example names a stack, no `pull_request_target`, limits still match `relevo.yml`.
-- [ ] 5.2 Update `docs/stacks.md` and `docs/stacks.es.md` (the line, one platform per issue, the scope rule, remove "go builds a repository with one platform"), and add the entry to `CHANGELOG.md` under Unreleased. Verify with `tests/readme-sync.test.mjs` and `tests/changelog.test.mjs`.
-- [ ] 5.3 Run `npm test`, `openspec validate --all`, `openspec validate platform-line --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
+- [x] 5.1 Expose `platform`, `stack` and `path` from the `decide` job of `templates/workflows/relevo-go.yml` and guard the commented setup steps with `needs.decide.outputs.stack`, adding commented Vue and Laravel examples. Verify with `tests/workflow-go.test.mjs`: the outputs exist, every guarded example names a stack, no `pull_request_target`, limits still match `relevo.yml`.
+- [x] 5.2 Update `docs/stacks.md` and `docs/stacks.es.md` (the line, one platform per issue, the scope rule, remove "go builds a repository with one platform"), and add the entry to `CHANGELOG.md` under Unreleased. Verify with `tests/readme-sync.test.mjs` and `tests/changelog.test.mjs`.
+- [x] 5.3 Run `npm test`, `openspec validate --all`, `openspec validate platform-line --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
 - [ ] 5.4 In the sandbox repository, run `go` on one small issue that says `Platform: app`. Verify by the run's outcome: the issue reaches `relevo:built` with the hand-off comment; record the result in `docs/pilot-findings.md`.
 
 ## Workflow follow-up
