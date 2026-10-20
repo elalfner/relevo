@@ -226,3 +226,24 @@ test('Scenario: Missing information - the needs-spec comment says the reason is 
   assert.equal(d.action, 'needs-spec');
   assert.equal(d.comment.data.reason, 'missing');
 });
+
+test('Scenario: One platform builds as before, and the legacy setting counts as one', () => {
+  assert.equal(one([issue()]).action, 'start');
+  assert.equal(one([issue()], { config: 'platform: flutter-android\n' }).action, 'start');
+  assert.equal(one([issue()], { config: 'platforms:\n  app:\n    stack: flutter\n' }).action, 'start');
+});
+
+test('Scenario: Two platforms - no run, ready is removed, and the comment names the platforms', () => {
+  const i = issue();
+  const d = one([i], { config: 'platforms:\n  web:\n    stack: vue\n    path: apps/web\n  api:\n    stack: laravel\n    path: apps/api\n' });
+  assert.equal(d.action, 'platform');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready'] });
+  assert.equal(d.comment.kind, 'platform');
+  assert.equal(d.comment.data.platforms, 'web, api');
+  assert.equal(d.assign, null, 'nobody is assigned and nothing is claimed');
+});
+
+test('the platform gate comes after the permission check, so a stranger still gets the denial', () => {
+  const d = one([issue({ ready_by: 'stranger' })], { config: 'platforms:\n  a:\n    stack: vue\n  b:\n    stack: laravel\n' });
+  assert.equal(d.action, 'denied');
+});

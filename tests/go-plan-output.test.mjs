@@ -84,3 +84,16 @@ test('the decision printed on stdout for a run started by hand carries the same 
   const viaWorkflow = JSON.parse(Buffer.from(parse(plan().out).decision_b64, 'base64').toString('utf8'));
   assert.equal(out.decisions[0].issue_hash, viaWorkflow.issue_hash);
 });
+
+test('Scenario: Two platforms - the output says platform, nothing is built, and the issue loses ready', () => {
+  const many = join(dir, 'relevo-many.yml');
+  writeFileSync(many, 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\nplatforms:\n  web:\n    stack: vue\n  api:\n    stack: laravel\n');
+  const input = join(dir, 'state-many.json');
+  const out = join(dir, 'out-many.txt');
+  writeFileSync(input, JSON.stringify(state()));
+  const r = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', many, '--only', '7', '--github-output', out], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const o = parse(readFileSync(out, 'utf8'));
+  assert.equal(o.action, 'platform');
+  assert.notEqual(o.action, 'start', 'the workflow builds only when the action is start');
+});

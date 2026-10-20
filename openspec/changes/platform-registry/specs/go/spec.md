@@ -12,11 +12,11 @@
 - **THEN** `go` takes the failure path with the reason `profile not resolved` and builds nothing
 
 ### Requirement: One platform per run for now
-The planner SHALL build an issue only when `relevo.yml` has exactly one platform. With more than one, it SHALL stop before claiming the issue, comment that the choice of platform per issue is not available yet, and leave the labels unchanged.
+The planner SHALL build an issue only when `relevo.yml` has exactly one platform. With more than one, it SHALL stop before claiming the issue, remove the `ready` label (as it does for a missing milestone, so the queue does not comment again at every evaluation) and comment that the choice of platform per issue is not available yet.
 
 #### Scenario: Two platforms
 - **WHEN** the labelled issue belongs to a repository with two platforms
-- **THEN** no run starts, the comment says why, and the issue keeps its label
+- **THEN** no run starts, the `ready` label is removed, and the comment names the platforms and says why
 
 ### Requirement: The agents leave configuration alone
 `relevo:dev` SHALL NOT edit `relevo.yml`, anything under `.relevo/` or `skills-lock.json`, and `relevo:qa` SHALL reject a diff that touches them, as it already does for `GLOSSARY.md` and `docs/adr/`.

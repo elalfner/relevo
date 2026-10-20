@@ -89,6 +89,15 @@ export function planGo({ config, issues, completed = [], running = [], permissio
         });
         return;
       }
+      // Until the issue can say which platform it belongs to, only a repository with one platform is built.
+      const platformNames = Object.keys(config.platforms);
+      if (platformNames.length > 1) {
+        decision(issue, 'platform', `the repository has several platforms (${platformNames.join(', ')}) and choosing one per issue is not available yet`, {
+          labels: dropReady(issue),
+          comment: { kind: 'platform', data: { issue: issue.number, actor: issue.ready_by, platforms: platformNames.join(', ') } },
+        });
+        return;
+      }
       if (!issue.milestone) {
         decision(issue, 'no-milestone', 'the issue has no milestone', {
           labels: dropReady(issue),

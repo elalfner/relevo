@@ -124,3 +124,15 @@ test('every failure reason of the specification is named in the failure path', (
   ['branch already exists', 'specification invalid', 'specification incomplete', 'issue changed after ready', 'protected path in the diff',
     'possible credential or temporary marker in the diff', 'QA rejected after the retries'].forEach((r) => assert.ok(body.includes(r), r));
 });
+
+test('Scenario: the profile and the role skills come from scripts, and the skill names no stack', () => {
+  assert.match(body, /scripts\/stack-profile\.mjs/);
+  assert.match(body, /scripts\/role-skills\.mjs --role dev/);
+  assert.match(body, /scripts\/role-skills\.mjs --role qa/);
+  assert.match(body, /failure path with the reason `profile not resolved`/);
+  assert.match(body, /`generated` list/);
+  assert.doesNotMatch(body, /\.g\.dart|\.freezed\.dart|flutter/i, 'the skill must not name the generated files or tools of one stack');
+  const source = readFileSync(root('scripts/role-skills.mjs'), 'utf8');
+  [...body.matchAll(/role-skills\.mjs([^\n`]*)/g)].flatMap((m) => [...m[1].matchAll(/--([a-z]+)/g)].map((f) => f[1]))
+    .forEach((f) => assert.ok(source.includes(`'${f}'`), `role-skills does not implement --${f}`));
+});

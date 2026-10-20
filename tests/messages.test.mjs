@@ -205,3 +205,11 @@ test('Scenario: Issue changed after ready - the branch was not pushed, for a rea
   assert.doesNotMatch(text, /credential|marker/);
   assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed' }, 'es'), /no se subió; el estado no avanzó/);
 });
+
+test('Scenario: Two platforms - the platform message names them and the next step, in both languages', () => {
+  const data = { issue: 12, actor: 'persona-a', platforms: 'web, api' };
+  const en = renderMessage('platform', data);
+  assert.match(en, /#12 was not started: this repository has several platforms \(web, api\)/);
+  assert.match(en, /@persona-a your next step: keep one platform in relevo\.yml/);
+  assert.match(renderMessage('platform', data, 'es'), /#12 no se inició: este repositorio tiene varias plataformas \(web, api\)/);
+});
