@@ -4,6 +4,7 @@
 The skill that writes the issues Relevo builds and updates the description of an existing one while Relevo has not committed to building it.
 
 ## Requirements
+
 ### Requirement: Issue has two modes chosen by its argument
 `issue` SHALL create new issues when its argument is not an issue number, and SHALL update the description of an existing issue when its argument is an issue number (`42` or `#42`). The command `create` SHALL no longer exist.
 
@@ -210,3 +211,33 @@ In update mode `issue` SHALL keep an existing `## Documentation` section as it i
 #### Scenario: Another file requested
 - **WHEN** the person asks the update to add a README change to the `Documentation` section
 - **THEN** `issue` does not add it and says the section only carries the glossary and decision records
+
+### Requirement: The issue names its platform when the repository has several
+When `relevo.yml` has more than one platform, `issue` SHALL put a `Platform: <name>` line in every issue it writes. It SHALL deduce the platform from the paths the idea mentions and ask only when it cannot decide. When the repository has one platform it SHALL leave the line out. An idea that needs two platforms SHALL be split into two issues with `Depends-on:`.
+
+#### Scenario: Path decides
+- **WHEN** the idea mentions `apps/web/src/Header.vue` and `web` lives at `apps/web`
+- **THEN** the issue says `Platform: web` without asking
+
+#### Scenario: Ambiguous idea
+- **WHEN** the idea mentions no path and the repository has two platforms
+- **THEN** `issue` asks which platform it is for, once
+
+#### Scenario: Idea for two platforms
+- **WHEN** the idea needs a change in `web` and one in `api`
+- **THEN** `issue` proposes two issues, each with its `Platform:` line, the front depending on the back
+
+### Requirement: A draft without a needed platform fails the check
+The check of an issue SHALL fail a draft that needs the `Platform:` line and lacks it, that names an unknown platform, or that names two. It SHALL pass an issue for a one-platform repository without the line.
+
+#### Scenario: Missing line
+- **WHEN** the repository has two platforms and the draft has no `Platform:` line
+- **THEN** the check fails and lists the platforms
+
+#### Scenario: Unknown platform
+- **WHEN** the draft says `Platform: mobile`
+- **THEN** the check fails, names `mobile` and lists the platforms that exist
+
+#### Scenario: One platform
+- **WHEN** the repository has one platform and the draft has no line
+- **THEN** the check passes
