@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyChecks, mergeProfiles, parseProfile, profileLookups, resolveProfile } from '../scripts/lib/stack-profile.mjs';
+import { applyChecks, mergeProfiles, parseProfile, profileLookups, resolveProfile, splitQuestions } from '../scripts/lib/stack-profile.mjs';
 
 const CLI = new URL('../scripts/stack-profile.mjs', import.meta.url).pathname;
 const PLUGIN_ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
@@ -155,4 +155,53 @@ test('nothing of the hygiene the agents used to carry was lost when it moved to 
     'missing loading, empty or error states; an action that can be triggered twice',
     'an external-app launch with no handling for the app being missing, permission use without handling denial, behaviour on the back button',
   ].forEach((sentence) => assert.ok(body.toLowerCase().includes(sentence.toLowerCase()), `the Flutter profile lost: ${sentence}`));
+});
+
+// ---------- questions for the issue writer
+
+const WITH_QUESTIONS = `${header()}\n# Vue\n\nHygiene.\n\n## Questions for the issue writer\n\n- Who may see this screen?\n- What does an error look like?\n\n## What the auditor looks for\n\n- Keys.\n`;
+
+test('Scenario: Agents do not receive the questions - the section leaves the body and ends at the next heading', () => {
+  const { profile } = parseProfile(WITH_QUESTIONS);
+  assert.equal(profile.questions, '- Who may see this screen?\n- What does an error look like?');
+  assert.doesNotMatch(profile.body, /Who may see/);
+  assert.match(profile.body, /Hygiene\./);
+  assert.match(profile.body, /## What the auditor looks for\n\n- Keys\./, 'what follows the section stays');
+});
+
+test('Scenario: Profile without questions - the questions are empty and nothing fails', () => {
+  const { profile, errors } = parseProfile(header());
+  assert.deepEqual(errors, []);
+  assert.equal(profile.questions, '');
+  assert.deepEqual(splitQuestions('no section here'), { body: 'no section here', questions: '' });
+  assert.equal(splitQuestions('## Questions for the issue writer\n\n- one').questions, '- one', 'a section at the end runs to the end');
+});
+
+test('the heading is matched exactly, ignoring case, and only at level 2', () => {
+  assert.equal(splitQuestions('### Questions for the issue writer\n- x').questions, '');
+  assert.equal(splitQuestions('## questions for the issue writer\n- x').questions, '- x');
+  assert.equal(splitQuestions('## Questions\n- x').questions, '');
+});
+
+test('Scenario: Issue asks for them - the questions of the plugin are followed by the repository\'s', () => {
+  const plugin = parseProfile(WITH_QUESTIONS).profile;
+  const repository = parseProfile(`${header()}\n## Questions for the issue writer\n\n- Which tenant?\n`).profile;
+  const merged = mergeProfiles(plugin, repository);
+  assert.equal(merged.questions, '- Who may see this screen?\n- What does an error look like?\n\n- Which tenant?');
+  assert.doesNotMatch(merged.body, /Which tenant/);
+  assert.equal(mergeProfiles(plugin, null).questions, plugin.questions);
+});
+
+test('the command prints the questions only for --role issue, and the default output has no questions key', () => {
+  const root = mkdtempSync(join(tmpdir(), 'relevo-plugin-'));
+  mkdirSync(join(root, 'stacks'));
+  writeFileSync(join(root, 'stacks', 'vue.md'), WITH_QUESTIONS);
+  const dir = repo({ 'relevo.yml': 'limits:\n  run_max_cost: 5\nplatforms:\n  web:\n    stack: vue\n    path: apps/web\n', '.relevo/stacks/vue.md': `${header()}\n## Questions for the issue writer\n\n- Which tenant?\n` });
+  const asIssue = JSON.parse(run(dir, '--plugin-root', root, '--role', 'issue').stdout);
+  assert.deepEqual(Object.keys(asIssue), ['platform', 'stack', 'questions']);
+  assert.match(asIssue.questions, /Who may see this screen\?[\s\S]*Which tenant\?/);
+  const normal = JSON.parse(run(dir, '--plugin-root', root).stdout);
+  assert.equal('questions' in normal, false);
+  assert.doesNotMatch(normal.body, /Who may see|Which tenant/);
+  assert.equal(run(dir, '--plugin-root', root, '--role', 'dev').status, 2);
 });

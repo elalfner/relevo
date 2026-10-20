@@ -1,22 +1,30 @@
 #!/usr/bin/env node
 // Keeps the state of an on-device review and decides whether a pull request may be opened.
-//   review-state.mjs init <change-dir>            build the checklist from the change's scenarios
+//   review-state.mjs init <change-dir> [--autopilot off|precheck|verify]   build the checklist from the change's scenarios
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
 //   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
 //   review-state.mjs capture <path>               record a screenshot that was taken
 //   review-state.mjs audit [<log-file>|-] [--package <id>] [--pid <n>]
 //                                                 audit the device log (stdin by default), write the report;
 //                                                 with --package only that app's lines are audited
+//   review-state.mjs drain                        append the device log (stdin) to evidence/device.log; the skill clears the device's log after it
+//   review-state.mjs audit --accumulated          audit evidence/device.log plus whatever is on stdin
+//   review-state.mjs confirm-env                  the person confirmed in writing that the app does not point to production data
+//   review-state.mjs precheck <n> ok|fail [note]  the agent's own result for a line (autopilot precheck or verify)
+//   review-state.mjs auto <n> <how ...>           the agent verified a line automatically (autopilot verify only)
+//   review-state.mjs auto-list                    print the "Verified automatically" section for the pull request body
+//   review-state.mjs waive <n> <reason ...>       the person waives finding n of the audit, with a written reason
+//   review-state.mjs waived                       print the "Waived findings" section for the pull request body
 //   review-state.mjs agree                        the person agrees to open the pull request
 //   review-state.mjs show                         print the state as JSON
 //   review-state.mjs decide                       exit 0 when the pull request may be opened, 1 when not
 // The state lives in evidence/review-state.json (override with --state). That folder is never committed.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { checklistFromChange } from './lib/checklist.mjs';
 import { auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
-import { decidePr, newState, setItem, syncState } from './lib/review-state.mjs';
+import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, newState, precheckItem, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
 
 const argv = process.argv.slice(2);
 const si = argv.indexOf('--state');
@@ -41,9 +49,10 @@ try {
   switch (command) {
     case 'init': {
       if (!rest[0] || !existsSync(rest[0])) fail('usage: review-state.mjs init <change-directory>');
-      const state = newState(checklistFromChange(rest[0]));
+      const ai = rest.indexOf('--autopilot');
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1] });
       save(state);
-      console.log(`${state.items.length} checklist item(s) in ${statePath}`);
+      console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})`);
       break;
     }
     case 'sync': {
@@ -69,24 +78,71 @@ try {
       console.log(`recorded ${rest[0]}`);
       break;
     }
+    case 'drain': {
+      const file = join(dirname(statePath), 'device.log');
+      const text = readFileSync(0, 'utf8');
+      mkdirSync(dirname(file), { recursive: true });
+      appendFileSync(file, text.endsWith('\n') || text === '' ? text : `${text}\n`);
+      console.log(`${text.split('\n').filter(Boolean).length} line(s) added to ${file}`);
+      break;
+    }
     case 'audit': {
       const state = load();
       const pi = rest.indexOf('--package');
       const pkg = pi === -1 ? null : rest[pi + 1];
       const pids = rest.flatMap((a, i) => (a === '--pid' ? [rest[i + 1]] : []));
       const positional = rest.filter((a, i) => !a.startsWith('--') && rest[i - 1] !== '--package' && rest[i - 1] !== '--pid');
-      const raw = positional[0] && positional[0] !== '-' ? readFileSync(positional[0], 'utf8') : readFileSync(0, 'utf8');
+      const accumulated = rest.includes('--accumulated');
+      const kept = accumulated && existsSync(join(dirname(statePath), 'device.log')) ? readFileSync(join(dirname(statePath), 'device.log'), 'utf8') : '';
+      const fresh = positional[0] && positional[0] !== '-' ? readFileSync(positional[0], 'utf8') : readFileSync(0, 'utf8');
+      const raw = accumulated ? `${kept}${kept && !kept.endsWith('\n') ? '\n' : ''}${fresh}` : fresh;
       if (pi !== -1 && !pkg) fail('--package needs an application id');
       const { text: source, scope } = pkg ? filterByApp(raw, { package: pkg, pids }) : { text: raw, scope: null };
-      const audit = auditLog(source);
-      state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings };
+      const audit = auditLog(source, { scope });
+      state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}) };
+      applyWaivers(state);
+      audit.verdict = state.audit.verdict;
       save(state);
       writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
-      if (scope && scope.pids.length === 0) console.log(`note: the process of ${pkg} is not in the log, so the whole log was audited`);
       console.log(audit.verdict);
-      audit.findings.slice(0, 10).forEach((f) => console.log(`  ${f.class}: ${f.excerpt}`));
+      if (audit.reason) console.log(`  ${audit.reason}`);
+      audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
       break;
     }
+    case 'confirm-env': {
+      const state = confirmEnv(load());
+      save(state);
+      console.log('recorded: the person confirmed that the app does not point to production data');
+      break;
+    }
+    case 'precheck': {
+      const [id, result, ...note] = rest;
+      const state = precheckItem(load(), Number(id), result, note.join(' ') || null);
+      save(state);
+      console.log(`item ${id}: pre-check ${result} (the person still confirms it)`);
+      break;
+    }
+    case 'auto': {
+      const [id, ...how] = rest;
+      const state = autoItem(load(), Number(id), how.join(' '));
+      save(state);
+      console.log(`item ${id}: verified automatically`);
+      break;
+    }
+    case 'auto-list':
+      process.stdout.write(autoSection(load()));
+      break;
+    case 'waive': {
+      const [number, ...reason] = rest;
+      const state = waiveFinding(load(), number, reason.join(' '));
+      save(state);
+      writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(state.audit, { scope: state.audit.scope }));
+      console.log(`finding ${number} waived; the verdict is ${state.audit.verdict}`);
+      break;
+    }
+    case 'waived':
+      process.stdout.write(waivedSection(load()));
+      break;
     case 'agree': {
       const state = load();
       state.agreed = true;

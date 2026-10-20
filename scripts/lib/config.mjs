@@ -18,6 +18,8 @@ export const SETTINGS = [
   { path: 'team.approvers', type: 'string[]', default: [] },
   { path: 'review.mode', type: 'enum', allowed: ['none', 'peer', 'roles'], default: 'peer' },
   { path: 'review.merger', type: 'enum', allowed: ['author', 'approver'], default: 'approver' },
+  { path: 'review.autopilot', type: 'enum', allowed: ['off', 'precheck', 'verify'], default: 'off' },
+  { path: 'review.allowed_origins', type: 'origin-list', default: [] },
   { path: 'limits.built_unreviewed_per_person', type: 'int', min: 1, default: 2 },
   { path: 'limits.concurrent_agents', type: 'int', min: 1, default: 3 },
   { path: 'limits.review_sla_hours', type: 'int', min: 1, default: 8 },
@@ -37,6 +39,7 @@ export const SETTINGS = [
 const GROUPS = new Set(SETTINGS.filter((s) => s.path.includes('.')).map((s) => s.path.split('.')[0]));
 const TOP_SCALARS = new Set(SETTINGS.filter((s) => !s.path.includes('.')).map((s) => s.path));
 const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels', 'platform', 'platforms']);
+const ORIGIN_RE = /^https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?$/;
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const LANGUAGE_RE = /^[a-z]{2}(-[A-Z]{2})?$/;
 const GITHUB_LABEL_MAX = 50;
@@ -84,6 +87,14 @@ function checkType(setting, value, errors) {
       }
       value.filter((v) => !REPO_RE.test(v)).forEach((v) => errors.push({ path, message: `${path}: "${v}" is not a repository; the form is owner/repo` }));
       value.filter((v, i) => value.indexOf(v) !== i).forEach((v) => errors.push({ path, message: `${path} lists "${v}" more than once` }));
+      break;
+    }
+    case 'origin-list': {
+      if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
+        errors.push({ path, message: `${path} must be a list of web origins written like https://staging.example.com (got ${JSON.stringify(value)})` });
+        break;
+      }
+      value.filter((v) => !ORIGIN_RE.test(v)).forEach((v) => errors.push({ path, message: `${path}: "${v}" is not an origin; write the scheme, the host and optionally the port, with no path (https://staging.example.com)` }));
       break;
     }
     case 'enum':

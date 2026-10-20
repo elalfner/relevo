@@ -23,6 +23,8 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `team.approvers` | who may approve, only used when `review.mode` is `roles` | empty |
 | `review.mode` | `none` (solo), `peer` or `roles` | `peer` |
 | `review.merger` | who runs `/relevo:ship`: `author` or `approver` | `approver` |
+| `review.autopilot` | how much of the review the agent may drive: `off` (the person does everything), `precheck` (the agent walks the lines and records its result; the person confirms every line) or `verify` (the agent may also mark lines it proved with an assertion, a semantic finder or the log; the person confirms the rest and agrees) | `off` |
+| `review.allowed_origins` | web origins a driven review may visit besides `localhost`, for example `https://staging.example.com` | `[]` |
 | `limits.built_unreviewed_per_person` | built issues one person may have waiting | 2 |
 | `limits.concurrent_agents` | unattended runs at the same time | 3 |
 | `limits.review_sla_hours` | hours before a reminder, and the same time again before escalation | 8 |

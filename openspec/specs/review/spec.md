@@ -24,11 +24,15 @@ When several devices are ready, `review` SHALL use the one named by `ANDROID_SER
 - **THEN** the command stops and tells the person to unlock it and accept the USB debugging prompt
 
 ### Requirement: Synchronise with the base branch first
-`review` SHALL merge the current base branch into the feature branch before the person tests, and SHALL re-run QA if the merge changed anything.
+`review` SHALL bring in the remote copy of the feature branch with a fast-forward pull, then merge the current base branch into it before the person tests, and SHALL re-run QA if either brought anything.
 
 #### Scenario: Base moved
 - **WHEN** the base branch has new commits since the build
 - **THEN** it is merged into the feature branch, QA re-runs, and a conflict that cannot be resolved cleanly stops the review with a clear message
+
+#### Scenario: Branch pushed from another machine
+- **WHEN** the remote branch has commits the local one does not
+- **THEN** they are brought in before the base is merged, so the person tests the current code
 
 ### Requirement: Starting the review claims the issue
 When the review starts and the base-branch synchronisation succeeds, `review` SHALL replace `built` with `in-review`, which frees the assignee's capacity.
@@ -42,11 +46,15 @@ When the review starts and the base-branch synchronisation succeeds, `review` SH
 - **THEN** the issue stays `built` and the person is told why
 
 ### Requirement: The person drives, the agent observes
-The agent SHALL NOT tap, type, swipe or otherwise automate the app or the device, and SHALL NOT use UI automation or monkey tools. Actions in third-party apps that send messages SHALL be performed only by a person.
+By default the agent SHALL NOT tap, type, swipe or otherwise automate the app or the device, and SHALL NOT use UI automation or monkey tools; it only observes. Only when `review.autopilot` is `precheck` or `verify` may it drive the app, within the limits of the requirement on operating the app. Actions in third-party apps that send messages SHALL be performed only by a person.
 
 #### Scenario: Forbidden automation
-- **WHEN** the agent is about to issue an input command to the device
+- **WHEN** the agent is about to issue an input command to the device and `review.autopilot` is `off`
 - **THEN** it does not, and asks the person to do it
+
+#### Scenario: Autopilot on
+- **WHEN** `review.autopilot` is `precheck`
+- **THEN** the agent may drive the app only through semantic finders or the runner's own browser
 
 ### Requirement: Shot list and checklist
 `review` SHALL present a short list of suggested screenshots and a checklist with one line per scenario of the change, including edge cases, then end its turn and wait.
@@ -88,7 +96,7 @@ On completion, the agent SHALL scan the device log for layout overflows, lifecyc
 - **THEN** the verdict is `REVIEW REJECTED` and the agent offers a confirmed micro-fix loop
 
 ### Requirement: Log audit covers only the app under review
-The log audit SHALL read only the log lines written by the processes of the application under review, identified by its application id, and SHALL NOT audit or quote lines from other applications on the device. When the log does not name the application's process, the audit SHALL cover the whole log and SHALL say so in its output and in the report.
+The log audit SHALL read only the log lines written by the processes of the application under review, identified by its application id, and SHALL NOT audit or quote lines from other applications on the device. When the log does not name the application's process, the verdict SHALL be `REVIEW INCONCLUSIVE`.
 
 #### Scenario: Another app logs an error
 - **WHEN** another application on the device logs an unhandled exception and the application under review logs none
@@ -96,7 +104,7 @@ The log audit SHALL read only the log lines written by the processes of the appl
 
 #### Scenario: The application's process is not in the log
 - **WHEN** the log never names the process of the application under review
-- **THEN** the whole log is audited and the output and the report say so
+- **THEN** the verdict is `REVIEW INCONCLUSIVE` and the output and the report say why
 
 ### Requirement: Functional bugs go through the spec
 A functional or UX defect found during review SHALL NOT be patched live. The agent SHALL direct the person to `/relevo:fix`.
@@ -106,7 +114,7 @@ A functional or UX defect found during review SHALL NOT be patched live. The age
 - **THEN** the agent does not edit code and points to `/relevo:fix`
 
 ### Requirement: Pull request only after verification
-The pull request SHALL be opened only when the verdict is `REVIEW PASSED` and every checklist line is confirmed working by the person, and only after the person agrees.
+The pull request SHALL be opened only when the verdict is `REVIEW PASSED` or `REVIEW PASSED (with waivers)` and every checklist line is confirmed working by the person, and only after the person agrees.
 
 #### Scenario: Checklist incomplete
 - **WHEN** any checklist line is unconfirmed or failing
@@ -115,6 +123,10 @@ The pull request SHALL be opened only when the verdict is `REVIEW PASSED` and ev
 #### Scenario: Verified
 - **WHEN** the verdict is passed, the checklist is complete and the person agrees
 - **THEN** the branch is pushed, a pull request to the base branch is opened ready for review (not as a draft) with the checklist and `Closes #<n>`, review is requested from the peer (unless `review.mode` is `none`), and the issue is labelled `pr-open`
+
+#### Scenario: Inconclusive audit
+- **WHEN** the verdict is `REVIEW INCONCLUSIVE`
+- **THEN** no pull request is opened
 
 ### Requirement: Evidence policy
 When `evidence.policy` is `local_only`, screenshots SHALL NOT be attached to the pull request or issue and SHALL be deleted at the end. When it is `attach_to_pr`, the review SHALL tell the person which files to attach and SHALL keep them until the person confirms. The review cannot upload images itself, because GitHub offers no API for attaching images to a pull request description, so the person drags them in.
@@ -173,3 +185,147 @@ Before the shot list, `review` SHALL show a brief generated by a script with fix
 #### Scenario: Long summary
 - **WHEN** the summary has ten sentences
 - **THEN** the brief holds only the first two
+
+### Requirement: An empty or foreign log is inconclusive
+The audit SHALL return a third verdict, `REVIEW INCONCLUSIVE`, when the log is empty or when no line of it was written by the application under review. The pull request SHALL NOT be opened on this verdict, and it SHALL NOT be waived.
+
+#### Scenario: Empty log
+- **WHEN** the device log is empty
+- **THEN** the verdict is `REVIEW INCONCLUSIVE`, not `REVIEW PASSED`
+
+#### Scenario: Only other apps in the log
+- **WHEN** the log has lines but none of them belongs to the application under review
+- **THEN** the verdict is `REVIEW INCONCLUSIVE` and the person is asked to restart the app and repeat the steps
+
+#### Scenario: Not waivable
+- **WHEN** the person tries to waive an inconclusive audit
+- **THEN** the waiver is refused
+
+### Requirement: Findings can be waived by the person, with a reason
+Only the person SHALL be able to waive a finding, one at a time, with `waive <number> <reason>` and a non-empty reason; the agent SHALL NOT propose or apply one. When every finding is waived the verdict SHALL be `REVIEW PASSED (with waivers)`, which allows the pull request, and the waived findings with their reasons SHALL appear in the report and the pull request body. A finding not waived SHALL still block.
+
+#### Scenario: Waiver with a reason
+- **WHEN** the person writes `waive 2 known warning of the camera plugin` for finding 2
+- **THEN** the finding is waived with that reason
+
+#### Scenario: Waiver without a reason
+- **WHEN** the person writes `waive 2` with no reason
+- **THEN** the waiver is refused and the finding still blocks
+
+#### Scenario: Every finding waived
+- **WHEN** every finding of the audit is waived
+- **THEN** the verdict is `REVIEW PASSED (with waivers)` and the pull request body lists them with their reasons
+
+#### Scenario: A finding left
+- **WHEN** one finding is not waived
+- **THEN** the verdict is `REVIEW REJECTED` and no pull request is opened
+
+#### Scenario: New audit after a micro-fix
+- **WHEN** the audit runs again and a waived finding appears with the same class and text
+- **THEN** it stays waived
+
+#### Scenario: Specification changed
+- **WHEN** a fix changes the specification and the review is synchronised
+- **THEN** the waivers are cleared
+
+### Requirement: A micro-fix is committed before the pull request
+A micro-fix made during the review SHALL be committed with the explicit files, the scan and a message `fix: <summary> (#<issue>)`, before the pull request opens.
+
+#### Scenario: Micro-fix accepted
+- **WHEN** the person accepted a micro-fix and the audit passes afterwards
+- **THEN** the fix is a commit on the branch and the pull request contains it
+
+### Requirement: The log is kept as the review goes
+After each message from the person, `review` SHALL append the device log to a file under `evidence/` and clear it on the device, and the audit SHALL read that accumulated file, so a long review cannot lose lines to the device's buffer.
+
+#### Scenario: Long review
+- **WHEN** the person tests for a long time and sends several messages
+- **THEN** the log lines of the whole session are in the file the audit reads
+
+### Requirement: The person running the review is the assignee, or confirms
+`review` SHALL compare the assignee of the issue with the login of the person running it and, when they differ, SHALL ask for a written confirmation before it goes on.
+
+#### Scenario: Someone else runs the review
+- **WHEN** the assignee is one person and another runs `review`
+- **THEN** the review stops until the person confirms in writing that they review it
+
+### Requirement: An existing pull request is reused
+Before it opens a pull request, `review` SHALL look for one for the branch; if it exists it SHALL be reused. A rejected push SHALL stop the review with the reason and SHALL NOT be forced.
+
+#### Scenario: Pull request already open
+- **WHEN** a pull request for the branch already exists
+- **THEN** no second one is created and the issue moves to `pr-open` with the existing link
+
+#### Scenario: Push rejected
+- **WHEN** the push is rejected
+- **THEN** the review stops, says why and force-pushes nothing
+
+### Requirement: The review picks its adapter from the platform and the target
+`review` SHALL resolve, from the platform of the issue and its target, how the review obtains its log and captures and whether it can be driven: a device with `adb` for Flutter on `android`, a simulator with `xcrun` for Flutter on `ios` (macOS only), a browser for `web`. A combination without an adapter SHALL stop the review before it changes anything, naming what is missing.
+
+#### Scenario: Android device
+- **WHEN** the platform is Flutter with the target `android`
+- **THEN** the adapter is the device with `adb`, and the review proceeds as before
+
+#### Scenario: Web
+- **WHEN** the platform is Vue with the target `web`
+- **THEN** the adapter is the browser, and the review needs `review.autopilot` other than `off`
+
+#### Scenario: No adapter
+- **WHEN** the combination has no adapter, or the tool it needs is missing
+- **THEN** `review` stops before changing anything and says what to install or that it is not supported yet
+
+### Requirement: Who drives the review is a setting, and the person always closes the loop
+`review.autopilot` SHALL be `off` (the person does everything), `precheck` (the agent walks the lines, takes captures, audits and records its result per line apart from the person's confirmation; the person confirms every line) or `verify` (as `precheck`, and the agent may mark a line `ok (auto)` only when its `THEN` was verified by an assertion, a semantic finder or the log; the person confirms the rest and gives the agreement). The pull request SHALL list the lines verified automatically.
+
+#### Scenario: Precheck
+- **WHEN** `review.autopilot` is `precheck` and the agent's walk passes line 2
+- **THEN** line 2 is recorded as pre-checked and stays pending until the person confirms it
+
+#### Scenario: Verify
+- **WHEN** `review.autopilot` is `verify` and an assertion proved the `THEN` of line 3
+- **THEN** line 3 is `ok (auto)`, the person confirms the remaining lines and agrees, and the pull request lists line 3 as verified automatically
+
+#### Scenario: Auto in a mode that does not allow it
+- **WHEN** an automatic confirmation is attempted in `off` or `precheck`
+- **THEN** it is refused and the line stays as it was
+
+### Requirement: The agent operates the app only within fixed limits
+The agent SHALL operate the app only when `review.autopilot` is not `off`: on mobile targets through semantic finders, on the web in the runner's own clean browser and against allowed origins. It SHALL NOT use coordinates, `adb shell input`, Appium, Maestro, the person's browser or third-party sites, and SHALL first obtain the person's written confirmation that the app points to non-production data.
+
+#### Scenario: Autopilot off
+- **WHEN** `review.autopilot` is `off`
+- **THEN** the agent does not operate the app
+
+#### Scenario: Origin not allowed
+- **WHEN** a driven web page tries to load an origin that is not `localhost` or listed in `review.allowed_origins`
+- **THEN** the request is blocked and recorded
+
+#### Scenario: Production data
+- **WHEN** the person does not confirm that the app points to non-production data
+- **THEN** the agent does not start
+
+### Requirement: A web review script is reviewed before it runs
+The script that drives a browser SHALL be written from the scenarios, reviewed by `qa` in read-only mode, and refused by the runner if it imports anything other than the assertion and browser libraries or reaches the file system, the network outside the browser or the process. Lines it cannot check (appearance, animation, fidelity to an image) SHALL stay for the person.
+
+#### Scenario: Script reaches the file system
+- **WHEN** the script imports `node:fs` or `child_process`
+- **THEN** the runner refuses it before launching a browser
+
+#### Scenario: A line that cannot be asserted
+- **WHEN** a scenario is about how something looks
+- **THEN** it has no assertion and stays for the person
+
+### Requirement: Credentials of a driven review are names, not values
+A driven review that needs a login SHALL read test credentials only through environment variable names the person provides, and SHALL NOT read, print or store their values; the runner SHALL redact any such value from what it writes.
+
+#### Scenario: Value in the output
+- **WHEN** a page echoes the test password in an error message
+- **THEN** the runner writes it as redacted
+
+### Requirement: The audit understands a browser
+The audit SHALL treat console errors, uncaught exceptions, unhandled rejections and failed requests of a driven browser as findings, and an empty browser log as inconclusive.
+
+#### Scenario: Console error
+- **WHEN** the driven page logs an uncaught exception
+- **THEN** the verdict is `REVIEW REJECTED` with the exception as a finding

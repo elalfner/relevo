@@ -48,6 +48,16 @@ Do not claim the code compiles, analyses clean or passes tests unless you ran th
 
 ## Targets
 
-- `android`: needs `adb`. The bridge to the device for the on-device review.
-- `ios`: needs `xcrun`. It runs only on macOS; builds and reviews for iOS are done there.
-- `web`: needs a browser; no extra tool.
+- `android`: needs `adb`. The bridge to the device for the on-device review. With `review.autopilot`, the agent can drive the app through `flutter_driver`; it needs `lib/main_driver.dart` with `enableFlutterDriverExtension()` and the `flutter_driver` dependency.
+- `ios`: needs `xcrun`. It runs only on macOS; builds and reviews for iOS are done there. The review of iOS is not available yet.
+- `web`: needs a browser; no extra tool. The review of a web target is always driven (`review.autopilot` must be `precheck` or `verify`) and uses the browser runner.
+
+## Questions for the issue writer
+
+- Which screen is this, and how does the person get to it and leave it?
+- What does the person see while data loads, when there is none, when the request fails and when there is no network?
+- Which system action does it trigger (a call, a map, a share, a permission)? What if the app for it is missing or the permission is denied?
+- Which endpoint does it use and what does its response look like? If it belongs to another repository, name the issue that builds it with `Depends-on:`.
+- Which targets must it work on (`android`, `ios`, `web`)?
+- Is there a design reference (a picture, a widget to reuse)? Name the file.
+- What must work on a small screen?
