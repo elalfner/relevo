@@ -35,6 +35,10 @@
 <definition>
 _Avoid_: <words to avoid>
 
+<!-- Optional. Only when relevo.yml has several platforms: the one platform this issue is for. A feature that needs two platforms is two issues linked with Depends-on. -->
+
+Platform: <name of a platform in relevo.yml>
+
 <!-- Optional. Only when the change needs a new dependency: the manifest and lock files it may touch. Without this line an unattended run refuses to change them. -->
 
 Allow-paths: <dependency files the change may touch, for example pubspec.yaml, pubspec.lock>
