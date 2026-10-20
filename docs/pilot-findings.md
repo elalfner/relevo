@@ -114,6 +114,13 @@ The sandbox repository lists `elalfner/relevo` in `links`, and its secret `RELEV
 
 Not run in the cloud: a dependency that cannot be read (no token), a repository outside `links`, and the wake-up of a blocked issue when the other repository finishes. The first two are covered by the tests; the wake-up is the queue's scheduled run, which was not waited for. Setting up this check also needed three changes in the sandbox that were not obvious: the secret mapped in two workflow steps, `links` in its `relevo.yml`, and a merge of `main` into `dev` because the squash-merged promotions had left the two branches with different history.
 
+## Execution modes: pause and consumption (task 6.4 of `execution-modes`)
+
+- With the repository variable `RELEVO_CLOUD_GO` set to `off`, the `go` run for a `relevo:ready` issue ended `skipped` in 1 second. The issue stayed `ready`, with no comment and no `building` label.
+- After deleting the variable, `ready` had to be applied again (remove the label and add it back) for the build to start: the event that was skipped is not replayed. It then built to `relevo:built` in about 7 minutes.
+- The agent runner's `execution_file` is a list of events whose `result` entry carries the turns, the cost and a `usage` object. The comment read "14 turns, about $0.43 (notional: a subscription is not billed per run), 5,207 tokens". The token count excludes tokens served from the prompt cache, which are reported apart.
+- Not seen: a real usage-limit failure, the no-credential comment in the cloud, and a real `/relevo:go --local` run.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

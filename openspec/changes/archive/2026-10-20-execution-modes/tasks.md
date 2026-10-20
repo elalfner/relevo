@@ -31,7 +31,7 @@
 - [x] 6.1 Add `docs/execution.md` and `docs/execution.es.md` (where `go` runs, the variable, the two credentials and what each means for the limits, the local run, the policy reminder), link them from the READMEs and `docs/configuration*.md`, and record the new output used in `docs/action-parameters.md`. Verify with `tests/readme-sync.test.mjs`.
 - [x] 6.2 Add the entry to `CHANGELOG.md` under Unreleased. Verify with `tests/changelog.test.mjs`.
 - [x] 6.3 Run `npm test`, `openspec validate --all`, `openspec validate execution-modes --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
-- [ ] 6.4 In the sandbox repository, copy the new workflows, label an issue `ready` and check that the consumption comment appears, then set `RELEVO_CLOUD_GO` to `off`, label another issue `ready` and check that no run builds it. Verify by the runs; record in `docs/pilot-findings.md` the real shape of the execution log and whether the usage figures were found.
+- [x] 6.4 In the sandbox repository, copy the new workflows, label an issue `ready` and check that the consumption comment appears, then set `RELEVO_CLOUD_GO` to `off`, label another issue `ready` and check that no run builds it. Verify by the runs; record in `docs/pilot-findings.md` the real shape of the execution log and whether the usage figures were found.
 
 ## Workflow follow-up
 
