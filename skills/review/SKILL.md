@@ -17,6 +17,7 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 - Never send a message, make a call or press a send button in any other app. If a step needs it (for example sending something through a messaging app), the person does it.
 - Never open the screenshots. They can show real customer data. They are saved to disk and nothing else.
 - Never patch code during the review. A defect found here goes through `/relevo:fix`.
+- Never waive a finding, and never suggest or hint that one could be waived: a waiver is the person's decision, written by them as `waive <number> <reason>`.
 - Never commit the `evidence/` folder, and never force-push.
 
 The only `adb` commands you may run are: list devices, clear or read the log (`logcat`), and the screenshot taken by `capture.mjs`.
@@ -32,7 +33,15 @@ Stop with a clear message, changing nothing, if any of these fails:
 - The issue is not `built` (or `in-review`, to resume). Say which state it is in and what to do (`/relevo:go`, `/relevo:fix`).
 - `node ${CLAUDE_PLUGIN_ROOT}/scripts/device.mjs` exits non-zero. Show its message: it says what to connect or authorise. Keep the serial it prints as `<serial>`.
 
-Find the repository (`$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner -q .nameWithOwner`), the issue's branch (`git branch -r --list "origin/feature/$ARGUMENTS-*"`) and its change folder (`openspec/changes/$ARGUMENTS-*`).
+Find the repository (`$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner -q .nameWithOwner`), the issue's branch (`git branch -r --list "origin/feature/$ARGUMENTS-*"`) and its change folder: the one `openspec list --json` names that starts with `$ARGUMENTS-` (`openspec/changes/<name>`).
+
+Check who is running the review. The assignee is the person who should test on the device:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/review-who.mjs --assignee <the issue's assignee, from gh issue view $ARGUMENTS --json assignees> --login <gh api user --jq .login>
+```
+
+If it exits 1 it names both people: ask the person for a written confirmation that they are reviewing it themselves, and stop if they do not give it.
 
 ### 1. Synchronise with the base branch
 
@@ -41,8 +50,11 @@ The person must never review a stale base.
 ```bash
 git fetch origin <base> <branch>
 git switch <branch>
+git pull --ff-only origin <branch>
 git merge --no-edit origin/<base>
 ```
+
+The pull brings in what `go` or `fix` pushed from another machine, so the person tests the current code. If it cannot fast-forward, the local and the remote branch have diverged: leave the issue as `built`, say so, and stop (never rebase, reset or force anything).
 
 If the merge conflicts, run `git merge --abort`, leave the issue as `built`, tell the person which files conflict, and stop.
 
@@ -82,7 +94,10 @@ Handle each message as it comes:
 - `capture <name>`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/capture.mjs <name>`, then record it with `review-state.mjs capture <path>`. Reply with the saved path only. If the script rejects the name, show its message and ask for another.
 - `ok <numbers>`: `review-state.mjs set <n> ok` for each. `fail <n> <note>`: `review-state.mjs set <n> fail <note>`. `retest <numbers>`: `review-state.mjs set <n> pending` for each, so the line must be confirmed again (useful after a fix).
 - A bug or something that looks wrong: do not edit anything. Record it as a `fail` and say the fix goes through `/relevo:fix $ARGUMENTS`; the review can resume afterwards.
+- `waive <number> <reason>`: the person's decision, available once the audit has findings; run `review-state.mjs waive <number> <reason>`. It refuses an empty reason and an inconclusive audit; show its message.
 - `done`: go to step 5.
+
+After **each** message of the person, keep the device log from being lost to its circular buffer: `adb -s <serial> logcat -d -v threadtime | node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs drain` and then `adb -s <serial> logcat -c`. The audit reads what was kept.
 
 Never go to step 5 without an explicit `done` (or the equivalent in the person's language).
 
@@ -90,14 +105,16 @@ Never go to step 5 without an explicit `done` (or the equivalent in the person's
 
 ```bash
 package=$(node ${CLAUDE_PLUGIN_ROOT}/scripts/app-id.mjs)
-adb -s <serial> logcat -d -v threadtime | node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs audit --package "$package"
+adb -s <serial> logcat -d -v threadtime | node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs audit --accumulated --package "$package"
 ```
 
-`app-id.mjs` prints the application id of the project. The audit then looks only at the lines written by that app's processes, so other apps on the device are neither audited nor quoted. If `app-id.mjs` finds no id, run the audit without `--package`. If the log never names the app's process, the audit covers the whole log and says so in its output and in the report: tell the person, because that log may hold other apps' data.
+`app-id.mjs` prints the application id of the project. The audit then looks only at the lines written by that app's processes, so other apps on the device are neither audited nor quoted. If `app-id.mjs` finds no id, run the audit without `--package`.
 
-It prints `REVIEW PASSED` or `REVIEW REJECTED` with the first findings, and writes `evidence/review-report.md`.
+It prints `REVIEW PASSED`, `REVIEW REJECTED` with the numbered findings, or `REVIEW INCONCLUSIVE`, and writes `evidence/review-report.md`. **Inconclusive** means the log was empty or had no line of the app: it proves nothing, it is not a pass and it cannot be waived. Ask the person to start the app again, repeat the steps, and audit once more.
 
-If it is `REVIEW REJECTED`, offer a micro-fix loop and wait for the person to accept. On a yes: launch `relevo:dev` in **fix** mode with exactly the log findings, then `relevo:qa`; ask the person to restart the app and repeat the affected steps; clear the log (`adb -s <serial> logcat -c`) and audit again. At most twice. Anything beyond a console error (a wrong behaviour) is not a micro-fix: it goes through `/relevo:fix`.
+A rejected audit can end in the person waiving every finding with a reason: the verdict then reads `REVIEW PASSED (with waivers)` and `decide` accepts it.
+
+If it is `REVIEW REJECTED`, offer a micro-fix loop and wait for the person to accept. On a yes: launch `relevo:dev` in **fix** mode with exactly the log findings, then `relevo:qa`; commit the fix before anything else: `node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "fix: <summary> (#$ARGUMENTS)" --within "<path>" --change "<change>" -- <the files the developer reported>` (it stages exactly those files, scans them and refuses on a finding); ask the person to restart the app and repeat the affected steps; clear the log (`adb -s <serial> logcat -c`) and audit again. At most twice. Anything beyond a console error (a wrong behaviour) is not a micro-fix: it goes through `/relevo:fix`.
 
 ### 6. Decide
 
@@ -114,9 +131,9 @@ Only when `decide` exited 0.
    git diff origin/<base>...HEAD | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs
    ```
 2. `git push -u origin <branch>` (a normal push).
-3. Write the body to a file: the issue title, `Closes #$ARGUMENTS`, the QA verdict, `REVIEW PASSED`, and the checklist with every line ticked (`checklist.mjs openspec/changes/<change folder> --state evidence/review-state.json`). No images, no links to this session, no attribution lines.
+3. Write the body to a file: the issue title, `Closes #$ARGUMENTS`, the QA verdict, the audit verdict (`REVIEW PASSED` or `REVIEW PASSED (with waivers)`), the checklist with every line ticked (`checklist.mjs openspec/changes/<change folder> --state evidence/review-state.json`), and, when there are waivers, the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs waived` (the waived findings with the person's reasons). No images, no links to this session, no attribution lines.
 4. Pick the reviewer, unless `review.mode` is `none`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/pick-reviewer.mjs --repo <owner/name> --author <your GitHub login> --pr <next PR number or 0>`. It picks, among `team.members` without the author and the spec writer (in `roles` mode, only `team.approvers`), the person with the fewest open review requests, ties in rotation. If it prints `null`, you handle it after the pull request exists (step 6).
-5. `gh pr create --base <base> --head <branch> --title "<title> (#$ARGUMENTS)" --body-file <file>`, adding `--reviewer <login>` when there is one. Open it **ready for review, not as a draft**.
+5. First look for one that already exists: `gh pr list --head <branch> --state open --json number,url`. If there is one, reuse it: create nothing, tell the person its link and go on to step 6. If `git push` was rejected, stop and show git's message and the likely cause (the remote branch moved: `git pull --ff-only origin <branch>`, never a force-push). Otherwise `gh pr create --base <base> --head <branch> --title "<title> (#$ARGUMENTS)" --body-file <file>`, adding `--reviewer <login>` when there is one. Open it **ready for review, not as a draft**.
 6. Move the issue to `pr-open`: `label-change.mjs --to pr-open --current "..."`, applied with `gh issue edit`. If nobody was eligible, also run `node ${CLAUDE_PLUGIN_ROOT}/scripts/needs-reviewer.mjs --repo <owner/name> --issue $ARGUMENTS --title "<title>" --pr-url <pull request URL>`: it adds `needs-reviewer` next to `pr-open` and mentions the spec writer.
 
 ### 8. Evidence
