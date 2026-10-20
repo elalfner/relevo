@@ -31,7 +31,21 @@ Un perfil es el archivo `stacks/<stack>.md` del plugin. Su encabezado lo leen lo
 - Las skills que requiere y las skills extra de cada rol.
 - Un texto con la higiene que sigue el desarrollador y lo que QA busca en el diff.
 
-Relevo trae el perfil `flutter`. `/relevo:go` resuelve el perfil de tu plataforma y se lo entrega a los agentes de desarrollo y de QA.
+Relevo trae los perfiles `flutter`, `vue` y `laravel`. `/relevo:go` resuelve el perfil de tu plataforma y se lo entrega a los agentes de desarrollo y de QA.
+
+## Los perfiles que trae Relevo
+
+| Stack | `analyze` | `test` | `format` | Destino |
+|---|---|---|---|---|
+| `flutter` | `flutter analyze --no-pub` | `flutter test --reporter=compact --no-pub` | `dart format` | `android`, `ios`, `web` |
+| `vue` | `vue-tsc --build` y luego `eslint . --cache` | `vitest run` | `prettier --write src/` | `web` |
+| `laravel` | `vendor/bin/pint --test` | `php artisan test` | `vendor/bin/pint` | ninguno |
+
+- Los comandos que ejecuta QA nunca reescriben tu código. Importa en Vue: el script `lint` que genera `npm create vue` usa `--fix`, así que el perfil llama a las herramientas directamente (con `npx --no-install`, con las versiones que fija tu proyecto) y no usa `npm run lint`.
+- Cada perfil se ejecutó en un proyecto creado para eso (`npm create vue@latest` con TypeScript, Vitest, ESLint y Prettier; `composer create-project laravel/laravel`). El `analyze` de Vue falla con un error de tipos, un `v-for` sin `:key`, una variable sin usar, un `any` explícito y un componente de una sola palabra, y no falla con `v-html`, un listener que nunca se quita o props copiadas fuera de la reactividad. El `analyze` y el `test` de Laravel fallan con un problema de estilo y con una prueba que falla, y no fallan con una asignación masiva sin protección, una consulta N+1 o una autorización que falta. El texto de cada perfil le dice a QA cuáles de esas debe buscar leyendo.
+- Un proyecto que usa `pnpm` o `yarn`, `oxlint` o PHPStan reemplaza el comando en `relevo.yml`, por ejemplo `checks: { analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse" }`.
+- Los perfiles no exigen ninguna skill extra. Para darle al desarrollo o a QA una skill propia (una de buenas prácticas de Laravel, por ejemplo), lístala en `.relevo/stacks/<stack>.md` bajo `skills`.
+- Un perfil puede tener una sección `Questions for the issue writer`. `/relevo:issue` hace las preguntas que la idea deja abiertas (en un backend: quién está autorizado y cómo es un error); el desarrollo y QA nunca la reciben.
 
 ## Agrega tus propias reglas
 
