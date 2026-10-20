@@ -23,7 +23,7 @@ test('frontmatter uses only documented fields; Claude can never start it on its 
 
 test('every script the skill runs exists', () => {
   const scripts = [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([\w.-]+)/g)].map((m) => m[1]);
-  ['ship-check.mjs', 'check-archive.mjs', 'scan-diff.mjs', 'stage.mjs', 'label-change.mjs', 'validate-config.mjs'].forEach((s) => assert.ok(scripts.includes(s), `the skill never uses ${s}`));
+  ['ship-check.mjs', 'check-archive.mjs', 'scan-diff.mjs', 'stage.mjs', 'label-change.mjs', 'validate-config.mjs', 'archive-state.mjs', 'fix-tasks.mjs', 'conflict-scope.mjs'].forEach((s) => assert.ok(scripts.includes(s), `the skill never uses ${s}`));
   new Set(scripts).forEach((s) => assert.ok(existsSync(root(`scripts/${s}`)), `scripts/${s} is referenced but does not exist`));
 });
 
@@ -84,4 +84,38 @@ test('it handles approvals dismissed by the archive push, and reminds that relea
 
 test('the skill mentions neither private sources nor personal data', () => {
   assert.doesNotMatch(text, /claude\.ai|session_[0-9A-Za-z]{6}|co-authored/i);
+});
+
+test('the state, the baseline and the labels are passed to ship-check', () => {
+  assert.match(body, /ship-check\.mjs --repo <owner\/name> --branch <branch> --invoker <login> --issue \$ARGUMENTS --labels/);
+  assert.match(body, /adding `--baseline <baseline>`/);
+  assert.match(body, /git rev-parse origin\/<branch>/);
+  assert.match(body, /`pr-open`: `\/relevo:review` or `\/relevo:fix`/);
+});
+
+test('Scenario: Merge failed after the archive was pushed - the archive step is skipped when the change is already archived', () => {
+  const state = body.indexOf('archive-state.mjs --change');
+  const archive = body.indexOf('openspec archive "<change folder name>" -y');
+  assert.ok(state > 0 && state < archive, 'archive-state comes first');
+  assert.match(body, /`archived` \(skip the rest of this step and go to step 4\)/);
+});
+
+test('the change is validated and its tasks are checked before it is archived', () => {
+  const validate = body.indexOf('openspec validate "<change folder name>"');
+  const tasks = body.indexOf('fix-tasks.mjs --file openspec/changes/<change folder name>/tasks.md --stage after');
+  const archive = body.indexOf('openspec archive "<change folder name>" -y');
+  assert.ok(validate > 0 && tasks > 0 && validate < archive && tasks < archive);
+});
+
+test('Scenario: Eligible person who did not approve - the written confirmation is asked for', () => {
+  assert.match(body, /`not-approver`/);
+  assert.match(body, /confirm in writing that they run it without having approved it/);
+});
+
+test('Scenario: Conflict only in specifications / in code - normal pushes only, and a conflict in code stops it', () => {
+  assert.match(body, /git revert --no-edit <the archive commit>/);
+  assert.match(body, /conflict-scope\.mjs/);
+  assert.match(body, /git merge --abort/);
+  assert.match(body, /never a force-push/);
+  assert.doesNotMatch(body, /git push[^\n]*--force/);
 });

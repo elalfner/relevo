@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Decides whether a pull request may be merged. Usage:
-//   node scripts/ship-check.mjs --repo owner/name --branch feature/31-x [--invoker login] [--config relevo.yml]
+//   node scripts/ship-check.mjs --repo owner/name --branch feature/31-x [--invoker login] [--config relevo.yml] [--labels a,b] [--baseline <head sha>] [--issue 31]
+//     --labels    the issue's labels; with them the issue must be pr-open
+//     --baseline  the head recorded when ship started: an approval given on it still counts after the archive commit
 //   node scripts/ship-check.mjs --input pr.json --invoker login      (a saved `gh pr view --json ...`; null for no PR)
 // Prints the decision as JSON.   exit 0: may be merged   exit 1: must stop   exit 2: bad arguments or configuration
 
@@ -24,7 +26,7 @@ if (!existsSync(configPath)) fail(`relevo.yml not found at ${configPath}. Run /r
 const loaded = loadConfig(readFileSync(configPath, 'utf8'));
 if (!loaded.ok) fail(loaded.errors.map((e) => `error: ${e.message}`).join('\n'));
 
-const FIELDS = 'number,state,isDraft,mergeable,title,author,reviews,statusCheckRollup,headRefName,baseRefName';
+const FIELDS = 'number,state,isDraft,mergeable,title,author,reviews,statusCheckRollup,headRefName,headRefOid,baseRefName';
 let pr;
 let invoker = arg('invoker');
 
@@ -40,6 +42,13 @@ if (arg('input')) {
   invoker ??= realGh(['api', 'user', '--jq', '.login']).trim();
 }
 
-const decision = shipDecision({ config: loaded.config, pr, invoker });
+const decision = shipDecision({
+  config: loaded.config,
+  pr,
+  invoker,
+  baseline: arg('baseline'),
+  labels: arg('labels') === undefined ? undefined : arg('labels').split(',').map((l) => l.trim()).filter(Boolean),
+  issue: arg('issue'),
+});
 console.log(JSON.stringify(decision, null, 2));
 process.exit(decision.allowed ? 0 : 1);
