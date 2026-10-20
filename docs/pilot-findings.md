@@ -99,6 +99,12 @@ The first run did not build: the planner queued the issue because the same perso
 
 Not seen directly: the log lines of `stack-profile.mjs` and `role-skills.mjs` in the build job; the result is what shows they ran without failing (a failed profile ends the run in `qa-failed` with the reason `profile not resolved`).
 
+## `Platform:` line with one platform (task 5.4 of `platform-line`)
+
+Issue #24 of the sandbox repository says `Platform: app`, the only platform of its `relevo.yml`. With the plugin of `main` (the `Platform:` line, the platform in the decision, `commit-change.mjs --within`) it went from `ready` to `relevo:built` with the hand-off comment: 4 of 4 tasks done, QA passed, and the hash of the issue text in the message (`f4339f71`). The build started at once because the previous built issue had been closed, so the per-person limit did not queue it.
+
+What this shows: the parser reads the line, the planner resolves it, the platform folder `.` leaves the commit scope unrestricted, and nothing in the cloud run broke. What it does not show: the refusal of a file outside a platform folder, or a second platform; those are covered by the tests with throwaway repositories, not by a run.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
