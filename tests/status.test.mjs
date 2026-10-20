@@ -116,3 +116,54 @@ test('digest.issue is a validated optional setting', () => {
   assert.equal(loadConfig(tpl.replace('issue: null', 'issue: 7')).config.digest.issue, 7);
   assert.equal(loadConfig(tpl.replace('issue: null', 'issue: 0')).ok, false);
 });
+
+// ---------- blocks that come from another repository
+
+import { gatherStatus } from '../scripts/lib/status-data.mjs';
+
+const LINKED = loadConfig(tpl.replace('links: []', 'links: [acme/api]')).config;
+
+test('Scenario: Waiting on the back / Unreadable - a blocked issue shows what it waits for in another repository and its state', () => {
+  const externalBlocks = {
+    7: [{ ref: 'acme/api#12', state: 'open', lifecycle: 'in-review' }],
+    8: [{ ref: 'acme/api#13', state: 'open', lifecycle: null }, { ref: 'acme/api#14', state: 'closed', lifecycle: null }],
+    9: [{ ref: 'acme/api#15', state: 'unreadable', lifecycle: null }],
+  };
+  const r = buildStatus({ config, me: 'luz', now: NOW, externalBlocks, issues: [issue(7, ['relevo:blocked']), issue(8, ['relevo:blocked']), issue(9, ['relevo:blocked']), issue(10, ['relevo:blocked'])] });
+  const text = renderStatus(r);
+  assert.match(text, /#7 Issue 7 — waiting for acme\/api#12 \(in-review\)/);
+  assert.match(text, /#8 Issue 8 — waiting for acme\/api#13 \(open\), waiting for acme\/api#14 \(closed, not completed\)/);
+  assert.match(text, /#9 Issue 9 — waiting for acme\/api#15 \(could not be read\)/);
+  assert.match(text, /#10 Issue 10$/m, 'a block inside this repository is shown as before');
+});
+
+test('the assignee sees the external block next to the state, and Spanish is translated', () => {
+  const externalBlocks = { 7: [{ ref: 'acme/api#12', state: 'open', lifecycle: 'in-review' }, { ref: 'acme/api#15', state: 'unreadable', lifecycle: null }] };
+  const r = buildStatus({ config, me: 'ana', now: NOW, externalBlocks, issues: [issue(7, ['relevo:blocked'])] });
+  assert.match(renderStatus(r), /#7 Issue 7 \(blocked\) — waiting for acme\/api#12 \(in-review\)/);
+  assert.match(renderStatus(r, 'es'), /esperando acme\/api#12 \(in-review\), esperando acme\/api#15 \(no se pudo leer\)/);
+});
+
+test('gatherStatus reads each external dependency of the blocked issues once through the links client, and skips completed and unlinked ones', () => {
+  const issuesByLabel = {
+    'relevo:blocked': [{ number: 7, title: 'T7', labels: [{ name: 'relevo:blocked' }], assignees: [], milestone: null, body: 'Depends-on: acme/api#12, acme/api#13, acme/api#14, other/repo#1, acme/app#2' }],
+  };
+  const gh = (args) => {
+    const path = args[args.length - 1];
+    if (path.includes('issues?')) return JSON.stringify([issuesByLabel[decodeURIComponent((path.match(/labels=(.*)$/) ?? [])[1] ?? '')] ?? []]);
+    if (path.includes('/pulls?')) return '[]';
+    throw new Error(`unexpected ${path}`);
+  };
+  const asked = [];
+  const ghLinks = (args) => {
+    const path = args[args.length - 1];
+    asked.push(path);
+    if (path.endsWith('/12')) return JSON.stringify({ state: 'open', labels: [{ name: 'relevo:in-review' }, { name: 'bug' }] });
+    if (path.endsWith('/13')) return JSON.stringify({ state: 'closed', state_reason: 'completed', labels: [] });
+    throw new Error('HTTP 404');
+  };
+  const data = gatherStatus({ gh, ghLinks, repo: 'acme/app', config: LINKED });
+  assert.deepEqual(asked, ['repos/acme/api/issues/12', 'repos/acme/api/issues/13', 'repos/acme/api/issues/14']);
+  assert.deepEqual(data.externalBlocks, { 7: [{ ref: 'acme/api#12', state: 'open', lifecycle: 'in-review' }, { ref: 'acme/api#14', state: 'unreadable', lifecycle: null }] });
+  assert.equal('body' in data.issues[0], false, 'the text of the issue is not part of the status data');
+});

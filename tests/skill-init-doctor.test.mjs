@@ -104,3 +104,9 @@ test('the doctor skill says it reads the profile of each platform and the skills
   assert.match(doctor, /toolchain and the targets of each platform's stack profile/);
   assert.match(doctor, /the extra skills of each role/);
 });
+
+test('Scenario: Front and back - init asks for the linked repositories and writes links', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /the repositories this one depends on, if any \(`owner\/repo`/);
+  assert.match(init, /`links` \(a list of `owner\/repo`, possibly none\)/);
+});
