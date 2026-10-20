@@ -161,3 +161,16 @@ test('the guarded examples name only stacks the plugin ships or documents, and t
   assert.doesNotMatch(workflow, /pull_request_target/);
   assert.match(workflow, /so an issue for the front does not install the back's tools/);
 });
+
+test('Scenario: Private linked repository - the gate step of go and the queue step map the read-only secret, and nothing else does', () => {
+  const queue = readFileSync(`${root}templates/workflows/relevo-queue.yml`, 'utf8');
+  const mapping = /GH_LINKS_TOKEN: \$\{\{ secrets\.RELEVO_LINKS_TOKEN \}\}/g;
+  assert.equal((workflow.match(mapping) ?? []).length, 1, 'go maps it once');
+  assert.equal((queue.match(mapping) ?? []).length, 1, 'the queue maps it once');
+  // In go it belongs to the `decide` job, which only reads and comments; the build job never sees it.
+  assert.match(jobText('decide'), mapping);
+  assert.doesNotMatch(jobText('build'), /RELEVO_LINKS_TOKEN|GH_LINKS_TOKEN/);
+  // The token that can push stays the default one.
+  assert.doesNotMatch(workflow, /github_token: \$\{\{ secrets\.RELEVO_LINKS_TOKEN/);
+  assert.match(workflow, /never to write/);
+});
