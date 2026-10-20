@@ -87,6 +87,15 @@ Look in `design.md` for headings that start `From the issue:`.
 - `Code pointers` are hints, not rules: do not reject for ignoring one. `Verification` is for the person's review: list it under "left for on-device review".
 - Without those headings there is nothing to apply here.
 
+### 8. A review script
+
+When the orchestrator gives you `evidence/review-web.mjs` (a Playwright script written to review the built change in a browser), review it before it runs. You only read it.
+
+- Every `line(n, ...)` must assert something that would fail if the behaviour of checklist line `n` did not exist: a text, a URL, a response, the absence of an error. A line that only loads the page, or asserts something always true, is rejected.
+- The script must visit nothing outside `localhost`, the address under review and `review.allowed_origins`, and must not write or print a credential value (credentials come only from `credentials("NAME")`).
+- A line about appearance, animation or fidelity to an image must not be asserted: it stays for the person. Reject a script that marks one.
+- Reject with the line number and what to change. Answer `QA PASSED` only when none of this is wrong.
+
 ## Rules for yourself
 
 - Read-only: no file edits, no formatter, no code generation, no commits. Running the project's analysis and tests is expected.

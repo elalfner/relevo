@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Prints the resolved profile of a platform, as JSON. Usage:
-//   node scripts/stack-profile.mjs --platform <name> [--config relevo.yml] [--plugin-root <dir>]
+//   node scripts/stack-profile.mjs --platform <name> [--config relevo.yml] [--plugin-root <dir>] [--role issue]
+// With `--role issue` it prints only the questions the stack has for the issue writer ({ platform, stack, questions });
+// without it the questions are not part of the output, so dev and qa never receive them.
 // The profile is the plugin's stacks/<stack>.md plus the repository's .relevo/stacks/<stack>.md, with the
 // `platforms.<name>.checks` of relevo.yml applied. The agents receive this output; they do not look for profiles.
 //   exit 0: printed   exit 1: the stack has no profile (or a profile is invalid)   exit 2: bad usage or invalid relevo.yml
@@ -42,6 +44,11 @@ const result = resolveProfile({ platform, pluginRoot, read });
 if (!result.ok) fail(result.errors.join('\n'), 1);
 
 const { profile } = result;
+if (arg('role') === 'issue') {
+  console.log(JSON.stringify({ platform: name, stack: profile.stack, questions: profile.questions }, null, 2));
+  process.exit(0);
+}
+if (arg('role') !== undefined) fail('--role can only be "issue"', 2);
 console.log(JSON.stringify({
   platform: name,
   stack: profile.stack,

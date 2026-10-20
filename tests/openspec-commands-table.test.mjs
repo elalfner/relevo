@@ -21,7 +21,9 @@ test('Scenario: A skill or agent uses a command outside its list - go may create
   assert.equal(isAllowed('dev', ['new', 'change', 'x']), false);
   assert.equal(isAllowed('qa', ['validate', 'x']), false);
   assert.equal(isAllowed('qa', []), false);
-  assert.equal(isAllowed('review', ['list']), false, 'a part with no list may use nothing');
+  assert.equal(isAllowed('fix', ['list']), false, 'a part with no list may use nothing');
+  assert.equal(isAllowed('review', ['list']), true);
+  assert.equal(isAllowed('review', ['validate', 'x']), false);
 });
 
 test('nothing on any list is a command no unattended run may use', () => {

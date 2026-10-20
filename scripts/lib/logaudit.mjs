@@ -11,19 +11,34 @@ const UNHANDLED_CONTEXT = /E\/flutter|Unhandled Exception|EXCEPTION CAUGHT|FATAL
 const RULES = [
   { cls: 'layout', re: /RenderFlex overflowed|BoxConstraints forces an infinite|was given unbounded (height|width)|unbounded (height|width)/i },
   { cls: 'lifecycle', re: /setState\(\) called (during build|after dispose)|called after dispose\(\)|deactivated widget's ancestor/i },
-  { cls: 'exception', re: /Unhandled Exception|EXCEPTION CAUGHT BY|FATAL EXCEPTION|NoSuchMethodError|\bTypeError\b|\bFlutterError\b/ },
+  { cls: 'exception', re: /Unhandled Exception|EXCEPTION CAUGHT BY|FATAL EXCEPTION|NoSuchMethodError|\bTypeError\b|\bFlutterError\b|\bUncaught\b|\bReferenceError\b|\bSyntaxError\b|Unhandled (?:promise )?rejection/ },
   // A network or data exception only counts when it was not handled: it shows up as an error in the log.
   { cls: 'network-data', re: /\b(DioException|SocketException|HttpException|ClientException|PostgrestException|AuthException)\b/, needs: UNHANDLED_CONTEXT },
+  // A driven browser: a console.error call, a request that failed, an error response, or one the origin guard stopped. Written by web-review.mjs.
+  { cls: 'network-data', re: /\brequestfailed\b|\bresponse [45]\d\d\b|\bblocked request\b/ },
+  { cls: 'console-error', re: /\bconsole\.error\b/ },
   { cls: 'missing-activity', re: /ActivityNotFoundException/ },
 ];
 
-export const ERROR_CLASSES = RULES.map((r) => r.cls);
+export const ERROR_CLASSES = [...new Set(RULES.map((r) => r.cls))];
+export const PASSED = 'REVIEW PASSED';
+export const PASSED_WITH_WAIVERS = 'REVIEW PASSED (with waivers)';
+export const REJECTED = 'REVIEW REJECTED';
+export const INCONCLUSIVE = 'REVIEW INCONCLUSIVE';
 
 /**
  * Scan log text. Returns { verdict, findings: [{ class, line, excerpt }], counts }.
- * verdict is exactly "REVIEW PASSED" or "REVIEW REJECTED".
+ * verdict is "REVIEW PASSED", "REVIEW REJECTED", or "REVIEW INCONCLUSIVE" when there is no evidence to judge: the log is
+ * empty, or `scope` (from filterByApp) says the application's process was never found in it. An inconclusive audit
+ * carries a `reason` and is never a pass.
  */
-export function auditLog(text) {
+export function auditLog(text, { scope = null } = {}) {
+  if (String(text ?? '').trim() === '') {
+    return { verdict: INCONCLUSIVE, reason: 'the device log is empty: the app was not started, the device was disconnected or the log could not be read', findings: [], counts: {} };
+  }
+  if (scope && scope.pids.length === 0) {
+    return { verdict: INCONCLUSIVE, reason: `no line of the log was written by ${scope.package}: restart the app and repeat the steps`, findings: [], counts: {} };
+  }
   const findings = [];
   const seen = new Set();
   String(text).split('\n').forEach((raw, idx) => {
@@ -42,16 +57,18 @@ export function auditLog(text) {
   findings.forEach((f) => {
     counts[f.class] = (counts[f.class] ?? 0) + 1;
   });
-  return { verdict: findings.length === 0 ? 'REVIEW PASSED' : 'REVIEW REJECTED', findings, counts };
+  return { verdict: findings.length === 0 ? PASSED : REJECTED, findings, counts };
 }
 
 /** Markdown report of an audit. */
 export function auditReport(audit, { issue, scope } = {}) {
   const lines = [`# Review report${issue ? ` for #${issue}` : ''}`, '', `**${audit.verdict}**`, ''];
+  if (audit.verdict === INCONCLUSIVE) {
+    lines.push(`This audit proves nothing: ${audit.reason}. It cannot be waived.`);
+    return `${lines.join('\n')}\n`;
+  }
   if (scope?.pids?.length) {
     lines.push(`Scope: only the processes of \`${scope.package}\` (pid ${scope.pids.join(', ')}); other apps' log lines were ignored.`, '');
-  } else if (scope) {
-    lines.push(`Scope: the whole device log. The process of \`${scope.package}\` was not found in it, so lines from other apps on the device were audited too and may be quoted below.`, '');
   } else {
     lines.push('Scope: the whole device log.', '');
   }
@@ -59,7 +76,7 @@ export function auditReport(audit, { issue, scope } = {}) {
     lines.push('The device log contains none of the error classes: layout, lifecycle, exceptions, network or data errors, missing activity.');
   } else {
     lines.push(`${audit.findings.length} finding(s):`, '');
-    audit.findings.forEach((f) => lines.push(`- **${f.class}** (log line ${f.line}): \`${f.excerpt.replace(/`/g, "'")}\``));
+    audit.findings.forEach((f, i) => lines.push(`${i + 1}. **${f.class}** (log line ${f.line}): \`${f.excerpt.replace(/`/g, "'")}\`${f.waived ? ` — WAIVED by the reviewer: ${f.reason}` : ''}`));
   }
   return `${lines.join('\n')}\n`;
 }
