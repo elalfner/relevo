@@ -16,7 +16,7 @@ The audit SHALL return a third verdict, `REVIEW INCONCLUSIVE`, when the log is e
 - **THEN** the waiver is refused
 
 ### Requirement: Findings can be waived by the person, with a reason
-Only the person SHALL be able to waive a finding of the audit, one at a time, with `waive <number> <reason>` and a non-empty reason; the agent SHALL NOT propose or apply one. When every finding is waived the verdict SHALL be `REVIEW PASSED (with waivers)`, which allows the pull request, and the waived findings with their reasons SHALL appear in the report and the pull request body. A finding not waived SHALL still block. A waiver SHALL survive a new audit of the same finding and be cleared when the specification changes.
+Only the person SHALL be able to waive a finding, one at a time, with `waive <number> <reason>` and a non-empty reason; the agent SHALL NOT propose or apply one. When every finding is waived the verdict SHALL be `REVIEW PASSED (with waivers)`, which allows the pull request, and the waived findings with their reasons SHALL appear in the report and the pull request body. A finding not waived SHALL still block.
 
 #### Scenario: Waiver with a reason
 - **WHEN** the person writes `waive 2 known warning of the camera plugin` for finding 2
