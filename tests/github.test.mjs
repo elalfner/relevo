@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { applyDecisions, commandsFor, gather, readyEvent } from '../scripts/lib/github.mjs';
+import { applyDecisions, commandsFor, gather, readyEvent, realGhLinks } from '../scripts/lib/github.mjs';
 import { planGo } from '../scripts/lib/plan.mjs';
 
 const BODY = '## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c\n';
@@ -204,4 +204,79 @@ test('stage CLI refuses to stage everything and stages only the named files', ()
   assert.equal(stage().status, 2);
   assert.equal(stage('a.txt').status, 0);
   assert.equal(git('diff', '--cached', '--name-only').trim(), 'a.txt');
+});
+
+// ---------- linked repositories
+
+const LINKED = loadConfig('limits:\n  run_max_cost: 5\nlinks: [acme/api]\n').config;
+function linkedWorld(body) {
+  return {
+    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready'], { body: `${BODY}\n${body}\n` })] },
+    timeline: { 1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z')] },
+    permissions: { 'persona-a': 'write' },
+    issueDetails: {},
+  };
+}
+/** A fake client for the linked repositories: it answers `repos/<owner>/<repo>/issues/<n>` from `table`, 404 otherwise. */
+function fakeLinks(table) {
+  const calls = [];
+  const gh = (args) => {
+    const path = args[args.length - 1];
+    calls.push(path);
+    if (!(path in table)) throw new Error('HTTP 404');
+    return JSON.stringify(table[path]);
+  };
+  gh.calls = calls;
+  return gh;
+}
+
+test('Scenario: Dependency completed / open / not planned / unreadable - external references are sorted into completed and unreadable', () => {
+  const links = fakeLinks({
+    'repos/acme/api/issues/12': { state: 'closed', state_reason: 'completed' },
+    'repos/acme/api/issues/13': { state: 'open' },
+    'repos/acme/api/issues/14': { state: 'closed', state_reason: 'not_planned' },
+  });
+  const body = 'Depends-on: acme/api#12, acme/api#13, acme/api#14, acme/api#15';
+  const state = gather({ gh: fakeGh(linkedWorld(body)), ghLinks: links, repo: REPO, config: LINKED });
+  assert.deepEqual(state.completedExternal, ['acme/api#12']);
+  assert.deepEqual(state.unreadable, ['acme/api#15'], 'a 404 is unreadable; open and not planned are simply not completed');
+  assert.deepEqual(state.completed, []);
+});
+
+test('Scenario: Repository not linked - a repository outside links is never asked', () => {
+  const links = fakeLinks({});
+  const gh = fakeGh(linkedWorld('Depends-on: other/repo#4'));
+  const state = gather({ gh, ghLinks: links, repo: REPO, config: LINKED });
+  assert.deepEqual(links.calls, []);
+  assert.ok(!gh.calls.some((c) => c.join(' ').includes('other/repo')), 'not with the ordinary client either');
+  assert.deepEqual([state.completedExternal, state.unreadable], [[], []]);
+});
+
+test('one request per distinct reference, and the own repository in full is a local read through the ordinary client', () => {
+  const links = fakeLinks({ 'repos/acme/api/issues/12': { state: 'closed', state_reason: 'completed' } });
+  const world = linkedWorld('Depends-on: acme/api#12, acme/api#12, acme/app#7');
+  world.issueDetails = { 7: { number: 7, state: 'closed', state_reason: 'completed' } };
+  const state = gather({ gh: fakeGh(world), ghLinks: links, repo: REPO, config: LINKED });
+  assert.deepEqual(links.calls, ['repos/acme/api/issues/12']);
+  assert.deepEqual(state.completed, [7]);
+  assert.deepEqual(state.completedExternal, ['acme/api#12']);
+});
+
+test('without a separate client the ordinary one reads public linked repositories', () => {
+  const world = linkedWorld('Depends-on: acme/api#12');
+  const gh = fakeGh(world);
+  const state = gather({ gh, repo: REPO, config: LINKED });
+  assert.deepEqual(state.unreadable, ['acme/api#12'], 'the fake ordinary client has no such issue');
+  assert.ok(gh.calls.some((c) => c.join(' ').includes('repos/acme/api/issues/12')));
+});
+
+test('the client for linked repositories uses GH_LINKS_TOKEN as the token, and the ordinary environment without it', () => {
+  const seen = [];
+  const run = (cmd, args, options) => { seen.push({ cmd, args, env: options.env }); return '{}'; };
+  realGhLinks({ env: { GH_TOKEN: 'push-token', GH_LINKS_TOKEN: 'read-token', PATH: '/bin' }, run })(['api', 'x']);
+  assert.equal(seen[0].env.GH_TOKEN, 'read-token');
+  assert.equal(seen[0].env.PATH, '/bin');
+  realGhLinks({ env: { GH_TOKEN: 'push-token' }, run })(['api', 'x']);
+  assert.equal(seen[1].env, undefined, 'the environment of the process is used as it is');
+  assert.equal(seen[0].cmd, 'gh');
 });

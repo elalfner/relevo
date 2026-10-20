@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
-import { realGh } from './lib/github.mjs';
+import { realGh, realGhLinks } from './lib/github.mjs';
 import { buildStatus, renderDigest } from './lib/status.mjs';
 import { gatherStatus } from './lib/status-data.mjs';
 
@@ -37,7 +37,7 @@ if (arg('input')) {
   data = JSON.parse(readFileSync(arg('input') === '-' ? 0 : arg('input'), 'utf8'));
 } else {
   if (!repo) fail('give --repo owner/name (or set GITHUB_REPOSITORY), or --input state.json');
-  data = gatherStatus({ gh: realGh, repo, config });
+  data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config });
 }
 
 const text = renderDigest(buildStatus({ config, ...data, me: null, now }), config.language);

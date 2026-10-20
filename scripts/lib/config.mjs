@@ -26,6 +26,7 @@ export const SETTINGS = [
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'path-list', default: [] },
   { path: 'skills.allow_scripts', type: 'string[]', default: [] },
+  { path: 'links', type: 'repo-list', default: [] },
   { path: 'evidence.policy', type: 'enum', allowed: ['attach_to_pr', 'local_only'], default: 'attach_to_pr' },
   { path: 'digest.issue', type: 'int', min: 1, default: null },
   { path: 'language', type: 'string', default: 'en' },
@@ -35,6 +36,7 @@ export const SETTINGS = [
 const GROUPS = new Set(SETTINGS.filter((s) => s.path.includes('.')).map((s) => s.path.split('.')[0]));
 const TOP_SCALARS = new Set(SETTINGS.filter((s) => !s.path.includes('.')).map((s) => s.path));
 const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels', 'platform', 'platforms']);
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const LANGUAGE_RE = /^[a-z]{2}(-[A-Z]{2})?$/;
 const GITHUB_LABEL_MAX = 50;
 
@@ -74,6 +76,15 @@ function checkType(setting, value, errors) {
         errors.push({ path, message: `${path} must be a file name or a list of file names (got ${JSON.stringify(value)})` });
       }
       break;
+    case 'repo-list': {
+      if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
+        errors.push({ path, message: `${path} must be a list of repositories written owner/repo (got ${JSON.stringify(value)})` });
+        break;
+      }
+      value.filter((v) => !REPO_RE.test(v)).forEach((v) => errors.push({ path, message: `${path}: "${v}" is not a repository; the form is owner/repo` }));
+      value.filter((v, i) => value.indexOf(v) !== i).forEach((v) => errors.push({ path, message: `${path} lists "${v}" more than once` }));
+      break;
+    }
     case 'enum':
       if (!setting.allowed.includes(value)) {
         errors.push({

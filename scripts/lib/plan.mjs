@@ -31,11 +31,15 @@ function byReadyAt(a, b) {
   return a.number - b.number;
 }
 
-export function planGo({ config, issues, completed = [], running = [], permissions = {} }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {} }) {
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);
   const open = issues.filter((i) => i.state === 'open');
   const completedSet = new Set(completed);
+  const completedExternalSet = new Set(completedExternal.map((r) => r.toLowerCase()));
+  const unreadableSet = new Set(unreadable.map((r) => r.toLowerCase()));
+  const linked = (config.links ?? []);
+  const own = repo ? repo.toLowerCase() : null;
 
   const runningSet = new Set(running);
   open.filter((i) => has(i, 'building')).forEach((i) => runningSet.add(i.number));
@@ -80,7 +84,21 @@ export function planGo({ config, issues, completed = [], running = [], permissio
     const assignee = issue.assignees[0] ?? null;
     // The platform the issue is for. When it cannot be resolved that is a missing part of the specification.
     const platform = resolvePlatform({ platforms: config.platforms, body: issue.body });
-    const missing = platform.ok ? parsed.missing : [...parsed.missing, platform.message];
+    // Dependencies: the own repository in full is a local reference; a repository outside `links` is a missing part
+    // of the specification (nothing is read from it); a token that is not a reference is too.
+    const localDeps = [...parsed.dependsOn];
+    const externalDeps = [];
+    parsed.dependsOnExternal.forEach((d) => {
+      if (own && d.repo.toLowerCase() === own) {
+        if (!localDeps.includes(d.number)) localDeps.push(d.number);
+      } else externalDeps.push(d);
+    });
+    const linkProblems = [
+      ...parsed.dependsOnInvalid.map((t) => `a valid Depends-on reference instead of "${t}" (write #12, or owner/repo#12 for a linked repository)`),
+      ...[...new Set(externalDeps.map((d) => d.repo))].filter((r) => !linked.some((l) => l.toLowerCase() === r.toLowerCase()))
+        .map((r) => `a Depends-on that names ${r}, which is not in links of relevo.yml (${linked.length ? linked.join(', ') : 'no repository is linked'})`),
+    ];
+    const missing = [...parsed.missing, ...(platform.ok ? [] : [platform.message]), ...linkProblems];
     const needsSpec = () => {
       const specWriter = config.team.spec_writer ?? issue.ready_by;
       decision(issue, 'needs-spec', `the spec is incomplete: ${missing.join('; ')}`, {
@@ -125,14 +143,27 @@ export function planGo({ config, issues, completed = [], running = [], permissio
       }
     }
 
-    // Gate 2: dependencies must be merged.
-    const blockers = parsed.dependsOn.filter((n) => !completedSet.has(n));
+    // An issue that was edited after it passed the gate can still name a repository that is not linked.
+    if (linkProblems.length > 0) {
+      needsSpec();
+      return;
+    }
+
+    // Gate 2: dependencies must be merged, in this repository or in a linked one.
+    const blockers = [
+      ...localDeps.filter((n) => !completedSet.has(n)).map((n) => `#${n}`),
+      ...externalDeps.filter((d) => !completedExternalSet.has(`${d.repo}#${d.number}`.toLowerCase()))
+        .map((d) => {
+          const ref = `${d.repo}#${d.number}`;
+          return unreadableSet.has(ref.toLowerCase()) ? `${ref} (could not be read: check the RELEVO_LINKS_TOKEN secret and that ${d.repo} is in links)` : ref;
+        }),
+    ];
     if (blockers.length > 0) {
       const entering = !has(issue, 'blocked');
-      decision(issue, 'block', `waiting for ${blockers.map((n) => `#${n}`).join(', ')}`, {
+      decision(issue, 'block', `waiting for ${blockers.join(', ')}`, {
         labels: moveTo(issue, 'blocked'),
         comment: entering
-          ? { kind: 'blocked_notice', data: { issue: issue.number, title: issue.title, blockers: blockers.map((n) => `#${n}`).join(', ') } }
+          ? { kind: 'blocked_notice', data: { issue: issue.number, title: issue.title, blockers: blockers.join(', ') } }
           : null,
       });
       return;

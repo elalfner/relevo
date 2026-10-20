@@ -29,7 +29,9 @@ function withoutCode(body) {
  * Returns {
  *   scenarios: number,          // complete WHEN/THEN pairs
  *   edgeCases: number,          // bullets under an "Edge cases" heading
- *   dependsOn: number[],        // issue numbers from "Depends-on: #N" lines
+ *   dependsOn: number[],        // issue numbers of this repository from "Depends-on: #N" lines
+ *   dependsOnExternal: { repo, number }[],   // issues of other repositories from "Depends-on: owner/repo#N"
+ *   dependsOnInvalid: string[], // tokens of a Depends-on line that look like a repository but are not owner/repo#N
  *   allowPaths: string[],       // paths and globs from "Allow-paths:" lines (dependency files the change may touch)
  *   platform: string[],         // every name written on a "Platform:" line, in order (the platform the issue is for)
  *   missing: string[],          // what the spec gate reports as absent
@@ -53,13 +55,23 @@ export function parseIssueBody(body) {
     if (inEdge && BULLET_RE.test(line)) edgeCases += 1;
   });
 
+  // `#12` is an issue of this repository; `owner/repo#12` is an issue of another one. A token that looks like a
+  // repository but is not followed by `#number` (for example "acme/api 12") is invalid.
   const dependsOn = [];
+  const dependsOnExternal = [];
+  const dependsOnInvalid = [];
   lines.forEach((line) => {
     const m = line.match(DEPENDS_RE);
     if (!m) return;
-    [...m[1].matchAll(/#(\d+)/g)].forEach((n) => {
-      const num = Number.parseInt(n[1], 10);
-      if (!dependsOn.includes(num)) dependsOn.push(num);
+    [...m[1].matchAll(/(?:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+))?#(\d+)/g)].forEach((ref) => {
+      const num = Number.parseInt(ref[2], 10);
+      if (ref[1]) {
+        if (!dependsOnExternal.some((d) => d.repo === ref[1] && d.number === num)) dependsOnExternal.push({ repo: ref[1], number: num });
+      } else if (!dependsOn.includes(num)) dependsOn.push(num);
+    });
+    const withoutRefs = m[1].replace(/(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+/g, ' ');
+    [...withoutRefs.matchAll(/[A-Za-z0-9_.:-]*[A-Za-z0-9_.-]+\/[A-Za-z0-9_./:-]+/g)].forEach((bad) => {
+      if (!dependsOnInvalid.includes(bad[0])) dependsOnInvalid.push(bad[0]);
     });
   });
 
@@ -85,5 +97,5 @@ export function parseIssueBody(body) {
   if (scenarios === 0) missing.push('scenarios written as WHEN/THEN pairs');
   if (edgeCases === 0) missing.push('edge cases (a list under an "Edge cases" heading)');
 
-  return { scenarios, edgeCases, dependsOn, allowPaths, platform, missing };
+  return { scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, missing };
 }

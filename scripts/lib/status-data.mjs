@@ -3,10 +3,11 @@
 
 import { issueFromBranch } from './branch.mjs';
 import { LABELS, resolveLabelNames } from './labels.mjs';
+import { parseIssueBody } from './issue-parse.mjs';
 
 const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
-export function gatherStatus({ gh, repo, config }) {
+export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
   const names = resolveLabelNames(config.labels);
   const byNumber = new Map();
   LABELS.forEach((l) => {
@@ -15,6 +16,8 @@ export function gatherStatus({ gh, repo, config }) {
       .forEach((i) => byNumber.set(i.number, {
         number: i.number, title: i.title, labels: i.labels.map((x) => (typeof x === 'string' ? x : x.name)),
         assignees: (i.assignees ?? []).map((a) => a.login), milestone: i.milestone?.number ?? null,
+        // Only blocked issues need their text: it names what they wait for in other repositories.
+        ...(i.labels.some((x) => (typeof x === 'string' ? x : x.name) === names.blocked) ? { body: i.body ?? '' } : {}),
       }));
   });
   const issues = [...byNumber.values()];
@@ -50,5 +53,33 @@ export function gatherStatus({ gh, repo, config }) {
       approved: approvedBy.length > 0, behind_by: behind,
     });
   });
-  return { issues, prs, milestones };
+  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }) };
+}
+
+/**
+ * What each blocked issue waits for in other (linked) repositories: { [issue number]: [{ ref, state, lifecycle }] }.
+ * `state` is `open`, `closed` (not completed) or `unreadable`; a dependency that is completed is not listed. The
+ * lifecycle is the Relevo label of the other issue, without its prefix, as that repository names it.
+ */
+function readExternalBlocks({ ghLinks, issues, repo, config, names }) {
+  const linked = new Set((config.links ?? []).map((l) => l.toLowerCase()));
+  const out = {};
+  issues.filter((i) => i.labels.includes(names.blocked)).forEach((i) => {
+    const waits = [];
+    parseIssueBody(i.body ?? '').dependsOnExternal
+      .filter((d) => d.repo.toLowerCase() !== String(repo).toLowerCase() && linked.has(d.repo.toLowerCase()))
+      .forEach((d) => {
+        const ref = `${d.repo}#${d.number}`;
+        try {
+          const dep = JSON.parse(ghLinks(['api', `repos/${d.repo}/issues/${d.number}`]));
+          if (dep.state === 'closed' && dep.state_reason === 'completed') return;
+          const label = (dep.labels ?? []).map((x) => (typeof x === 'string' ? x : x.name)).find((n) => String(n).startsWith('relevo:'));
+          waits.push({ ref, state: dep.state === 'closed' ? 'closed' : 'open', lifecycle: label ? label.slice('relevo:'.length) : null });
+        } catch {
+          waits.push({ ref, state: 'unreadable', lifecycle: null });
+        }
+      });
+    if (waits.length) out[i.number] = waits;
+  });
+  return out;
 }

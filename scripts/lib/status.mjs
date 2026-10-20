@@ -28,11 +28,12 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
     needsReviewer: i.labels.includes(names['needs-reviewer']),
+    ...(externalBlocks[i.number] ? { blockedBy: externalBlocks[i.number] } : {}),
   })).filter((e) => e.state);
 
   const mine = me ? entries.filter((e) => e.assignee === me) : [];
@@ -115,12 +116,14 @@ const T = {
     others: 'Waiting on others', spec: 'Back with the spec writer', blocked: 'Blocked', needsReviewer: 'Need a reviewer', milestone: 'Milestone',
     noDue: 'has no due date, so no capacity warning is computed', merged: 'merged', inReview: 'in review', queued: 'queued', warn: 'capacity warning: more work than the team can review before the due date',
     alerts: 'Alerts', staleReview: 'review waiting', staleBranch: 'branch behind the base by',
+    waitingFor: 'waiting for', open: 'open', closed: 'closed, not completed', unreadable: 'could not be read',
   },
   es: {
     nothing: 'Nada espera por ti.', onMe: 'Esperando por ti', review: 'Pull requests por revisar', ship: 'Aprobadas, listas para entregar',
     others: 'Esperando a otros', spec: 'De vuelta con quien escribe las specs', blocked: 'Bloqueadas', needsReviewer: 'Sin revisor', milestone: 'Milestone',
     noDue: 'no tiene fecha límite, así que no se calcula la advertencia de capacidad', merged: 'fusionadas', inReview: 'en revisión', queued: 'en cola', warn: 'advertencia de capacidad: hay más trabajo del que el equipo puede revisar antes de la fecha límite',
     alerts: 'Alertas', staleReview: 'revisión esperando', staleBranch: 'rama atrasada respecto a la base por',
+    waitingFor: 'esperando', open: 'abierto', closed: 'cerrado, sin completar', unreadable: 'no se pudo leer',
   },
 };
 
@@ -131,16 +134,18 @@ export function renderStatus(report, language = 'en') {
   const section = (title, lines) => {
     if (lines.length) out.push(`${title}:`, ...lines.map((l) => `  ${l}`), '');
   };
+  const waits = (e) => (e.blockedBy ?? []).map((b) => `${t.waitingFor} ${b.ref} (${b.state === 'unreadable' ? t.unreadable : b.lifecycle ?? t[b.state]})`).join(', ');
+  const withWaits = (e, base) => (e.blockedBy ? `${base} — ${waits(e)}` : base);
   const sw = report.specWriter;
   if (sw) {
     section(t.spec, sw.needsSpec.map((e) => `#${e.number} ${e.title}`));
-    section(t.blocked, sw.blocked.map((e) => `#${e.number} ${e.title}`));
+    section(t.blocked, sw.blocked.map((e) => withWaits(e, `#${e.number} ${e.title}`)));
     section(t.needsReviewer, sw.needsReviewer.map((e) => `#${e.number} ${e.title}`));
   }
   section(t.onMe, report.onMe.map((e) => `#${e.number} ${e.title} → ${e.command}`));
   section(t.review, report.toReview.map((r) => `#${r.number} ${r.pr}`));
   section(t.ship, report.toShip.map((r) => `#${r.number} → ${r.command}`));
-  section(t.others, report.waitingOnOthers.map((e) => `#${e.number} ${e.title} (${e.state})`));
+  section(t.others, report.waitingOnOthers.map((e) => withWaits(e, `#${e.number} ${e.title} (${e.state})`)));
   if (!sw && !report.onMe.length && !report.toReview.length && !report.toShip.length) out.unshift(t.nothing, '');
   report.milestones.forEach((m) => {
     out.push(`${t.milestone} "${m.title}": ${m.merged} ${t.merged}, ${m.inReview} ${t.inReview}, ${m.queued} ${t.queued}`);
