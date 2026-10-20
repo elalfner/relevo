@@ -38,6 +38,12 @@ The heading may be written `Edge cases`, `Edge case`, or `Casos borde` / `Casos 
 Depends-on: #12, #13
 ```
 
+An issue of another repository is written `owner/repo#12`, and the repository must be listed in `links` of `relevo.yml` (a repository outside the list sends the issue back to the spec writer). A private repository is read with the read-only secret `RELEVO_LINKS_TOKEN`; a public one needs none. The issue waits until the other one is closed as completed, and notices on the queue's schedule, because events do not cross repositories.
+
+```markdown
+Depends-on: #3, acme/api#12
+```
+
 The issue is not started until every listed issue is closed as completed (its pull request merged). Until then it is labelled blocked and starts by itself afterwards.
 
 ### 4. Documentation (optional)

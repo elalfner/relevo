@@ -43,4 +43,6 @@ Platform: <name of a platform in relevo.yml>
 
 Allow-paths: <dependency files the change may touch, for example pubspec.yaml, pubspec.lock>
 
+<!-- Optional. #<number> is an issue of this repository; owner/repo#<number> is an issue of a repository listed in links of relevo.yml. -->
+
 Depends-on: #<number>

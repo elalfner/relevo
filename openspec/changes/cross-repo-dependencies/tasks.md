@@ -21,13 +21,13 @@
 
 ## 4. The issue skill
 
-- [ ] 4.1 Update `skills/issue/SKILL.md` and `templates/issue.md`: the `Depends-on: owner/repo#N` form, the draft for a linked repository shown whole and created only on an explicit yes, the reuse of the data contract of a dependency, `check-issue.mjs --links`. Verify with `tests/skill-issue.test.mjs`: each rule is present, the flags used exist, and `tests/template.test.mjs` still passes.
-- [ ] 4.2 Document the form in `docs/issue-format.md` (the dependency section) and the setting in `docs/configuration.md` and `docs/configuration.es.md` (`links` and the secret). Verify with `tests/readme-sync.test.mjs`.
+- [x] 4.1 Update `skills/issue/SKILL.md` and `templates/issue.md`: the `Depends-on: owner/repo#N` form, the draft for a linked repository shown whole and created only on an explicit yes, the reuse of the data contract of a dependency, `check-issue.mjs --links`. Verify with `tests/skill-issue.test.mjs`: each rule is present, the flags used exist, and `tests/template.test.mjs` still passes.
+- [x] 4.2 Document the form in `docs/issue-format.md` (the dependency section) and the setting in `docs/configuration.md` and `docs/configuration.es.md` (`links` and the secret). Verify with `tests/readme-sync.test.mjs`.
 
 ## 5. Integration
 
-- [ ] 5.1 Add the entry to `CHANGELOG.md` under Unreleased (the `owner/repo#N` form and the fixed misreading, `links`, `RELEVO_LINKS_TOKEN`, `status`, `doctor`, `init`, `issue`; copy the workflows again). Verify with `tests/changelog.test.mjs`.
-- [ ] 5.2 Run `npm test`, `openspec validate --all`, `openspec validate cross-repo-dependencies --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
+- [x] 5.1 Add the entry to `CHANGELOG.md` under Unreleased (the `owner/repo#N` form and the fixed misreading, `links`, `RELEVO_LINKS_TOKEN`, `status`, `doctor`, `init`, `issue`; copy the workflows again). Verify with `tests/changelog.test.mjs`.
+- [x] 5.2 Run `npm test`, `openspec validate --all`, `openspec validate cross-repo-dependencies --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
 - [ ] 5.3 In the sandbox repository, add `links: [elalfner/relevo]` and the secret `RELEVO_LINKS_TOKEN` (the person creates it), then label ready an issue that says `Depends-on: elalfner/relevo#<an issue closed as completed>` and another that depends on an open one. Verify by the runs: the first reaches `relevo:built`, the second stays `relevo:blocked` with the notice naming the reference; record both in `docs/pilot-findings.md`.
 
 ## Workflow follow-up

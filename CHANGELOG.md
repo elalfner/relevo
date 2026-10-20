@@ -6,6 +6,9 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Added
 
+- **Dependencies between repositories**: `Depends-on: owner/repo#N` names an issue of another repository, and the new `links` setting of `relevo.yml` is the closed list of repositories an issue may depend on. The gate waits until the other issue is closed as completed, notices on the queue's schedule, and reads private repositories with a read-only token stored as the secret `RELEVO_LINKS_TOKEN` (public ones need none). An issue that names a repository outside `links`, or whose dependency cannot be read, says so instead of building.
+- **`status`, `doctor` and `init` know the links**: `status` shows what a blocked issue waits for in another repository and its state; `doctor` checks that each linked repository can be read and that the secret exists (its name only); `init` asks for `links` and reminds about the secret.
+- **`issue` drafts the other side**: when a feature depends on work in a linked repository it drafts that issue, shows it whole, creates it there only if asked, and offers to reuse the `## Data contract` of the issue it depends on.
 - **`Platform:` line** in the issue: an issue names the one platform it is for (required with several platforms in `relevo.yml`, optional with one). `go` resolves it, passes the platform, stack and folder to the agents, and a draft without it fails the check. `fix` and `review` find the platform again with the new `platform-of.mjs`.
 - **Scope of a commit**: `commit-change.mjs --within <folder> --change <id>` refuses files outside the folder of the platform (the change's specification, `GLOSSARY.md`, `docs/adr/` and `Allow-paths:` aside); the reason is "outside the platform".
 - **Scripts** that hold the rules `go` must not vary: `preflight`, `issue-hash`, `branch-state`, `spec-ready`, `intent-to-add`, `commit-change` and `next-step`, plus the protected-paths and OpenSpec-command tables they and the tests share.
@@ -18,6 +21,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Changed
 
+- **`Depends-on: acme/api#12` is no longer read as issue 12 of this repository.** Until now every `#number` of a `Depends-on:` line was taken as local, which could unblock the wrong issue. Copy the workflows again to get `GH_LINKS_TOKEN` in the gate and the queue.
 - **`go` with several platforms** builds the platform the issue names instead of refusing; an issue that does not name a valid platform goes to `needs-spec` with the list of platforms. The decision `platform` and its message of the previous release are gone.
 - **`fix` commits through `commit-change.mjs`** (protected paths, scan and the platform folder in one step) instead of staging and scanning by hand.
 - **The `go` workflow template** exposes `platform`, `stack` and `path` from the `decide` job, and its setup examples are guarded by the stack (Flutter, Vue, Laravel); copy `relevo-go.yml` again to get them.
