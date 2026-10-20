@@ -182,7 +182,7 @@ test('Scenario: Protection unavailable - a warning that says what enforces appro
 });
 
 test('automation readiness: secret, workflows, objective CI and the private plugin repository', () => {
-  assert.equal(byId(runChecks(healthy({ secrets: [] })), 'automation.secret').status, 'fail');
+  assert.equal(byId(runChecks(healthy({ secrets: [] })), 'automation.secret').status, 'warn');
   assert.equal(byId(runChecks(healthy({ secrets: ['CLAUDE_CODE_OAUTH_TOKEN'] })), 'automation.secret').status, 'pass');
   assert.equal(byId(runChecks(healthy({ secrets: null })), 'automation.secret').status, 'warn');
   const wf = healthy().workflows;
@@ -547,4 +547,73 @@ test('gatherFacts reads each linked repository once: reachable or not, private o
   });
   assert.deepEqual(f.links, [{ repo: 'acme/api', reachable: true, private: true }, { repo: 'acme/design', reachable: true, private: false }, { repo: 'acme/typo', reachable: false, private: null }]);
   assert.equal(asked.filter((p) => p === 'repos/acme/api').length, 1);
+});
+
+// ---------- where go builds
+
+test('Scenario: Subscription with several agents - doctor warns that the quota is shared and suggests 1', () => {
+  const many = { ...config, limits: { ...config.limits, concurrent_agents: 3 } };
+  const results = runChecks(healthy({ secrets: ['CLAUDE_CODE_OAUTH_TOKEN'], config: many }));
+  assert.match(byId(results, 'execution.credential').message, /subscription token: run_max_cost is only a notional ceiling/);
+  assert.equal(byId(results, 'execution.concurrency').status, 'warn');
+  assert.match(byId(results, 'execution.concurrency').fix, /set limits\.concurrent_agents to 1/);
+  assert.match(byId(results, 'execution.policy').message, /read the current Anthropic terms on automated use of a subscription token/);
+  const one = { ...config, limits: { ...config.limits, concurrent_agents: 1 } };
+  assert.equal(byId(runChecks(healthy({ secrets: ['CLAUDE_CODE_OAUTH_TOKEN'], config: one })), 'execution.concurrency'), undefined);
+});
+
+test('API key - run_max_cost is a real ceiling, and neither the policy reminder nor the quota warning appears', () => {
+  const results = runChecks(healthy({ secrets: ['ANTHROPIC_API_KEY'] }));
+  assert.match(byId(results, 'execution.credential').message, /API key: run_max_cost is a real ceiling/);
+  assert.equal(byId(results, 'execution.policy'), undefined);
+  assert.equal(byId(results, 'execution.concurrency'), undefined);
+});
+
+test('Both credentials - a warning that says which one the workflow uses when its text is known', () => {
+  const workflows = Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: true, enabled: true }]));
+  workflows['relevo-go.yml'].text = 'with:\n  claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n  # anthropic_api_key: x\n';
+  const r = byId(runChecks(healthy({ secrets: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'], workflows })), 'execution.credential');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN exist; the workflow uses the subscription token/);
+  assert.equal(byId(runChecks(healthy({ secrets: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] })), 'execution.credential').status, 'warn');
+});
+
+test('Scenario: No credential - the go workflow is installed, so doctor warns that a ready label only leaves a comment', () => {
+  const results = runChecks(healthy({ secrets: [] }));
+  const secret = byId(results, 'automation.secret');
+  assert.equal(secret.status, 'warn');
+  assert.match(secret.message, /the cloud cannot build: a ready label only leaves a comment that says to run \/relevo:go/);
+  assert.match(byId(results, 'execution.credential').message, /no model credential: the cloud cannot build/);
+  const noWorkflow = healthy({ secrets: [], workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: false, enabled: null }])) });
+  assert.match(byId(runChecks(noWorkflow), 'execution.credential').message, /no go workflow: go builds on machines only/);
+});
+
+test('Scenario: Cloud paused - the variable off is reported, and the other states are described', () => {
+  assert.match(byId(runChecks(healthy({ cloudVariable: 'off' })), 'execution.cloud').message, /the cloud is paused \(RELEVO_CLOUD_GO is off\)/);
+  assert.match(byId(runChecks(healthy({ cloudVariable: ' OFF ' })), 'execution.cloud').message, /paused/);
+  assert.match(byId(runChecks(healthy({ cloudVariable: null })), 'execution.cloud').message, /the cloud builds ready issues \(set the repository variable RELEVO_CLOUD_GO to off to pause it\)/);
+  const noWorkflow = healthy({ workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: false, enabled: null }])) });
+  assert.match(byId(runChecks(noWorkflow), 'execution.cloud').message, /not installed: ready issues are built on machines/);
+});
+
+test('a healthy repository with an API key and no variable has no new warning, and an unreadable secrets list adds nothing', () => {
+  assert.deepEqual(runChecks(healthy()).filter((r) => r.status === 'warn'), []);
+  assert.equal(runChecks(healthy({ secrets: null })).some((r) => r.id.startsWith('execution.')), false);
+});
+
+test('gatherFacts reads the variable that pauses the cloud, and keeps the text of the workflows for the credential line', () => {
+  const files = { 'relevo.yml': 'limits:\n  run_max_cost: 5\n', '.github/workflows/relevo-go.yml': 'x: 1\n  anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}\n' };
+  const api = {
+    'repos/o/r': { default_branch: 'main' },
+    'repos/o/r/actions/variables/RELEVO_CLOUD_GO': { name: 'RELEVO_CLOUD_GO', value: 'off' },
+    'repos/o/r/contents/.github/workflows?ref=main': [{ name: 'relevo-go.yml' }],
+    'repos/o/r/contents/.github/workflows/relevo-go.yml?ref=main': { content: Buffer.from(files['.github/workflows/relevo-go.yml']).toString('base64') },
+  };
+  const f = gatherFacts({
+    tool: () => 'ok',
+    gh: (args) => { const path = args[args.length - 1]; if (!(path in api)) throw new Error('HTTP 404'); return JSON.stringify(api[path]); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => ['relevo-go.yml'], skillDirs: [], repo: 'o/r',
+  });
+  assert.equal(f.cloudVariable, 'off');
+  assert.match(f.workflows['relevo-go.yml'].text, /anthropic_api_key/);
 });
