@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **Get started** ([docs/get-started.md](docs/get-started.md), also in Spanish): the shortest path from nothing to the first merged pull request for a person working alone, in eight steps, each with the command to copy, what you should see and what to do if you do not, and a table of the problems a newcomer meets. It is the first link of the cover and the index. A test runs the example issue of the page through `check-issue` and checks that the output it quotes is output the code produces. The install page no longer says that Flutter is the only stack.
+
 ## [0.2.0] - 2026-10-20
 
 ### Added

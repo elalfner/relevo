@@ -9,7 +9,7 @@ import { dirname, join, normalize } from 'node:path';
 const root = new URL('../', import.meta.url).pathname;
 const read = (p) => readFileSync(`${root}${p}`, 'utf8');
 
-const PAGES = ['install', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format'];
+const PAGES = ['get-started', 'install', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format'];
 const pairs = [['README.md', 'README.es.md'], ['docs/README.md', 'docs/README.es.md'], ...PAGES.map((n) => [`docs/${n}.md`, `docs/${n}.es.md`])];
 const files = [...pairs.flat(), 'docs/brand/guia-de-uso.md'];
 
