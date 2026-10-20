@@ -20,3 +20,10 @@ export function pathsFromPorcelain(output) {
     .flatMap((line) => line.slice(3).split(' -> '))
     .map((p) => p.replace(/^"|"$/g, ''));
 }
+
+/** Whether every conflicted path is inside the specifications folder. Returns { ok, paths, outside }. */
+export function conflictScope(paths, specsDir = 'openspec') {
+  const prefix = `${specsDir.replace(/\/+$/, '')}/`;
+  const outside = paths.filter((p) => !p.startsWith(prefix));
+  return { ok: outside.length === 0, paths, outside };
+}

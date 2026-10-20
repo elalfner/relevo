@@ -24,7 +24,7 @@ test('frontmatter uses only documented fields; Claude can never start it on its 
 
 test('every script the skill runs exists', () => {
   const scripts = [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([\w.-]+)/g)].map((m) => m[1]);
-  ['fix-state.mjs', 'add-corrections.mjs', 'fix-guard.mjs', 'commit-change.mjs', 'platform-of.mjs', 'stack-profile.mjs', 'role-skills.mjs', 'render-message.mjs', 'review-state.mjs'].forEach((s) => assert.ok(scripts.includes(s), `the skill never uses ${s}`));
+  ['fix-state.mjs', 'add-corrections.mjs', 'fix-guard.mjs', 'commit-change.mjs', 'platform-of.mjs', 'stack-profile.mjs', 'role-skills.mjs', 'render-message.mjs', 'review-state.mjs', 'branch-work.mjs', 'fix-stash.mjs', 'fix-tasks.mjs'].forEach((s) => assert.ok(scripts.includes(s), `the skill never uses ${s}`));
   new Set(scripts).forEach((s) => assert.ok(existsSync(root(`scripts/${s}`)), `scripts/${s} is referenced but does not exist`));
 });
 
@@ -86,4 +86,28 @@ test('Scenario: Monorepo fix - the platform is found again from the issue, the a
 test('Scenario: Platform not resolvable - fix changes nothing and tells the person to correct the Platform line', () => {
   assert.match(body, /If `platform-of\.mjs` exits 1, change nothing more and tell the person what it printed/);
   assert.match(body, /correct the `Platform:` line and run `\/relevo:fix` again/);
+});
+
+test('Scenario: QA rejects after the retries - the work is stashed, not left in the tree, and offered back on the next start', () => {
+  assert.match(body, /fix-stash\.mjs save --issue <issue> --iteration <K>/);
+  assert.match(body, /fix-stash\.mjs find --issue <issue>/);
+  assert.match(body, /fix-stash\.mjs pop --issue <issue>/);
+  assert.match(body, /confirm in writing before you run `fix-stash\.mjs drop/);
+  assert.ok(body.indexOf('fix-stash.mjs find') < body.indexOf('### 1. Understand the defect'), 'the stash is looked for before reading the defect');
+});
+
+test('Scenario: Branch with only the specification - fix stops and says to start again', () => {
+  assert.match(body, /branch-work\.mjs --base <base> --change <change>/);
+  assert.match(body, /delete the remote branch and apply the label relevo:ready again/);
+});
+
+test('the task list is checked before the developer and before the commit', () => {
+  const before = body.indexOf('--stage before');
+  const developer = body.indexOf('Launch the `relevo:dev` agent');
+  const after = body.indexOf('--stage after');
+  const commit = body.indexOf('commit-change.mjs --message');
+  assert.ok(before > 0 && before < developer, 'the before check comes first');
+  assert.ok(after > 0 && after < commit, 'the after check comes before the commit');
+  assert.match(body, /must start with `Test:`/);
+  assert.match(body, /\(device only\)/);
 });

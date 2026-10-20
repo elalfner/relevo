@@ -16,6 +16,18 @@ Se distribuye como un plugin de Claude Code llamado `relevo`:
 | `/relevo:status` | Quién espera a quién, más un resumen diario |
 | `/relevo:doctor` | Comprueba que el entorno y los ajustes del repositorio son correctos, incluidas las herramientas y skills que pide cada [perfil de stack](stacks.es.md) |
 
+## Qué comprueban `fix` y `ship`
+
+`fix` y `ship` cambian una rama después de que una persona la miró, así que las reglas que no deben variar están en scripts.
+
+- **Una corrección que QA rechaza se guarda, no se pierde.** Tras los reintentos, `fix` guarda el trabajo en un stash llamado `relevo-fix #<n> iteration <k>` y deja el árbol limpio. El siguiente `/relevo:fix <n>` te lo ofrece de vuelta (el stash existe solo en esa copia del repositorio). Un conflicto al restaurar se detiene y conserva el stash; descartarlo necesita tu confirmación escrita.
+- **Una rama que solo tiene la especificación no se "corrige".** `fix` dice que borres la rama remota y vuelvas a aplicar `relevo:ready`.
+- **La lista de tareas se comprueba.** Antes del desarrollador, las únicas tareas abiertas son las correcciones; una empieza por `Test:` (un test de regresión), salvo que todas las correcciones terminen con `(device only)`. Tras QA, no queda ninguna abierta.
+- **`ship` se puede ejecutar otra vez.** Si el cambio ya está archivado en la rama, `ship` sigue desde el merge. Si el archivo deja conflictos solo dentro de `openspec/`, revierte el commit de archivo, trae la rama base y archiva de nuevo, con pushes normales. Un conflicto en código lo detiene.
+- **Una aprobación vale para el código que vio.** Una aprobación dada sobre un commit anterior no cuenta; tras el commit de archivo, sigue contando la dada sobre la cabeza registrada al empezar.
+- **El issue debe estar en `pr-open`**, y `ship` nombra el comando que falta (`/relevo:review` o `/relevo:fix`) si no. El cambio se valida y no tiene tareas abiertas antes de archivarse.
+- **Quién ejecuta `ship`.** Con `review.merger: approver`, un miembro de `team.members` que no sea el autor ni quien escribe la spec (y, en modo `roles`, uno de `team.approvers`). Quien sea elegible pero no aprobó confirma por escrito que no lo hizo.
+
 ## Skills que usa `think`
 
 `/relevo:think` no reimplementa nada: ejecuta directamente dos skills que ya existen, así que su comportamiento es exactamente el de ellas.

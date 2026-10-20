@@ -35,10 +35,12 @@ Find the repository (`$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner
 ### 1. Check that it qualifies
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-check.mjs --repo <owner/name> --branch <branch> --invoker <login>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-check.mjs --repo <owner/name> --branch <branch> --invoker <login> --issue $ARGUMENTS --labels "<the issue's labels, comma separated>"
 ```
 
-It prints a decision and exits 0 when the pull request may be merged, 1 when it must stop. On exit 1, show the person every reason and stop, changing nothing. The reasons say what to do: open the pull request with `/relevo:review`, wait for an approval, resolve requested changes, synchronise the branch, wait for the checks, or let the right person run ship.
+It prints a decision and exits 0 when the pull request may be merged, 1 when it must stop. On exit 1, show the person every reason and stop, changing nothing. The reasons say what to do: run the command that is missing (the issue must be `pr-open`: `/relevo:review` or `/relevo:fix`), open the pull request, wait for an approval on the current code, resolve requested changes, synchronise the branch, wait for the checks, or let an eligible person run ship (a member of the team who is not the author or the spec writer).
+
+Record the head the approval was given on, to use after the archive: `git fetch origin <branch>` then `git rev-parse origin/<branch>`. Call it `<baseline>`.
 
 Then scan what will be merged. If it reports anything, stop and show the file and line:
 
@@ -53,11 +55,30 @@ git diff origin/<base>...HEAD | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs
 
 Show the person a summary from the decision: the pull request (number, title, author), who approved, the state of the checks, and what will happen next: the specification will be archived and pushed to the branch, the pull request will be squash-merged into `<base>`, the issue will be closed and the branch deleted.
 
+If the decision's `confirm` list includes `not-approver`, the person running ship did not approve this pull request. Say so, and ask them to confirm in writing that they run it without having approved it.
+
 If the decision's `confirm` list includes `no-ci`, say plainly that the repository has **no checks**, so nothing but the review vouches for this code, and ask about that explicitly as well.
 
 Wait for a clear written yes. If the person does not confirm, **stop: nothing is archived, pushed or merged.**
 
 ### 3. Archive the specification
+
+First see whether it is already archived (a previous `ship` archived and pushed it, and the merge then failed):
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/archive-state.mjs --change "<change folder name>"
+```
+
+It prints `archived` (skip the rest of this step and go to step 4), `active` (go on) or `missing` (exit 1: stop and say the change cannot be found).
+
+Before archiving, validate the change and check that no task is open:
+
+```bash
+openspec validate "<change folder name>"
+node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-tasks.mjs --file openspec/changes/<change folder name>/tasks.md --stage after
+```
+
+If either fails, stop before archiving and show what it printed.
 
 ```bash
 openspec archive "<change folder name>" -y
@@ -78,7 +99,13 @@ Do not add links to this session or attribution lines to the commit.
 
 ### 4. Check again
 
-The push may start new checks or dismiss an approval. Wait for any running checks (`gh pr checks <number> --repo <owner/name> --watch`), then run `ship-check.mjs` again, exactly as in step 1. If it now says to stop, show the reasons and stop. The most common one is an approval dismissed by the push: tell the person that the repository must not dismiss approvals on new commits (`/relevo:doctor` checks it).
+The push may start new checks or dismiss an approval. Wait for any running checks (`gh pr checks <number> --repo <owner/name> --watch`), then run `ship-check.mjs` again, exactly as in step 1 and adding `--baseline <baseline>`, so an approval given on the head before the archive still counts. If it now says the pull request has conflicts, see below. If it says anything else to stop, show the reasons and stop. The most common one is an approval dismissed by the push: tell the person that the repository must not dismiss approvals on new commits (`/relevo:doctor` checks it).
+
+**The archive left conflicts.** If the only reason is `CONFLICTING`, the base branch changed the specifications the archive wrote. Recover with normal pushes only, never a force-push:
+
+1. `git revert --no-edit <the archive commit>`, then `git merge origin/<base>`. If the merge conflicts, `node ${CLAUDE_PLUGIN_ROOT}/scripts/conflict-scope.mjs` says whether every conflicted file is under `openspec/`. If it exits 1, run `git merge --abort`, show the files and stop: a conflict in code is for the author.
+2. Archive again on top of the updated specifications (`openspec validate`, `openspec archive`, `check-archive.mjs`, stage, commit, as in step 3) and `git push origin <branch>`.
+3. The head has moved by more than the archive, so do not pass `--baseline`: run `ship-check.mjs` as in step 1. If the repository does not dismiss approvals, the approval of the old code is reported as given on an older commit and a new approval is needed; say so and stop.
 
 ### 5. Merge
 
