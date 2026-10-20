@@ -110,7 +110,7 @@ Son el mismo logo. Solo cambian el grosor del trazo y el fondo, para que se vea 
 
 ## Animación
 
-Cuatro segundos y medio, y se queda en ship.
+Nueve segundos, y se queda en ship.
 
 <div align="center">
 
@@ -118,7 +118,7 @@ Cuatro segundos y medio, y se queda en ship.
 
 </div>
 
-Es la versión corta del logo animado, sin texto: el círculo nace, los agentes de IA trabajan, la issue entra y la feature sale. Se queda unos segundos en el logo final, se desvanece y vuelve a empezar (un ciclo dura unos 13 s). Es un bucle a propósito: un SVG no sabe cuándo está a la vista, así que quien llega con el scroll lo ve moverse en pocos segundos. Para el README y la web.
+Es la versión corta del logo animado, sin texto: el círculo nace, los agentes de IA trabajan, la issue entra y la feature sale. Se queda unos segundos en el logo final, se desvanece y vuelve a empezar (un ciclo dura unos 17,5 s). Es un bucle a propósito: un SVG no sabe cuándo está a la vista, así que quien llega con el scroll lo ve moverse en pocos segundos. Para el README y la web.
 
 En un README de GitHub, con versión para tema oscuro:
 
