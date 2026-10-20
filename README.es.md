@@ -61,6 +61,7 @@ Además, `/relevo:status` (quién espera a quién) y `/relevo:doctor` (comprueba
 
 ## Documentación
 
+- [Primeros pasos](docs/get-started.es.md): de cero a tu primer pull request fusionado, paso a paso.
 - [Instalación](docs/install.es.md): qué necesitas y los primeros pasos.
 - [Cómo funciona](docs/how-it-works.es.md): la idea, y una corrida real de la idea al pull request mergeado.
 - [Comandos](docs/commands.es.md): los nueve comandos, y las skills que usa `think`.

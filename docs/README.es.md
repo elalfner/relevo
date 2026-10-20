@@ -2,10 +2,11 @@
 
 [English](README.md) · Español
 
-¿Es tu primera vez? Lee [Instalación](install.es.md) y después [Cómo funciona](how-it-works.es.md).
+¿Es tu primera vez? Lee [Primeros pasos](get-started.es.md) y después [Cómo funciona](how-it-works.es.md).
 
 ## Empieza aquí
 
+- [Primeros pasos](get-started.es.md): de cero a tu primer pull request fusionado, paso a paso.
 - [Instalación](install.es.md): qué necesitas y los primeros pasos.
 - [Cómo funciona](how-it-works.es.md): la idea, y una corrida real de la idea al pull request mergeado.
 - [Comandos](commands.es.md): los nueve comandos, y las skills que usa `think`.
