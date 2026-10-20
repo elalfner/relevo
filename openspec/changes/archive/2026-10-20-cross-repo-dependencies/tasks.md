@@ -28,7 +28,7 @@
 
 - [x] 5.1 Add the entry to `CHANGELOG.md` under Unreleased (the `owner/repo#N` form and the fixed misreading, `links`, `RELEVO_LINKS_TOKEN`, `status`, `doctor`, `init`, `issue`; copy the workflows again). Verify with `tests/changelog.test.mjs`.
 - [x] 5.2 Run `npm test`, `openspec validate --all`, `openspec validate cross-repo-dependencies --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
-- [ ] 5.3 In the sandbox repository, add `links: [elalfner/relevo]` and the secret `RELEVO_LINKS_TOKEN` (the person creates it), then label ready an issue that says `Depends-on: elalfner/relevo#<an issue closed as completed>` and another that depends on an open one. Verify by the runs: the first reaches `relevo:built`, the second stays `relevo:blocked` with the notice naming the reference; record both in `docs/pilot-findings.md`.
+- [x] 5.3 In the sandbox repository, add `links: [elalfner/relevo]` and the secret `RELEVO_LINKS_TOKEN` (the person creates it), then label ready an issue that says `Depends-on: elalfner/relevo#<an issue closed as completed>` and another that depends on an open one. Verify by the runs: the first reaches `relevo:built`, the second stays `relevo:blocked` with the notice naming the reference; record both in `docs/pilot-findings.md`.
 
 ## Workflow follow-up
 
