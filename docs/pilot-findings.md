@@ -167,6 +167,16 @@ The commands the guide and the commands page name were run from the sandbox clon
 - **Seen and not fixed**: `status.mjs --repo owner/name` printed "Nothing is waiting on you." right after `gh` refused one of its reads (HTTP 403 on the Actions path, which this cloud session blocks). The message is true for the issues it could read, but it does not say that part of the data is missing. A person would want to be told; left as a follow-up.
 - **Not tried**: a person new to Relevo following the guide from the start; the guide was read against the code, not used by someone who did not write it.
 
+## Design reference (task 5.3 of `design-reference`)
+
+Run in a throwaway repository with a `relevo.yml` that links `elalfner/relevo`, a file `design/home.png` and a draft issue whose `Design reference` pointed to that file, to `elalfner/relevo:docs/security.md` and to a file that does not exist.
+
+- `check-issue.mjs` failed the draft naming `design/missing.png` ("does not exist in the repository") and passed it once that bullet was removed.
+- `design-fetch.mjs --body-file` reported the repository file as available where it is, and downloaded the file of the linked repository with the real `gh api repos/.../contents/...` (5,142 bytes of text, decoded correctly), wrote `manifest.json`, added `/.relevo-design/` to `.git/info/exclude`, and `git status` did not show the folder.
+- In the tests the fetcher refused another domain without making a request, stopped a redirect to another host (and did not send the token there), cut an image at the 5 MB cap while it streamed, refused a file named `.png` whose bytes were not an image and refused an SVG, and sent the token to `github.com` and not to the host that serves the file.
+- **Not tried**: the download of a real pasted attachment. No issue of the sandbox or of this repository has one, and GitHub has no API to create one, so the redirect from `github.com/user-attachments/assets/<id>` to the signed host, and whether the token of the workflow can read an attachment of a private repository, are unverified. The fetcher reports a refusal with "the token may not read it" on a 403 or 404, and the way out is to commit the picture to the repository. To try it, a person pastes a small screenshot into an issue of the sandbox, turns on `design.images` and runs `design-fetch.mjs --issue <n>`.
+- **Not tried either**: a build that reads the image with `Read` inside `go`, and `qa` judging an image; both are behaviour of the agents that needs a live run.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

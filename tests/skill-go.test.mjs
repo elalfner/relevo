@@ -168,7 +168,7 @@ test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does n
 
 test('Scenario: Decisions in the issue - go saves the body and copies the sections with the script, not by hand', () => {
   assert.match(body, /save its body to a file outside the working tree \(call it `<issue_file>`\)/);
-  assert.match(body, /issue-sections\.mjs --body-file <issue_file> --copy "Decisions,Constraints,Code pointers,Screens and behaviour,Data contract,Verification,Assumptions" >> openspec\/changes\/<change_id>\/design\.md/);
+  assert.match(body, /issue-sections\.mjs --body-file <issue_file> --copy "Decisions,Constraints,Code pointers,Screens and behaviour,Data contract,Design reference,Verification,Assumptions" >> openspec\/changes\/<change_id>\/design\.md/);
   assert.match(body, /`## From the issue: <Section>`; one the issue does not have is left out/);
   assert.match(body, /Do not edit, summarise or reorder what the script wrote/);
   assert.ok(existsSync(root('scripts/issue-sections.mjs')));
@@ -187,4 +187,30 @@ test('Scenario: Question left in the issue - a hand-run takes the ambiguous path
 
 test('QA receives the saved body of the issue to compare the copied sections', () => {
   assert.match(body, /`<issue_file>` \(the saved body of the issue, to compare the copied sections\)/);
+});
+
+// ---------- design reference
+
+test('Scenario: Reference in the repository / Attachment - go fetches what the issue points to before it writes the specification', () => {
+  const fetchAt = body.indexOf('design-fetch.mjs --issue <issue> --repo <owner/name>');
+  assert.ok(fetchAt > body.indexOf('### 3. Specification'));
+  assert.ok(fetchAt < body.indexOf('Write the change specification from the issue'), 'the fetch comes before the specification');
+  assert.match(body, /reads the references from the issue itself, downloads pasted attachments only when `design\.images` is on/);
+  assert.match(body, /\.relevo-design\/manifest\.json/);
+  assert.ok(existsSync(root('scripts/design-fetch.mjs')));
+  const script = readFileSync(root('scripts/design-fetch.mjs'), 'utf8');
+  ['issue', 'repo', 'out', 'config', 'repo-root', 'body-file'].forEach((flag) => assert.ok(script.includes(`arg('${flag}')`), `design-fetch does not implement --${flag}`));
+});
+
+test('Scenario: Images turned off - a reference that cannot be fetched is a defect in the specification, and nothing is built', () => {
+  assert.match(body, /If it exits 1 it prints each reference it refused and why\. That is a defect in the specification/);
+  assert.match(body, /take the `needs-spec` path described below with `reason` `missing`, naming each refused reference/);
+  assert.match(body, /stop without pushing/);
+});
+
+test('the section is copied word for word and every bullet gets a scenario that becomes a line of the review checklist', () => {
+  assert.match(body, /Data contract,Design reference,Verification/);
+  assert.match(body, /\*\*A scenario per design reference\.\*\*/);
+  assert.match(body, /`#### Scenario: Matches the reference <name>` with `WHEN the screen is shown` and `THEN it matches <the reference> in <what the bullet says must match>`/);
+  assert.match(body, /lines of the review checklist that the person confirms by looking at their screen/);
 });

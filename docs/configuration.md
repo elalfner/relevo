@@ -37,6 +37,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `evidence.policy` | `attach_to_pr`, or `local_only` for sensitive data | `attach_to_pr` |
 | `digest.issue` | number of the issue where the daily digest is posted as a comment | none |
 | `language` | language of the hand-off messages (`en`, `es`) | `en` |
+| `design.images` | `true` downloads a picture pasted into an issue and shows it to the model (a screenshot can show customer data); files already in the repository do not depend on it | `false` |
 | `trust` | `private-team` or `public` | `private-team` |
 | `labels` | rename any label; the keys are fixed, the names are yours | `relevo:ready`, `relevo:built`, … |
 

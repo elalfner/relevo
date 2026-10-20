@@ -230,3 +230,15 @@ test('Scenario: Laravel issue / Already answered - the questions of the stack ar
   assert.ok(script.includes("arg('role') === 'issue'"), 'the script implements --role issue');
   assert.ok(body.indexOf('Questions of the stack') < body.indexOf('## 3. Write the drafts'));
 });
+
+// ---------- design reference
+
+test('Scenario: Picture requested - issue writes a bullet, says it cannot attach the picture and what is sent to the model', () => {
+  assert.match(body, /\*\*Design reference \(when a picture or an example exists\)\.\*\*/);
+  assert.match(body, /one bullet per reference, `- <what it points to>: <what must match>`, at most five/);
+  assert.match(body, /this tool cannot attach a picture, so they paste it from the web page of the issue before `ready`/);
+  assert.match(body, /downloaded and shown to the model only when `design\.images` is on/);
+  assert.match(body, /Never invent a file name or a link/);
+  assert.match(body, /check that it exists/);
+  assert.match(body, /the repository must be in `links`/);
+});

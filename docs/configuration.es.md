@@ -37,6 +37,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `evidence.policy` | `attach_to_pr`, o `local_only` para datos sensibles | `attach_to_pr` |
 | `digest.issue` | número del issue donde se publica el resumen diario como comentario | ninguno |
 | `language` | idioma de los mensajes de traspaso (`en`, `es`) | `en` |
+| `design.images` | `true` descarga una imagen pegada en un issue y se la muestra al modelo (una captura puede mostrar datos de clientes); los archivos que ya están en el repositorio no dependen de esto | `false` |
 | `trust` | `private-team` o `public` | `private-team` |
 | `labels` | renombra cualquier etiqueta; las claves son fijas, los nombres son tuyos | `relevo:ready`, `relevo:built`, … |
 

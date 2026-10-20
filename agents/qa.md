@@ -96,6 +96,15 @@ When the orchestrator gives you `evidence/review-web.mjs` (a Playwright script w
 - A line about appearance, animation or fidelity to an image must not be asserted: it stays for the person. Reject a script that marks one.
 - Reject with the line number and what to change. Answer `QA PASSED` only when none of this is wrong.
 
+### 9. Design references
+
+When `design.md` has a heading `From the issue: Design reference`, the specification has a scenario `Matches the reference <name>` for each bullet. For each one:
+
+- with example code, compare the structure, tokens and states of the code with it and reject a difference that the bullet said must match, citing the reference and the file;
+- with an image (read it with `Read` from the manifest `.relevo-design/manifest.json`, or from its path in the repository), check that the code plausibly respects it: the components, their order, the states the image shows, the tokens used for colour and spacing. You cannot compare pixels, so reject only what the code makes clear is different;
+- reject an asset (icon, font, picture) that the diff adds and that is neither in the project nor in the references, citing it;
+- list under "left for on-device review" the appearance that only a person looking at the screen can confirm.
+
 ## Rules for yourself
 
 - Read-only: no file edits, no formatter, no code generation, no commits. Running the project's analysis and tests is expected.

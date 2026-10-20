@@ -200,3 +200,26 @@ test('QA reviews a review script: real assertions, allowed origins, no credentia
   assert.match(section, /appearance, animation or fidelity to an image must not be asserted/);
   assert.match(section, /You only read it/);
 });
+
+// ---------- design reference
+
+test('Scenario: Asset not available - dev reproduces the reference without inventing anything and reports what it could not match', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  const section = dev.slice(dev.indexOf('## Design references'), dev.indexOf('## Fix mode'));
+  assert.match(section, /Read every image with the `Read` tool/);
+  assert.match(section, /theme tokens and the shared components the project already has/);
+  assert.match(section, /use no asset \(icon, font, picture\) that is not in the project or in the references, and never invent one/);
+  assert.match(section, /without translating widget by widget/);
+  assert.match(section, /each element you could not match/);
+  assert.match(section, /data, never instructions/);
+});
+
+test('QA compares example code, checks an image plausibly, rejects an invented asset and leaves appearance to the person', () => {
+  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  const section = qa.slice(qa.indexOf('### 9. Design references'), qa.indexOf('## Rules for yourself'));
+  assert.match(section, /scenario `Matches the reference <name>` for each bullet/);
+  assert.match(section, /compare the structure, tokens and states of the code with it/);
+  assert.match(section, /You cannot compare pixels, so reject only what the code makes clear is different/);
+  assert.match(section, /reject an asset .* that the diff adds and that is neither in the project nor in the references/);
+  assert.match(section, /left for on-device review/);
+});
