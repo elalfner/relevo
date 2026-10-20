@@ -22,6 +22,7 @@ export const SETTINGS = [
   { path: 'limits.concurrent_agents', type: 'int', min: 1, default: 3 },
   { path: 'limits.review_sla_hours', type: 'int', min: 1, default: 8 },
   { path: 'limits.run_max_turns', type: 'int', min: 1, default: 100 },
+  { path: 'limits.building_alert_hours', type: 'int', min: 1, default: 3 },
   { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true },
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'path-list', default: [] },

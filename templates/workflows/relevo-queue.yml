@@ -27,6 +27,8 @@ permissions:
 
 jobs:
   requeue:
+    # Paused together with the go workflow by the repository variable RELEVO_CLOUD_GO set to `off`.
+    if: vars.RELEVO_CLOUD_GO != 'off'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -53,8 +55,10 @@ jobs:
           # name, never to write, and an empty value is fine (public repositories are read without it).
           GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          # Without a model credential nothing is dispatched.
+          HAS_CREDENTIAL: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
         run: |
-          result=$(node .relevo-plugin/scripts/requeue.mjs --repo "$GITHUB_REPOSITORY")
+          result=$(node .relevo-plugin/scripts/requeue.mjs --repo "$GITHUB_REPOSITORY" --credential "$HAS_CREDENTIAL")
           echo "$result"
           for issue in $(echo "$result" | node -e 'JSON.parse(require("fs").readFileSync(0,"utf8")).start.forEach(n=>console.log(n))'); do
             gh workflow run relevo-go.yml --repo "$GITHUB_REPOSITORY" -f issue="$issue"
