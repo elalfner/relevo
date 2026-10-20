@@ -2,7 +2,9 @@
 
 ## Purpose
 TBD - created by archiving change relevo-v1. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Per-person view
 `status` SHALL show the person invoking it: the issues waiting on them (with the command to run), the pull requests they must review, and the issues waiting on others.
 
@@ -49,3 +51,13 @@ A scheduled workflow SHALL post the team-level status to a configured channel on
 - **WHEN** `status` runs
 - **THEN** no write operation is performed
 
+### Requirement: Status shows what blocks an issue from another repository
+For each blocked issue, `status` SHALL show the references it waits for and, for an external one, whether it is open, in which Relevo state when the other repository labels its issues, and whether it could not be read.
+
+#### Scenario: Waiting on the back
+- **WHEN** issue 7 of the front is blocked by `acme/api#12`, which is open and labelled `relevo:in-review`
+- **THEN** the blocked section shows "#7 ... waiting for acme/api#12 (in-review)"
+
+#### Scenario: Unreadable
+- **WHEN** the external issue cannot be read
+- **THEN** the line says it could not be read instead of a state

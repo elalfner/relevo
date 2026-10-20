@@ -105,6 +105,15 @@ Issue #24 of the sandbox repository says `Platform: app`, the only platform of i
 
 What this shows: the parser reads the line, the planner resolves it, the platform folder `.` leaves the commit scope unrestricted, and nothing in the cloud run broke. What it does not show: the refusal of a file outside a platform folder, or a second platform; those are covered by the tests with throwaway repositories, not by a run.
 
+## Dependencies between repositories (task 5.3 of `cross-repo-dependencies`)
+
+The sandbox repository lists `elalfner/relevo` in `links`, and its secret `RELEVO_LINKS_TOKEN` is a read-only fine-grained token for that private repository. Two test issues were created in `elalfner/relevo` (one closed as completed, one left open) and two in the sandbox that depend on them.
+
+- Issue #28 says `Depends-on: elalfner/relevo#13` (open). It went to `relevo:blocked` within seconds, and the comment names the reference: "Waiting for elalfner/relevo#13 to be merged". The comment does not say the issue could not be read, so the token read the private repository.
+- Issue #29 says `Depends-on: elalfner/relevo#12` (closed as completed). It went from `ready` to `relevo:built` with the hand-off comment: 4 of 4 tasks done, QA passed.
+
+Not run in the cloud: a dependency that cannot be read (no token), a repository outside `links`, and the wake-up of a blocked issue when the other repository finishes. The first two are covered by the tests; the wake-up is the queue's scheduled run, which was not waited for. Setting up this check also needed three changes in the sandbox that were not obvious: the secret mapped in two workflow steps, `links` in its `relevo.yml`, and a merge of `main` into `dev` because the squash-merged promotions had left the two branches with different history.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
