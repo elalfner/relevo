@@ -24,8 +24,12 @@ if (!repo) {
   }
 }
 
-let platform = null;
-if (existsSync('relevo.yml')) platform = (/^platform:\s*(\S+)/m.exec(readFileSync('relevo.yml', 'utf8')) ?? [])[1] ?? null;
+// Files of a skill folder, for the comparison with skills-lock.json.
+const readFolder = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+  const path = `${dir}/${e.name}`;
+  if (e.isDirectory()) return readFolder(path).map((f) => ({ ...f, path: `${e.name}/${f.path}` }));
+  return e.isFile() ? [{ path: e.name, content: readFileSync(path) }] : [];
+});
 
 const facts = gatherFacts({
   tool,
@@ -34,8 +38,9 @@ const facts = gatherFacts({
   read: (p) => readFileSync(p, 'utf8'),
   listDir: (p) => readdirSync(p),
   skillDirs: ['.claude/skills', '.agents/skills', `${homedir()}/.claude/skills`],
+  git: (args) => tool('git', args),
+  readFolder,
   repo,
-  platform,
 });
 const results = runChecks(facts);
 console.log(process.argv.includes('--json') ? JSON.stringify(results, null, 2) : renderReport(results));
