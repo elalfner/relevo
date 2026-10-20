@@ -11,11 +11,13 @@
 - [Comandos](commands.es.md): los nueve comandos, y las skills que usa `think`.
 - [Configuración](configuration.es.md): el archivo `relevo.yml`.
 - [Stacks y plataformas](stacks.es.md): declara tus plataformas, los perfiles de stack y cómo agregar tus propias reglas.
+- [Guía](guide.es.md): qué hacer después, y qué hacer cuando una revisión encuentra una falla, falla QA o se acaba la cuota.
 - [Dónde corre `go`](execution.es.md): la nube, tu máquina o ambas, la variable de pausa y las dos credenciales.
+- [Modelo de seguridad](security.es.md): qué protege Relevo y qué no.
 
 ## Referencia
 
-- [Cómo escribir un issue que Relevo pueda construir](issue-format.md): qué debe contener un issue para que `go` lo construya. Solo en inglés.
+- [Cómo escribir un issue que Relevo pueda construir](issue-format.es.md): qué debe contener un issue para que `go` lo construya.
 - [Parámetros del ejecutor del agente](action-parameters.md): las entradas del workflow `go`, verificadas contra la action. Solo en inglés.
 
 ## Cómo se construyó
