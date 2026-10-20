@@ -47,6 +47,9 @@ evidence:
 digest:
   issue: null                     # number of the issue where the daily digest is posted as a comment; subscribe your chat tool to it
 
+design:
+  images: false        # true: a picture pasted into an issue is downloaded and shown to the model (it may hold customer data); files in the repository are always available
+
 language: en                       # language of hand-off messages (en, es)
 trust: private-team                # private-team | public
 

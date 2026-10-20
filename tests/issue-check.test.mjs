@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkIssueDraft, PLACEHOLDERS, TITLE_MAX } from '../scripts/lib/issue-check.mjs';
@@ -304,6 +304,7 @@ test('the template with its placeholders filled in and its optional comments kep
     .replace('`<path/to/file>`: <why it matters>', '`lib/clients.dart`: reads the clients')
     .replace('<what only a person can check, and with which data>', 'scroll with the account demo')
     .replace('<an assumption>', 'birthdays come from the clients table')
+    .replace('`<path/to/reference>`: <what must match>', '`design/home.png`: structure and colour of the list')
     // the optional lines for other cases are removed
     .replace(/## Documentation[\s\S]*$/, '');
   const r = checkIssueDraft({ title: 'Something', body: filled });
@@ -313,9 +314,87 @@ test('the template with its placeholders filled in and its optional comments kep
 test('every section heading the format page shows in a code block is one the scripts can read', () => {
   const page = readFileSync(new URL('../docs/issue-format.md', import.meta.url), 'utf8');
   const known = new Set(['Summary', 'Outcome', 'Scenarios', 'Edge cases', 'Out of scope', 'Decisions', 'Constraints', 'Code pointers', 'Verification',
-    'Assumptions', 'Open questions', 'Screens and behaviour', 'Data contract', 'Documentation']);
+    'Assumptions', 'Open questions', 'Screens and behaviour', 'Data contract', 'Design reference', 'Documentation']);
   const shown = [...page.matchAll(/^## (.+)$/gm)].map((m) => m[1]).filter((h) => !h.startsWith('What ') && !h.startsWith('Writing'));
   shown.forEach((h) => assert.ok(known.has(h), `docs/issue-format.md shows a section "${h}" that the format does not define`));
   [...known].filter((h) => ['Outcome', 'Decisions', 'Constraints', 'Code pointers', 'Verification', 'Assumptions', 'Open questions'].includes(h))
     .forEach((h) => assert.ok(page.includes(`## ${h}`), `docs/issue-format.md does not show ${h}`));
+});
+
+
+// ---------- design reference
+
+const REF_DIR = mkdtempSync(join(tmpdir(), 'relevo-ref-'));
+mkdirSync(join(REF_DIR, 'design'), { recursive: true });
+writeFileSync(join(REF_DIR, 'design', 'home.png'), 'x');
+const withRef = (refs) => `${GOOD}\n## Design reference\n\n${refs}\n`;
+const refCheck = (refs, extra = {}) => checkIssueDraft({ title: 'Home', body: withRef(refs), repoRoot: REF_DIR, ...extra });
+
+test('Scenario: File of the repository - a reference to a file that exists passes and is read', () => {
+  const r = refCheck('- `design/home.png`: structure, spacing and colour of the list');
+  assert.deepEqual(r.problems, []);
+  const parsed = parseIssueBody(withRef('- `design/home.png`: structure, spacing and colour of the list'));
+  assert.deepEqual(parsed.design.references, [{ target: 'design/home.png', match: 'structure, spacing and colour of the list', kind: 'path', path: 'design/home.png' }]);
+});
+
+test('Scenario: File that does not exist - the check fails and names the bullet', () => {
+  const r = refCheck('- `design/missing.png`: the home screen');
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /Design reference: "design\/missing\.png" does not exist in the repository/);
+});
+
+test('without a repository folder the existence is not checked (the planning job has no checkout)', () => {
+  assert.equal(checkIssueDraft({ title: 'Home', body: withRef('- `design/missing.png`: the home screen') }).ok, true);
+});
+
+test('a path that leaves the repository is refused whatever the folder', () => {
+  ['../secret.png', '/etc/passwd', 'design/../../x.png'].forEach((p) => {
+    const r = refCheck(`- \`${p}\`: the screen`);
+    assert.match(r.problems.join('\n'), /leaves the repository/, p);
+  });
+});
+
+test('Scenario: Repository not linked - a file of a repository outside links is refused, one inside passes', () => {
+  const bad = refCheck('- `acme/design:components/Card.vue`: the card');
+  assert.match(bad.problems.join('\n'), /acme\/design.*not in links of relevo\.yml/);
+  assert.deepEqual(refCheck('- `acme/design:components/Card.vue`: the card', { links: ['acme/design'] }).problems, []);
+});
+
+test('an attachment passes on the GitHub domains and fails anywhere else', () => {
+  assert.deepEqual(refCheck('- https://github.com/user-attachments/assets/0a1b2c3d-1111-2222-3333-444455556666: the empty state').problems, []);
+  assert.deepEqual(refCheck('- https://private-user-images.githubusercontent.com/1/2.png?jwt=abc: the empty state').problems, []);
+  assert.deepEqual(refCheck('- https://user-images.githubusercontent.com/1/2.png: the empty state').problems, []);
+  assert.match(refCheck('- https://evil.example.com/a.png: the empty state').problems.join('\n'), /not a GitHub attachment/);
+  assert.match(refCheck('- https://github.com/some/repo/raw/main/a.png: the empty state').problems.join('\n'), /not a GitHub attachment/);
+});
+
+test('Scenario: Nothing says what must match - a bullet with only a path fails', () => {
+  const r = refCheck('- `design/home.png`');
+  assert.match(r.problems.join('\n'), /"design\/home\.png" does not say what must match/);
+  assert.match(refCheck('- `design/home.png`:').problems.join('\n'), /does not say what must match/);
+});
+
+test('a bullet that is not a reference is reported, and example code needs no bullet', () => {
+  assert.match(refCheck('- make it look nice').problems.join('\n'), /is not a reference/);
+  const withCode = `${withRef('- `design/home.png`: the layout')}\n\`\`\`vue\n<template><p>x</p></template>\n\`\`\`\n`;
+  const r = checkIssueDraft({ title: 'Home', body: withCode, repoRoot: REF_DIR });
+  assert.deepEqual(r.problems, []);
+  assert.equal(parseIssueBody(withCode).design.code, 1);
+});
+
+test('the sixth reference fails', () => {
+  const six = Array.from({ length: 6 }, (_, i) => `- \`design/home.png\`: part ${i}`).join('\n');
+  assert.match(refCheck(six).problems.join('\n'), /6 references; the most Relevo takes is 5/);
+  assert.deepEqual(refCheck(six.split('\n').slice(0, 5).join('\n')).problems, []);
+});
+
+test('an issue without the section is untouched, and the CLI takes --repo-root', () => {
+  assert.equal(parseIssueBody(GOOD).design.present, false);
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
+  writeFileSync(join(dir, 'a.md'), withRef('- `design/home.png`: the list'));
+  const cli = new URL('../scripts/check-issue.mjs', import.meta.url).pathname;
+  assert.equal(spawnSync('node', [cli, '--title', 'x', '--body-file', join(dir, 'a.md'), '--repo-root', REF_DIR], { encoding: 'utf8' }).status, 0);
+  const missing = spawnSync('node', [cli, '--title', 'x', '--body-file', join(dir, 'a.md'), '--repo-root', dir], { encoding: 'utf8' });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /does not exist in the repository/);
 });

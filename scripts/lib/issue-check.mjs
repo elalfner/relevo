@@ -1,7 +1,9 @@
 // Checks a drafted issue before it is created, with the same rules `go` applies when it starts.
 // Implements "Issues are checked before they are created" of openspec/specs/issue/spec.md.
 
-import { parseIssueBody } from './issue-parse.mjs';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { MAX_REFERENCES, parseIssueBody } from './issue-parse.mjs';
 import { resolvePlatform } from './platform-of.mjs';
 import { hardPathsInAllow } from './protected-paths.mjs';
 import { findCredentials } from './scan.mjs';
@@ -9,7 +11,7 @@ import { findCredentials } from './scan.mjs';
 export const TITLE_MAX = 72;
 export const BODY_WARN = 8000;
 // Text that only exists in templates/issue.md; finding it means the template was not filled in.
-export const PLACEHOLDERS = ['<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '<what is deliberately left out', '<dependency files the change may touch', '<name of a platform in relevo.yml>', '#<number>', '**<term>**', '<definition>', '<words to avoid>', '<decision title>', '<what was decided>', '<the reason>', '<the alternative', '<a concrete limit', '<path/to/file>', '<why it matters>', '<what only a person can check', '<an assumption'];
+export const PLACEHOLDERS = ['<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '<what is deliberately left out', '<dependency files the change may touch', '<name of a platform in relevo.yml>', '#<number>', '**<term>**', '<definition>', '<words to avoid>', '<decision title>', '<what was decided>', '<the reason>', '<the alternative', '<a concrete limit', '<path/to/file>', '<why it matters>', '<what only a person can check', '<an assumption', '<path/to/reference>', '<what must match>'];
 const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
 
 /**
@@ -17,8 +19,10 @@ const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
  * `rulesFile` is the `qa.rules_from` file (or files) of the project, which can never be listed in an `Allow-paths:` line.
  * `platforms` is the registry of relevo.yml ({ name: { ... } }); when given, the platform of the draft is checked too.
  * `links` is the `links` list of relevo.yml: a `Depends-on:` that names a repository outside it is a problem.
+ * `repoRoot` is the folder of the repository: a design reference to a file of the repository must exist under it
+ * (when it is null the existence is not checked, as in the light planning job that has no checkout).
  */
-export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [] }) {
+export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [], repoRoot = null }) {
   const problems = [];
   const t = String(title ?? '').trim();
   if (!t) problems.push('the title is empty');
@@ -30,6 +34,13 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
   if (parsed.openQuestions.length > 0) problems.push(`the body has open questions (${parsed.openQuestions.length}): answer them or remove the "Open questions" section; the first is "${parsed.openQuestions[0].replace(/^[-*+]\s+/, '').slice(0, 80)}"`);
   if (parsed.needsClarification) problems.push('the body contains NEEDS CLARIFICATION: resolve it before the issue can be built');
   parsed.idProblems.forEach((p) => problems.push(p));
+  parsed.design.problems.forEach((p) => problems.push(`Design reference: ${p}`));
+  if (parsed.design.references.length > MAX_REFERENCES) problems.push(`Design reference has ${parsed.design.references.length} references; the most Relevo takes is ${MAX_REFERENCES}, so split the issue or keep the ones that matter`);
+  parsed.design.references.forEach((ref) => {
+    if (ref.kind === 'path' && repoRoot && !existsSync(join(repoRoot, ref.path))) problems.push(`Design reference: "${ref.target}" does not exist in the repository`);
+    if (ref.kind === 'repo-file' && !links.includes(ref.repo)) problems.push(`Design reference: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
+    if (ref.kind === 'attachment' && !ref.allowed) problems.push(`Design reference: ${ref.target} is not a GitHub attachment (github.com/user-attachments, user-images.githubusercontent.com)`);
+  });
   const warnings = [];
   const size = String(body ?? '').length;
   if (size > BODY_WARN) warnings.push(`the body is ${size} characters; about ${BODY_WARN} or fewer reads better for an unattended build`);

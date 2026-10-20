@@ -33,6 +33,7 @@ export const SETTINGS = [
   { path: 'evidence.policy', type: 'enum', allowed: ['attach_to_pr', 'local_only'], default: 'attach_to_pr' },
   { path: 'digest.issue', type: 'int', min: 1, default: null },
   { path: 'language', type: 'string', default: 'en' },
+  { path: 'design.images', type: 'bool', default: false },
   { path: 'trust', type: 'enum', allowed: ['private-team', 'public'], default: 'private-team' },
 ];
 
@@ -104,6 +105,9 @@ function checkType(setting, value, errors) {
           message: `${path} has invalid value ${JSON.stringify(value)}; allowed values: ${describeAllowed(setting.allowed)}`,
         });
       }
+      break;
+    case 'bool':
+      if (typeof value !== 'boolean') errors.push({ path, message: `${path} must be true or false (got ${JSON.stringify(value)})` });
       break;
     case 'int':
       if (!Number.isInteger(value) || value < setting.min) {

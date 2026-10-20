@@ -226,3 +226,19 @@ test('Scenario: Origins - a list of web origins is read, and an entry that is no
   });
   assert.equal(loadConfig(`${MINIMAL}review:\n  allowed_origins: nope\n`).ok, false);
 });
+
+// ---------- design images
+
+test('Scenario: Default - design.images is false unless the file sets it', () => {
+  assert.equal(loadConfig(MINIMAL).config.design.images, false);
+  assert.equal(loadConfig(`${MINIMAL}design:\n  images: true\n`).config.design.images, true);
+  assert.equal(loadConfig(`${MINIMAL}design:\n  images: false\n`).config.design.images, false);
+});
+
+test('Scenario: Invalid value - design.images must be true or false and the error names the setting', () => {
+  ['sometimes', '1', '"yes"'].forEach((v) => {
+    const r = loadConfig(`${MINIMAL}design:\n  images: ${v}\n`);
+    assert.equal(r.ok, false, v);
+    assert.ok(r.errors.some((e) => e.path === 'design.images' && /true or false/.test(e.message)), v);
+  });
+});

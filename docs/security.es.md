@@ -19,6 +19,7 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 | Un secreto o una marca temporal llega a un commit | el diff se escanea antes de cada commit y push (`scan-diff.mjs`) y el commit se aborta si hay coincidencia | un script |
 | Una ejecución gasta sin límite | cada ejecución tiene límites de turnos y de costo (`limits.run_max_turns`, `limits.run_max_cost`), y una que alcanza uno se detiene | el ejecutor |
 | El texto de un repositorio enlazado trae instrucciones | se lee como datos, con un token de solo lectura (`RELEVO_LINKS_TOKEN`) | el ejecutor, y una lista cerrada de repositorios |
+| Una imagen en un issue muestra datos de clientes al modelo, o una descarga va adonde no debe | las imágenes pegadas se descargan solo cuando `design.images` está activo; las descarga un script, no el agente, solo de los dominios de adjuntos de GitHub y de repositorios enlazados, con límites de tamaño y de tipo y el token enviado solo a GitHub; los archivos quedan fuera de git | un script |
 | Una revisión conducida llega a un sitio al que no debe | el navegador del agente es limpio y solo alcanza `localhost`, la página en revisión y `review.allowed_origins`, y las credenciales de prueba se pasan por nombre de variable y se redactan | un script |
 
 ## Qué no protege

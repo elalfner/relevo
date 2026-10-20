@@ -123,6 +123,24 @@ Discarded: ordenar por fecha (nadie lo pidió).
 - `Related: #14, #15` lista issues de la misma idea. Solo informa; lo que bloquea es `Depends-on:`.
 - Un cuerpo de más de unos 8.000 caracteres pasa con un aviso: los issues más cortos y bien delimitados se construyen mejor.
 
+### 8. Referencia de diseño (opcional)
+
+Cuando la pantalla debe verse como algo, señálalo. Una viñeta por referencia, como máximo cinco, y cada una dice después de los dos puntos qué debe coincidir (estructura, espaciado, tipografía, color, estados):
+
+```markdown
+## Design reference
+
+- `design/home.png`: estructura, espaciado y color de la lista
+- https://github.com/user-attachments/assets/0a1b2c3d-1111-2222-3333-444455556666: el estado vacío
+- `acme/design:components/Card.vue`: la tarjeta que se reutiliza; conserva sus estados
+```
+
+- Un archivo de este repositorio se escribe entre comillas invertidas y debe existir; siempre está disponible para quien construye.
+- Un archivo de otro repositorio se escribe `owner/repo:path`, y el repositorio debe estar en `links` de `relevo.yml`.
+- Una imagen se pega en el issue desde su página web (GitHub no tiene forma de adjuntar una desde una herramienta) y GitHub escribe el enlace. Se descarga y se muestra al modelo solo cuando `design.images` es `true` en `relevo.yml`, porque una captura puede mostrar datos de clientes. Si no, sube la imagen al repositorio y señala el archivo.
+- El código de ejemplo va en un bloque de código en la misma sección.
+- `go` copia la sección al diseño, añade un escenario "Matches the reference <nombre>" por cada viñeta, y QA comprueba el código contra ella. En la revisión ese escenario es una línea que confirmas mirando tu pantalla. Si una referencia no se puede obtener, el issue vuelve a quien lo escribió diciendo cuál.
+
 ## Qué más necesita `go` del issue
 
 - **Un hito.** El hito es el lote al que pertenece el issue.
