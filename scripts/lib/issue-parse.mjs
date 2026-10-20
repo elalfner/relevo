@@ -1,6 +1,8 @@
 // Reads what the `go` gates need from an issue body.
 // The expected shape is documented in docs/issue-format.md.
 
+import { section } from './issue-sections.mjs';
+
 const FENCE_RE = /^\s*(```|~~~)/;
 const HEADING_RE = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 const BULLET_RE = /^\s*(?:[-*+]|\d+[.)])\s+\S/;
@@ -34,6 +36,11 @@ function withoutCode(body) {
  *   dependsOnInvalid: string[], // tokens of a Depends-on line that look like a repository but are not owner/repo#N
  *   allowPaths: string[],       // paths and globs from "Allow-paths:" lines (dependency files the change may touch)
  *   platform: string[],         // every name written on a "Platform:" line, in order (the platform the issue is for)
+ *   openQuestions: string[],    // the lines written under an "Open questions" heading (the template's comment and "none" excluded)
+ *   needsClarification: boolean,// the literal text NEEDS CLARIFICATION outside code blocks
+ *   decisionIds: string[],      // D1, D2... from "### D<n>. title" headings under "Decisions"
+ *   constraintIds: string[],    // C1, C2... from "- C<n>: text" bullets under "Constraints"
+ *   idProblems: string[],       // repeated or malformed decision and constraint ids
  *   missing: string[],          // what the spec gate reports as absent
  * }
  */
@@ -93,9 +100,37 @@ export function parseIssueBody(body) {
     m[1].split(',').map((p) => p.trim().replace(/^`+|`+$/g, '').trim()).filter(Boolean).forEach((p) => platform.push(p));
   });
 
+  const none = /^(?:none|nothing|n\/a|ninguna?|nada|-)\.?$/i;
+  const openQuestions = String(section(body, 'Open questions')?.text ?? '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '' && !none.test(l.replace(/^[-*+]\s+/, '')));
+  const needsClarification = lines.some((l) => /NEEDS CLARIFICATION/.test(l));
+
+  const idProblems = [];
+  const decisionIds = [];
+  String(section(body, 'Decisions')?.text ?? '').split('\n').forEach((line) => {
+    const h = line.match(/^###\s+(.*?)\s*$/);
+    if (!h) return;
+    const ok = h[1].match(/^(D\d+)\.\s+\S/);
+    if (ok) {
+      if (decisionIds.includes(ok[1])) idProblems.push(`the decision id ${ok[1]} is repeated`);
+      else decisionIds.push(ok[1]);
+    } else if (/^D(?:\d|[.:\s])/.test(h[1])) idProblems.push(`"### ${h[1]}" is not a decision: write "### D1. <title>"`);
+  });
+  const constraintIds = [];
+  String(section(body, 'Constraints')?.text ?? '').split('\n').forEach((line) => {
+    const b = line.match(/^\s*[-*+]\s+(C\d+)(.?)/);
+    if (!b) return;
+    if (b[2] !== ':') idProblems.push(`"${line.trim()}" is not a constraint: write "- ${b[1]}: <limit>"`);
+    else if (constraintIds.includes(b[1])) idProblems.push(`the constraint id ${b[1]} is repeated`);
+    else constraintIds.push(b[1]);
+  });
+
   const missing = [];
   if (scenarios === 0) missing.push('scenarios written as WHEN/THEN pairs');
   if (edgeCases === 0) missing.push('edge cases (a list under an "Edge cases" heading)');
 
-  return { scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, missing };
+  return { scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
 }

@@ -55,8 +55,8 @@ const TABLE = {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
       hint: {
-        en: 'decide the open question (run /relevo:think first if you need to explore it), then label it ready again',
-        es: 'decide la pregunta abierta (ejecuta antes /relevo:think si necesitas explorarla) y vuelve a ponerle ready',
+        en: 'decide the open question (run /relevo:think #{n} first if you need to explore it), then label it ready again',
+        es: 'decide la pregunta abierta (ejecuta antes /relevo:think #{n} si necesitas explorarla) y vuelve a ponerle ready',
       },
     },
   },

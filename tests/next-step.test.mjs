@@ -41,7 +41,7 @@ test('Scenario: Ambiguity - the spec writer decides the open question and /relev
   const step = nextStep({ state: 'needs-spec', reason: 'ambiguous', issue: 7 });
   assert.equal(step.command, '/relevo:issue 7');
   assert.match(step.hint, /decide the open question/);
-  assert.match(step.hint, /\/relevo:think/);
+  assert.match(step.hint, /\/relevo:think #7/);
 });
 
 test('qa-failed goes to fix, or says to delete the branch when it holds only the specification', () => {

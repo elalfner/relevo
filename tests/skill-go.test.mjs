@@ -163,3 +163,28 @@ test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does n
   assert.match(body, /show what it prints, and stop/);
   assert.equal(meta['argument-hint'], '[issue-number] [--local] [--decision <base64>]');
 });
+
+// ---------- issue format v2
+
+test('Scenario: Decisions in the issue - go saves the body and copies the sections with the script, not by hand', () => {
+  assert.match(body, /save its body to a file outside the working tree \(call it `<issue_file>`\)/);
+  assert.match(body, /issue-sections\.mjs --body-file <issue_file> --copy "Decisions,Constraints,Code pointers,Screens and behaviour,Data contract,Verification,Assumptions" >> openspec\/changes\/<change_id>\/design\.md/);
+  assert.match(body, /`## From the issue: <Section>`; one the issue does not have is left out/);
+  assert.match(body, /Do not edit, summarise or reorder what the script wrote/);
+  assert.ok(existsSync(root('scripts/issue-sections.mjs')));
+  assert.ok(readFileSync(root('scripts/issue-sections.mjs'), 'utf8').includes("'--copy'") || readFileSync(root('scripts/issue-sections.mjs'), 'utf8').includes("'copy'"));
+});
+
+test('the copy comes after the specification is written and before the developer is launched', () => {
+  const copy = body.indexOf('issue-sections.mjs --body-file');
+  assert.ok(copy > body.indexOf('### 3. Specification') && copy < body.indexOf('### 4. Build'));
+});
+
+test('Scenario: Question left in the issue - a hand-run takes the ambiguous path', () => {
+  assert.match(body, /`Open questions` section with content, or the text `NEEDS CLARIFICATION`, it is ambiguous by its own words/);
+  assert.match(body, /`reason` `ambiguous`/);
+});
+
+test('QA receives the saved body of the issue to compare the copied sections', () => {
+  assert.match(body, /`<issue_file>` \(the saved body of the issue, to compare the copied sections\)/);
+});

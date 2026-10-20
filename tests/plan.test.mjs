@@ -323,3 +323,23 @@ test('the own repository written in full is a local reference', () => {
 test('external reference names are compared without regard to case', () => {
   assert.equal(one([dep('Depends-on: ACME/API#12')], { config: LINKS, input: { completedExternal: ['acme/api#12'] } }).action, 'start');
 });
+
+test('Scenario: Question left in the issue - a ready issue with an open question becomes needs-spec as ambiguous, nothing is built', () => {
+  const d = one([issue({ body: `${BODY}\n## Open questions\n\n- Should clients without a phone be listed?\n` })]);
+  assert.equal(d.action, 'needs-spec');
+  assert.equal(d.comment.data.reason, 'ambiguous');
+  assert.match(d.comment.data.missing, /open question "Should clients without a phone be listed\?"/);
+  assert.deepEqual(d.labels, { add: ['relevo:needs-spec'], remove: ['relevo:ready'] });
+});
+
+test('NEEDS CLARIFICATION in the issue is ambiguous too, and a body with no questions still starts', () => {
+  const d = one([issue({ body: `${BODY}\nNEEDS CLARIFICATION: the order\n` })]);
+  assert.equal(d.comment.data.reason, 'ambiguous');
+  assert.equal(one([issue({ body: `${BODY}\n## Open questions\n\nNone\n` })]).action, 'start');
+});
+
+test('an ambiguity together with missing parts is still ambiguous, and names both', () => {
+  const d = one([issue({ body: '## Open questions\n- which order?\n' })]);
+  assert.equal(d.comment.data.reason, 'ambiguous');
+  assert.match(d.comment.data.missing, /WHEN\/THEN.*open question/);
+});

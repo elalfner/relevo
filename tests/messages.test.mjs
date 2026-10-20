@@ -178,8 +178,8 @@ test('Scenario: Spec returned with a reason - missing gives /relevo:issue', () =
 
 test('Scenario: Spec returned with a reason - ambiguous asks for a decision and mentions /relevo:think', () => {
   const text = renderMessage('needs_spec', { ...BACK, missing: 'what happens when the list is empty?', reason: 'ambiguous' });
-  assert.match(text, /Your next step: \/relevo:issue 31: decide the open question \(run \/relevo:think first if you need to explore it\), then label it ready again\./);
-  assert.match(renderMessage('needs_spec', { ...BACK, reason: 'ambiguous' }, 'es'), /Tu siguiente paso: \/relevo:issue 31: decide la pregunta abierta \(ejecuta antes \/relevo:think/);
+  assert.match(text, /Your next step: \/relevo:issue 31: decide the open question \(run \/relevo:think #31 first if you need to explore it\), then label it ready again\./);
+  assert.match(renderMessage('needs_spec', { ...BACK, reason: 'ambiguous' }, 'es'), /Tu siguiente paso: \/relevo:issue 31: decide la pregunta abierta \(ejecuta antes \/relevo:think #31/);
   assert.throws(() => renderMessage('needs_spec', { ...BACK, reason: 'whim' }), /unknown reason "whim"/);
 });
 
