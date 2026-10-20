@@ -76,11 +76,34 @@ test('dev stops on an ambiguous specification instead of guessing', () => {
   assert.match(body, /stop and report what is unclear/);
 });
 
-test('both agents prefer the Dart tooling server and fall back to the terminal', () => {
+test('both agents run the commands of the profile they are given and do not name a tool of one stack', () => {
   ['dev', 'qa'].forEach((n) => {
     const { body } = load(n);
-    assert.match(body, /Dart tooling server/);
-    assert.match(body, /flutter analyze --no-pub/);
+    assert.match(body, /commands of the profile/);
+    assert.match(body, /stack-profile\.mjs/);
+  });
+});
+
+test('Scenario: the agents are generic - no word of one stack, which lives in stacks/<stack>.md', () => {
+  ['dev', 'qa'].forEach((n) => {
+    const text = readFileSync(new URL(`../agents/${n}.md`, import.meta.url), 'utf8');
+    assert.doesNotMatch(text, /flutter|dart|android|\badb\b|freezed|setstate|buildcontext/i, `agents/${n}.md names a stack`);
+  });
+});
+
+test('Scenario: Developer edits the configuration - dev must not, qa rejects', () => {
+  const dev = load('dev').body;
+  const qa = load('qa').body;
+  assert.match(dev, /edit `relevo\.yml`, anything under `\.relevo\/` or `skills-lock\.json`/);
+  assert.match(qa, /a change to `relevo\.yml`, to anything under `\.relevo\/` or to `skills-lock\.json`/);
+  assert.match(qa, /Reject it and cite the file/);
+});
+
+test('the agents take the skills of the role as paths, and let the rules of Relevo and the project win', () => {
+  ['dev', 'qa'].forEach((n) => {
+    const { body } = load(n);
+    assert.match(body, /extra skills for your role/);
+    assert.match(body, /rules of Relevo and (of )?the project win over any skill/);
   });
 });
 
@@ -124,11 +147,11 @@ test('Scenario: the agents have a read-only OpenSpec section and use the shared 
   [dev, qa].forEach((t) => {
     assert.match(t, /## OpenSpec commands/);
     assert.match(t, /openspec instructions apply --change/);
-    assert.match(t, /flutter test --reporter=compact --no-pub/);
   });
   assert.match(dev, /Allow-paths:/);
   assert.match(dev, /Install with the tool's no-scripts option/);
-  assert.match(qa, /git diff origin\/<base> -- \. ':\(exclude\)\*\.g\.dart'/);
+  assert.match(qa, /git diff origin\/<base> -- \. ':\(exclude\)<generated>'/);
+  assert.match(qa, /`generated` in the profile/);
   assert.match(qa, /you never change the index or any file/);
   assert.match(qa, /You still run analysis and all tests/);
 });

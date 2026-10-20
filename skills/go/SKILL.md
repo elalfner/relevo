@@ -41,7 +41,7 @@ Never run `openspec init`, `archive`, `update` or `sync`, and never create files
 
 ## Failure path
 
-Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `issue changed after ready`, `protected path in the diff`, `possible credential or temporary marker in the diff`).
+Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `possible credential or temporary marker in the diff`).
 
 1. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, or an issue that changed after `ready`; and never touch a branch that already existed.
 2. Move the issue to `qa-failed`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to qa-failed --current "<current labels, comma separated>"`, then apply the result with `gh issue edit`.
@@ -85,7 +85,7 @@ This reads the queue from GitHub, applies the gates and limits, carries out labe
 Read the decision for the issue in the JSON it prints:
 
 - `start`: continue. It gives you `branch`, `change_id`, `base`, `assignee`, `title`, `qa_retries`, `run_max_turns`, `run_max_cost`, `issue_hash` (the text of the issue when it was claimed) and `allow_paths` (dependency files the issue lets the change touch).
-- anything else (`needs-spec`, `block`, `queue`, `denied`, `no-milestone`, `no-assignee`, `skip`): that is a normal outcome, already applied. Report the decision and its reason in one line, and stop. Do not build.
+- anything else (`needs-spec`, `block`, `queue`, `denied`, `no-milestone`, `no-assignee`, `platform`, `skip`): that is a normal outcome, already applied. Report the decision and its reason in one line, and stop. Do not build.
 
 ### 2. Branch
 
@@ -145,11 +145,23 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "docs: specificat
 
 ### 4. Build
 
+First resolve the stack profile of the repository's platform and the extra skills of each role. The agents contain no knowledge of any stack; it comes from here:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role dev
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role qa
+```
+
+If `stack-profile.mjs` fails, take the failure path with the reason `profile not resolved` and its message. `role-skills.mjs` prints each skill as a path or as left out with a reason: give the agent only the paths, and mention the skills left out in your final report.
+
+Then:
+
 ```bash
 openspec instructions apply --change "<change_id>" --json
 ```
 
-If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules file (`qa.rules_from` in `relevo.yml`), the base branch, and `allow_paths`.
+If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the skill paths for `dev`, the base branch, and `allow_paths`.
 
 Read its report. If its open questions are not "none", treat them as a spec defect, exactly as in step 3. Then run the instructions command again: if `progress.remaining` is above 0, take the failure path with the reason `tasks left unfinished`.
 
@@ -161,10 +173,10 @@ Make the new files of the developer visible to `git diff`, without staging them,
 node ${CLAUDE_PLUGIN_ROOT}/scripts/intent-to-add.mjs <files>
 ```
 
-Launch the `relevo:qa` agent on the result, giving it the same change directory, rules file and base branch, and the diff to review: the working tree against the base branch, without generated files.
+Launch the `relevo:qa` agent on the result, giving it the same change directory, rules files and base branch, the resolved profile, the skill paths for `qa`, and the diff to review: the working tree against the base branch, without the generated files of the profile (add one `':(exclude)<pattern>'` for each pattern in its `generated` list).
 
 ```bash
-git diff origin/<base> -- . ':(exclude)*.g.dart' ':(exclude)*.freezed.dart'
+git diff origin/<base> -- . ':(exclude)<pattern>' ...
 ```
 
 The first line of its answer is `QA PASSED` or `QA REJECTED`.
@@ -203,4 +215,4 @@ End with the next step, from the same table the comments use:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state <built|needs-spec|qa-failed|blocked|queued> --issue <issue>
 ```
 
-Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`) the comment already says what to do.
+Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`, `platform`) the comment already says what to do.

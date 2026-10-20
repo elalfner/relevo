@@ -30,7 +30,7 @@ See `proposal.md`. Facts that shape the design (read in the code):
 
 **D7. The agents become generic by moving text, not by adding text.** The Flutter hygiene and bug list of `dev` and `qa` move to the body of `stacks/flutter.md`; the agents keep the protocol and say "read the profile you are given". The diff command takes its exclusions from `generated`. A test checks that neither agent contains the words `flutter`, `Flutter`, `dart`, `Android` or `adb` outside examples, so stack knowledge cannot creep back.
 
-**D8. `go` with several platforms stops in the planner.** `planGo` returns a decision `platform` (no label change, a comment) when `Object.keys(platforms).length > 1`. The `Platform:` line replaces this in the next change. Alternative: use the first platform: silently builds the wrong half of a monorepo.
+**D8. `go` with several platforms stops in the planner.** `planGo` returns a decision `platform` (removes `ready`, as `no-milestone` does, because the queue re-evaluates `ready` issues and would repeat the comment; a comment names the platforms) when `Object.keys(platforms).length > 1`. The `Platform:` line replaces this in the next change. Alternative: use the first platform: silently builds the wrong half of a monorepo.
 
 **D9. `skills-lock.json` becomes hard-protected.** It is the file that vouches for the skills; letting a run change it defeats the hash check.
 
