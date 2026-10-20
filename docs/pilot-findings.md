@@ -127,6 +127,13 @@ Not run in the cloud: a dependency that cannot be read (no token), a repository 
 - `archive-state.mjs` on the sandbox: a change archived in an earlier pilot reported `archived`; a change that does not exist reported `missing` with exit 1.
 - Not tried: `ship-check.mjs` against a real pull request. The GitHub command line was not logged in in this environment, so it is not confirmed that `gh pr view --json reviews` returns the commit of each review as `commit.oid`; the code treats a review without it as not stale and adds the warning `review-commit-unknown`. Also not tried: the conflict after the archive (a real merge conflict was simulated in tests only) and a second approver.
 
+## Issue format v2 (task 4.3 of `issue-format-v2`)
+
+- An issue written in the earlier format (the sandbox's #33, pasted from GitHub) still passes `check-issue` and reads as four sections with `issue-sections.mjs`.
+- Two v2 drafts for the sandbox, written from the real counter app: one with `Decisions`, `Constraints`, `Code pointers`, `Verification` and `Assumptions` passed; the same draft with a question under `Open questions` failed with the question quoted. `issue-sections.mjs --copy` printed the five sections unchanged, and `issue-coverage.mjs` listed an id of the agreement that no draft held as `WITHOUT DESTINATION`.
+- Writing the draft showed why `Code pointers` say "check before trusting": the pointer I first wrote (`lib/screens/counter_screen.dart`) does not exist in the sandbox; the parity text is built in `lib/main.dart`.
+- Not tried: a cloud build of a v2 issue, which needs this change on `main` (label events run the workflows of the default branch, and the plugin is installed from it); `QA` rejecting a broken decision by id; `think` in two moments and `think #n` and the `ready` offer, which are skill behaviour that needs a live conversation.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
