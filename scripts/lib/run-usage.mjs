@@ -24,7 +24,7 @@ function entries(text) {
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-/** { turns, cost, tokens } with null for what the log does not say, or null when it says none of them. */
+/** { turns, cost, tokens, cached } with null for what the log does not say, or null when it says none of them. */
 export function readUsage(text) {
   const all = entries(text).filter((e) => e && typeof e === 'object');
   const result = [...all].reverse().find((e) => e.type === 'result') ?? [...all].reverse().find((e) => num(e.num_turns) !== null);
@@ -35,6 +35,11 @@ export function readUsage(text) {
     turns: num(result.num_turns),
     cost: num(result.total_cost_usd),
     tokens: input !== null || output !== null ? (input ?? 0) + (output ?? 0) : null,
+    // Tokens read from or written to the prompt cache are reported apart: they are most of a long run and the
+    // plain input/output figure alone looks far smaller than what the run really processed.
+    cached: num(result.usage?.cache_read_input_tokens) !== null || num(result.usage?.cache_creation_input_tokens) !== null
+      ? (num(result.usage?.cache_read_input_tokens) ?? 0) + (num(result.usage?.cache_creation_input_tokens) ?? 0)
+      : null,
   };
   return usage.turns === null && usage.cost === null && usage.tokens === null ? null : usage;
 }
@@ -45,7 +50,7 @@ export function usageLine(usage, { subscription = false } = {}) {
   const parts = [];
   if (usage.turns !== null) parts.push(`${usage.turns} turn${usage.turns === 1 ? '' : 's'}`);
   if (usage.cost !== null) parts.push(`about $${usage.cost.toFixed(2)}${subscription ? ' (notional: a subscription is not billed per run)' : ''}`);
-  if (usage.tokens !== null) parts.push(`${usage.tokens.toLocaleString('en-US')} tokens`);
+  if (usage.tokens !== null) parts.push(`${usage.tokens.toLocaleString('en-US')} tokens${usage.cached ? ` (plus ${usage.cached.toLocaleString('en-US')} from the cache)` : ''}`);
   return parts.length ? `This run used ${parts.join(', ')}.` : '';
 }
 

@@ -14,7 +14,7 @@ const LINES = [{ type: 'system' }, result].map((e) => JSON.stringify(e)).join('\
 const CLI = (script) => new URL(`../scripts/${script}`, import.meta.url).pathname;
 
 test('Scenario: Log with usage - turns, cost and tokens are read from a JSON array, from JSON lines and from a single object', () => {
-  const expected = { turns: 37, cost: 1.8234, tokens: 123000 };
+  const expected = { turns: 37, cost: 1.8234, tokens: 123000, cached: null };
   assert.deepEqual(readUsage(ARRAY), expected);
   assert.deepEqual(readUsage(LINES), expected);
   assert.deepEqual(readUsage(JSON.stringify(result)), expected);
@@ -24,7 +24,7 @@ test('Scenario: Log with usage - turns, cost and tokens are read from a JSON arr
 test('the last result wins, and a result without tokens or cost still reports the turns', () => {
   const two = JSON.stringify([result, { type: 'result', num_turns: 1 }]);
   assert.equal(usageLine(readUsage(two)), 'This run used 1 turn.');
-  assert.deepEqual(readUsage(JSON.stringify([{ type: 'result', usage: { output_tokens: 5 } }])), { turns: null, cost: null, tokens: 5 });
+  assert.deepEqual(readUsage(JSON.stringify([{ type: 'result', usage: { output_tokens: 5 } }])), { turns: null, cost: null, tokens: 5, cached: null });
 });
 
 test('Scenario: Log without usage - missing, empty, garbled or without a result gives nothing', () => {
@@ -67,4 +67,11 @@ test('usage-limit.mjs exits 0 for a limit and 1 for anything else, including a m
   assert.equal(run('--file', write('fine.txt', 'all fine')), 1);
   assert.equal(run('--file', join(dir, 'missing')), 1);
   assert.equal(run(), 1);
+});
+
+test('tokens served from the prompt cache are reported apart, so a long run does not look tiny', () => {
+  const log = JSON.stringify({ type: 'result', num_turns: 14, total_cost_usd: 0.43, usage: { input_tokens: 40, output_tokens: 5231, cache_read_input_tokens: 400000, cache_creation_input_tokens: 20000 } });
+  assert.equal(readUsage(log).cached, 420000);
+  assert.equal(usageLine(readUsage(log)), 'This run used 14 turns, about $0.43, 5,271 tokens (plus 420,000 from the cache).');
+  assert.doesNotMatch(usageLine(readUsage(ARRAY)), /cache/, 'nothing about the cache when the log has none');
 });
