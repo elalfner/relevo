@@ -125,7 +125,8 @@ export function gatherFacts(p) {
   const loaded = f.configText === null ? null : loadConfig(f.configText);
   f.config = loaded?.ok ? loaded.config : null;
   f.configErrors = loaded && !loaded.ok ? loaded.errors.map((e) => e.message) : [];
-  f.rulesFileMissing = Boolean(f.config?.qa?.rules_from) && !p.exists(f.config.qa.rules_from);
+  f.rulesFilesMissing = (f.config?.qa?.rules_from ?? []).filter((file) => !p.exists(file));
+  f.rulesFileMissing = f.rulesFilesMissing.length > 0;
 
   f.openspecRoot = p.exists('openspec/config.yaml') || p.exists('openspec/config.yml');
   f.openspecRootTracked = tryRun(() => String(p.tool('git', ['ls-files', 'openspec'])).trim().length > 0, false);
@@ -257,7 +258,7 @@ export function runChecks(f) {
   else if (!f.config) r.push(fail('config.valid', `relevo.yml is invalid: ${f.configErrors.join('; ')}`, 'fix the settings named above and run `node scripts/validate-config.mjs`'));
   else {
     r.push(pass('config.valid', 'relevo.yml is valid'));
-    if (f.rulesFileMissing) r.push(warn('config.rules-file', `qa.rules_from points to "${f.config.qa.rules_from}", which does not exist`, 'create that file or change qa.rules_from'));
+    if (f.rulesFileMissing) r.push(warn('config.rules-file', `qa.rules_from points to ${f.rulesFilesMissing.map((x) => `"${x}"`).join(', ')}, which does not exist`, 'create that file or change qa.rules_from'));
   }
 
   // OpenSpec in the repository
