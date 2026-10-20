@@ -3,7 +3,7 @@
 ## 1. Shared pieces
 
 - [x] 1.1 Add `scripts/lib/run-flags.mjs` (`ALLOWED_TOOLS`, `DISALLOWED_TOOLS`, `runFlags(config)` returning the argument list for `--max-turns`, `--max-budget-usd`, `--allowedTools`, `--disallowedTools`) and `scripts/lib/execution-mode.mjs` (`cloudBuilds`, `credentialMode(secretNames)`). Verify with `tests/run-flags.test.mjs` and `tests/execution-mode.test.mjs`: the flags for the limits of the template config; the claude_args of `templates/workflows/relevo-go.yml` carry the same tool strings and limits; `credentialMode` for key, token, both, none; `cloudBuilds` for the four combinations of workflow and variable.
-- [ ] 1.2 Add `limits.building_alert_hours` (positive integer, default 3) to `scripts/lib/config.mjs` and `templates/relevo.yml`. Verify with additions to `tests/config.test.mjs` and `tests/template.test.mjs`: the default, 0 and 2.5 rejected naming the setting.
+- [x] 1.2 Add `limits.building_alert_hours` (positive integer, default 3) to `scripts/lib/config.mjs` and `templates/relevo.yml`. Verify with additions to `tests/config.test.mjs` and `tests/template.test.mjs`: the default, 0 and 2.5 rejected naming the setting.
 
 ## 2. The cloud: switch, reserve, limit and consumption
 
@@ -28,9 +28,9 @@
 
 ## 6. Documentation and integration
 
-- [ ] 6.1 Add `docs/execution.md` and `docs/execution.es.md` (where `go` runs, the variable, the two credentials and what each means for the limits, the local run, the policy reminder), link them from the READMEs and `docs/configuration*.md`, and record the new output used in `docs/action-parameters.md`. Verify with `tests/readme-sync.test.mjs`.
-- [ ] 6.2 Add the entry to `CHANGELOG.md` under Unreleased. Verify with `tests/changelog.test.mjs`.
-- [ ] 6.3 Run `npm test`, `openspec validate --all`, `openspec validate execution-modes --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
+- [x] 6.1 Add `docs/execution.md` and `docs/execution.es.md` (where `go` runs, the variable, the two credentials and what each means for the limits, the local run, the policy reminder), link them from the READMEs and `docs/configuration*.md`, and record the new output used in `docs/action-parameters.md`. Verify with `tests/readme-sync.test.mjs`.
+- [x] 6.2 Add the entry to `CHANGELOG.md` under Unreleased. Verify with `tests/changelog.test.mjs`.
+- [x] 6.3 Run `npm test`, `openspec validate --all`, `openspec validate execution-modes --strict` and `claude plugin validate .`. Verify that every test passes and that validation reports no new error.
 - [ ] 6.4 In the sandbox repository, copy the new workflows, label an issue `ready` and check that the consumption comment appears, then set `RELEVO_CLOUD_GO` to `off`, label another issue `ready` and check that no run builds it. Verify by the runs; record in `docs/pilot-findings.md` the real shape of the execution log and whether the usage figures were found.
 
 ## Workflow follow-up

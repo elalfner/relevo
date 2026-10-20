@@ -11,6 +11,7 @@ New here? Read [Install](install.md), then [How it works](how-it-works.md).
 - [Commands](commands.md): the nine commands, and the skills that `think` uses.
 - [Configuration](configuration.md): the `relevo.yml` file.
 - [Stacks and platforms](stacks.md): declare your platforms, the stack profiles and how to add your own rules.
+- [Where `go` runs](execution.md): the cloud, your machine or both, the pause variable and the two credentials.
 
 ## Reference
 

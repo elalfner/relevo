@@ -73,6 +73,13 @@ After a cloud run, a comment on the issue SHALL give the number of turns, the co
 - **WHEN** the person runs `go-local.mjs 42`
 - **THEN** a worktree is created from the base branch, `claude -p "/relevo:go 42"` runs there with the flags of the workflow, and on a clean end the worktree is removed
 
+### Requirement: A local run can be started from the go command
+`/relevo:go <issue> --local` SHALL run `go-local.mjs` for the issue and stop, instead of building in the interactive session, because the interactive session has neither the closed tool lists nor a worktree of its own.
+
+#### Scenario: Local flag
+- **WHEN** the person runs `/relevo:go 42 --local`
+- **THEN** the skill runs `go-local.mjs 42`, shows its output and does not build in the session
+
 ### Requirement: A local run has its own working tree
 `go-local.mjs` SHALL run in a separate `git worktree` outside the repository's working tree, so that the person's uncommitted changes do not stop it, SHALL remove the worktree when the run ends cleanly and SHALL keep it, printing its path, otherwise.
 
