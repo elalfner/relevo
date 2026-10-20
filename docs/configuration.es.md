@@ -16,7 +16,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 |---|---|---|
 | `branches.base` | rama de integración: los pull requests de las features apuntan a ella | `dev` |
 | `branches.release` | rama de publicación, que se promueve desde la base en un pull request aparte | `main` |
-| `tracker`, `git_provider`, `platform` | dónde viven los issues y los pull requests, y la plataforma que se construye | `github`, `github`, `flutter-android` |
+| `tracker`, `git_provider`, `platforms` | dónde viven los issues y los pull requests, y las plataformas que se construyen ([Stacks y plataformas](stacks.es.md)); la línea anterior `platform: flutter-android` sigue funcionando | `github`, `github`, una plataforma Flutter para Android |
 | `team.members` | usuarios de GitHub de las personas que construyen y revisan | vacío |
 | `team.spec_writer` | quién escribe las specs; nunca revisa ni mergea | ninguno |
 | `team.approvers` | quién puede aprobar, solo se usa cuando `review.mode` es `roles` | vacío |
@@ -28,7 +28,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `limits.run_max_turns` | turnos por ejecución sin supervisión | 100 |
 | `limits.run_max_cost` | **obligatorio**: dólares por ejecución sin supervisión; elige el tuyo | 5 |
 | `qa.retries` | intentos del desarrollador después de que QA rechaza | 1 |
-| `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución | `CLAUDE.md` |
+| `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, o `local_only` para datos sensibles | `attach_to_pr` |
 | `digest.issue` | número del issue donde se publica el resumen diario como comentario | ninguno |
 | `language` | idioma de los mensajes de traspaso (`en`, `es`) | `en` |

@@ -10,6 +10,7 @@
 - [Cómo funciona](how-it-works.es.md): la idea, y una corrida real de la idea al pull request mergeado.
 - [Comandos](commands.es.md): los nueve comandos, y las skills que usa `think`.
 - [Configuración](configuration.es.md): el archivo `relevo.yml`.
+- [Stacks y plataformas](stacks.es.md): declara tus plataformas, los perfiles de stack y cómo agregar tus propias reglas.
 
 ## Referencia
 

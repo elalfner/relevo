@@ -16,7 +16,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 |---|---|---|
 | `branches.base` | integration branch: feature pull requests target it | `dev` |
 | `branches.release` | release branch, promoted from the base in a separate pull request | `main` |
-| `tracker`, `git_provider`, `platform` | where the issues and pull requests live, and the platform that is built | `github`, `github`, `flutter-android` |
+| `tracker`, `git_provider`, `platforms` | where the issues and pull requests live, and the platforms that are built ([Stacks and platforms](stacks.md)); the older `platform: flutter-android` still works | `github`, `github`, one Flutter platform for Android |
 | `team.members` | GitHub usernames of the people who build and review | empty |
 | `team.spec_writer` | who writes the specs; never reviews or merges | none |
 | `team.approvers` | who may approve, only used when `review.mode` is `roles` | empty |
@@ -28,7 +28,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `limits.run_max_turns` | turns per unattended run | 100 |
 | `limits.run_max_cost` | **required**: US dollars per unattended run; choose your own | 5 |
 | `qa.retries` | developer attempts after QA rejects | 1 |
-| `qa.rules_from` | project rules QA reads at every run | `CLAUDE.md` |
+| `qa.rules_from` | project rules QA reads at every run: one file or a list | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, or `local_only` for sensitive data | `attach_to_pr` |
 | `digest.issue` | number of the issue where the daily digest is posted as a comment | none |
 | `language` | language of the hand-off messages (`en`, `es`) | `en` |
