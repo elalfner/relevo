@@ -493,3 +493,58 @@ test('gatherFacts reports an invalid target of the profile and skips the skills 
   assert.deepEqual(f.platformFacts, []);
   assert.equal(f.roleSkills, null);
 });
+
+// ---------- linked repositories
+
+const link = (repo, over = {}) => ({ repo, reachable: true, private: false, ...over });
+
+test('Scenario: Private linked repository without the secret - doctor fails and says what token to create', () => {
+  const results = runChecks(healthy({ links: [link('acme/api', { private: true })], secrets: ['ANTHROPIC_API_KEY'] }));
+  const r = byId(results, 'links.secret');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /acme\/api is private and there is no RELEVO_LINKS_TOKEN/);
+  assert.match(r.fix, /read access to issues and pull requests.*RELEVO_LINKS_TOKEN/);
+  assert.equal(byId(results, 'links.acme/api').status, 'pass');
+});
+
+test('Scenario: Public linked repositories - doctor warns that no secret is needed yet', () => {
+  const r = byId(runChecks(healthy({ links: [link('acme/api'), link('acme/design')], secrets: ['ANTHROPIC_API_KEY'] })), 'links.secret');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /every linked repository is public/);
+});
+
+test('the secret present passes, whether the linked repositories are private or not', () => {
+  assert.equal(byId(runChecks(healthy({ links: [link('acme/api', { private: true })], secrets: ['RELEVO_LINKS_TOKEN'] })), 'links.secret').status, 'pass');
+  assert.equal(byId(runChecks(healthy({ links: [link('acme/api')], secrets: ['RELEVO_LINKS_TOKEN'] })), 'links.secret').status, 'pass');
+});
+
+test('Scenario: No links - doctor does not mention the secret or any link', () => {
+  const results = runChecks(healthy({ links: [] }));
+  assert.equal(results.some((r) => r.id.startsWith('links.')), false);
+  assert.equal(results.some((r) => /RELEVO_LINKS_TOKEN/.test(r.message)), false);
+});
+
+test('an unreachable link fails with the name to check; an unreadable secrets list is a warning', () => {
+  const results = runChecks(healthy({ links: [link('acme/typo', { reachable: false, private: null })], secrets: ['RELEVO_LINKS_TOKEN'] }));
+  assert.equal(byId(results, 'links.acme/typo').status, 'fail');
+  assert.match(byId(results, 'links.acme/typo').fix, /check the name in links/);
+  assert.equal(byId(runChecks(healthy({ links: [link('acme/api')], secrets: null })), 'links.secret').status, 'warn');
+});
+
+test('gatherFacts reads each linked repository once: reachable or not, private or public', () => {
+  const files = { 'relevo.yml': 'limits:\n  run_max_cost: 5\nlinks: [acme/api, acme/design, acme/typo]\n' };
+  const api = {
+    'repos/o/r': { default_branch: 'main' },
+    'repos/o/r/actions/secrets': { secrets: [{ name: 'RELEVO_LINKS_TOKEN' }] },
+    'repos/acme/api': { private: true },
+    'repos/acme/design': { private: false },
+  };
+  const asked = [];
+  const f = gatherFacts({
+    tool: () => 'ok',
+    gh: (args) => { const path = args[args.length - 1]; asked.push(path); if (!(path in api)) throw new Error('HTTP 404'); return JSON.stringify(api[path]); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: 'o/r',
+  });
+  assert.deepEqual(f.links, [{ repo: 'acme/api', reachable: true, private: true }, { repo: 'acme/design', reachable: true, private: false }, { repo: 'acme/typo', reachable: false, private: null }]);
+  assert.equal(asked.filter((p) => p === 'repos/acme/api').length, 1);
+});

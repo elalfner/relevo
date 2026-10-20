@@ -60,6 +60,7 @@ export function renderConfig(template, answers = {}) {
   if (answers.release) out = set(out, 'release', answers.release);
   const platforms = answers.platforms ?? (answers.platform ? { app: LEGACY_PLATFORMS[answers.platform] } : null);
   if (platforms) out = setPlatforms(out, platforms);
+  if (answers.links) out = set(out, 'links', `[${answers.links.join(', ')}]`);
   if (answers.members) out = set(out, 'members', `[${answers.members.join(', ')}]`);
   if (answers.specWriter !== undefined) out = set(out, 'spec_writer', answers.specWriter ?? 'null');
   if (answers.reviewMode) out = set(out, 'mode', answers.reviewMode);
@@ -137,7 +138,7 @@ const item = (id, status, description, extra = {}) => ({ id, status, description
 /**
  * Plan every change. `ctx`:
  *   facts      from gatherFacts (doctor)
- *   answers    the person's answers (members, specWriter, reviewMode, language, platforms, stackProfiles, base, release, merger)
+ *   answers    the person's answers (members, specWriter, reviewMode, language, platforms, links, stackProfiles, base, release, merger)
  *   templates  { config: text, workflows: { file: text } }
  *   current    { workflows: { file: text|null }, gitignore: text|null, keepFiles: { path: boolean } }
  *   admin      true when the person has administrator permission on the repository
@@ -214,6 +215,11 @@ export function planInit({ facts, answers, templates, current, admin }) {
   const hasCredential = (facts.secrets ?? []).some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n));
   if (hasCredential) items.push(item('manual.api-key', 'ok', 'A model credential secret exists (init never reads it)'));
   else items.push(item('manual.api-key', 'manual', 'Add the model credential to the repository secrets yourself (init never reads or writes it): ANTHROPIC_API_KEY, or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` with all whitespace removed'));
+  const links = facts.config?.links ?? answers.links ?? [];
+  if (links.length > 0) {
+    if ((facts.secrets ?? []).includes('RELEVO_LINKS_TOKEN')) items.push(item('manual.links-token', 'ok', 'The RELEVO_LINKS_TOKEN secret exists (init never reads it)'));
+    else items.push(item('manual.links-token', 'manual', `If ${links.join(', ')} ${links.length > 1 ? 'are' : 'is'} private, create a fine-grained token with read access to issues and pull requests and store it yourself as the secret RELEVO_LINKS_TOKEN (init never reads or writes it; Relevo only reads with it, and public repositories need none)`));
+  }
   items.push(item('manual.push', 'manual', 'Commit and push the new files to the default branch: a workflow only runs from there'));
 
   return items;

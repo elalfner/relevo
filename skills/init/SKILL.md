@@ -34,10 +34,11 @@ If `relevo.yml` already exists and is valid, skip this step. Otherwise ask, in s
 - the review mode: `none` (a solo project), `peer` or `roles`;
 - the language of the hand-off messages (`en` or `es`);
 - the platforms: for each one a name, its stack (look at the project to propose one: the profiles in `${CLAUDE_PLUGIN_ROOT}/stacks/` are the stacks Relevo ships with; today `flutter`), the folder where it lives (`.` for a repository with one platform, `apps/web` in a monorepo) and, for a stack that has targets, which ones (for Flutter: `android`, `ios`, `web`). Several platforms in one repository are written down, but `go` builds only a repository with one for now;
+- the repositories this one depends on, if any (`owner/repo`, for example the back end of a front end): they are written to `links`, the closed list that `Depends-on: owner/repo#N` is checked against;
 - whether to create a commented `.relevo/stacks/<stack>.md` for each stack, where the project can add its own hygiene to the plugin's profile (optional; it is not committed);
 - the cost limit per unattended run in US dollars: the template's 5 is a placeholder the person must accept or change.
 
-Write the answers as JSON to a temporary file **outside the repository**, with the keys `members`, `specWriter`, `reviewMode`, `language`, `platforms` (a map of name to `{ stack, path, targets }`), `stackProfiles` (the stacks that get a profile file, possibly none) and, if given, `runMaxCost`. Never put a secret in it.
+Write the answers as JSON to a temporary file **outside the repository**, with the keys `members`, `specWriter`, `reviewMode`, `language`, `platforms` (a map of name to `{ stack, path, targets }`), `links` (a list of `owner/repo`, possibly none), `stackProfiles` (the stacks that get a profile file, possibly none) and, if given, `runMaxCost`. Never put a secret in it.
 
 ### 3. Show the plan
 

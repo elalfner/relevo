@@ -173,3 +173,21 @@ test('validate-config checks targets against the profile of the stack', async ()
   writeFileSync(`${dir}/relevo.yml`, `${MINIMAL}platforms:\n  app:\n    stack: flutter\n    targets: [android, ios]\n    checks:\n      test: fvm flutter test\n`);
   assert.equal(spawnSync('node', [new URL('../scripts/validate-config.mjs', import.meta.url).pathname, `${dir}/relevo.yml`], { encoding: 'utf8' }).status, 0);
 });
+
+test('Scenario: Linked repositories setting - a valid list, a malformed name and a repeated one', () => {
+  const ok = loadConfig(`${MINIMAL}links: [acme/api, acme/design]\n`);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.config.links, ['acme/api', 'acme/design']);
+  const bad = loadConfig(`${MINIMAL}links: [acme, acme/api/extra]\n`);
+  assert.equal(bad.ok, false);
+  assert.match(bad.errors.map((e) => e.message).join('\n'), /"acme" is not a repository; the form is owner\/repo/);
+  assert.match(bad.errors.map((e) => e.message).join('\n'), /"acme\/api\/extra"/);
+  const twice = loadConfig(`${MINIMAL}links: [acme/api, acme/api]\n`);
+  assert.match(twice.errors[0].message, /lists "acme\/api" more than once/);
+  assert.equal(loadConfig(`${MINIMAL}links: acme/api\n`).ok, false, 'it must be a list');
+});
+
+test('a configuration without links still validates and links is an empty list', () => {
+  assert.deepEqual(loadConfig(MINIMAL).config.links, []);
+  assert.deepEqual(loadConfig(`${MINIMAL}links: []\n`).config.links, []);
+});

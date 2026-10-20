@@ -270,3 +270,56 @@ test('the permission check still comes before the platform check, so a stranger 
   const d = one([issue({ ready_by: 'stranger' })], { config: TWO });
   assert.equal(d.action, 'denied');
 });
+
+// ---------- dependencies on other repositories
+
+const LINKS = 'links: [acme/api, acme/design]\n';
+const dep = (line, over = {}) => issue({ body: `${BODY}\n${line}\n`, ...over });
+
+test('Scenario: Blocked by another repository - an open linked dependency blocks, naming it', () => {
+  const d = one([dep('Depends-on: acme/api#12')], { config: LINKS });
+  assert.equal(d.action, 'block');
+  assert.equal(d.reason, 'waiting for acme/api#12');
+  assert.deepEqual(d.labels.add, ['relevo:blocked']);
+  assert.equal(d.comment.data.blockers, 'acme/api#12');
+});
+
+test('Scenario: Dependency completed - a completed external dependency lets the issue start, mixed with a local one', () => {
+  const input = { completedExternal: ['acme/api#12'], completed: [3] };
+  assert.equal(one([dep('Depends-on: acme/api#12')], { config: LINKS, input }).action, 'start');
+  assert.equal(one([dep('Depends-on: #3, acme/api#12')], { config: LINKS, input }).action, 'start');
+  const partly = one([dep('Depends-on: #4, acme/api#12')], { config: LINKS, input });
+  assert.equal(partly.action, 'block');
+  assert.equal(partly.comment.data.blockers, '#4');
+});
+
+test('Scenario: Dependency unreadable - it blocks, and the notice says it could not be read and which secret to check', () => {
+  const d = one([dep('Depends-on: acme/api#12')], { config: LINKS, input: { unreadable: ['acme/api#12'] } });
+  assert.equal(d.action, 'block');
+  assert.match(d.comment.data.blockers, /acme\/api#12 \(could not be read: check the RELEVO_LINKS_TOKEN secret and that acme\/api is in links\)/);
+});
+
+test('Scenario: Not linked - the issue goes back to the spec writer, naming the repository and the linked ones', () => {
+  const d = one([dep('Depends-on: other/repo#4')], { config: LINKS });
+  assert.equal(d.action, 'needs-spec');
+  assert.match(d.comment.data.missing, /a Depends-on that names other\/repo, which is not in links of relevo\.yml \(acme\/api, acme\/design\)/);
+  assert.match(one([dep('Depends-on: other/repo#4')]).comment.data.missing, /no repository is linked/);
+});
+
+test('an invalid reference goes back too, and a queued or blocked issue edited into an unlinked reference does not stay blocked forever', () => {
+  const invalid = one([dep('Depends-on: acme/api 12')], { config: LINKS });
+  assert.equal(invalid.action, 'needs-spec');
+  assert.match(invalid.comment.data.missing, /a valid Depends-on reference instead of "acme\/api"/);
+  const edited = one([dep('Depends-on: other/repo#4', { labels: ['relevo:blocked'] })], { config: LINKS });
+  assert.equal(edited.action, 'needs-spec');
+});
+
+test('the own repository written in full is a local reference', () => {
+  const input = { repo: 'acme/web', completed: [12] };
+  assert.equal(one([dep('Depends-on: acme/web#12')], { config: LINKS, input }).action, 'start');
+  assert.equal(one([dep('Depends-on: Acme/Web#13')], { config: LINKS, input }).reason, 'waiting for #13');
+});
+
+test('external reference names are compared without regard to case', () => {
+  assert.equal(one([dep('Depends-on: ACME/API#12')], { config: LINKS, input: { completedExternal: ['acme/api#12'] } }).action, 'start');
+});

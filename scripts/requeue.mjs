@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
-import { applyDecisions, gather, realGh } from './lib/github.mjs';
+import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
 import { planGo } from './lib/plan.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import { ownedByQueue, startable } from './lib/requeue.mjs';
@@ -36,12 +36,12 @@ if (arg('input')) {
   state = JSON.parse(readFileSync(arg('input') === '-' ? 0 : arg('input'), 'utf8'));
 } else {
   if (!repo) fail('give --repo owner/name (or set GITHUB_REPOSITORY), or --input state.json');
-  state = gather({ gh: realGh, repo, config });
+  state = gather({ gh: realGh, ghLinks: realGhLinks(), repo, config });
 }
 
 // The whole queue is planned so that the limits stay right, but the queue only acts on the issues that are
 // already waiting: a freshly ready issue is handled by the `go` run its label started.
-const { decisions: planned } = planGo({ config, ...state });
+const { decisions: planned } = planGo({ config, repo, ...state });
 const decisions = ownedByQueue(planned, state.issues, resolveLabelNames(config.labels));
 const summary = {};
 decisions.forEach((d) => {

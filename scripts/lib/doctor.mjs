@@ -193,6 +193,11 @@ export function gatherFacts(p) {
 
     f.canApprove = tryRun(() => api(`repos/${f.repo}/actions/permissions/workflow`).can_approve_pull_request_reviews, null);
     f.secrets = tryRun(() => api(`repos/${f.repo}/actions/secrets`).secrets.map((s) => s.name));
+    // The repositories this one may depend on: can they be read, and are they private (then a token is needed)?
+    f.links = (f.config?.links ?? []).map((link) => {
+      const info = tryRun(() => api(`repos/${link}`), null);
+      return { repo: link, reachable: info !== null, private: info ? info.private === true : null };
+    });
     const wf = tryRun(() => api(`repos/${f.repo}/actions/workflows`).workflows, []);
     WORKFLOW_FILES.forEach((file) => {
       const found = wf.find((w) => w.path === `.github/workflows/${file}`);
@@ -310,6 +315,31 @@ function gatherPlatforms(f, p, tryRun) {
     });
     f.skillLockDifferences = lockDifferences(lock, hashes);
   }
+}
+
+/**
+ * The linked repositories (`links`): each one readable, and the read-only secret for private ones. Nothing is said
+ * when `links` is empty. The secret is checked by name only; doctor never reads its value.
+ */
+function linkChecks(f) {
+  const links = f.links ?? [];
+  if (links.length === 0) return [];
+  const r = [];
+  links.forEach((l) => {
+    if (l.reachable) r.push(pass(`links.${l.repo}`, `${l.repo} can be read (${l.private ? 'private' : 'public'})`));
+    else r.push(fail(`links.${l.repo}`, `${l.repo} in links cannot be read with your sign-in`, 'check the name in links, and that you have access to the repository'));
+  });
+  const anyPrivate = links.some((l) => l.private === true);
+  if (!Array.isArray(f.secrets)) {
+    r.push(warn('links.secret', 'could not list the repository secrets, so RELEVO_LINKS_TOKEN was not checked', 'check that you may read them, or look in Settings > Secrets'));
+  } else if (f.secrets.includes('RELEVO_LINKS_TOKEN')) {
+    r.push(pass('links.secret', 'the RELEVO_LINKS_TOKEN secret exists for reading linked repositories'));
+  } else if (anyPrivate) {
+    r.push(fail('links.secret', `${links.filter((l) => l.private).map((l) => l.repo).join(', ')} is private and there is no RELEVO_LINKS_TOKEN secret, so a dependency on it can never be read`, 'create a fine-grained token with read access to issues and pull requests of that repository and store it as the secret RELEVO_LINKS_TOKEN (Relevo only reads with it)'));
+  } else {
+    r.push(warn('links.secret', 'every linked repository is public, so no RELEVO_LINKS_TOKEN is needed now, but a private one added later would not be readable', 'create the secret RELEVO_LINKS_TOKEN (read-only) before linking a private repository'));
+  }
+  return r;
 }
 
 /** What the profile of each platform asks for: tools, targets, layers, skills. */
@@ -454,6 +484,7 @@ export function runChecks(f) {
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
+  r.push(...linkChecks(f));
   if (f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
     if (f.secrets.includes('RELEVO_PLUGIN_TOKEN')) r.push(pass('automation.plugin-secret', 'the RELEVO_PLUGIN_TOKEN secret exists for the private plugin repository'));
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));

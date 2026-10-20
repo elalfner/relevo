@@ -104,3 +104,20 @@ test('Scenario: Output for a start - platform, stack and path are written next t
   assert.equal(back.action, 'needs-spec');
   assert.deepEqual([back.platform, back.stack, back.path], ['', '', ''], 'empty unless the decision is a start');
 });
+
+test('Scenario: Blocked by another repository - go-plan prints the block naming the reference, and starts once it is completed', () => {
+  const cfg = join(dir, 'relevo-links.yml');
+  writeFileSync(cfg, 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\nlinks: [acme/api]\n');
+  const run = (extra) => {
+    const input = join(dir, `state-${Math.random().toString(36).slice(2)}.json`);
+    const out = join(dir, `out-${Math.random().toString(36).slice(2)}.txt`);
+    writeFileSync(input, JSON.stringify({ ...state({ body: `${BODY}\nDepends-on: acme/api#12\n` }), ...extra }));
+    const r = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', cfg, '--only', '7', '--github-output', out], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return { printed: JSON.parse(r.stdout), out: parse(readFileSync(out, 'utf8')) };
+  };
+  const waiting = run({});
+  assert.equal(waiting.out.action, 'block');
+  assert.equal(waiting.printed.decisions[0].reason, 'waiting for acme/api#12');
+  assert.equal(run({ completedExternal: ['acme/api#12'] }).out.action, 'start');
+});
