@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-20
+
 ### Added
 
 - **Where `go` builds** is derived, not configured: from the workflows that are installed, the model secret that exists and the new repository variable `RELEVO_CLOUD_GO` (`off` pauses the cloud at once, with no pull request; the queue pauses with it). A cloud without a credential no longer fails: the issue stays `ready` and a comment says to run `/relevo:go <n>` on a machine or to add the secret. See [Where `go` runs](docs/execution.md).
@@ -57,6 +59,18 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **Workflow template**: copy `relevo-go.yml` again to get the new wording of the final step (a run can be cut at its turn or cost limit) and the install examples without package scripts.
 
 - **`create` is now `issue`**: `/relevo:create` is gone, with no alias, and `/relevo:issue` replaces it. Without an argument it writes new issues exactly as before; with an issue number it updates the description of an existing one.
+
+### Upgrading from 0.1.0
+
+- Copy the workflow templates again (`relevo-go.yml` and `relevo-queue.yml`) into `.github/workflows/`: they gain the pause variable `RELEVO_CLOUD_GO`, the check for a model credential, the read-only token for linked repositories, the reports of what a run used and the stack-guarded install examples. Running `/relevo:init` again lists what differs from the templates without overwriting anything.
+- `relevo.yml` needs no change: every new setting has a default (`platforms` from the older `platform:` line, `links`, `review.autopilot` off, `design.images` false, `limits.building_alert_hours`). `/relevo:init` lists what it would add.
+- `/relevo:create` is now `/relevo:issue`.
+
+### Known limits
+
+- Several parts have been exercised by tests and by pieces run for real in a development environment, but not yet on a live team or a real build: a cloud build of an issue in the format v2 or for a Vue or Laravel platform, a real `go --local` run, the Flutter driver flow and the `precheck` and `verify` modes of the review against a real app, the download of a real pasted attachment for a design reference, the circular buffer of a real device, and a review by more than one person. Each is recorded in [pilot findings](docs/pilot-findings.md).
+- `review.autopilot` is `off` by default for that reason, and `design.images` is `false` by default because a screenshot can show customer data.
+- A backend (Laravel) has no `review` adapter, and the review of iOS is not available yet.
 
 ## [0.1.0] - 2026-10-15
 
