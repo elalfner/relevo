@@ -208,6 +208,8 @@ What worked: the label started the run; the `decide` job unpacked `@elalfner/rel
 
 What failed, and was my mistake: QA rejected the build with "Flutter SDK is not installed in the QA environment". I replaced the sandbox workflows with the 0.3.0 templates (the sandbox ones were several versions old) and lost the one line the sandbox had added by hand, the Flutter setup step. In the template, the toolchain of each stack is a commented example that the project must uncomment. Restored in the sandbox with a one-block change (`flutter-action` when the stack is `flutter`).
 
+Second attempt, after the Flutter step reached `main` and the branch with only the specification was deleted: `relevo:built` in about 5 minutes, 2 of 2 tasks, QA passed, 13 turns and about $0.49 notional. That is the cloud build of an issue in format v2 with the lean installation: the scripts from `@elalfner/relevo@0.3.0`, the plugin from the `npm` entry. The failed attempt left only the specification on the branch because the implementation is committed only after QA passes; a rejected cloud build loses its code, so `go` should commit it before it takes the failure path (proposed, not done).
+
 The same trap waits for anyone who follows Get started: nothing there, nor in `/relevo:init` or `/relevo:doctor`, says that the build job needs the toolchain step enabled, and the first symptom is a QA failure after a paid run. Proposed: `doctor` should fail when the go workflow has no active toolchain step for a configured stack, and `init` should say so in its plan. Not done here.
 
 ## Times and costs per run
