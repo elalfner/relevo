@@ -9,7 +9,7 @@ name: relevo-digest
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.2.0'
+  RELEVO_VERSION: '0.3.0'
 
 on:
   schedule:
