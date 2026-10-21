@@ -33,6 +33,10 @@ A repository with the `go` workflow but no `ANTHROPIC_API_KEY` or `CLAUDE_CODE_O
 - The mode is deduced from the name of the secret. If both exist, `/relevo:doctor` warns and says which one the workflow uses.
 - Read the current Anthropic terms on automated use of a subscription, and the README of `claude-code-action`, before relying on a subscription token for a team. Relevo does not judge them; `/relevo:doctor` leaves a one-line reminder.
 
+## What the build installs
+
+The build job of the go workflow installs the toolchain of the stack of the platform of the issue, so that the agent and QA can run the checks of your project: Flutter with `subosito/flutter-action` and PHP with Composer for Laravel with `shivammathur/setup-php`. Each step is guarded by the stack, so only the one for the issue runs. Vue needs only Node, which the job already has. Change the versions and the caching in `relevo-go.yml` to suit the project. Installing the dependencies is yours to add (`npm ci --ignore-scripts`, `composer install --no-scripts`), because the package manager and the lockfile vary. `/relevo:doctor` fails when a Flutter or Laravel platform has no active step, because every cloud build would then fail QA after spending the run.
+
 ## What a cloud run reports
 
 After each cloud run a comment gives the turns, the cost and the tokens that the agent runner's log reports (the cost is notional with a subscription). When the log does not have them nothing is posted. A run that stopped because the usage limit or the credit was reached says so and tells you to apply `ready` again later; any other failure keeps the generic comment with the link to the run.

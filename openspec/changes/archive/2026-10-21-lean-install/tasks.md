@@ -31,4 +31,4 @@
 ## 6. Check on real runs
 
 - [x] 6.1 Install from the real registry at project scope in a clean project and list the cache
-- [ ] 6.2 Run a build in the sandbox with the new templates and confirm the model action finds the plugin
+- [x] 6.2 Run a build in the sandbox with the new templates and confirm the model action finds the plugin

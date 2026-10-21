@@ -15,7 +15,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.3.0'
+  RELEVO_VERSION: '0.3.1'
 
 on:
   issues:
@@ -125,27 +125,32 @@ jobs:
         with:
           node-version: 22
 
-      # The agent runs the project's own checks (QA runs them), so install here the toolchain of the stack of the
-      # platform of the issue. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
-      # (`needs.decide.outputs.path`), so an issue for the front does not install the back's tools. Uncomment the
-      # examples your stacks need and adjust versions and caching; the names are the `stack` of relevo.yml:
-      #   - if: needs.decide.outputs.stack == 'flutter'
-      #     uses: subosito/flutter-action@v2
-      #     with:
-      #       channel: stable
-      #       cache: true
+      # The agent runs the project's own checks (QA runs them), so the toolchain of the stack of the platform of the
+      # issue is installed here. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
+      # (`needs.decide.outputs.path`), so an issue for the front does not install the back's tools: a step whose stack
+      # is not the issue's is skipped and costs nothing. The names are the `stack` of relevo.yml. Change the versions
+      # and the caching to suit the project; `/relevo:doctor` fails when a Flutter or Laravel platform has no active
+      # step below, because every build would fail QA after spending the run.
+      - if: needs.decide.outputs.stack == 'flutter'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - if: needs.decide.outputs.stack == 'laravel'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer
+      # Vue needs only Node, which this job installed above; to cache the packages, uncomment:
       #   - if: needs.decide.outputs.stack == 'vue'
       #     uses: actions/setup-node@v4
       #     with:
       #       node-version: 22
       #       cache: npm
       #       cache-dependency-path: ${{ needs.decide.outputs.path }}/package-lock.json
-      #   - if: needs.decide.outputs.stack == 'laravel'
-      #     uses: shivammathur/setup-php@v2
-      #     with:
-      #       php-version: '8.3'
-      #       tools: composer
-      # Install the dependencies of the platform from its folder, for example:
+      # Another stack: add a step guarded by its name, and its dependencies below.
+      # Installing the dependencies is the project's choice, because the package manager and the lockfile vary. Do it
+      # from the folder of the platform, for example:
       #   - if: needs.decide.outputs.stack == 'vue'
       #     working-directory: ${{ needs.decide.outputs.path }}
       #     run: npm ci --ignore-scripts

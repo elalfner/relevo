@@ -33,6 +33,10 @@ Un repositorio con el workflow de `go` pero sin `ANTHROPIC_API_KEY` ni `CLAUDE_C
 - El modo se deduce del nombre del secreto. Si existen los dos, `/relevo:doctor` avisa y dice cuál usa el workflow.
 - Lee los términos vigentes de Anthropic sobre el uso automatizado de una suscripción, y el README de `claude-code-action`, antes de apoyar a un equipo en un token de suscripción. Relevo no los juzga; `/relevo:doctor` deja un recordatorio de una línea.
 
+## Qué instala el build
+
+El job de build del workflow `go` instala el toolchain del stack de la plataforma del issue, para que el agente y QA puedan ejecutar las comprobaciones de tu proyecto: Flutter con `subosito/flutter-action` y PHP con Composer para Laravel con `shivammathur/setup-php`. Cada paso está protegido por el stack, así que solo corre el del issue. Vue solo necesita Node, que el job ya tiene. Cambia las versiones y la caché en `relevo-go.yml` según tu proyecto. Instalar las dependencias lo añades tú (`npm ci --ignore-scripts`, `composer install --no-scripts`), porque el gestor de paquetes y el lockfile varían. `/relevo:doctor` falla cuando una plataforma Flutter o Laravel no tiene un paso activo, porque cada build en la nube fallaría en QA después de gastar la ejecución.
+
 ## Qué reporta una ejecución en la nube
 
 Después de cada ejecución en la nube, un comentario da los turnos, el costo y los tokens que reporta el log del ejecutor del agente (el costo es nocional con una suscripción). Si el log no los tiene, no se publica nada. Una ejecución que se detuvo porque se alcanzó el límite de uso o el crédito lo dice y te indica volver a poner `ready` más tarde; cualquier otro fallo conserva el comentario genérico con el enlace a la ejecución.

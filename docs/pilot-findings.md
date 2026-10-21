@@ -202,6 +202,18 @@ Package `@elalfner/relevo@0.3.0`, published by the release workflow with provena
 
 Not yet seen: a build in the sandbox with the new templates (task 6.2), because the templates must reach the default branch of the sandbox first and the marketplace entry must reach `main` of this repository.
 
+## First cloud build with the 0.3.0 workflows (sandbox #37, task 6.2 of `lean-install`)
+
+What worked: the label started the run; the `decide` job unpacked `@elalfner/relevo@0.3.0`, passed its guard and claimed the issue; the model action installed the plugin and ran `/relevo:go` and QA (14 turns, about $0.49 notional). So the plugin does install from the `npm` entry of the marketplace in a real run.
+
+What failed, and was my mistake: QA rejected the build with "Flutter SDK is not installed in the QA environment". I replaced the sandbox workflows with the 0.3.0 templates (the sandbox ones were several versions old) and lost the one line the sandbox had added by hand, the Flutter setup step. In the template, the toolchain of each stack is a commented example that the project must uncomment. Restored in the sandbox with a one-block change (`flutter-action` when the stack is `flutter`).
+
+Second attempt, after the Flutter step reached `main` and the branch with only the specification was deleted: `relevo:built` in about 5 minutes, 2 of 2 tasks, QA passed, 13 turns and about $0.49 notional. That is the cloud build of an issue in format v2 with the lean installation: the scripts from `@elalfner/relevo@0.3.0`, the plugin from the `npm` entry. The failed attempt left only the specification on the branch because the implementation is committed only after QA passes; a rejected cloud build loses its code, so `go` should commit it before it takes the failure path (proposed, not done).
+
+Built later as `build-toolchain`: the template now ships the Flutter and Laravel steps active, guarded by the stack, and `doctor` fails when a Flutter or Laravel platform has no active step. Task 4.1 is covered by the second build of #37, whose build job carries the same active, guarded Flutter block as the template (the sandbox file is not otherwise identical to the template) and which reached `relevo:built` with QA passed; the template itself was not copied into the sandbox again.
+
+The same trap waits for anyone who follows Get started: nothing there, nor in `/relevo:init` or `/relevo:doctor`, says that the build job needs the toolchain step enabled, and the first symptom is a QA failure after a paid run. Proposed: `doctor` should fail when the go workflow has no active toolchain step for a configured stack, and `init` should say so in its plan. Not done here.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

@@ -227,3 +227,56 @@ test('Scenario: A problem - the table names the causes and the fix, and What nex
     ['guide', 'security', 'stacks', 'execution'].forEach((p) => assert.ok(next.includes(`${p}`), `${f}: What next links ${p}`));
   });
 });
+
+test('the execution pages name the two toolchain actions that the go template runs, in both languages', () => {
+  const template = read('templates/workflows/relevo-go.yml').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  ['subosito/flutter-action', 'shivammathur/setup-php'].forEach((action) => {
+    assert.ok(template.includes(action), `the template runs ${action}`);
+    ['docs/execution.md', 'docs/execution.es.md'].forEach((p) => assert.ok(read(p).includes(action), `${p} names ${action}`));
+  });
+});
+
+const STARTS = [
+  { file: 'docs/get-started.md', terms: ['rulesets (rules that GitHub applies to a branch', 'secret (a value that GitHub keeps hidden', 'milestone (a GitHub group of issues', 'QA is the second agent, which tries to reject the work', 'no `openspec/` folder, where the specifications live'] },
+  { file: 'docs/get-started.es.md', terms: ['reglas de la rama (reglas que GitHub aplica a una rama', 'secreto (un valor que GitHub guarda oculto', 'hito (un grupo de issues de GitHub', 'QA es el segundo agente, que intenta rechazar el trabajo', 'carpeta `openspec/`, donde viven las especificaciones'] },
+];
+
+test('Get started gives one way to install the plugin, with the project scope written out', () => {
+  STARTS.forEach(({ file }) => {
+    const text = read(file);
+    const blocks = [...text.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).filter((b) => b.includes('claude plugin install'));
+    assert.equal(blocks.length, 1, `${file} shows the install commands once`);
+    assert.match(blocks[0], /claude plugin marketplace add elalfner\/relevo --scope project --sparse \.claude-plugin/);
+    assert.match(blocks[0], /claude plugin install relevo@relevo --scope project/);
+    assert.doesNotMatch(text, /npm install -g @elalfner\/relevo/, `${file} leaves the npm shortcut to the install page`);
+  });
+});
+
+test('Get started says the build does not install the dependencies of a Vue or Laravel project', () => {
+  STARTS.forEach(({ file }) => {
+    const text = read(file);
+    const step6 = text.slice(text.search(/^## 6\. /m), text.search(/^## 7\. /m));
+    assert.ok(step6.includes('npm ci --ignore-scripts'), `${file} step 6 names the Vue command`);
+    assert.ok(step6.includes('composer install --no-scripts'), `${file} step 6 names the Laravel command`);
+    assert.ok(step6.includes('relevo-go.yml'), file);
+    assert.match(text, /\| .*relevo:qa-failed.*(dependencies|dependencias)/, `${file} table row mentions the dependencies`);
+  });
+});
+
+test('Get started explains the technical terms where it first uses them', () => {
+  STARTS.forEach(({ file, terms }) => {
+    const text = read(file);
+    terms.forEach((t) => assert.ok(text.includes(t), `${file} explains "${t}"`));
+  });
+});
+
+test('the rare cases of the setup step live in the table of problems, not in the step', () => {
+  STARTS.forEach(({ file }) => {
+    const text = read(file);
+    const step3 = text.slice(text.search(/^## 3\. /m), text.search(/^## 4\. /m));
+    assert.doesNotMatch(step3, /openspec init/, `${file} keeps openspec init out of step 3`);
+    const table = text.slice(text.search(/^## (If something goes wrong|Si algo sale mal)$/m));
+    assert.match(table, /openspec init/, `${file} table says what to do without an OpenSpec root`);
+    assert.match(table, /gh auth login/, file);
+  });
+});
