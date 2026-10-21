@@ -561,6 +561,7 @@ export function runChecks(f) {
   r.push(f.hasCi ? pass('automation.ci', 'an objective CI check exists') : fail('automation.ci', 'no CI workflow other than Relevo\'s was found; QA needs an objective check', 'add a workflow that runs the project\'s analysis and tests on pull requests'));
 
   r.push(...pluginInstallChecks(f));
+  r.push(...toolchainChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
@@ -571,6 +572,27 @@ export function runChecks(f) {
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));
   }
   return r;
+}
+
+// The action that sets up the toolchain of a stack in the build job of the go workflow. Vue needs only Node, which the
+// job installs for Relevo itself, and a stack that is not listed here is not judged.
+const TOOLCHAIN_ACTIONS = { flutter: { action: 'subosito/flutter-action', step: 'the Flutter step' }, laravel: { action: 'shivammathur/setup-php', step: 'the Laravel step' } };
+
+/**
+ * Does the go workflow install the toolchain of each configured platform? Without it every cloud build fails QA after
+ * it spent the run. Only active lines count (a commented example installs nothing), and nothing is judged when the
+ * go workflow is not installed, as when go builds on machines.
+ */
+function toolchainChecks(f) {
+  const go = f.workflows?.['relevo-go.yml'];
+  if (!go?.present || typeof go.text !== 'string') return [];
+  const active = go.text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  return (f.platformFacts ?? []).filter((e) => TOOLCHAIN_ACTIONS[e.stack]).map((e) => {
+    const { action, step } = TOOLCHAIN_ACTIONS[e.stack];
+    return active.includes(action)
+      ? pass(`automation.toolchain.${e.name}`, `the go workflow installs the toolchain of platform ${e.name} (${e.stack})`)
+      : fail(`automation.toolchain.${e.name}`, `the go workflow installs no toolchain for platform ${e.name} (${e.stack}), so every cloud build would fail QA after spending the run`, `enable ${step} of the build job in relevo-go.yml (the template has it active; compare with /relevo:init), or, if you install it another way, ignore this`);
+  });
 }
 
 /**

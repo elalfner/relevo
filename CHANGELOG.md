@@ -4,6 +4,15 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **The build installs the toolchain of the stack.** The build job of the `relevo-go.yml` template sets up Flutter (`subosito/flutter-action`) and PHP with Composer for Laravel (`shivammathur/setup-php`) with no editing, each step guarded by the stack of the platform of the issue so only that one runs; Vue needs only Node, which the job already has. Installing the dependencies stays the project's choice. Before this, the steps were commented examples, and the first cloud build of the sandbox failed QA with "Flutter SDK is not installed" after a paid run.
+- **`/relevo:doctor` fails** when the go workflow is installed and has no active toolchain step for a Flutter or Laravel platform, and `/relevo:init` tells you, for a go workflow that differs from the template, to check that step. See [What the build installs](docs/execution.md#what-the-build-installs).
+
+### Upgrading from 0.3.0
+
+- Run `/relevo:doctor`: if it says the go workflow installs no toolchain, copy the Flutter or Laravel step of the current template into the build job of your `relevo-go.yml`.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

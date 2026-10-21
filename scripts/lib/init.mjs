@@ -223,7 +223,11 @@ export function planInit({ facts, answers, templates, current, admin }) {
     const have = current.workflows[file] ?? null;
     if (have === null) items.push(item(`workflow.${file}`, 'todo', `Add .github/workflows/${file}`, { path: `.github/workflows/${file}`, content: wanted }));
     else if (have === wanted) items.push(item(`workflow.${file}`, 'ok', `.github/workflows/${file} is up to date`));
-    else items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} exists and differs from the template; it is left as it is (compare it by hand)`));
+    else {
+      // The cloud build only passes QA when the build job installs the toolchain of the stack, which the template does.
+      const toolchain = file === 'relevo-go.yml' ? '; check that its build job installs the toolchain of your stacks, as the template does for Flutter and Laravel' : '';
+      items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} exists and differs from the template; it is left as it is (compare it by hand${toolchain})`));
+    }
   });
   if (runs === 'local') items.push(item('execution', 'ok', 'go builds on each person\'s machine: the go and queue workflows are not added. Run /relevo:go <n>, or node scripts/go-local.mjs <n> to build in a separate worktree'));
 

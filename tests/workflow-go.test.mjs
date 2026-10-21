@@ -157,6 +157,19 @@ test('Scenario: Output for a start - the decide job exposes platform, stack and 
   assert.match(workflow, /npm ci --ignore-scripts/);
 });
 
+test('Scenario: An issue for a Flutter platform - the Flutter and Laravel steps are active and guarded, Vue and the dependencies stay comments', () => {
+  const build = jobText('build');
+  const active = build.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.match(active, /- if: needs\.decide\.outputs\.stack == 'flutter'\n\s+uses: subosito\/flutter-action@v2\n\s+with:\n\s+channel: stable\n\s+cache: true/);
+  assert.match(active, /- if: needs\.decide\.outputs\.stack == 'laravel'\n\s+uses: shivammathur\/setup-php@v2/);
+  assert.doesNotMatch(active, /npm ci|composer install/, 'installing the dependencies is the project\'s choice');
+  assert.doesNotMatch(active, /stack == 'vue'/, 'Vue needs only Node, which the job installs');
+  assert.match(build, /# Vue needs only Node/);
+  assert.match(build, /# Installing the dependencies is the project's choice/);
+  assert.ok(active.indexOf('flutter-action') < active.indexOf('anthropics/claude-code-action'), 'the toolchain comes before the agent');
+  assert.ok(active.indexOf('shivammathur/setup-php') < active.indexOf('anthropics/claude-code-action'));
+});
+
 test('the guarded examples name only stacks the plugin ships or documents, and the build job still has no pull_request_target', () => {
   assert.doesNotMatch(workflow, /pull_request_target/);
   assert.match(workflow, /so an issue for the front does not install the back's tools/);

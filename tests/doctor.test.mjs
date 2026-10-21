@@ -750,3 +750,39 @@ test('the version a workflow pins is read from RELEVO_VERSION, and null when the
   assert.equal(f.pluginPins['relevo-queue.yml'], '0.2.0');
   assert.equal(f.pluginPins['relevo-sla.yml'], null);
 });
+
+const GO_TEMPLATE = readFileSync(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+const withGo = (text, platformFacts = [flutterPlatform()]) => healthy({ platformFacts, workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text } } });
+const toolchain = (over, name = 'app') => byId(runChecks(over), `automation.toolchain.${name}`);
+
+test('Scenario: A Flutter project whose workflow installs nothing - a failure that names the platform and the step', () => {
+  const commented = GO_TEMPLATE.replace(/^( {6})- if: needs\.decide\.outputs\.stack == 'flutter'\n {8}uses: subosito\/flutter-action@v2\n {8}with:\n {10}channel: stable\n {10}cache: true\n/m, (m) => m.split('\n').map((l) => (l ? `${l.slice(0, 6)}# ${l.slice(6)}` : l)).join('\n'));
+  assert.notEqual(commented, GO_TEMPLATE, 'the fixture comments the Flutter step out');
+  const bad = toolchain(withGo(commented));
+  assert.equal(bad.status, 'fail');
+  assert.match(bad.message, /platform app \(flutter\).*every cloud build would fail QA/);
+  assert.match(bad.fix, /enable the Flutter step of the build job in relevo-go\.yml/);
+});
+
+test('Scenario: A toolchain that is only a comment - it counts as missing; the current template passes', () => {
+  assert.equal(toolchain(withGo('jobs:\n  build:\n    steps:\n      # - uses: subosito/flutter-action@v2\n')).status, 'fail');
+  assert.equal(toolchain(withGo(GO_TEMPLATE)).status, 'pass');
+  assert.equal(toolchain(withGo('steps:\n  - uses: subosito/flutter-action@v2\n')).status, 'pass', 'a project that installs it its own way, unguarded, passes');
+});
+
+test('Scenario: A project that builds on machines only - nothing is said about the toolchain', () => {
+  const none = healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: false, enabled: null } } });
+  assert.deepEqual(runChecks(none).filter((r) => r.id.startsWith('automation.toolchain')), []);
+  assert.deepEqual(runChecks(healthy()).filter((r) => r.id.startsWith('automation.toolchain')), [], 'no text, no judgement');
+});
+
+test('the Laravel step is judged, Vue and unknown stacks are not', () => {
+  const laravel = { name: 'api', stack: 'laravel', path: 'api', targets: [], profile: null, errors: [], tools: [], targetTools: [] };
+  const vue = { ...laravel, name: 'web', stack: 'vue', path: 'web' };
+  const custom = { ...laravel, name: 'x', stack: 'cobol' };
+  const facts = [laravel, vue, custom];
+  assert.equal(toolchain(withGo(GO_TEMPLATE, facts), 'api').status, 'pass');
+  assert.equal(toolchain(withGo('name: go\n', facts), 'api').status, 'fail');
+  assert.equal(toolchain(withGo('name: go\n', facts), 'web'), undefined);
+  assert.equal(toolchain(withGo('name: go\n', facts), 'x'), undefined);
+});

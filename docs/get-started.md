@@ -111,7 +111,7 @@ gh issue edit 1 --add-label relevo:ready
 ```
 
 - **You should see**: within a minute the issue gets `relevo:building`. After a few minutes it has a comment that says the issue is built (in the `language` of your `relevo.yml`), with what happened, the branch, what to test and `Your next step: /relevo:review 1`, and the label is `relevo:built`.
-- **If not**: if nothing starts, check that the workflows are on the default branch, that the secret exists and that the issue has a milestone and an assignee. A comment saying the cloud is not configured means the secret is missing. See [Where `go` runs](execution.md) and the [Guide](guide.md).
+- **If not**: if nothing starts, check that the workflows are on the default branch, that the secret exists and that the issue has a milestone and an assignee. A comment saying the cloud is not configured means the secret is missing. The build installs the toolchain of your stack (Flutter, Laravel; Vue needs only Node) from `relevo-go.yml`; if you changed that file, keep the step, and `/relevo:doctor` tells you when it is missing. See [Where `go` runs](execution.md) and the [Guide](guide.md).
 
 ## 7. Review it
 
@@ -150,6 +150,6 @@ Connect the phone or start the emulator, and start the app (`flutter run`). The 
 | Labelling `ready` starts nothing | the workflows are not on the default branch, or `RELEVO_CLOUD_GO` is `off` | merge the files of step 3 and check the repository variable |
 | A comment says the cloud is not configured | there is no model secret | create it as in step 4 and apply `ready` again |
 | The issue went back to `relevo:needs-spec` | it is incomplete or has an open question | read the last comment and run `/relevo:issue 1` |
-| The build ended as `relevo:qa-failed` | QA still rejected it after the retry | run `/relevo:fix 1` and describe what QA found |
+| The build ended as `relevo:qa-failed` | QA still rejected it after the retry, or the build job installed no toolchain (the comment says the SDK is not installed) | run `/relevo:doctor` and enable the toolchain step of `relevo-go.yml`, or run `/relevo:fix 1` and describe what QA found |
 | The review says the verdict is inconclusive | the log had no line of your app | start the app again, repeat the steps and finish again |
 | `ship` refuses | the checks are running or failing, or the review has not opened the pull request | wait for the checks, or run `/relevo:review 1` first |
