@@ -1,9 +1,14 @@
 # Relevo: reminds the reviewer when a pull request waits longer than limits.review_sla_hours, and escalates
 # to the spec writer (adding the needs-reviewer label) after the same time again.
 # Copy to .github/workflows/relevo-sla.yml. Needs a relevo.yml at the repository root.
-# Scripts come from the plugin repository; pin `ref` to a release tag once one exists.
+# The scripts come from the published package @elalfner/relevo, at the version pinned in RELEVO_VERSION.
 
 name: relevo-sla
+
+# The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
+# were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
+env:
+  RELEVO_VERSION: '0.3.0'
 
 on:
   schedule:
@@ -26,18 +31,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
-        with:
-          repository: elalfner/relevo
-          ref: main
-          path: .relevo-plugin
-          # The default token cannot read another private repository. If the plugin repository is private, store a
-          # read-only token as the secret RELEVO_PLUGIN_TOKEN; otherwise the default token is used.
-          token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Install the Relevo scripts
+        # The published package at the version pinned above; no repository is cloned for them. A package without the
+        # script this job runs stops the run here, before anything is changed.
+        run: |
+          mkdir -p .relevo-plugin
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
+          for f in scripts/review-sla.mjs; do
+            [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
 
       - name: Remind and escalate
         env:

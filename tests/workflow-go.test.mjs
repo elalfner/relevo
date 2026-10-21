@@ -124,12 +124,12 @@ test('the event gate is on decide, so build is skipped with it', () => {
   assert.ok(!/^\s+if: github\.event_name/m.test(jobText('build')));
 });
 
-test('Scenario: The plugin cannot be cloned - decide reports it, because the issue is still ready or queued', () => {
+test('Scenario: The plugin cannot be installed - decide reports it, because the issue is still ready or queued', () => {
   const decide = jobText('decide');
   assert.match(decide, /Report a run that ended without an outcome/);
   assert.match(decide, /if: always\(\)/);
   assert.match(decide, /grep -qxE 'relevo:\(ready\|queued\|building\)'/);
-  assert.match(decide, /token: \$\{\{ secrets\.RELEVO_PLUGIN_TOKEN \|\| github\.token \}\}/);
+  assert.match(decide, /npm pack "@elalfner\/relevo@\$RELEVO_VERSION"/);
   assert.match(decide, /\[ "\$JOB_STATUS" = "success" \]/);
 });
 
@@ -210,10 +210,10 @@ test('Scenario: Log with usage / without usage - the consumption step runs after
   assert.match(step, /exit 0/);
 });
 
-test('the Relevo scripts for the reports are checked out after the agent, never before (the agent needs a clean tree)', () => {
+test('the Relevo scripts for the reports are unpacked after the agent, never before (the agent needs a clean tree)', () => {
   const build = jobText('build');
-  const checkout = build.indexOf('name: Check out the Relevo scripts for the reports');
-  assert.ok(checkout > build.indexOf('uses: anthropics/claude-code-action@v1'));
-  assert.match(build.slice(checkout, checkout + 400), /continue-on-error: true/);
-  assert.equal((build.match(/path: \.relevo-plugin/g) ?? []).length, 1, 'once in the build job, and only after the agent');
+  const step = build.indexOf('name: Install the Relevo scripts for the reports');
+  assert.ok(step > build.indexOf('uses: anthropics/claude-code-action@v1'));
+  assert.match(build.slice(step, step + 400), /continue-on-error: true/);
+  assert.equal((build.match(/mkdir -p \.relevo-plugin/g) ?? []).length, 1, 'once in the build job, and only after the agent');
 });

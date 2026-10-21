@@ -111,7 +111,7 @@ files = [
     ('png/relevo-lockup-…, relevo-mark-…', 'Versiones PNG con transparencia del logo y los lockups.'),
     ('png/relevo-social-preview-1280x640.png', 'Vista previa social del repositorio en GitHub.'),
     ('states/relevo-state-<estado>-{black,white}.svg', 'Una ilustración por comando del flujo: init, feature (que no es un comando, sino el motivo del flujo), think, issue, go, review, fix y ship. Son las del README.'),
-    ('animation/relevo-logo-animated-{black,white}.svg', 'Logo animado de 4,6 s, sin texto, que se queda en ship, se desvanece y vuelve a empezar. SMIL: se ve en GitHub y navegadores.'),
+    ('animation/relevo-logo-animated-{black,white}.svg', 'Logo animado de 9,2 s (a 0,5x), sin texto, que se queda en ship, se desvanece y vuelve a empezar. SMIL: se ve en GitHub y navegadores.'),
     ('animation/relevo-logo-animated.gif', 'La misma animación en GIF, con fondo blanco, para donde no se admite SVG animado.'),
     ('source/', 'Los scripts y la fuente para regenerar todo. Instrucciones en source/README.md.'),
 ]
@@ -231,8 +231,8 @@ html = '''<title>Marca Relevo</title>
   </section>
 
   <section>
-    <div><p class="eyebrow">Animación</p><h2>Cuatro segundos y medio, y se queda en ship</h2></div>
-    <p class="lead">Es la versión corta del logo animado, sin texto: el círculo nace, los agentes de IA trabajan, la issue entra y la feature sale. Se queda unos segundos en el logo final, se desvanece y vuelve a empezar (un ciclo dura unos 13 s). Es un bucle a propósito: un SVG no sabe cuándo está a la vista. Para el README y la web.</p>
+    <div><p class="eyebrow">Animación</p><h2>Nueve segundos, y se queda en ship</h2></div>
+    <p class="lead">Es la versión corta del logo animado, sin texto: el círculo nace, los agentes de IA trabajan, la issue entra y la feature sale. Se queda unos segundos en el logo final, se desvanece y vuelve a empezar (un ciclo dura unos 17,5 s). Es un bucle a propósito: un SVG no sabe cuándo está a la vista. Para el README y la web.</p>
     <div class="tiles anim" style="max-width:640px">
       <div class="tile light"><img id="an-b" alt="relevo, logo animado" width="260" height="260" src="data:image/svg+xml;base64,@@b64b@@" data-b64="@@b64b@@"></div>
       <div class="tile dark"><img id="an-w" alt="relevo, logo animado" width="260" height="260" src="data:image/svg+xml;base64,@@b64w@@" data-b64="@@b64w@@"></div>

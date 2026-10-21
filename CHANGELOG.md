@@ -4,9 +4,29 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
 ### Added
 
+- **A lean installation and one command.** Relevo is published as the npm package `@elalfner/relevo`, whose file list holds only what runs (the manifest, scripts, skills, agents, stack profiles, templates, licence and notice); the marketplace entry installs the plugin from it. `npm install -g @elalfner/relevo` gives the `relevo` command: `relevo install [--scope user|project|local]`, `update`, `doctor` and `version`. A project install is declared in `.claude/settings.json`. Measured with a local registry: the repository is 5.2 MB, the package 170 kB, and the plugin cache of a project-scope install holds no documentation, tests or OpenSpec history. See [Install](docs/install.md#what-is-installed).
+- **The workflows install the package, not the repository.** Each of the five templates sets `RELEVO_VERSION`, unpacks `@elalfner/relevo` at that version and stops, naming the missing file, if a script its job runs is not in the package. `RELEVO_PLUGIN_TOKEN` is no longer needed for the scripts. `/relevo:doctor` reports a workflow that still clones the repository, one without a pin, a pin that differs from the installed plugin and a plugin that lost a folder.
+- **A release workflow** publishes the package when a `vX.Y.Z` tag is pushed, after checking that the tag is the version and the tests pass ([RELEASING.md](RELEASING.md)).
 - **Get started** ([docs/get-started.md](docs/get-started.md), also in Spanish): the shortest path from nothing to the first merged pull request for a person working alone, in eight steps, each with the command to copy, what you should see and what to do if you do not, and a table of the problems a newcomer meets. It is the first link of the cover and the index. A test runs the example issue of the page through `check-issue` and checks that the output it quotes is output the code produces. The install page no longer says that Flutter is the only stack.
+
+### Changed
+
+- The skill `issue` no longer reads `docs/issue-format.md` at run time; the template carries the section comments, and the long explanation is online.
+
+### Known limits
+
+- The first publication of `@elalfner/relevo` uses an npm token kept as the repository secret `NPM_TOKEN`; switching to npm Trusted Publishing, which needs no token, is planned after the package exists.
+- That `claude-code-action` installs the plugin from the `npm` entry of the marketplace in a real run was not seen before the release; the action still clones the repository named in `plugin_marketplaces` for the catalogue.
+- The workflows pin a version by hand (`RELEVO_VERSION`): `/relevo:init` and `/relevo:doctor` report an old pin, but nothing updates it.
+
+### Upgrading from 0.2.0
+
+- Run `/relevo:init`: it lists the five workflow templates as different. Copy them, then set `RELEVO_VERSION` to the version you installed. The old workflows stop working once the plugin repository no longer carries the scripts in the layout they clone.
+- Install the command with `npm install -g @elalfner/relevo` if you want it; the plugin installed with `claude plugin install` keeps working.
 
 ## [0.2.0] - 2026-10-20
 
