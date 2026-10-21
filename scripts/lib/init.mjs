@@ -8,12 +8,14 @@
 import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
+import { agentWorkflow } from './agent-workflow.mjs';
 import { OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WORKFLOW_FILES } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
 export const RUNS = ['cloud', 'local', 'both'];
 export const CREDENTIALS = ['api_key', 'subscription'];
+export const AGENT_BUILDS = ['claude', 'antigravity'];
 const API_KEY_LINE = '          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}';
 const TOKEN_LINE = '          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}';
 
@@ -87,7 +89,12 @@ export function renderConfig(template, answers = {}) {
   if (answers.specWriter !== undefined) out = set(out, 'spec_writer', answers.specWriter ?? 'null');
   if (answers.reviewMode) out = set(out, 'mode', answers.reviewMode);
   if (answers.merger) out = set(out, 'merger', answers.merger);
-  if (answers.runMaxCost !== undefined) out = set(out, 'run_max_cost', answers.runMaxCost);
+  if (answers.agentBuild === 'antigravity') {
+    // The agent has no cost limit: the limit of the run is a number of tokens, and the agent is named in its own group.
+    out = out.replace(/^(\s*)run_max_cost:[^\n]*$/m, '$1run_max_tokens: 2000000          # REQUIRED with agent.build antigravity: tokens per unattended run; choose your own');
+    out = `${out.trimEnd()}\n\n# Which agent builds in the cloud: claude (the default) or antigravity.\nagent:\n  build: antigravity\n`;
+    if (answers.runMaxTokens !== undefined) out = set(out, 'run_max_tokens', answers.runMaxTokens);
+  } else if (answers.runMaxCost !== undefined) out = set(out, 'run_max_cost', answers.runMaxCost);
   if (answers.language) out = set(out, 'language', answers.language);
   const check = loadConfig(out);
   if (!check.ok) throw new Error(`the answers produce an invalid relevo.yml: ${check.errors.map((e) => e.message).join('; ')}`);
@@ -225,10 +232,13 @@ export function planInit({ facts, answers, templates, current, admin }) {
   const credential = answers.credential ?? 'api_key';
   if (!RUNS.includes(runs)) throw new Error(`runs must be one of ${RUNS.join(', ')} (got "${runs}")`);
   if (!CREDENTIALS.includes(credential)) throw new Error(`credential must be one of ${CREDENTIALS.join(', ')} (got "${credential}")`);
+  const build = answers.agentBuild ?? 'claude';
+  if (!AGENT_BUILDS.includes(build)) throw new Error(`agentBuild must be one of ${AGENT_BUILDS.join(', ')} (got "${build}")`);
   const cloudFiles = ['relevo-go.yml', 'relevo-queue.yml'];
   WORKFLOW_FILES.forEach((file) => {
     if (runs === 'local' && cloudFiles.includes(file)) return;
-    const wanted = file === 'relevo-go.yml' ? credentialLine(templates.workflows[file], credential) : templates.workflows[file];
+    const shared = file === 'relevo-go.yml' ? credentialLine(templates.workflows[file], credential) : templates.workflows[file];
+    const wanted = agentWorkflow(shared, build, templates.agentBlocks);
     const have = current.workflows[file] ?? null;
     if (have === null) items.push(item(`workflow.${file}`, 'todo', `Add .github/workflows/${file}`, { path: `.github/workflows/${file}`, content: wanted }));
     else if (have === wanted) items.push(item(`workflow.${file}`, 'ok', `.github/workflows/${file} is up to date`));

@@ -26,10 +26,10 @@
 
 ## 5. The cloud build
 
-- [ ] 5.1 `scripts/agent-guard.mjs` and its library: child in its own process group, event counting, limits, kill, refused-tool detection, exit codes; tests with a fake process for each scenario
-- [ ] 5.1b A test that lists the programs the skills call and fails if one is missing from the allow list of the step
-- [ ] 5.2 Mark the model step of `templates/workflows/relevo-go.yml` and write `templates/agents/antigravity-step.yml`: install the pinned package and `agy`, render and install the plugin for the machine, write the user-level settings, run through the guard, job timeout, secret credential, report from the guard's summary; make the workflow writer substitute the block for `agent.build: antigravity`
-- [ ] 5.3 A test that the markers exist once and that the Claude and Antigravity renderings differ only inside the block
+- [x] 5.1 `scripts/agent-guard.mjs` and its library: child in its own process group, event counting, limits, kill, refused-tool detection, exit codes; tests with a fake process for each scenario
+- [x] 5.1b A test that lists the programs the skills call and fails if one is missing from the allow list of the step
+- [x] 5.2 Mark the model step of `templates/workflows/relevo-go.yml` and write `templates/agents/antigravity-step.yml`: install the pinned package and `agy`, render and install the plugin for the machine, write the user-level settings, run through the guard, job timeout, secret credential, report from the guard's summary; make the workflow writer substitute the block for `agent.build: antigravity`
+- [x] 5.3 A test that the markers exist once and that the Claude and Antigravity renderings differ only inside the block
 - [ ] 5.4 Run the workflow on a scratch repository with a trivial issue and record the result, including a run that reaches a limit
 
 ## 6. Documentation
