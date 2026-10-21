@@ -63,7 +63,7 @@ test('the plugin manifest and the marketplace entry are consistent', () => {
   assert.equal(plugin.name, 'relevo');
   assert.equal(market.plugins.length, 1);
   assert.equal(market.plugins[0].name, plugin.name);
-  assert.equal(market.plugins[0].source, './');
+  assert.deepEqual(market.plugins[0].source, { source: 'npm', package: JSON.parse(read('package.json')).name });
   if (plugin.version !== undefined) assert.match(plugin.version, /^\d+\.\d+\.\d+$/, 'a fixed version must be semver');
   assert.ok(!('version' in market.plugins[0]) || plugin.version === undefined || market.plugins[0].version === plugin.version);
 });

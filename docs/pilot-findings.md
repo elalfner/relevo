@@ -196,6 +196,12 @@ Issue "Show a message when the counter is nineteen" with Outcome, Decisions D1, 
 - Not seen from this session: the QA report text and the citations of D1/C1 (no access to the run log); the branch has no review evidence yet.
 - Not exercised: the repo-file and pasted-image paths of `design-fetch` (the reference was a file of the repository itself).
 
+## Lean installation from the real registry (task 6.1 of `lean-install`)
+
+Package `@elalfner/relevo@0.3.0`, published by the release workflow with provenance (139 files, 565 kB unpacked). In an empty project with a clean Claude Code home, on Claude Code 2.1.305: `claude plugin marketplace add elalfner/relevo#dev --scope project --sparse .claude-plugin` and `claude plugin install relevo@relevo --scope project` both finished without an error. The catalogue on disk was 388 KB; the plugin cache held 944 KB (the plugin folders, `LICENSE`, `NOTICE`, the two READMEs and `package.json`) and no `docs/`, `tests/` or `openspec/`. The project's `.claude/settings.json` declared the marketplace with `sparsePaths` and enabled `relevo@relevo`.
+
+Not yet seen: a build in the sandbox with the new templates (task 6.2), because the templates must reach the default branch of the sandbox first and the marketplace entry must reach `main` of this repository.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

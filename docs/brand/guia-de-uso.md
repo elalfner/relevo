@@ -57,7 +57,7 @@ Son el mismo logo. Solo cambian el grosor del trazo y el fondo, para que se vea 
 
 ## Animación
 
-Cuatro segundos y medio, y se queda en ship.
+Nueve segundos, y se queda en ship.
 
 <div align="center">
 
@@ -65,7 +65,7 @@ Cuatro segundos y medio, y se queda en ship.
 
 </div>
 
-Es la versión corta del logo animado, sin texto: el círculo nace, los agentes de IA trabajan, la issue entra y la feature sale. Se queda unos segundos en el logo final, se desvanece y vuelve a empezar (un ciclo dura unos 13 s). Es un bucle a propósito: un SVG no sabe cuándo está a la vista, así que quien llega con el scroll lo ve moverse en pocos segundos. Para el README y la web.
+Es la versión corta del logo animado, sin texto: el círculo nace, los agentes de IA trabajan, la issue entra y la feature sale. Se queda unos segundos en el logo final, se desvanece y vuelve a empezar (un ciclo dura unos 17,5 s). Es un bucle a propósito: un SVG no sabe cuándo está a la vista, así que quien llega con el scroll lo ve moverse en pocos segundos. Para el README y la web.
 
 En un README de GitHub, con versión para tema oscuro:
 
@@ -149,6 +149,6 @@ Qué hay en la carpeta `docs/brand/`. Todos los SVG tienen los trazos convertido
 | `png/relevo-lockup-…, relevo-mark-…` | Versiones PNG con transparencia del logo y los lockups. |
 | `png/relevo-social-preview-1280x640.png` | Vista previa social del repositorio en GitHub. |
 | `states/relevo-state-<estado>-{black,white}.svg` | Una ilustración por comando del flujo: init, feature (que no es un comando, sino el motivo del flujo), think, issue, go, review, fix y ship. Son las del README. |
-| `animation/relevo-logo-animated-{black,white}.svg` | Logo animado de 4,6 s, sin texto, que se queda en ship, se desvanece y vuelve a empezar. SMIL: se ve en GitHub y navegadores. |
+| `animation/relevo-logo-animated-{black,white}.svg` | Logo animado de 9,2 s (a 0,5x), sin texto, que se queda en ship, se desvanece y vuelve a empezar. SMIL: se ve en GitHub y navegadores. |
 | `animation/relevo-logo-animated.gif` | La misma animación en GIF, con fondo blanco, para donde no se admite SVG animado. |
 | `source/` | Los scripts y la fuente para regenerar todo. Instrucciones en source/README.md. |

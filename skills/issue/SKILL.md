@@ -13,7 +13,7 @@ You write issues; you never build, assign work to the build queue or touch code.
 
 **Mode.** If `$ARGUMENTS` starts with an issue number (`42` or `#42`) you are updating that issue: follow "Updating an existing issue" at the end and skip steps 1 to 7. Anything else, or nothing, is the creation flow below.
 
-Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. The format is explained in `${CLAUDE_PLUGIN_ROOT}/docs/issue-format.md` and the skeleton is `${CLAUDE_PLUGIN_ROOT}/templates/issue.md`.
+Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. The skeleton, with a comment on every section, is `${CLAUDE_PLUGIN_ROOT}/templates/issue.md`; the long explanation of the format is online (docs/issue-format.md in the repository) and is not installed with the plugin.
 
 ## 1. What you already know
 

@@ -21,6 +21,7 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 | El texto de un repositorio enlazado trae instrucciones | se lee como datos, con un token de solo lectura (`RELEVO_LINKS_TOKEN`) | el ejecutor, y una lista cerrada de repositorios |
 | Una imagen en un issue muestra datos de clientes al modelo, o una descarga va adonde no debe | las imágenes pegadas se descargan solo cuando `design.images` está activo; las descarga un script, no el agente, solo de los dominios de adjuntos de GitHub y de repositorios enlazados, con límites de tamaño y de tipo y el token enviado solo a GitHub; los archivos quedan fuera de git | un script |
 | Una revisión conducida llega a un sitio al que no debe | el navegador del agente es limpio y solo alcanza `localhost`, la página en revisión y `review.allowed_origins`, y las credenciales de prueba se pasan por nombre de variable y se redactan | un script |
+| El runner ejecuta una versión de Relevo distinta de la que leíste | los workflows instalan el paquete publicado en una versión fijada (`RELEVO_VERSION`), publicado desde un tag con procedencia, y se detienen si falta un script | el runner |
 
 ## Qué no protege
 

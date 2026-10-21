@@ -145,6 +145,6 @@ Por defecto la persona lo hace todo en `review` y el agente solo observa. Con `r
 | `grill-with-docs` | [mattpocock/skills](https://github.com/mattpocock/skills) | te entrevista hasta que cada decisión está tomada; la lanzas tú con `/grill-with-docs` cuando `think` te lo pide, porque su autor la reservó para la persona; las entradas de glosario y de registros de decisión que acuerda se entregan a `create`, no se escriben |
 | `grilling`, `domain-modeling` | [mattpocock/skills](https://github.com/mattpocock/skills) | las usa `grill-with-docs` |
 
-El plugin no las contiene: lo que copia `/plugin install` es `skills/`, `agents/` y `templates/`. Instálalas en tu proyecto (`openspec init` y `npx skills add mattpocock/skills`); si falta una, `think` se detiene y dice cuál.
+El plugin no las contiene: lo que se instala es solo el plugin: sus scripts, skills, agents, perfiles de stack y plantillas. Instálalas en tu proyecto (`openspec init` y `npx skills add mattpocock/skills`); si falta una, `think` se detiene y dice cuál.
 
 Este repositorio sí guarda copias para trabajar en él: las skills y los comandos de OpenSpec bajo `.claude/` (generados por OpenSpec 1.14.1; se refrescan con `openspec update`) y las skills de mattpocock/skills bajo `.agents/skills/`, enlazadas desde `.claude/skills/` (instaladas con `npx skills add`, fijadas en `skills-lock.json`). Sus avisos de licencia están en [NOTICE](../NOTICE).

@@ -296,13 +296,33 @@ test('secret scanning and push protection are checked by reading them back, as a
   assert.equal(byId(runChecks(healthy({ secretScanning: null })), 'repo.secret-scanning'), undefined);
 });
 
-test('Scenario: Private plugin repository - workflows that check it out without a token fail the check', () => {
-  const bad = byId(runChecks(healthy({ pluginRepoPrivate: true, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }, { file: 'relevo-sla.yml', repo: 'o/relevo', hasToken: true }] })), 'automation.plugin-checkout');
+test('Scenario: Workflows from before the package - the ones that clone the plugin repository are told to be replaced', () => {
+  const bad = byId(runChecks(healthy({ pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }, { file: 'relevo-sla.yml', repo: 'o/relevo', hasToken: true }] })), 'automation.plugin-layout');
   assert.equal(bad.status, 'fail');
-  assert.match(bad.message, /relevo-queue\.yml/);
-  assert.ok(!bad.message.includes('relevo-sla.yml'));
-  assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: true, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: true }] })), 'automation.plugin-checkout'), undefined);
-  assert.equal(byId(runChecks(healthy({ pluginRepoPrivate: false, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }] })), 'automation.plugin-checkout'), undefined);
+  assert.match(bad.message, /relevo-queue\.yml, relevo-sla\.yml clone the plugin repository/);
+  assert.match(bad.fix, /published package at a pinned version/);
+  assert.equal(byId(runChecks(healthy({ pluginCheckouts: [] })), 'automation.plugin-layout'), undefined);
+});
+
+test('Scenario: Pinned version - a workflow without a pin fails, a different pin only warns, the same pin is silent', () => {
+  const run = (pluginPins, pluginVersion = '0.3.0') => runChecks(healthy({ pluginPins, pluginVersion, pluginCheckouts: [] }));
+  const none = byId(run({ 'relevo-go.yml': null, 'relevo-sla.yml': '0.3.0' }), 'automation.plugin-pin');
+  assert.equal(none.status, 'fail');
+  assert.match(none.message, /relevo-go\.yml/);
+  assert.ok(!none.message.includes('relevo-sla.yml'));
+  const old = byId(run({ 'relevo-go.yml': '0.2.0' }), 'automation.plugin-version');
+  assert.equal(old.status, 'warn');
+  assert.match(old.message, /relevo-go\.yml \(0\.2\.0\).*0\.3\.0/);
+  assert.equal(byId(run({ 'relevo-go.yml': '0.3.0' }), 'automation.plugin-version'), undefined);
+  assert.equal(byId(run({ 'relevo-go.yml': '0.3.0' }), 'automation.plugin-pin'), undefined);
+});
+
+test('Scenario: Incomplete installation - a plugin that lost a folder fails and says how to reinstall', () => {
+  const bad = byId(runChecks(healthy({ pluginFolders: ['scripts', 'stacks'] })), 'plugin.install');
+  assert.equal(bad.status, 'fail');
+  assert.match(bad.message, /lacks scripts, stacks/);
+  assert.match(bad.fix, /relevo install/);
+  assert.equal(byId(runChecks(healthy({ pluginFolders: [], pluginVersion: '0.3.0' })), 'plugin.install').status, 'pass');
 });
 
 test('Scenario: Private plugin repository and no secret - the credential secret must exist', () => {
@@ -374,11 +394,11 @@ function probes({ localFiles, remote, files = {} }) {
 }
 const CHECKOUT = (token) => `      - uses: actions/checkout@v4\n        with:\n          repository: o/relevo\n          ref: main\n          path: .relevo-plugin\n${token ? '          token: ${{ secrets.RELEVO_PLUGIN_TOKEN }}\n' : ''}\n`;
 
-test('Scenario: Workflow fixed only in the working copy - doctor judges what is on the default branch, not the local file', () => {
+test('Scenario: Workflow fixed only in the working copy - doctor judges what is on the default branch, not the local file (the old layout is judged by the checkout)', () => {
   const f = gatherFacts(probes({ localFiles: { 'relevo-queue.yml': CHECKOUT(true) }, remote: { 'relevo-queue.yml': CHECKOUT(false) } }));
   assert.equal(f.workflowSource, 'default branch (main)');
   assert.deepEqual(f.pluginCheckouts, [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }]);
-  const bad = byId(runChecks({ ...healthy(), ...f, config }), 'automation.plugin-checkout');
+  const bad = byId(runChecks({ ...healthy(), ...f, config }), 'automation.plugin-layout');
   assert.equal(bad.status, 'fail');
   assert.match(bad.message, /relevo-queue\.yml/);
 });
@@ -723,4 +743,10 @@ test('a missing npm or composer fails naming the platform and the install hint',
 test('a Laravel platform with a target is refused by validation, so doctor never probes one', () => {
   const f = stackFacts('  api:\n    stack: laravel\n    path: apps/api\n    targets: [web]\n');
   assert.equal(f.config, null);
+});
+
+test('the version a workflow pins is read from RELEVO_VERSION, and null when there is none', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: { 'relevo-queue.yml': "env:\n  RELEVO_VERSION: '0.2.0'\n", 'relevo-sla.yml': 'name: sla\n' } }));
+  assert.equal(f.pluginPins['relevo-queue.yml'], '0.2.0');
+  assert.equal(f.pluginPins['relevo-sla.yml'], null);
 });

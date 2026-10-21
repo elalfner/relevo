@@ -1,0 +1,48 @@
+# Publishes the npm package @elalfner/relevo when a tag vX.Y.Z is pushed. The order of a release is: publish (this
+# workflow, from the tag), then promote dev to main, so the marketplace on main never names a package that is not
+# published. Needs the repository secret NPM_TOKEN (an npm automation token for the @elalfner scope), created by the
+# maintainer; nothing in this repository ever holds its value.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: The tag is the version of the package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::The tag $TAG does not match the version $version in package.json; nothing was published"
+            exit 1
+          fi
+
+      - name: Tests
+        run: npm test
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::The secret NPM_TOKEN does not exist, so nothing was published"
+            exit 1
+          fi
+          npm publish --provenance --access public

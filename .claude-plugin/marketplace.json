@@ -14,7 +14,10 @@
         "agents",
         "openspec"
       ],
-      "source": "./"
+      "source": {
+        "source": "npm",
+        "package": "@elalfner/relevo"
+      }
     }
   ]
 }

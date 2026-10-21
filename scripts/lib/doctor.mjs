@@ -6,7 +6,7 @@
 //   runChecks(facts)     pure: turns the facts into a list of results
 // The probes are injected so everything here is testable without a network.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
@@ -135,6 +135,12 @@ export function gatherFacts(p) {
     if (/^disable-model-invocation:\s*true\s*$/m.test(head)) f.manualOnlySkills.push(name);
   });
 
+  // What was installed with the plugin: the folders it runs from and its version. A package that lost one of them
+  // cannot run its commands, and the version is what the workflows should pin.
+  const installedRoot = p.pluginRoot ?? PLUGIN_ROOT;
+  f.pluginFolders = ['scripts', 'skills', 'agents', 'stacks', 'templates'].filter((d) => tryRun(() => readdirSync(resolve(installedRoot, d)).length > 0, false) !== true);
+  f.pluginVersion = tryRun(() => JSON.parse(readFileSync(resolve(installedRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null, null);
+
   f.configText = p.exists('relevo.yml') ? p.read('relevo.yml') : null;
   const loaded = f.configText === null ? null : loadConfig(f.configText, profileLookups({ pluginRoot: p.pluginRoot ?? PLUGIN_ROOT, read: readerFor(p, tryRun) }));
   f.config = loaded?.ok ? loaded.config : null;
@@ -247,6 +253,11 @@ export function gatherFacts(p) {
     Object.entries(texts).forEach(([file, text]) => {
       const m = /repository:\s*([\w.-]+\/[\w.-]+)\s*\n([\s\S]*?)path:\s*\.relevo-plugin/.exec(text);
       if (m) f.pluginCheckouts.push({ file, repo: m[1], hasToken: /\n\s*token:/.test(`\n${m[2]}`) });
+    });
+    // The version of the package each workflow runs its scripts from (null when it has no pin).
+    f.pluginPins = {};
+    WORKFLOW_FILES.forEach((file) => {
+      if (typeof texts[file] === 'string') f.pluginPins[file] = (/^\s*RELEVO_VERSION:\s*['"]?([\w.+-]+)['"]?\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
     });
     f.hasCi = names.some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-'));
   }
@@ -549,10 +560,7 @@ export function runChecks(f) {
   });
   r.push(f.hasCi ? pass('automation.ci', 'an objective CI check exists') : fail('automation.ci', 'no CI workflow other than Relevo\'s was found; QA needs an objective check', 'add a workflow that runs the project\'s analysis and tests on pull requests'));
 
-  const noToken = (f.pluginCheckouts ?? []).filter((c) => !c.hasToken).map((c) => c.file);
-  if (f.pluginRepoPrivate === true && noToken.length > 0) {
-    r.push(fail('automation.plugin-checkout', `${noToken.join(', ')} check out the private plugin repository with the default token, which cannot read it, so those runs fail`, 'copy the current templates (they pass `token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}`) and store RELEVO_PLUGIN_TOKEN'));
-  }
+  r.push(...pluginInstallChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
@@ -562,6 +570,25 @@ export function runChecks(f) {
     if (f.secrets.includes('RELEVO_PLUGIN_TOKEN')) r.push(pass('automation.plugin-secret', 'the RELEVO_PLUGIN_TOKEN secret exists for the private plugin repository'));
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));
   }
+  return r;
+}
+
+/**
+ * The installed plugin and what the workflows pin. A package that lost a folder cannot run; a workflow that clones
+ * the plugin repository for its scripts (the layout before the package) or has no pin is told to be replaced; a pin
+ * that differs from the installed version is only a warning, because a project chooses when it moves.
+ */
+function pluginInstallChecks(f) {
+  const r = [];
+  if ((f.pluginFolders ?? []).length > 0) r.push(fail('plugin.install', `the installed plugin lacks ${f.pluginFolders.join(', ')}`, 'reinstall it: relevo install, or claude plugin install relevo@relevo'));
+  else r.push(pass('plugin.install', `the plugin has the folders it runs from${f.pluginVersion ? ` (version ${f.pluginVersion})` : ''}`));
+  const cloners = (f.pluginCheckouts ?? []).map((c) => c.file);
+  if (cloners.length > 0) r.push(fail('automation.plugin-layout', `${cloners.join(', ')} clone the plugin repository for their scripts, which downloads the documentation and the tests too`, 'copy the current templates: they install the published package at a pinned version (/relevo:init lists the difference)'));
+  const pins = f.pluginPins ?? {};
+  const unpinned = Object.entries(pins).filter(([file, v]) => v === null && !cloners.includes(file)).map(([file]) => file);
+  if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
+  const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
+  if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'to move them, change RELEVO_VERSION to the installed version after reading the changelog'));
   return r;
 }
 
