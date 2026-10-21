@@ -121,6 +121,8 @@ export function gatherFacts(p) {
   };
 
   f.node = process.versions.node;
+  f.packageVersion = tryRun(() => JSON.parse(readFileSync(resolve(PLUGIN_ROOT, 'package.json'), 'utf8')).version);
+  f.adapters = p.adapters ? tryRun(() => p.adapters(), []) : [];
   f.openspec = tryRun(() => String(p.tool('openspec', ['--version'])).trim());
   f.git = tryRun(() => Boolean(p.tool('git', ['--version'])), false);
   f.gh = tryRun(() => Boolean(p.tool('gh', ['--version'])), false);
@@ -502,6 +504,7 @@ export function runChecks(f) {
   r.push(f.gh ? pass('tools.gh', 'the GitHub CLI is installed') : fail('tools.gh', 'the GitHub CLI (gh) is not installed', 'install it from https://cli.github.com'));
   if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
   r.push(...platformChecks(f));
+  r.push(...adapterChecks(f));
 
   // skills that think invokes
   REQUIRED_SKILLS.forEach((name) => {
@@ -639,6 +642,23 @@ function pluginInstallChecks(f) {
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
   if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'to move them, change RELEVO_VERSION to the installed version after reading the changelog'));
   return r;
+}
+
+/**
+ * The plugins that `relevo init` rendered for a tool other than Claude Code: a file that is gone is a failure (the
+ * plugin cannot run), a file of another package version or edited by hand is a warning, because a team chooses when it
+ * moves and may keep an edit on purpose.
+ */
+function adapterChecks(f) {
+  return (f.adapters ?? []).flatMap((a) => {
+    const id = `adapters.antigravity.${a.scope}`;
+    const name = `the Antigravity plugin of the ${a.scope} (${a.dir})`;
+    const r = [];
+    if (a.missing.length > 0) r.push(fail(id, `${name} lacks ${a.missing.slice(0, 5).join(', ')}${a.missing.length > 5 ? ` and ${a.missing.length - 5} more` : ''}`, 'run `relevo update`'));
+    if (f.packageVersion && a.package !== f.packageVersion) r.push(warn(`${id}.version`, `${name} was rendered by Relevo ${a.package}, and this one is ${f.packageVersion}`, 'run `relevo update`'));
+    if (a.edited.length > 0) r.push(warn(`${id}.edited`, `${name} has files edited by hand: ${a.edited.slice(0, 5).join(', ')}`, 'keep them, or run `relevo update --force` to overwrite them'));
+    return r.length > 0 ? r : [pass(id, `${name} is complete and up to date`)];
+  });
 }
 
 /** Text report. */

@@ -821,3 +821,20 @@ test('the plugin declaration is judged without a GitHub sign-in, because the set
   const r = runChecks({ ...healthy({ pluginDeclared: { declared: false } }), repo: null, ghAuth: false });
   assert.equal(byId(r, 'plugin.declared').status, 'warn');
 });
+
+test('Scenario: Outdated plugin - a rendered Antigravity plugin is checked: complete, other version, edited by hand, missing file', () => {
+  const adapter = (over) => ({ scope: 'project', dir: '/r/.agents/plugins/relevo', package: '0.4.0', edited: [], missing: [], ...over });
+  const run = (adapters) => runChecks(healthy({ packageVersion: '0.4.0', adapters }));
+  assert.equal(byId(run([adapter()]), 'adapters.antigravity.project').status, 'pass');
+  assert.equal(run([]).filter((r) => r.id.startsWith('adapters.')).length, 0, 'nothing to say when no plugin was rendered');
+  const old = byId(run([adapter({ package: '0.3.0' })]), 'adapters.antigravity.project.version');
+  assert.equal(old.status, 'warn');
+  assert.match(old.message, /rendered by Relevo 0\.3\.0, and this one is 0\.4\.0/);
+  assert.match(old.fix, /relevo update/);
+  const edited = byId(run([adapter({ edited: ['skills/go/SKILL.md'] })]), 'adapters.antigravity.project.edited');
+  assert.equal(edited.status, 'warn');
+  assert.match(edited.fix, /--force/);
+  const gone = byId(run([adapter({ scope: 'machine', dir: '/h/.gemini/config/plugins/relevo', missing: ['plugin.json'] })]), 'adapters.antigravity.machine');
+  assert.equal(gone.status, 'fail');
+  assert.match(gone.message, /lacks plugin\.json/);
+});

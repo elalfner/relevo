@@ -15,9 +15,9 @@
 
 ## 3. The commands
 
-- [ ] 3.1 `relevo init` with `--tools`, `--scope`, `--yes`, reusing `scripts/lib/select.mjs`, installing into `.agents/plugins/relevo/` or through `agy plugin install`, with tests using a fake terminal and a fake `agy`
-- [ ] 3.2 The record `.relevo-adapter.json`, `update` rendering again, hand-edit detection and `--force`
-- [ ] 3.3 `doctor` checks of the rendered plugin
+- [x] 3.1 `relevo init` with `--tools`, `--scope`, `--yes`, reusing `scripts/lib/select.mjs`, installing into `.agents/plugins/relevo/` or through `agy plugin install`, with tests using a fake terminal and a fake `agy`
+- [x] 3.2 The record `.relevo-adapter.json`, `update` rendering again, hand-edit detection and `--force`
+- [x] 3.3 `doctor` checks of the rendered plugin
 
 ## 4. Security and configuration
 
