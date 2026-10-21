@@ -17,6 +17,7 @@ const MAX_VALUE_LENGTH = 400;
 const REQUIRED = {
   built: ['assignee', 'issue', 'title', 'tasks_done', 'tasks_total', 'branch', 'scenarios'],
   qa_failed: ['assignee', 'issue', 'title', 'finding', 'branch'],
+  toolchain_missing: ['assignee', 'issue', 'title', 'tools', 'platform'],
   needs_spec: ['spec_writer', 'issue', 'title', 'missing'],
   changes_requested: ['author', 'issue', 'reviewer', 'summary'],
   needs_reviewer: ['spec_writer', 'issue', 'title', 'pr'],
@@ -38,6 +39,7 @@ const REQUIRED = {
 const STATE_OF = {
   built: 'built',
   qa_failed: 'qa-failed',
+  toolchain_missing: 'qa-failed',
   needs_spec: 'needs-spec',
   changes_requested: 'changes-requested',
   approved: 'pr-open',
@@ -65,6 +67,12 @@ const CATALOG = {
       'Finding: {{finding}}{{location_suffix}}',
       '{{branch_line}}',
       'Full QA report: {{log_url}}',
+      '{{next_line}}',
+    ],
+    toolchain_missing: [
+      '@{{assignee}} #{{issue}} "{{title}}" was not built: the runner has no {{tools}} ❌',
+      '',
+      'What happened: the build job checked the toolchain of platform {{platform}} before the agent started, and {{tools}} is not on the path of the runner. Nothing was built and no model turns were spent.',
       '{{next_line}}',
     ],
     needs_spec: [
@@ -171,6 +179,12 @@ const CATALOG = {
       'Hallazgo: {{finding}}{{location_suffix}}',
       '{{branch_line}}',
       'Reporte completo de QA: {{log_url}}',
+      '{{next_line}}',
+    ],
+    toolchain_missing: [
+      '@{{assignee}} #{{issue}} "{{title}}" no se construyó: el runner no tiene {{tools}} ❌',
+      '',
+      'Qué pasó: el job de build comprobó el toolchain de la plataforma {{platform}} antes de que empezara el agente, y {{tools}} no está en el path del runner. No se construyó nada y no se gastó ningún turno del modelo.',
       '{{next_line}}',
     ],
     needs_spec: [
@@ -287,9 +301,10 @@ export function renderMessage(kind, data = {}, language = 'en') {
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {
-    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? (values.branch_state === 'kept' ? 'kept' : 'fix') : null;
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? (values.branch_state === 'kept' ? 'kept' : 'fix') : kind === 'toolchain_missing' ? 'toolchain' : null;
     const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
     if (!present(values.command) && step.command) values.command = step.command;
+    if (kind === 'toolchain_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
     if (kind === 'qa_failed') {
       // For kept work the next step says what the command does and the other way forward; the others are the bare command.
