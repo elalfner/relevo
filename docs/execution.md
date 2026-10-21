@@ -47,7 +47,9 @@ After each cloud run a comment gives the turns, the cost and the tokens that the
 /relevo:go 42 --local
 ```
 
-It runs `scripts/go-local.mjs` of the plugin, which runs `claude -p "/relevo:go 42"` in a separate git worktree next to your repository, so your uncommitted changes do not matter, with the same turn and cost limits and the same closed tool lists as the workflow. The worktree is removed when the run ends cleanly and kept, with its path printed, when it does not. `--dry-run` shows what it would do.
+It runs `scripts/go-local.mjs` of the plugin, which runs `claude -p "/relevo:go 42"` (or `agy -p` when `agent.build: antigravity`) in a separate git worktree next to your repository, so your uncommitted changes do not matter, with the same turn and cost limits and the same closed tool lists as the workflow. The worktree is removed when the run ends cleanly and kept, with its path printed, when it does not. `--dry-run` shows what it would do.
+
+In Antigravity interactive chat sessions, running `/relevo:go <issue>` automatically runs the build inside an isolated subagent with `Workspace: 'share'`. This creates an ephemeral worktree automatically, allowing multiple chat tabs to build different issues concurrently without branch or OpenSpec collisions. The main repository root remains clean on the base branch, reserved for the developer and interactive `/relevo:review` sessions with connected devices. Upon opening a pull request, `review` restores the root workspace to the base branch.
 
 `/relevo:status` lists the `ready` issues assigned to you with the command to run when the cloud is not building, and alerts about an issue that has been `building` with no activity for `limits.building_alert_hours` hours, with how to restart it.
 

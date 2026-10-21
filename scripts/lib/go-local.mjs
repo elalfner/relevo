@@ -11,10 +11,21 @@ import { runFlags } from './run-flags.mjs';
 
 export const WORKTREES_FOLDER = '.relevo-worktrees';
 
-/** What a local run will do, without doing it: the worktree and the `claude` command. Pure. */
+/** What a local run will do, without doing it: the worktree and the `claude` or `agy` command. Pure. */
 export function planLocalRun({ issue, repoRoot, config }) {
   const base = config.branches.base;
   const worktree = join(dirname(repoRoot), WORKTREES_FOLDER, `${basename(repoRoot)}-${issue}`);
+  const isAntigravity = config.agent?.build === 'antigravity';
+  const command = isAntigravity
+    ? ['node', [
+        join(repoRoot, 'scripts', 'agent-guard.mjs'),
+        'run',
+        '--',
+        'agy',
+        '-p',
+        `/relevo:go ${issue}`,
+      ]]
+    : ['claude', ['-p', `/relevo:go ${issue}`, ...runFlags(config)]];
   return {
     issue,
     base,
@@ -23,9 +34,9 @@ export function planLocalRun({ issue, repoRoot, config }) {
       ['fetch', 'origin', base],
       ['worktree', 'add', '--detach', worktree, `origin/${base}`],
     ],
-    claude: ['claude', ['-p', `/relevo:go ${issue}`, ...runFlags(config)]],
+    claude: command,
     // Without this the agent may start a subagent in the background and end the run before it finishes.
-    env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' },
+    env: isAntigravity ? {} : { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' },
   };
 }
 
@@ -84,7 +95,10 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
     status = runner.stream(plan.claude[0], plan.claude[1], { cwd: plan.worktree, env: plan.env });
   } catch (err) {
     status = err.code === 'ENOENT' ? 127 : 1;
-    say(err.code === 'ENOENT' ? 'the claude command was not found: install Claude Code and the Relevo plugin' : `the run could not start: ${err.message}`);
+    const missing = config.agent?.build === 'antigravity'
+      ? 'the agy or node command was not found: install the Antigravity CLI'
+      : 'the claude command was not found: install Claude Code and the Relevo plugin';
+    say(err.code === 'ENOENT' ? missing : `the run could not start: ${err.message}`);
   }
 
   if (status === 0) {

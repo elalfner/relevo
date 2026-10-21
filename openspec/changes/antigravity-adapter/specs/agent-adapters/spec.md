@@ -22,6 +22,10 @@ A rendered file SHALL name commands and agents the way the tool does and SHALL c
 - **WHEN** a skill text called a script of the package
 - **THEN** the rendered text calls `node` with the absolute path of that script inside the rendered plugin, with the same arguments
 
+#### Scenario: Subagent delegation uses reactive wakeup
+- **WHEN** the skill `go` is rendered for Antigravity
+- **THEN** the text instructs the agent to yield its turn without polling tools like `manage_subagents` while waiting for the subagent's report message
+
 ### Requirement: Skills that only a person may start stay reserved
 A skill that is reserved for a person in Claude Code SHALL keep `disable-model-invocation: true` in the rendered plugin.
 
@@ -35,6 +39,10 @@ A rendered agent SHALL list its tools explicitly as a YAML list of the tool's ow
 #### Scenario: QA is read-only
 - **WHEN** `relevo-qa` is rendered
 - **THEN** its tool list contains the command tool and no write or edit tool
+
+#### Scenario: Bash tool mapping
+- **WHEN** Claude's `Bash` tool is mapped to Antigravity
+- **THEN** it maps to `run_command` only and excludes unsupported tools such as `command_status`
 
 #### Scenario: Unknown tool
 - **WHEN** the renderer meets a Claude tool with no mapping

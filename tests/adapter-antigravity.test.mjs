@@ -89,6 +89,12 @@ test('the subagent wait of go is said the way Antigravity works', () => {
   assert.throws(() => adaptText('## Subagents run in the foreground\n## Next\n', { pluginDir }), /no longer followed by one paragraph/);
 });
 
+test('interactive go in Antigravity isolates execution via Workspace: share subagent', () => {
+  const go = file('skills/go/SKILL.md').content;
+  assert.match(go, /invoke_subagent[\s\S]*Workspace: 'share'/);
+  assert.match(go, /multiple chat tabs share this workspace and will collide/);
+});
+
 test('a plugin folder that a shell command cannot carry is refused', () => {
   for (const bad of ['relative/path', '/Users/with space/plugin', '/tmp/a;b']) {
     assert.throws(() => renderAntigravity(source, { pluginDir: bad }), /plugin folder/, bad);
