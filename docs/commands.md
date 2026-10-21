@@ -20,7 +20,7 @@ Distributed as a Claude Code plugin named `relevo`:
 
 ### `/relevo:init`
 
-No arguments. Looks at the repository, proposes the platforms, the settings and the workflows, shows a plan and applies it only after you agree. Safe to run again.
+No arguments. Looks at the repository, proposes the platforms, the settings and the workflows, shows a plan and applies it only after you agree. Safe to run again. A workflow that already exists and differs from the template is left as it is; for the go workflow the plan reminds you to check that its build job installs the toolchain of your stacks.
 
 ```text
 /relevo:init
@@ -46,7 +46,7 @@ What to build, the path of a saved agreement, or the number of an issue to rewri
 
 ### `/relevo:go [issue-number] [--local] [--decision <base64>]`
 
-The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `--local` builds it on your machine in a separate worktree. `--decision` is passed by the workflow, not typed.
+The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `--local` builds it on your machine in a separate worktree. `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
 
 ```text
 /relevo:go 42 --local
@@ -62,7 +62,7 @@ The number of a `built` issue. It starts the review on the device or in a browse
 
 ### `/relevo:fix [issue-number] [what is wrong]`
 
-The issue and what is wrong, in your words. It writes the correct behaviour into the specification first, then the code, and returns the issue to where it was.
+The issue and what is wrong, in your words. It writes the correct behaviour into the specification first, then the code, and returns the issue to where it was. When the branch holds the work that a rejected cloud build kept (`wip: rejected by QA`), you can leave out what is wrong: it takes the finding from the failure comment and runs the checks QA could not run.
 
 ```text
 /relevo:fix 42 the total shows 3 when there are 4 clients
@@ -86,7 +86,7 @@ No arguments. Who is waiting on what, the `ready` issues assigned to you and any
 
 ### `/relevo:doctor`
 
-No arguments. Checks the tools, the skills, `relevo.yml`, the workflows and the repository settings, and says how to fix each problem.
+No arguments. Checks the tools, the skills, `relevo.yml`, the workflows and the repository settings, and says how to fix each problem. It also checks the installed plugin (its folders and version), that each workflow pins a version of the package (`RELEVO_VERSION`) and that the go workflow installs the toolchain of the stack of each Flutter or Laravel platform.
 
 ```text
 /relevo:doctor
