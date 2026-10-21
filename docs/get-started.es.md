@@ -111,7 +111,7 @@ gh issue edit 1 --add-label relevo:ready
 ```
 
 - **Deberías ver**: en menos de un minuto el issue recibe `relevo:building`. Después de unos minutos tiene un comentario que dice que el issue está construida ✅ (en el idioma de `language` de tu `relevo.yml`), con lo que pasó, la rama, qué probar y `Tu siguiente paso: /relevo:review 1`, y la etiqueta es `relevo:built`.
-- **Si no**: si no empieza nada, comprueba que los workflows están en la rama por defecto, que el secreto existe y que el issue tiene hito y persona asignada. Un comentario que dice que la nube no está configurada significa que falta el secreto. Mira [Dónde corre `go`](execution.es.md) y la [Guía](guide.es.md).
+- **Si no**: si no empieza nada, comprueba que los workflows están en la rama por defecto, que el secreto existe y que el issue tiene hito y persona asignada. Un comentario que dice que la nube no está configurada significa que falta el secreto. El build instala el toolchain de tu stack (Flutter, Laravel; Vue solo necesita Node) desde `relevo-go.yml`; si cambiaste ese archivo, conserva el paso, y `/relevo:doctor` te avisa cuando falta. Mira [Dónde corre `go`](execution.es.md) y la [Guía](guide.es.md).
 
 ## 7. Revísalo
 
@@ -150,6 +150,6 @@ Conecta el teléfono o inicia el emulador, e inicia la app (`flutter run`). El a
 | Poner `ready` no inicia nada | los workflows no están en la rama por defecto, o `RELEVO_CLOUD_GO` está en `off` | fusiona los archivos del paso 3 y revisa la variable del repositorio |
 | Un comentario dice que la nube no está configurada | no hay secreto del modelo | créalo como en el paso 4 y vuelve a poner `ready` |
 | El issue volvió a `relevo:needs-spec` | está incompleto o tiene una pregunta abierta | lee el último comentario y ejecuta `/relevo:issue 1` |
-| La construcción terminó como `relevo:qa-failed` | QA lo rechazó incluso después del reintento | ejecuta `/relevo:fix 1` y describe lo que encontró QA |
+| La construcción terminó como `relevo:qa-failed` | QA lo rechazó incluso después del reintento, o el job de build no instaló ningún toolchain (el comentario dice que el SDK no está instalado) | ejecuta `/relevo:doctor` y activa el paso del toolchain de `relevo-go.yml`, o ejecuta `/relevo:fix 1` y describe lo que encontró QA |
 | La revisión dice que el veredicto no es concluyente | el log no tenía ninguna línea de tu app | inicia la app de nuevo, repite los pasos y termina otra vez |
 | `ship` se niega | las comprobaciones están corriendo o fallando, o la revisión no ha abierto el pull request | espera a las comprobaciones, o ejecuta antes `/relevo:review 1` |

@@ -227,3 +227,11 @@ test('Scenario: A problem - the table names the causes and the fix, and What nex
     ['guide', 'security', 'stacks', 'execution'].forEach((p) => assert.ok(next.includes(`${p}`), `${f}: What next links ${p}`));
   });
 });
+
+test('the execution pages name the two toolchain actions that the go template runs, in both languages', () => {
+  const template = read('templates/workflows/relevo-go.yml').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  ['subosito/flutter-action', 'shivammathur/setup-php'].forEach((action) => {
+    assert.ok(template.includes(action), `the template runs ${action}`);
+    ['docs/execution.md', 'docs/execution.es.md'].forEach((p) => assert.ok(read(p).includes(action), `${p} names ${action}`));
+  });
+});
