@@ -33,6 +33,8 @@ npm install -g @elalfner/relevo
 relevo install
 ```
 
+Para usar Relevo desde Antigravity (el IDE, la App o la CLI), ejecuta `relevo init`: pregunta qué herramientas usa tu equipo e instala un plugin generado para cada una. Los detalles están en [Instalación](docs/install.es.md#otras-herramientas-antigravity).
+
 Reinicia Claude Code en tu proyecto y ejecuta `/relevo:doctor` para ver qué falta todavía. Qué necesitas y los primeros pasos están en [Instalación](docs/install.es.md).
 
 ## Cómo funciona

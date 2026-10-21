@@ -387,6 +387,7 @@ Date: 2026-10-21. Antigravity CLI `agy` 1.4.4, macOS arm64, using the cached log
 | Skills in `.agents/skills/<name>/` | Run as `/<name> <args>` in print mode; `$ARGUMENTS` expands to the arguments |
 | `disable-model-invocation: true` | Honoured: such a skill is not offered to the model and still runs when typed |
 | Global skills of the IDE (`~/.gemini/config/skills/`) | The CLI sees them |
+| `disable-model-invocation` in a skill of a project plugin | Honoured as well: the skill is not offered to the model |
 | Deny rule `command(curl)` in `~/.gemini/antigravity-cli/settings.json` | Blocks the call: the tool step ends in `ERROR`, the run ends `SUCCESS`, exit 0 |
 | A command that no rule allows, headless | Auto-denied; exit 0; the JSON has `denied_actions` and stderr says so; the model sees a failed tool |
 | Subagent call | Does not block: the main agent says it is waiting and the result arrives later as a system message inside the same run |

@@ -34,8 +34,8 @@
 
 ## 6. Documentation
 
-- [ ] 6.1 `docs/security.md` and `docs/security.es.md`: the per-agent table with the gaps; update `docs/architecture-direction.md` (research done, decisions taken)
-- [ ] 6.2 `docs/install.md`, `docs/execution.md`, README and the Spanish pages: `relevo init`, `agent.build`, the commands in Antigravity; changelog under Unreleased, without raising the version
+- [x] 6.1 `docs/security.md` and `docs/security.es.md`: the per-agent table with the gaps; update `docs/architecture-direction.md` (research done, decisions taken)
+- [x] 6.2 `docs/install.md`, `docs/execution.md`, README and the Spanish pages: `relevo init`, `agent.build`, the commands in Antigravity; changelog under Unreleased, without raising the version
 
 ## 7. Check
 
