@@ -6,7 +6,7 @@ The Get started page is complete but not easy. A read-through as a newcomer foun
 
 ## What Changes
 
-- Step 1 gives one install path: the two `claude plugin` commands, with `--sparse .claude-plugin` and one sentence about the scope. The npm shortcut and the `relevo` command stay in the Install page and the cover.
+- Step 1 gives one install path: the two `claude plugin` commands run in the project folder, with `--scope project` written out (so a person who forgets nothing gets the team-friendly install) and `--sparse .claude-plugin`, and one sentence for installing for the machine instead. The npm shortcut and the `relevo` command stay in the Install page and the cover.
 - Step 3 summarises what `init` asks and what the plan shows in a few lines; the rare cases (no OpenSpec root, no branch protection on a free private repository, no repository found) move to the table of problems at the end.
 - Step 6 and the table say that the build installs the toolchain but not the dependencies of the project: Flutter needs nothing more; for Vue and Laravel the project enables `npm ci --ignore-scripts` or `composer install --no-scripts` in `relevo-go.yml`, or QA fails.
 - The first time each of ruleset, OpenSpec root, milestone, secret and QA appears, one plain sentence says what it is.

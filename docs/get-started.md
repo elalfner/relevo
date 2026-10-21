@@ -15,21 +15,14 @@ This page takes you from nothing to your first merged pull request, working alon
 
 ## 1. Install the plugin
 
-Relevo is a Claude Code plugin. In a terminal:
+Relevo is a Claude Code plugin. Open a terminal **in your project folder** and run:
 
 ```bash
-claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
-claude plugin install relevo@relevo
+claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin
+claude plugin install relevo@relevo --scope project
 ```
 
-That installs it for every project of the machine. To install it for one repository only, add `--scope project` to the second command (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
-
-A shortcut, if you prefer one command: `npm install -g @elalfner/relevo` gives you `relevo install` (or `relevo install --scope project`), `relevo update` and `relevo doctor`.
-
-```bash
-npm install -g @elalfner/relevo
-relevo install
-```
+`--scope project` installs it for this repository and records it in `.claude/settings.json`, so your team gets it too. To install it for every project of your machine instead, leave the two `--scope project` out. Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
 
 - **You should see**: both commands finish without an error and `claude plugin list` shows `relevo@relevo`. After you restart Claude Code in your project, typing `/relevo:` lists the nine commands.
 - **If not**: restart Claude Code in the project folder; if the plugin does not install, update Claude Code and try again. More in [Install](install.md).
@@ -53,8 +46,8 @@ In Claude Code, in your project:
 
 It asks who works on the repository (you), the review mode (`none`, for working alone), the language, the platform (its stack, its folder and its targets), where `go` builds (the cloud, by default) and the cost limit per run. Then it shows the whole plan and changes nothing until you agree.
 
-- **You should see**: a plan with one line per change. A line starting `[will do]` is something `init` does itself (create `relevo.yml`, the labels, the rulesets, the workflows); a line starting `[by hand]` is something only you can do, such as creating the secret of step 4 or committing the new files. After you agree, it applies the first kind, leaves the new files for you to commit, and runs the doctor again with fewer failures. Get the workflows onto the default branch of the repository: GitHub runs a label event from the workflows of that branch.
-- **If not**: if the plan says there is no OpenSpec root, run `openspec init` in the project and run `/relevo:init` again (it never creates those files itself). If it cannot find the repository, run it inside a clone with a GitHub remote, or sign in with `gh auth login`. If GitHub refuses branch protection on a free private repository it says so; go on, and the written confirmation of `ship` is your guard. See [Configuration](configuration.md) and [Stacks and platforms](stacks.md).
+- **You should see**: a plan with one line per change. `[will do]` is something `init` does itself (it creates `relevo.yml`, the labels, the rulesets (rules that GitHub applies to a branch, for example that a pull request is required) and the workflows); `[by hand]` is something only you can do, such as creating the secret (a value that GitHub keeps hidden and hands to the workflows) of step 4. After you agree it applies the first kind and runs the doctor again with fewer failures. The new files are left for you to commit: merge the workflows into the default branch, because GitHub runs a label event from the workflows of that branch.
+- **If not**: the table at the end covers the usual cases (no OpenSpec root, no repository found, branch protection refused). See [Configuration](configuration.md) and [Stacks and platforms](stacks.md).
 
 ## 4. Add the model credential
 
@@ -99,7 +92,7 @@ Show the version of the app under the title of the home screen, so a tester know
 - Any other change to the home screen.
 ```
 
-- **You should see**: the draft above, a question about the milestone and the assignee (you), and, after you approve, the issue created in GitHub with its link. Then a separate question: apply `ready`? Say yes in step 6.
+- **You should see**: the draft above, a question about the milestone (a GitHub group of issues; Relevo builds only issues that belong to one) and the assignee (you), and, after you approve, the issue created in GitHub with its link. Then a separate question: apply `ready`? Say yes in step 6.
 - **If not**: if the check says scenarios or edge cases are missing, answer the questions it asks; do not edit around it. What an issue needs is in [Writing an issue Relevo can build](issue-format.md).
 
 ## 6. Let it build
@@ -111,7 +104,7 @@ gh issue edit 1 --add-label relevo:ready
 ```
 
 - **You should see**: within a minute the issue gets `relevo:building`. After a few minutes it has a comment that says the issue is built (in the `language` of your `relevo.yml`), with what happened, the branch, what to test and `Your next step: /relevo:review 1`, and the label is `relevo:built`.
-- **If not**: if nothing starts, check that the workflows are on the default branch, that the secret exists and that the issue has a milestone and an assignee. A comment saying the cloud is not configured means the secret is missing. The build installs the toolchain of your stack (Flutter, Laravel; Vue needs only Node) from `relevo-go.yml`; if you changed that file, keep the step, and `/relevo:doctor` tells you when it is missing. See [Where `go` runs](execution.md) and the [Guide](guide.md).
+- **If not**: if nothing starts, check that the workflows are on the default branch, that the secret exists and that the issue has a milestone and an assignee. A comment saying the cloud is not configured means the secret is missing. If the build ends as `relevo:qa-failed` (QA is the second agent, which tries to reject the work before you see it), look first at what the build installs: the toolchain of your stack (Flutter, Laravel; Vue needs only Node), but **not the dependencies of your project**. Flutter needs nothing more. For Vue, enable `npm ci --ignore-scripts` and for Laravel `composer install --no-scripts` in the build job of `relevo-go.yml` (the file has a commented example), or QA cannot run your tests. See [Where `go` runs](execution.md) and the [Guide](guide.md).
 
 ## 7. Review it
 
@@ -147,9 +140,11 @@ Connect the phone or start the emulator, and start the app (`flutter run`). The 
 |---|---|---|
 | `/relevo:` shows no commands | the plugin is not installed, or Claude Code was not restarted | repeat step 1 and restart Claude Code in the project |
 | `/relevo:init` cannot find the repository | you are not in a clone with a GitHub remote, or `gh` is not signed in | run `gh auth login` and start Claude Code inside the clone |
+| `/relevo:init` says there is no OpenSpec root | the project has no `openspec/` folder, where the specifications live | run `openspec init` in the project and run `/relevo:init` again (it never creates those files itself) |
+| `/relevo:init` says GitHub refuses branch protection | a free private repository does not offer it | go on: the written confirmation of `ship` is your guard |
 | Labelling `ready` starts nothing | the workflows are not on the default branch, or `RELEVO_CLOUD_GO` is `off` | merge the files of step 3 and check the repository variable |
 | A comment says the cloud is not configured | there is no model secret | create it as in step 4 and apply `ready` again |
 | The issue went back to `relevo:needs-spec` | it is incomplete or has an open question | read the last comment and run `/relevo:issue 1` |
-| The build ended as `relevo:qa-failed` | QA still rejected it after the retry, or the build job installed no toolchain (the comment says the SDK is not installed) | run `/relevo:doctor` and enable the toolchain step of `relevo-go.yml`, or run `/relevo:fix 1` and describe what QA found |
+| The build ended as `relevo:qa-failed` | QA still rejected it after the retry, the build job installed no toolchain (the comment says the SDK is not installed), or a Vue or Laravel project's dependencies were not installed | run `/relevo:doctor` and enable the toolchain step of `relevo-go.yml`, enable the install of your dependencies there, or run `/relevo:fix 1` and describe what QA found |
 | The review says the verdict is inconclusive | the log had no line of your app | start the app again, repeat the steps and finish again |
 | `ship` refuses | the checks are running or failing, or the review has not opened the pull request | wait for the checks, or run `/relevo:review 1` first |

@@ -12,6 +12,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **`/relevo:doctor` fails** when the go workflow is installed and has no active toolchain step for a Flutter or Laravel platform, and `/relevo:init` tells you, for a go workflow that differs from the template, to check that step. See [What the build installs](docs/execution.md#what-the-build-installs).
 - **A rejected cloud build keeps its work.** When QA rejects the work after the retries, or tasks are left unfinished, `go` commits the work in progress to the issue's branch before it pushes, as `wip: rejected by QA (#<n>)`, through the same safe commit as a successful build (a protected path, a file outside the platform, a marker or a credential still stops it and nothing is pushed). The issue stays `qa-failed` and no pull request opens. The comment says the branch holds work that QA did not approve, with `/relevo:fix <n>` as the next step and `/relevo:think` plus `/relevo:issue <n>` to rethink, and `fix` takes the finding from that comment as the defect. Before this, the code existed only in the runner and was lost, so a build that failed only because the tests could not run had to be paid for again ([docs/guide.md](docs/guide.md#qa-failed)).
 
+### Changed
+
+- **Get started is simpler.** One install path (the two `claude plugin` commands run in the project folder with `--scope project`; the npm shortcut stays in Install and on the cover), a shorter setup step with the rare cases moved to the table of problems, a note that the build installs the toolchain but not the dependencies of a Vue or Laravel project, and one plain sentence for ruleset, OpenSpec root, milestone, secret and QA. English and Spanish.
+
 ### Known limits
 
 - That a rejected cloud build keeps its work (`wip: rejected by QA`) was tested on the text of the skill and the scripts, not yet on a real rejected run in the sandbox: the failure path is run by a model, and the commit inside the runner has not been seen.
