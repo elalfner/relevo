@@ -7,11 +7,26 @@ New here? [Get started](get-started.md) takes you from nothing to your first mer
 Relevo is a Claude Code plugin. In a terminal:
 
 ```bash
-claude plugin marketplace add elalfner/relevo
+npm install -g @elalfner/relevo
+relevo install
+```
+
+`relevo install` installs the plugin for every project of the machine. To install it for one repository only, run `relevo install --scope project` (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Without npm, the two `claude plugin` commands do the same:
+
+```bash
+claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
 claude plugin install relevo@relevo
 ```
 
+Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
+
 Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing.
+
+## What is installed
+
+- **The plugin, and only the plugin.** The package `@elalfner/relevo` holds the manifest, the scripts, the skills, the agents, the stack profiles, the templates, the licence and the notice. It does not hold the documentation, the tests, the OpenSpec history, the changelog or the brand material; read those online in the [repository](https://github.com/elalfner/relevo).
+- **Machine or project.** `relevo install` (scope `user`) makes the commands available in every project of the machine. `--scope project` declares the plugin in `.claude/settings.json` of the repository, so everyone who opens it is offered the same plugin; `--scope local` keeps it to you. `relevo update` brings the plugin and its catalogue up to date.
+- **In the workflows.** Each workflow downloads the same package at the version it pins (`RELEVO_VERSION`), never the repository, and stops with the name of the missing file if the package lacks a script. `/relevo:doctor` reports a workflow without a pin or from the time they cloned the repository.
 
 ## What you need
 

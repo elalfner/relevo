@@ -18,11 +18,20 @@ Esta página te lleva de cero a tu primer pull request fusionado, trabajando sol
 Relevo es un plugin de Claude Code. En una terminal:
 
 ```bash
-claude plugin marketplace add elalfner/relevo
+npm install -g @elalfner/relevo
+relevo install
+```
+
+`relevo install` instala el plugin para todos los proyectos de la máquina. Para instalarlo solo en un repositorio, ejecuta `relevo install --scope project` (compartido con el equipo en `.claude/settings.json`) o `--scope local` (solo para ti). Sin npm, los dos comandos de `claude plugin` hacen lo mismo:
+
+```bash
+claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
 claude plugin install relevo@relevo
 ```
 
-- **Deberías ver**: los dos comandos terminan sin error. Después de reiniciar Claude Code en tu proyecto, al escribir `/relevo:` aparecen los nueve comandos.
+Solo se instala el plugin (scripts, skills, agents, perfiles de stack y plantillas); la documentación está en línea.
+
+- **Deberías ver**: la instalación termina sin error y `relevo version` imprime una versión. Después de reiniciar Claude Code en tu proyecto, al escribir `/relevo:` aparecen los nueve comandos.
 - **Si no**: reinicia Claude Code en la carpeta del proyecto; si el plugin no se instala, actualiza Claude Code e inténtalo de nuevo. Más en [Instalación](install.es.md).
 
 ## 2. Comprueba tu entorno

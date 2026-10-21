@@ -7,11 +7,26 @@
 Relevo es un plugin de Claude Code. En una terminal:
 
 ```bash
-claude plugin marketplace add elalfner/relevo
+npm install -g @elalfner/relevo
+relevo install
+```
+
+`relevo install` instala el plugin para todos los proyectos de la máquina. Para instalarlo solo en un repositorio, ejecuta `relevo install --scope project` (compartido con el equipo en `.claude/settings.json`) o `--scope local` (solo para ti). Sin npm, los dos comandos de `claude plugin` hacen lo mismo:
+
+```bash
+claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
 claude plugin install relevo@relevo
 ```
 
+Solo se instala el plugin (scripts, skills, agents, perfiles de stack y plantillas); la documentación está en línea.
+
 Reinicia Claude Code en tu proyecto y ejecuta `/relevo:doctor` para ver qué falta todavía.
+
+## Qué se instala
+
+- **El plugin, y solo el plugin.** El paquete `@elalfner/relevo` contiene el manifiesto, los scripts, las skills, los agents, los perfiles de stack, las plantillas, la licencia y el aviso. No contiene la documentación, los tests, el historial de OpenSpec, el changelog ni el material de marca; léelos en línea en el [repositorio](https://github.com/elalfner/relevo).
+- **Máquina o proyecto.** `relevo install` (ámbito `user`) deja los comandos disponibles en todos los proyectos de la máquina. `--scope project` declara el plugin en `.claude/settings.json` del repositorio, así que quien lo abra recibe el mismo plugin; `--scope local` lo deja solo para ti. `relevo update` actualiza el plugin y su catálogo.
+- **En los workflows.** Cada workflow descarga el mismo paquete en la versión que fija (`RELEVO_VERSION`), nunca el repositorio, y se detiene con el nombre del archivo que falta si el paquete no tiene un script. `/relevo:doctor` avisa de un workflow sin versión fijada o de la época en que clonaban el repositorio.
 
 ## Qué necesitas
 

@@ -12,6 +12,11 @@
 
 name: relevo-go
 
+# The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
+# were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
+env:
+  RELEVO_VERSION: '0.2.0'
+
 on:
   issues:
     types: [labeled]
@@ -50,18 +55,20 @@ jobs:
       # The repository holds relevo.yml; the plugin holds the scripts that apply the gates.
       - uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
-        with:
-          repository: elalfner/relevo
-          ref: main
-          path: .relevo-plugin
-          # The default token cannot read another private repository. If the plugin repository is private, store a
-          # read-only token as the secret RELEVO_PLUGIN_TOKEN; otherwise the default token is used.
-          token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Install the Relevo scripts
+        # The published package at the version pinned above; no repository is cloned for them. A package without the
+        # script this job runs stops the run here, before anything is changed.
+        run: |
+          mkdir -p .relevo-plugin
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
+          for f in scripts/go-plan.mjs; do
+            [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
 
       # Applies the gates and, when the decision is `start`, claims the issue (relevo:building). Any other decision
       # (needs-spec, blocked, queued, denied, no milestone, no assignee) is applied here with its comment.
@@ -192,17 +199,18 @@ jobs:
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
             --disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)"
 
-      # The scripts of the next two steps come from the plugin. It is checked out only now, after the agent has
+      # The scripts of the next two steps come from the plugin package. It is unpacked into the workspace only now, after the agent has
       # finished, because the agent's preflight needs a clean working tree and a checkout inside it would not be.
-      - name: Check out the Relevo scripts for the reports
+      - name: Install the Relevo scripts for the reports
         if: always()
         continue-on-error: true
-        uses: actions/checkout@v4
-        with:
-          repository: elalfner/relevo
-          ref: main
-          path: .relevo-plugin
-          token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}
+        run: |
+          mkdir -p .relevo-plugin
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
+          for f in scripts/run-usage.mjs scripts/usage-limit.mjs; do
+            [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
 
       # What the run used, read from the agent's execution log. The format of that log is not documented, so the
       # reader is tolerant: when it finds nothing it posts nothing, and this step can never fail the job.
