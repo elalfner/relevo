@@ -164,7 +164,7 @@ Run on two projects created for this: a Vue project from `npm create vue@latest`
 The commands the guide and the commands page name were run from the sandbox clone: `go-local.mjs 33 --dry-run` printed the worktree and the `claude -p` line with the limits and the closed tool lists that `docs/execution.md` describes; `next-step.mjs` printed the line for a `qa-failed` issue whose branch has only the specification, as the guide says; `stack-profile.mjs`, `platform-of.mjs`, `review-adapter.mjs`, `archive-state.mjs` and `doctor` had been run in the earlier passes.
 
 - **Corrected**: `review-state.mjs` printed a usage line that listed seven of its commands, so a person who typed it without arguments could not learn `waive`, `precheck` or `drain`; it lists all of them now.
-- **Seen and not fixed**: `status.mjs --repo owner/name` printed "Nothing is waiting on you." right after `gh` refused one of its reads (HTTP 403 on the Actions path, which this cloud session blocks). The message is true for the issues it could read, but it does not say that part of the data is missing. A person would want to be told; left as a follow-up.
+- **Seen, and fixed later by `status-says-what-it-could-not-read`**: `status.mjs --repo owner/name` printed "Nothing is waiting on you." right after `gh` refused one of its reads (HTTP 403 on the Actions path, which this cloud session blocks). The message is true for the issues it could read, but it does not say that part of the data is missing. A person would want to be told; left as a follow-up.
 - **Not tried**: a person new to Relevo following the guide from the start; the guide was read against the code, not used by someone who did not write it.
 
 ## Design reference (task 5.3 of `design-reference`)
@@ -227,6 +227,10 @@ Not seen: `/relevo:fix 40` on a person's machine taking the finding from the com
 On a fresh clone of the sandbox with the plugin installed for the machine only, the `init` plan had the line "Declare the Relevo plugin in the project ... (claude plugin marketplace add ... --scope project ... && claude plugin install relevo@relevo --scope project)". After running those two commands the plan said the repository declares it, and `.claude/settings.json` was the only new file. The doctor warned before and passed after. Running it in a clone without `gh auth` showed that the check was inside the part that needs a GitHub sign-in, so it was moved to the local checks.
 
 Not seen: `/relevo:init` inside a Claude Code session asking the person to confirm that command.
+
+## `status` says what it could not read (task 4.1 of `status-says-what-it-could-not-read`)
+
+Run from this cloud session against the sandbox, where the proxy refuses the Actions paths: the report listed what waits (#37 to review, #40 to fix), the milestone line, and then "Could not read, so this report may be incomplete: the variable RELEVO_CLOUD_GO (... HTTP 403): the issues you could build by hand may be missing". Before the change it printed the same list with no warning, which for a person with nothing waiting would have been "Nothing is waiting on you.". The reason line repeats the text that `gh` printed, so it is long when `gh` wraps the proxy's message.
 
 ## Times and costs per run
 

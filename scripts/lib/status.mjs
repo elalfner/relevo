@@ -28,7 +28,7 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
@@ -116,14 +116,19 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
   return {
     me, view: isSpecWriter ? 'spec-writer' : 'person',
     onMe, toReview, toShip, readyForMe, waitingOnOthers, specWriter: specWriterView,
-    milestones: summaries, alerts, waiting,
+    milestones: summaries, alerts, waiting, unread,
     readOnly: true,
   };
 }
 
 const T = {
   en: {
-    nothing: 'Nothing is waiting on you.', onMe: 'Waiting on you', review: 'Pull requests to review', ship: 'Approved, ready to ship',
+    nothing: 'Nothing is waiting on you.', fromRead: '(from what could be read)', unreadTitle: 'Could not read, so this report may be incomplete',
+    unread: {
+      variable: (u) => `the variable RELEVO_CLOUD_GO (${u.reason}): the issues you could build by hand may be missing`,
+      workflow: (u) => `the workflow relevo-go.yml (${u.reason}): the cloud is assumed to build, so the issues you could build by hand may be missing`,
+      compare: (u) => `the comparison of the branch of pull request #${u.pr} with the base (${u.reason}): a branch that is behind may not be reported`,
+    }, onMe: 'Waiting on you', review: 'Pull requests to review', ship: 'Approved, ready to ship',
     others: 'Waiting on others', spec: 'Back with the spec writer', blocked: 'Blocked', needsReviewer: 'Need a reviewer', milestone: 'Milestone',
     noDue: 'has no due date, so no capacity warning is computed', merged: 'merged', inReview: 'in review', queued: 'queued', warn: 'capacity warning: more work than the team can review before the due date',
     alerts: 'Alerts', staleReview: 'review waiting', staleBranch: 'branch behind the base by',
@@ -131,7 +136,12 @@ const T = {
     readyForMe: 'Ready, for you to build (the cloud is not building)', stuck: 'build with no activity for', restart: 'remove relevo:building and apply relevo:ready again, or run',
   },
   es: {
-    nothing: 'Nada espera por ti.', onMe: 'Esperando por ti', review: 'Pull requests por revisar', ship: 'Aprobadas, listas para entregar',
+    nothing: 'Nada espera por ti.', fromRead: '(con lo que se pudo leer)', unreadTitle: 'No se pudo leer, así que este informe puede estar incompleto',
+    unread: {
+      variable: (u) => `la variable RELEVO_CLOUD_GO (${u.reason}): pueden faltar los issues que podrías construir a mano`,
+      workflow: (u) => `el workflow relevo-go.yml (${u.reason}): se supone que la nube construye, así que pueden faltar los issues que podrías construir a mano`,
+      compare: (u) => `la comparación de la rama del pull request #${u.pr} con la base (${u.reason}): puede que no se avise de una rama atrasada`,
+    }, onMe: 'Esperando por ti', review: 'Pull requests por revisar', ship: 'Aprobadas, listas para entregar',
     others: 'Esperando a otros', spec: 'De vuelta con quien escribe las specs', blocked: 'Bloqueadas', needsReviewer: 'Sin revisor', milestone: 'Milestone',
     noDue: 'no tiene fecha límite, así que no se calcula la advertencia de capacidad', merged: 'fusionadas', inReview: 'en revisión', queued: 'en cola', warn: 'advertencia de capacidad: hay más trabajo del que el equipo puede revisar antes de la fecha límite',
     alerts: 'Alertas', staleReview: 'revisión esperando', staleBranch: 'rama atrasada respecto a la base por',
@@ -160,7 +170,8 @@ export function renderStatus(report, language = 'en') {
   section(t.review, report.toReview.map((r) => `#${r.number} ${r.pr}`));
   section(t.ship, report.toShip.map((r) => `#${r.number} → ${r.command}`));
   section(t.others, report.waitingOnOthers.map((e) => withWaits(e, `#${e.number} ${e.title} (${e.state})`)));
-  if (!sw && !report.onMe.length && !report.toReview.length && !report.toShip.length) out.unshift(t.nothing, '');
+  const unread = report.unread ?? [];
+  if (!sw && !report.onMe.length && !report.toReview.length && !report.toShip.length) out.unshift(unread.length ? `${t.nothing} ${t.fromRead}` : t.nothing, '');
   report.milestones.forEach((m) => {
     out.push(`${t.milestone} "${m.title}": ${m.merged} ${t.merged}, ${m.inReview} ${t.inReview}, ${m.queued} ${t.queued}`);
     if (!m.dueOn) out.push(`  ${t.milestone} ${t.noDue}`);
@@ -173,6 +184,10 @@ export function renderStatus(report, language = 'en') {
       ? `#${a.issue} ${t.staleReview} ${a.hours}h (@${a.reviewer}) ${a.pr}`
       : `#${a.issue} ${t.staleBranch} ${a.behind} ${a.pr}`;
   }));
+  if (unread.length) {
+    if (out.length && out[out.length - 1] !== '') out.push('');
+    section(t.unreadTitle, unread.map((u) => t.unread[u.what](u)));
+  }
   while (out.length && out[out.length - 1] === '') out.pop();
   return out.join('\n');
 }
