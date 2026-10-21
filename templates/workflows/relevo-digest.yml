@@ -2,9 +2,14 @@
 # It lists who is waiting on what and the alerts, and posts nothing when nothing is waiting.
 # Subscribe your chat tool to that issue to receive it. Copy to .github/workflows/relevo-digest.yml.
 # Change the time below to suit your team (cron is in UTC).
-# Scripts come from the plugin repository; pin `ref` to a release tag once one exists.
+# The scripts come from the published package @elalfner/relevo, at the version pinned in RELEVO_VERSION.
 
 name: relevo-digest
+
+# The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
+# were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
+env:
+  RELEVO_VERSION: '0.2.0'
 
 on:
   schedule:
@@ -27,18 +32,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
-        with:
-          repository: elalfner/relevo
-          ref: main
-          path: .relevo-plugin
-          # The default token cannot read another private repository. If the plugin repository is private, store a
-          # read-only token as the secret RELEVO_PLUGIN_TOKEN; otherwise the default token is used.
-          token: ${{ secrets.RELEVO_PLUGIN_TOKEN || github.token }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Install the Relevo scripts
+        # The published package at the version pinned above; no repository is cloned for them. A package without the
+        # script this job runs stops the run here, before anything is changed.
+        run: |
+          mkdir -p .relevo-plugin
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
+          for f in scripts/digest.mjs; do
+            [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
 
       - name: Post the digest
         env:
