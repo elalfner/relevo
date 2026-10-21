@@ -4,12 +4,20 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-21
+
 ### Added
 
 - **The build installs the toolchain of the stack.** The build job of the `relevo-go.yml` template sets up Flutter (`subosito/flutter-action`) and PHP with Composer for Laravel (`shivammathur/setup-php`) with no editing, each step guarded by the stack of the platform of the issue so only that one runs; Vue needs only Node, which the job already has. Installing the dependencies stays the project's choice. Before this, the steps were commented examples, and the first cloud build of the sandbox failed QA with "Flutter SDK is not installed" after a paid run.
 - **`/relevo:doctor` fails** when the go workflow is installed and has no active toolchain step for a Flutter or Laravel platform, and `/relevo:init` tells you, for a go workflow that differs from the template, to check that step. See [What the build installs](docs/execution.md#what-the-build-installs).
-
 - **A rejected cloud build keeps its work.** When QA rejects the work after the retries, or tasks are left unfinished, `go` commits the work in progress to the issue's branch before it pushes, as `wip: rejected by QA (#<n>)`, through the same safe commit as a successful build (a protected path, a file outside the platform, a marker or a credential still stops it and nothing is pushed). The issue stays `qa-failed` and no pull request opens. The comment says the branch holds work that QA did not approve, with `/relevo:fix <n>` as the next step and `/relevo:think` plus `/relevo:issue <n>` to rethink, and `fix` takes the finding from that comment as the defect. Before this, the code existed only in the runner and was lost, so a build that failed only because the tests could not run had to be paid for again ([docs/guide.md](docs/guide.md#qa-failed)).
+
+### Known limits
+
+- That a rejected cloud build keeps its work (`wip: rejected by QA`) was tested on the text of the skill and the scripts, not yet on a real rejected run in the sandbox: the failure path is run by a model, and the commit inside the runner has not been seen.
+- The toolchain steps cover Flutter and Laravel (Vue needs only Node); another stack needs its own step, and installing the dependencies of the project is still yours to add.
+- The workflows pin the version of the package by hand (`RELEVO_VERSION`); `/relevo:init` and `/relevo:doctor` report an old pin, but nothing updates it.
+- The first publication of the package used an npm token kept as the secret `NPM_TOKEN`; npm Trusted Publishing, which needs none, is not set up yet.
 
 ### Upgrading from 0.3.0
 
