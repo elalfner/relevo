@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
 ### Added
 
 - **A lean installation and one command.** Relevo is published as the npm package `@elalfner/relevo`, whose file list holds only what runs (the manifest, scripts, skills, agents, stack profiles, templates, licence and notice); the marketplace entry installs the plugin from it. `npm install -g @elalfner/relevo` gives the `relevo` command: `relevo install [--scope user|project|local]`, `update`, `doctor` and `version`. A project install is declared in `.claude/settings.json`. Measured with a local registry: the repository is 5.2 MB, the package 170 kB, and the plugin cache of a project-scope install holds no documentation, tests or OpenSpec history. See [Install](docs/install.md#what-is-installed).
@@ -14,6 +16,12 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 ### Changed
 
 - The skill `issue` no longer reads `docs/issue-format.md` at run time; the template carries the section comments, and the long explanation is online.
+
+### Known limits
+
+- The first publication of `@elalfner/relevo` uses an npm token kept as the repository secret `NPM_TOKEN`; switching to npm Trusted Publishing, which needs no token, is planned after the package exists.
+- That `claude-code-action` installs the plugin from the `npm` entry of the marketplace in a real run was not seen before the release; the action still clones the repository named in `plugin_marketplaces` for the catalogue.
+- The workflows pin a version by hand (`RELEVO_VERSION`): `/relevo:init` and `/relevo:doctor` report an old pin, but nothing updates it.
 
 ### Upgrading from 0.2.0
 
