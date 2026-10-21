@@ -20,7 +20,7 @@ Se distribuye como un plugin de Claude Code llamado `relevo`:
 
 ### `/relevo:init`
 
-Sin argumentos. Mira el repositorio, propone las plataformas, los ajustes y los workflows, muestra un plan y lo aplica solo después de que estés de acuerdo. Es seguro ejecutarlo otra vez. Un workflow que ya existe y difiere de la plantilla se deja como está; para el workflow `go`, el plan te recuerda comprobar que su job de build instala el toolchain de tus stacks.
+Sin argumentos. Mira el repositorio, propone las plataformas, los ajustes y los workflows, muestra un plan y lo aplica solo después de que estés de acuerdo. Es seguro ejecutarlo otra vez. Un workflow que ya existe y difiere de la plantilla se deja como está; para el workflow `go`, el plan te recuerda comprobar que su job de build instala el toolchain de tus stacks. También ofrece, como una instalación que confirmas comando por comando, declarar el plugin en el proyecto (`claude plugin install relevo@relevo --scope project`), para que un compañero que clone el repositorio lo reciba; el `.claude/settings.json` nuevo queda para que lo subas.
 
 ```text
 /relevo:init
@@ -86,7 +86,7 @@ Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cual
 
 ### `/relevo:doctor`
 
-Sin argumentos. Comprueba las herramientas, las skills, `relevo.yml`, los workflows y los ajustes del repositorio, y dice cómo arreglar cada problema. También comprueba el plugin instalado (sus carpetas y su versión), que cada workflow fije una versión del paquete (`RELEVO_VERSION`) y que el workflow `go` instale el toolchain del stack de cada plataforma Flutter o Laravel.
+Sin argumentos. Comprueba las herramientas, las skills, `relevo.yml`, los workflows y los ajustes del repositorio, y dice cómo arreglar cada problema. También comprueba el plugin instalado (sus carpetas y su versión), que cada workflow fije una versión del paquete (`RELEVO_VERSION`) y que el workflow `go` instale el toolchain del stack de cada plataforma Flutter o Laravel. Avisa cuando el repositorio no declara el plugin en `.claude/settings.json`, porque un compañero que lo clone no lo recibiría.
 
 ```text
 /relevo:doctor

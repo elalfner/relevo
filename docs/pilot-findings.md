@@ -222,6 +222,12 @@ Result, in about 3 minutes and 14 turns (about $0.50 notional): `relevo:qa-faile
 
 Not seen: `/relevo:fix 40` on a person's machine taking the finding from the comment and running the checks.
 
+## Declaring the plugin in the project (task 5.1 of `declare-plugin-in-project`)
+
+On a fresh clone of the sandbox with the plugin installed for the machine only, the `init` plan had the line "Declare the Relevo plugin in the project ... (claude plugin marketplace add ... --scope project ... && claude plugin install relevo@relevo --scope project)". After running those two commands the plan said the repository declares it, and `.claude/settings.json` was the only new file. The doctor warned before and passed after. Running it in a clone without `gh auth` showed that the check was inside the part that needs a GitHub sign-in, so it was moved to the local checks.
+
+Not seen: `/relevo:init` inside a Claude Code session asking the person to confirm that command.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

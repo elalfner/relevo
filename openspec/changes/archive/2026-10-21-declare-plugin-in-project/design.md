@@ -19,6 +19,7 @@
 
 - **Use the official commands, as one install item.** The item's command is the two `claude plugin` commands joined by `&&`, so the person confirms one exact line, as for the other installs. Writing the JSON ourselves would duplicate what Claude Code does and could disagree with it in the next version.
 - **One new fact, `pluginDeclared`.** From `.claude/settings.json`: `{ declared: true }` when `extraKnownMarketplaces.relevo` exists and `enabledPlugins["relevo@relevo"]` is true; `{ declared: false }` when the file is missing or lacks them; `{ unreadable: true }` when the JSON does not parse. Doctor and init share it.
+- **Doctor judges it without GitHub.** The settings file is local, so the check runs even when the repository checks are skipped for lack of a sign-in; it was found by running the doctor in a clean clone without `gh auth`.
 - **Doctor warns.** A person who works alone and installed for the machine is correct; the warning matters for a team. It names what a teammate misses.
 - **Init's line for an unreadable file is manual.** Rewriting a broken file could lose what is in it.
 - **The file is left uncommitted**, with the same sentence as the other new files in the plan.

@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`/relevo:init` declares the plugin in the project.** The plan has a new install line, confirmed with its exact command: `claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project`, so that a teammate who clones the repository is offered the plugin even when you installed it for your machine. The new `.claude/settings.json` is left for you to commit; a settings file that is not valid JSON is never rewritten. `/relevo:doctor` warns when the repository does not declare the plugin.
+
 ## [0.3.1] - 2026-10-21
 
 ### Added
