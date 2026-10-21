@@ -50,3 +50,7 @@ After each cloud run a comment gives the turns, the cost and the tokens that the
 It runs `scripts/go-local.mjs` of the plugin, which runs `claude -p "/relevo:go 42"` in a separate git worktree next to your repository, so your uncommitted changes do not matter, with the same turn and cost limits and the same closed tool lists as the workflow. The worktree is removed when the run ends cleanly and kept, with its path printed, when it does not. `--dry-run` shows what it would do.
 
 `/relevo:status` lists the `ready` issues assigned to you with the command to run when the cloud is not building, and alerts about an issue that has been `building` with no activity for `limits.building_alert_hours` hours, with how to restart it.
+
+## With Antigravity
+
+`agent.build: antigravity` makes the cloud build run `agy` instead of `claude-code-action`; the rest of the workflow, the gates and the reports are the same file. The secret is `GEMINI_API_KEY`, and the limit is `limits.run_max_tokens` instead of `limits.run_max_cost`, because Antigravity has no cost limit: a run guard that Relevo starts around the agent enforces the turn and token limits of `relevo.yml`, and the quota of the Google Cloud project that owns the key is the ceiling that really holds. What it can and cannot enforce is in [Security](security.md#which-agent-builds). `/relevo:init` asks which agent builds and writes the workflow and `relevo.yml` for it. This path has been tested on the text of the workflow, with a fake agent and on the commands of the real CLI, not yet on a real runner.
