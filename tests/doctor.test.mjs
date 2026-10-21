@@ -838,3 +838,13 @@ test('Scenario: Outdated plugin - a rendered Antigravity plugin is checked: comp
   assert.equal(gone.status, 'fail');
   assert.match(gone.message, /lacks plugin\.json/);
 });
+
+test('Scenario: Antigravity builds - the secret is GEMINI_API_KEY and there is no Anthropic credential to look for', () => {
+  const antigravity = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\n').config;
+  const run = (secrets) => runChecks(healthy({ config: antigravity, secrets }));
+  assert.equal(byId(run(['GEMINI_API_KEY']), 'automation.secret').status, 'pass');
+  assert.match(byId(run(['GEMINI_API_KEY']), 'execution.credential').message, /no cost limit[\s\S]*limits\.run_max_tokens[\s\S]*quota of the Google Cloud project/);
+  assert.equal(byId(run(['ANTHROPIC_API_KEY']), 'automation.secret').status, 'warn', 'an Anthropic key does not build with Antigravity');
+  assert.match(byId(run([]), 'automation.secret').fix, /key made only for Relevo/);
+  assert.equal(byId(run(['GEMINI_API_KEY']), 'execution.policy'), undefined, 'no subscription reminder');
+});

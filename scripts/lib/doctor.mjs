@@ -380,6 +380,8 @@ function gatherPlatforms(f, p, tryRun) {
 function executionChecks(f) {
   if (!Array.isArray(f.secrets)) return [];
   const r = [];
+  // Antigravity builds with a Gemini key and has no cost limit of its own: the checks of the Anthropic credential do not apply.
+  if (f.config?.agent?.build === 'antigravity') return antigravityExecutionChecks(f);
   const { mode } = credentialMode(f.secrets);
   const goWorkflow = f.workflows?.['relevo-go.yml'];
   const installed = Boolean(goWorkflow?.present);
@@ -399,6 +401,19 @@ function executionChecks(f) {
     }
   }
 
+  const variable = f.cloudVariable ?? null;
+  if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
+  else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
+  else r.push(pass('execution.cloud', 'the go workflow is not installed: ready issues are built on machines with /relevo:go'));
+  return r;
+}
+
+/** Where `go` builds when the agent is Antigravity: the key by name, and what stands in for the limits it lacks. */
+function antigravityExecutionChecks(f) {
+  const r = [];
+  const installed = Boolean(f.workflows?.['relevo-go.yml']?.present);
+  if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('execution.credential', 'the cloud builds with a Gemini key: Antigravity has no cost limit, so limits.run_max_tokens (enforced by the run guard) and the quota of the Google Cloud project that owns the key are the ceiling; use a key made only for Relevo'));
+  else r.push(pass('execution.credential', installed ? 'no GEMINI_API_KEY secret: the cloud cannot build (see the warning about the secret)' : 'no GEMINI_API_KEY and no go workflow: go builds on machines only'));
   const variable = f.cloudVariable ?? null;
   if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
   else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
@@ -567,7 +582,10 @@ export function runChecks(f) {
 
   // automation readiness
   if (f.secrets === null) r.push(warn('automation.secret', 'could not list the repository secrets', 'check that you may read them, or look in Settings > Secrets'));
-  else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) r.push(pass('automation.secret', 'a model credential secret exists'));
+  else if (f.config?.agent?.build === 'antigravity') {
+    if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('automation.secret', 'a model credential secret exists (GEMINI_API_KEY)'));
+    else r.push(warn('automation.secret', 'no GEMINI_API_KEY secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add a key made only for Relevo, in its own Google Cloud project with a quota, to the repository secrets (init never touches it); for local builds nothing is needed'));
+  } else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) r.push(pass('automation.secret', 'a model credential secret exists'));
   else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
 
   Object.entries(f.workflows).forEach(([file, w]) => {
