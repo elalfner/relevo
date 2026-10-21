@@ -21,4 +21,4 @@
 
 ## 5. Check on a real run
 
-- [ ] 5.1 In the sandbox, on the experiment branch with the Flutter step commented out, start a build and see it stop in seconds with the comment and no model turns
+- [x] 5.1 In the sandbox, on the experiment branch with the Flutter step commented out, start a build and see it stop in seconds with the comment and no model turns

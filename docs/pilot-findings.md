@@ -238,6 +238,12 @@ Run in a pseudo-terminal with a fake `claude` on the path, four cases: in a git 
 
 Not tried: a real terminal emulator that sends other key sequences, and a real Claude Code (the commands were a fake).
 
+## The toolchain check before the agent (sandbox #41, task 5.1 of `toolchain-preflight`)
+
+With `@elalfner/relevo@0.4.0` published, `relevo-go` was started by hand on the experiment branch (the 0.4.0 workflow with the Flutter step commented out) for #41, a small issue in format v2. The build job stopped at "Check the toolchain": within about 30 seconds of the start the issue was `relevo:qa-failed` with the comment "was not built: the runner has no flutter ... Nothing was built and no model turns were spent", and the next step pointing to `relevo-go.yml` and `/relevo:doctor`. There was no "This run used N turns" comment and no feature branch with code, so no model turn was spent, against about 14 turns and $0.50 notional for the same mistake in #37 and #40.
+
+Seen: the description of the label `relevo:qa-failed` says "QA still rejected after the retries; branch is pushed", which is not true for this case (nothing was built, no branch); the comment is clear, the label text is not. Also seen: the release workflow reported success 21 seconds after the tag, and npm showed the version about 100 seconds later ("may take a few minutes").
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
