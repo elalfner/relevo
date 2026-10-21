@@ -8,10 +8,10 @@
 
 ## 2. The renderer
 
-- [ ] 2.1 `scripts/lib/adapters/source.mjs`: read the skills and agents (frontmatter, body, references)
-- [ ] 2.2 `scripts/lib/adapters/antigravity.mjs`: the plugin folder, the text rewrites (script paths, agent names, "launch the agent"), the agent frontmatter and the Claude-to-Antigravity tool table that fails on an unknown tool
-- [ ] 2.3 Neutral wording fixes in `skills/` and `agents/` only where a rewrite would otherwise be fragile
-- [ ] 2.4 Tests: every skill and agent renders, no Claude token remains, reserved skills keep their key, QA lists no write tool, the tool table matches the names in the `init` event of the installed `agy`
+- [x] 2.1 `scripts/lib/adapters/source.mjs`: read the skills and agents (frontmatter, body, references)
+- [x] 2.2 `scripts/lib/adapters/antigravity.mjs`: the plugin folder, the text rewrites (script paths, agent names, "launch the agent"), the agent frontmatter and the Claude-to-Antigravity tool table that fails on an unknown tool
+- [x] 2.3 Neutral wording fixes in `skills/` and `agents/` only where a rewrite would otherwise be fragile (none needed: the one sentence that differs is rewritten by the renderer, which fails if its heading changes)
+- [x] 2.4 Tests: every skill and agent renders, no Claude token remains, reserved skills keep their key, QA lists no write tool, the tool table matches the names in the `init` event of the installed `agy`
 
 ## 3. The commands
 
