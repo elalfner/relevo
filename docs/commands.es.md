@@ -20,7 +20,7 @@ Se distribuye como un plugin de Claude Code llamado `relevo`:
 
 ### `/relevo:init`
 
-Sin argumentos. Mira el repositorio, propone las plataformas, los ajustes y los workflows, muestra un plan y lo aplica solo después de que estés de acuerdo. Es seguro ejecutarlo otra vez.
+Sin argumentos. Mira el repositorio, propone las plataformas, los ajustes y los workflows, muestra un plan y lo aplica solo después de que estés de acuerdo. Es seguro ejecutarlo otra vez. Un workflow que ya existe y difiere de la plantilla se deja como está; para el workflow `go`, el plan te recuerda comprobar que su job de build instala el toolchain de tus stacks.
 
 ```text
 /relevo:init
@@ -46,7 +46,7 @@ Qué construir, la ruta de un acuerdo guardado, o el número de un issue que ree
 
 ### `/relevo:go [issue-number] [--local] [--decision <base64>]`
 
-El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `--local` lo construye en tu máquina en un worktree aparte. `--decision` lo pasa el workflow, no se escribe.
+El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `--local` lo construye en tu máquina en un worktree aparte. `--decision` lo pasa el workflow, no se escribe. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `qa-failed` y el comentario dice que es código que QA no aprobó ([Falló QA](guide.es.md#falló-qa)).
 
 ```text
 /relevo:go 42 --local
@@ -62,7 +62,7 @@ El número de un issue `built`. Empieza la revisión en el dispositivo o en un n
 
 ### `/relevo:fix [issue-number] [what is wrong]`
 
-El issue y qué está mal, con tus palabras. Escribe primero el comportamiento correcto en la especificación, después el código, y devuelve el issue a donde estaba.
+El issue y qué está mal, con tus palabras. Escribe primero el comportamiento correcto en la especificación, después el código, y devuelve el issue a donde estaba. Cuando la rama tiene el trabajo que guardó una construcción en la nube rechazada (`wip: rejected by QA`), puedes omitir qué está mal: toma el hallazgo del comentario de fallo y ejecuta las comprobaciones que QA no pudo correr.
 
 ```text
 /relevo:fix 42 el total muestra 3 cuando hay 4 clientes
@@ -86,7 +86,7 @@ Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cual
 
 ### `/relevo:doctor`
 
-Sin argumentos. Comprueba las herramientas, las skills, `relevo.yml`, los workflows y los ajustes del repositorio, y dice cómo arreglar cada problema.
+Sin argumentos. Comprueba las herramientas, las skills, `relevo.yml`, los workflows y los ajustes del repositorio, y dice cómo arreglar cada problema. También comprueba el plugin instalado (sus carpetas y su versión), que cada workflow fije una versión del paquete (`RELEVO_VERSION`) y que el workflow `go` instale el toolchain del stack de cada plataforma Flutter o Laravel.
 
 ```text
 /relevo:doctor
