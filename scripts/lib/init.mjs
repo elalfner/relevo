@@ -22,6 +22,10 @@ const TOKEN_LINE = '          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE
  * subscription token that line is commented out and the token line is switched on. Throws when the template no
  * longer has the lines (a test runs this on the real template).
  */
+// The two official commands that install the plugin at the project scope; the person confirms this exact line.
+export const PLUGIN_PROJECT_COMMAND = 'claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project';
+const PLUGIN_PROJECT_DETAIL = 'It writes the marketplace and the enabled plugin into .claude/settings.json of this repository. It works even if the plugin is already installed for your machine, and nothing is committed for you.';
+
 export function credentialLine(workflow, credential) {
   if (credential !== 'subscription') return workflow;
   if (!workflow.includes(API_KEY_LINE) || !workflow.includes(TOKEN_LINE)) throw new Error('the go workflow template has no credential lines to switch');
@@ -173,6 +177,11 @@ export function planInit({ facts, answers, templates, current, admin }) {
   // dependencies: offered, never installed without confirmation
   if (!facts.openspec) items.push(item('install.openspec', 'todo', 'Install the OpenSpec command-line tool', { install: true, command: 'npm install --global @fission-ai/openspec', detail: OPENSPEC_INSTALL }));
   REQUIRED_SKILLS.filter((n) => !facts.skills[n]).forEach((n) => items.push(item(`install.skill.${n}`, 'todo', `Install the ${n} skill`, { install: true, command: n === 'openspec-explore' ? 'openspec init' : 'npx skills add mattpocock/skills', detail: SKILL_INSTALL[n] })));
+
+  // the plugin, declared in the project so that a teammate who clones the repository is offered it
+  if (facts.pluginDeclared?.declared) items.push(item('install.plugin-project', 'ok', 'The repository declares the Relevo plugin (.claude/settings.json)'));
+  else if (facts.pluginDeclared?.unreadable) items.push(item('install.plugin-project', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to declare the Relevo plugin in the project'));
+  else if (facts.pluginDeclared) items.push(item('install.plugin-project', 'todo', 'Declare the Relevo plugin in the project, so that a teammate who clones the repository is offered it (the new .claude/settings.json is left for you to commit)', { install: true, command: PLUGIN_PROJECT_COMMAND, detail: PLUGIN_PROJECT_DETAIL }));
 
   // relevo.yml
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));

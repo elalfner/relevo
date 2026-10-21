@@ -327,3 +327,31 @@ test('an installed workflow for the chosen credential is up to date, and an inva
   assert.throws(() => planWith({ runs: 'moon' }), /runs must be one of cloud, local, both/);
   assert.throws(() => planWith({ credential: 'cash' }), /credential must be one of api_key, subscription/);
 });
+
+test('Scenario: A repository that does not declare the plugin - an install line with the exact command, never applied by the script', () => {
+  const items = plan(bare({ pluginDeclared: { declared: false } }));
+  const it = get(items, 'install.plugin-project');
+  assert.equal(it.status, 'todo');
+  assert.equal(it.install, true);
+  assert.equal(it.command, 'claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project');
+  assert.match(renderPlan([it]), /\[will do\] Declare the Relevo plugin in the project.*\(claude plugin marketplace add/);
+  const calls = [];
+  applyPlan([it], { repo: 'o/r', io: { gh: (a) => calls.push(a), write: (p) => calls.push(p), append: (p) => calls.push(p) } });
+  assert.deepEqual(calls, []);
+});
+
+test('Scenario: A repository that already declares it - the line is reported as in place', () => {
+  const it = get(plan(bare({ pluginDeclared: { declared: true } })), 'install.plugin-project');
+  assert.equal(it.status, 'ok');
+  assert.match(it.description, /declares the Relevo plugin/);
+});
+
+test('Scenario: A settings file that cannot be read - a manual step, and nothing is written', () => {
+  const it = get(plan(bare({ pluginDeclared: { unreadable: true } })), 'install.plugin-project');
+  assert.equal(it.status, 'manual');
+  assert.match(it.description, /not valid JSON/);
+});
+
+test('without the fact there is no plugin line, so older callers keep their plan', () => {
+  assert.equal(get(plan(bare()), 'install.plugin-project'), undefined);
+});

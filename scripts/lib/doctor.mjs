@@ -153,6 +153,7 @@ export function gatherFacts(p) {
   f.openspecRoot = p.exists('openspec/config.yaml') || p.exists('openspec/config.yml');
   f.openspecRootTracked = tryRun(() => String(p.tool('git', ['ls-files', 'openspec'])).trim().length > 0, false);
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
+  f.pluginDeclared = pluginDeclaration(p);
 
   // Workflows: what runs on GitHub is what is on the default branch, not what is in the working copy, so once the
   // repository is known they are read from there. `present` says whether the file is where it has to be; `local`
@@ -260,6 +261,22 @@ export function gatherFacts(p) {
       if (typeof texts[file] === 'string') f.pluginPins[file] = (/^\s*RELEVO_VERSION:\s*['"]?([\w.+-]+)['"]?\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
     });
     f.hasCi = names.some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-'));
+  }
+}
+
+/**
+ * Whether the repository declares the Relevo plugin in the settings file that is committed, so that a teammate who
+ * clones it is offered the plugin: { declared } or, when the file is not valid JSON, { unreadable: true }. Only the
+ * shared file counts; the user's and the local settings do not reach anyone else.
+ */
+export function pluginDeclaration(p) {
+  const path = '.claude/settings.json';
+  if (!p.exists(path)) return { declared: false };
+  try {
+    const settings = JSON.parse(p.read(path));
+    return { declared: Boolean(settings?.extraKnownMarketplaces?.relevo) && settings?.enabledPlugins?.['relevo@relevo'] === true };
+  } catch {
+    return { unreadable: true };
   }
 }
 
@@ -504,6 +521,7 @@ export function runChecks(f) {
   if (f.openspecRoot && f.openspecRootTracked) r.push(pass('openspec.root', 'the OpenSpec root is tracked by git'));
   else r.push(fail('openspec.root', 'the OpenSpec root is missing or not tracked by git, so a clean checkout (and the runner) has no `openspec/`', 'run /relevo:init, then commit openspec/config.yaml and the .gitkeep files'));
   r.push(f.evidenceIgnored ? pass('evidence.ignored', 'evidence/ is ignored by git') : fail('evidence.ignored', 'evidence/ is not in .gitignore; `review` would put screenshots in git', 'add the line `evidence/` to .gitignore (or run /relevo:init)'));
+  r.push(...pluginDeclaredChecks(f));
 
   // GitHub side
   if (!f.repo || !f.ghAuth) {
@@ -593,6 +611,15 @@ function toolchainChecks(f) {
       ? pass(`automation.toolchain.${e.name}`, `the go workflow installs the toolchain of platform ${e.name} (${e.stack})`)
       : fail(`automation.toolchain.${e.name}`, `the go workflow installs no toolchain for platform ${e.name} (${e.stack}), so every cloud build would fail QA after spending the run`, `enable ${step} of the build job in relevo-go.yml (the template has it active; compare with /relevo:init), or, if you install it another way, ignore this`);
   });
+}
+
+/** Does the committed settings file declare the plugin? It is a local fact, so it needs no GitHub sign-in. */
+function pluginDeclaredChecks(f) {
+  const r = [];
+  if (f.pluginDeclared?.unreadable) r.push(warn('plugin.declared', '.claude/settings.json is not valid JSON, so it cannot be checked whether the repository declares the Relevo plugin', 'fix the file; /relevo:init then offers to declare the plugin'));
+  else if (f.pluginDeclared?.declared) r.push(pass('plugin.declared', 'the repository declares the Relevo plugin in .claude/settings.json, so a teammate who opens it is offered it'));
+  else if (f.pluginDeclared) r.push(warn('plugin.declared', 'the repository does not declare the Relevo plugin in .claude/settings.json: a teammate who clones it is not offered the plugin and finds no /relevo: commands', 'run /relevo:init, or claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin and claude plugin install relevo@relevo --scope project, and commit .claude/settings.json'));
+  return r;
 }
 
 /**

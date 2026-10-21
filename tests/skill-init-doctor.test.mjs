@@ -128,3 +128,11 @@ test('Scenario: init names the three stacks the plugin ships, their folders and 
   assert.match(init, /for Vue: `web`; Laravel has none/);
   ['flutter', 'vue', 'laravel'].forEach((stack) => assert.ok(existsSync(new URL(`../stacks/${stack}.md`, import.meta.url)), `stacks/${stack}.md exists`));
 });
+
+test('the init skill offers the declaration of the plugin in the project as an install, with the settings file left to commit', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /`install\.plugin-project` declares the Relevo plugin in the project/);
+  assert.match(init, /run it only on a yes/);
+  assert.match(init, /`\.claude\/settings\.json` is new or changed: say that it is left for the person to commit/);
+  assert.match(init, /not valid JSON, do not touch it/);
+});
