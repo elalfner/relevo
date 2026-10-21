@@ -25,7 +25,10 @@ export const SETTINGS = [
   { path: 'limits.review_sla_hours', type: 'int', min: 1, default: 8 },
   { path: 'limits.run_max_turns', type: 'int', min: 1, default: 100 },
   { path: 'limits.building_alert_hours', type: 'int', min: 1, default: 3 },
-  { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true },
+  // The cost limit is the one a Claude run can enforce; an Antigravity run has none, so it takes a token limit instead.
+  { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true, default: null, requiredFor: 'claude', missing: 'unattended runs must always have a cost limit (amount in US dollars per run)', rejectedFor: 'antigravity', rejection: 'the agent has no cost limit; set limits.run_max_tokens instead, and note that the quota of the Google Cloud project that owns the key is the ceiling that really holds' },
+  { path: 'limits.run_max_tokens', type: 'int', min: 1000, default: null, required: true, requiredFor: 'antigravity', missing: 'unattended runs must always have a limit, and for this agent it is a number of tokens per run', rejectedFor: 'claude', rejection: 'the run is limited by limits.run_max_cost' },
+  { path: 'agent.build', type: 'enum', allowed: ['claude', 'antigravity'], default: 'claude' },
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'path-list', default: [] },
   { path: 'skills.allow_scripts', type: 'string[]', default: [] },
@@ -164,17 +167,21 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
 
   // Per-setting checks and defaults.
   const config = {};
+  // Which agent builds in the cloud decides which spending limit applies: it is read before the settings are checked.
+  const asked = getPath(user, 'agent.build');
+  const build = ['claude', 'antigravity'].includes(asked) ? asked : 'claude';
   SETTINGS.forEach((setting) => {
     const value = getPath(user, setting.path);
     if (value === undefined || value === null) {
-      if (setting.required) {
-        errors.push({
-          path: setting.path,
-          message: `${setting.path} is required: unattended runs must always have a cost limit (amount in US dollars per run)`,
-        });
+      if (setting.requiredFor ? setting.requiredFor === build : setting.required) {
+        errors.push({ path: setting.path, message: `${setting.path} is required: ${setting.missing ?? 'it has no default'}` });
         return;
       }
       setPath(config, setting.path, structuredClone(setting.default));
+      return;
+    }
+    if (setting.rejectedFor === build) {
+      errors.push({ path: setting.path, message: `${setting.path} has no effect with agent.build "${build}": ${setting.rejection}` });
       return;
     }
     // A single file name is the same as a list of one.
@@ -237,6 +244,9 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
   if (config.review.mode === 'roles' && config.team.approvers.length === 0) {
     errors.push({ path: 'team.approvers', message: 'team.approvers must list at least one person when review.mode is "roles"' });
   }
+  if (config.trust === 'public' && config.agent.build === 'antigravity') {
+    errors.push({ path: 'trust', message: 'trust "public" cannot be used with agent.build "antigravity" yet: its allow list is a prefix list and its run has no tool-level limits (docs/security.md)' });
+  }
   if (config.trust === 'public' && config.review.mode === 'none') {
     errors.push({ path: 'review.mode', message: 'trust "public" needs a human review of generated code: review.mode cannot be "none"' });
   }
@@ -270,7 +280,8 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
     });
   }(user, ''));
   flatKeys.forEach(({ key, path }) => {
-    if (/(api[_-]?key|secret|password|token)/i.test(key)) {
+    // A setting of this file whose name only contains the word (limits.run_max_tokens) is not a credential.
+    if (/(api[_-]?key|secret|password|token)/i.test(key) && !SETTINGS.some((s) => s.path === path)) {
       errors.push({
         path,
         message: `${path} looks like a credential setting; move it to the repository secret store, never to relevo.yml`,

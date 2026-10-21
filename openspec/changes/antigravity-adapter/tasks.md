@@ -21,8 +21,8 @@
 
 ## 4. Security and configuration
 
-- [ ] 4.1 Add the rendered paths to `scripts/lib/protected-paths.mjs`, with tests
-- [ ] 4.2 `agent.build` and `limits.run_max_tokens` in the `relevo.yml` schema and `validate-config`: reject `limits.run_max_cost` and `trust: public` for `antigravity`
+- [x] 4.1 Add the rendered paths to `scripts/lib/protected-paths.mjs`, with tests
+- [x] 4.2 `agent.build` and `limits.run_max_tokens` in the `relevo.yml` schema and `validate-config`: reject `limits.run_max_cost` and `trust: public` for `antigravity`
 
 ## 5. The cloud build
 
