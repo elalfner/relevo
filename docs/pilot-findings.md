@@ -214,6 +214,14 @@ Built later as `build-toolchain`: the template now ships the Flutter and Laravel
 
 The same trap waits for anyone who follows Get started: nothing there, nor in `/relevo:init` or `/relevo:doctor`, says that the build job needs the toolchain step enabled, and the first symptom is a QA failure after a paid run. Proposed: `doctor` should fail when the go workflow has no active toolchain step for a configured stack, and `init` should say so in its plan. Not done here.
 
+## A rejected cloud build keeps its work (sandbox #40, task 5.1 of `keep-rejected-work`)
+
+To see a rejection on purpose without touching the default branch of the sandbox, a branch `experiment/kept-test` carried the 0.3.1 go workflow with the Flutter step commented out (the failure of the first build of #37), and `relevo-go` was started by hand on that branch for #40, a small issue in format v2. A manual run reads the workflow file and `relevo.yml` of the branch it is started on. The first run was skipped in 14 seconds: #37 was built and unreviewed, and the limit of one per person kept #40 queued; the branch raised the limit to 2 and the second run built.
+
+Result, in about 3 minutes and 14 turns (about $0.50 notional): `relevo:qa-failed`; the branch `feature/40-...` holds the specification commit and a second commit `wip: rejected by QA (#40)` with the code; the comment says "holds the work that QA did not approve (2 of 2 tasks done); it was kept as work in progress so nothing is lost", repeats the finding (flutter and dart are not installed, so analyze and test could not run) and gives `/relevo:fix 40` with `/relevo:think` and `/relevo:issue 40` as the other way. So the commit inside the runner works, through the safe commit, with the files the developer reported.
+
+Not seen: `/relevo:fix 40` on a person's machine taking the finding from the comment and running the checks.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.

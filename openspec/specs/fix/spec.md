@@ -114,3 +114,14 @@ Before the developer runs, the only unchecked tasks in `tasks.md` SHALL be those
 #### Scenario: Device-only correction
 - **WHEN** a correction task is marked "(device only)" because the defect shows only on a device
 - **THEN** no test task is required for it
+
+### Requirement: Kept work is corrected from the failure comment
+When the last commit of the branch is the work-in-progress commit that `go` makes after a rejection, `fix` SHALL take the finding of the last failure comment of the issue as the defect, tell the person what QA found and what it could not check, and ask only what that finding leaves open.
+
+#### Scenario: QA could not run the tests
+- **WHEN** the last failure comment says the analysis and the tests could not run and the branch holds the work in progress
+- **THEN** `fix` runs them, corrects what they find and does not ask the person to describe a defect
+
+#### Scenario: A branch without the work-in-progress commit
+- **WHEN** the last commit of the branch is not that commit
+- **THEN** `fix` behaves as before and asks the person what is wrong
