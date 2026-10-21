@@ -9,7 +9,7 @@ Relevo SHALL render a plugin for a tool other than Claude Code from the files in
 
 #### Scenario: Claude Code unaffected
 - **WHEN** the package is packed after the renderer exists
-- **THEN** the files the Claude plugin installs are the same as before
+- **THEN** no file of the Claude plugin is removed or renamed, its manifest and agents are unchanged, its skills differ only by the question that `init` asks about the agent, and the new files are additions
 
 ### Requirement: Names and text are rewritten for the tool
 A rendered file SHALL name commands and agents the way the tool does and SHALL contain no Claude Code token: commands keep `/relevo:<name>` through the plugin name, agents are `relevo-dev` and `relevo-qa`, and scripts are called by absolute path.

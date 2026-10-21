@@ -52,7 +52,7 @@
 
 ## Migration Plan
 
-Nothing changes for existing installations: `agent.build` defaults to `claude`, `relevo init` is additive and the Claude plugin is untouched. The changelog gets an Unreleased entry; the version is raised only when the maintainer prepares a release.
+Nothing changes for existing installations (the one edit to a Claude skill is a question in `init`, asked only when the person says they use Antigravity): `agent.build` defaults to `claude`, `relevo init` is additive and the Claude plugin is untouched. The changelog gets an Unreleased entry; the version is raised only when the maintainer prepares a release.
 
 ## Open Questions
 

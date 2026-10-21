@@ -39,4 +39,4 @@
 
 ## 7. Check
 
-- [ ] 7.1 `node --test` passes, `openspec validate antigravity-adapter` passes, and the Claude plugin contents are unchanged (compare `npm pack --dry-run` before and after)
+- [x] 7.1 `node --test` passes, `openspec validate antigravity-adapter` passes, and the Claude plugin contents are unchanged (compare `npm pack --dry-run` before and after)
