@@ -31,7 +31,9 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |
 | `limits.run_max_turns` | turnos por ejecución sin supervisión | 100 |
 | `limits.building_alert_hours` | horas sin actividad antes de reportar como atascado un issue en `building` ([Dónde corre `go`](execution.es.md)) | 3 |
-| `limits.run_max_cost` | **obligatorio**: dólares por ejecución sin supervisión; elige el tuyo | 5 |
+| `limits.run_max_cost` | **obligatorio** con `agent.build: claude` (el valor por defecto), y se rechaza con `antigravity`: dólares por ejecución sin supervisión; elige el tuyo | 5 |
+| `limits.run_max_tokens` | **obligatorio** con `agent.build: antigravity`, y se rechaza con `claude`: tokens por ejecución sin supervisión, que la guardia de ejecución de Relevo hace cumplir porque Antigravity no tiene un límite propio | ninguno |
+| `agent.build` | qué agente construye en la nube: `claude`, o `antigravity` (lo que cada uno puede y no puede hacer cumplir está en [Seguridad](security.es.md)) | `claude` |
 | `qa.retries` | intentos del desarrollador después de que QA rechaza | 1 |
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, o `local_only` para datos sensibles | `attach_to_pr` |
@@ -50,5 +52,6 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 ## Qué significan los límites
 
 - `limits.run_max_cost` es obligatorio y lo eliges tú. Con una clave de API es un tope real de gasto por ejecución. Con un token de suscripción el costo que reporta el log es nocional, así que es solo una red de seguridad contra una ejecución descontrolada.
+- Con `agent.build: antigravity` no hay un límite de costo que fijar, porque el agente no lo tiene: el límite es `limits.run_max_tokens`, y la cuota y el presupuesto del proyecto de Google Cloud dueño de la clave son el tope que de verdad se cumple. `trust: public` todavía no se acepta con él.
 - `limits.run_max_turns` es el control principal con una suscripción, junto con un `limits.concurrent_agents` bajo: la cuota la comparten todas las ejecuciones y el uso interactivo de la cuenta.
 - Una ejecución que alcanza un límite de turnos o de costo se detiene y el issue pasa a `qa-failed` con el motivo. [Dónde corre `go`](execution.es.md) tiene el resto.

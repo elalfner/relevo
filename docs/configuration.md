@@ -31,7 +31,9 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `limits.review_sla_hours` | hours before a reminder, and the same time again before escalation | 8 |
 | `limits.run_max_turns` | turns per unattended run | 100 |
 | `limits.building_alert_hours` | hours without activity before an issue on `building` is reported as stuck ([Where `go` runs](execution.md)) | 3 |
-| `limits.run_max_cost` | **required**: US dollars per unattended run; choose your own | 5 |
+| `limits.run_max_cost` | **required** with `agent.build: claude` (the default), and refused with `antigravity`: US dollars per unattended run; choose your own | 5 |
+| `limits.run_max_tokens` | **required** with `agent.build: antigravity`, and refused with `claude`: tokens per unattended run, which Relevo's run guard enforces because Antigravity has no limit of its own | none |
+| `agent.build` | which agent builds in the cloud: `claude`, or `antigravity` (what each can and cannot enforce is in [Security](security.md)) | `claude` |
 | `qa.retries` | developer attempts after QA rejects | 1 |
 | `qa.rules_from` | project rules QA reads at every run: one file or a list | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, or `local_only` for sensitive data | `attach_to_pr` |
@@ -50,5 +52,6 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 ## What the limits mean
 
 - `limits.run_max_cost` is required and you choose it. With an API key it is a real ceiling on spending per run. With a subscription token the cost the log reports is notional, so it is only a safety net against a runaway run.
+- With `agent.build: antigravity` there is no cost limit to set, because the agent has none: `limits.run_max_tokens` is the limit, and the quota and budget of the Google Cloud project that owns the key are the ceiling that really holds. `trust: public` is not accepted with it yet.
 - `limits.run_max_turns` is the main control with a subscription, together with a low `limits.concurrent_agents`: the quota is shared by every run and by the interactive use of the account.
 - A run that reaches a turn or cost limit stops and the issue becomes `qa-failed` with the reason. [Where `go` runs](execution.md) has the rest.

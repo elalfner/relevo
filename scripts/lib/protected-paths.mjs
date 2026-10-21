@@ -2,10 +2,15 @@
 //
 // Two tiers:
 //   hard  never allowed, whatever the issue says: workflows, the Relevo configuration, the folders of skills and
-//         the file with the project rules (a defect is fixed in the code, not by rewriting the rule).
+//         the file with the project rules (a defect is fixed in the code, not by rewriting the rule), and what carries
+//         the instructions or the permissions of another agent (`.agents/`, `.gemini/`, `AGENTS.md`, `GEMINI.md`):
+//         a run that could edit them could rewrite its own instructions.
 //   soft  dependency manifests and lock files: allowed only when the issue lists them in an `Allow-paths:` line.
 
-export const HARD_PATTERNS = ['.github/', 'relevo.yml', '.relevo/', '.claude/skills/', '.agents/skills/', 'skills-lock.json'];
+export const HARD_PATTERNS = ['.github/', 'relevo.yml', '.relevo/', '.claude/skills/', '.agents/', '.gemini/', 'skills-lock.json'];
+
+// Files that an agent reads from the folder of whatever it edits, so they are protected at any depth.
+export const HARD_ANY_DEPTH = ['AGENTS.md', 'GEMINI.md'];
 
 export const SOFT_FILES = [
   'pubspec.yaml', 'pubspec.lock',
@@ -60,7 +65,8 @@ const matchesHard = (path, pattern) => {
 
 /** The hard rule a path breaks, or null. */
 export function hardRule(path, { rulesFile = null } = {}) {
-  return hardPatterns(rulesFile).find((pattern) => matchesHard(path, pattern)) ?? null;
+  const name = clean(path).split('/').pop();
+  return hardPatterns(rulesFile).find((pattern) => matchesHard(path, pattern)) ?? HARD_ANY_DEPTH.find((f) => f === name) ?? null;
 }
 
 /** Is the file a dependency manifest or lock file (soft tier)? */
@@ -87,7 +93,7 @@ export function checkProtected(paths, { allow = [], rulesFile = null } = {}) {
 
 /** Entries of an `Allow-paths:` list that name (or would cover) a hard-protected path: they can never be allowed. */
 export function hardPathsInAllow(allow, { rulesFile = null } = {}) {
-  const probes = [...HARD_PATTERNS.map((pattern) => (pattern.endsWith('/') ? `${pattern}x` : pattern)), ...ruleFiles(rulesFile)].filter(Boolean);
+  const probes = [...HARD_PATTERNS.map((pattern) => (pattern.endsWith('/') ? `${pattern}x` : pattern)), ...HARD_ANY_DEPTH, ...ruleFiles(rulesFile)].filter(Boolean);
   return (allow ?? []).filter((entry) => hardRule(entry, { rulesFile }) || probes.some((probe) => matchesGlob(probe, entry)));
 }
 

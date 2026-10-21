@@ -91,3 +91,25 @@ test('Scenario: Several rules files - every listed file is protected, a single n
   assert.equal(checkProtected(['CLAUDE.md'], { rulesFile: [] }).ok, true);
   assert.deepEqual(hardPathsInAllow(['.ai/rules/backend.md'], { rulesFile: list }), ['.ai/rules/backend.md']);
 });
+
+test('Scenario: A run edits its own plugin - what carries the instructions or permissions of another agent is protected, whatever the issue allows', () => {
+  const paths = [
+    '.agents/plugins/relevo/skills/go/SKILL.md',
+    '.agents/skills/mine/SKILL.md',
+    '.agents/rules/style.md',
+    '.gemini/settings.json',
+    '.gemini/antigravity-cli/settings.json',
+    'AGENTS.md',
+    'GEMINI.md',
+    'packages/api/AGENTS.md',
+    'src/GEMINI.md'
+  ];
+  for (const path of paths) {
+    const r = checkProtected([path], { allow: ['**', path] });
+    assert.equal(r.ok, false, `${path} must be refused`);
+    assert.equal(r.violations[0].tier, 'hard');
+  }
+  assert.match(formatViolations(checkProtected(['.agents/plugins/relevo/skills/go/SKILL.md']).violations), /\.agents\/plugins\/relevo\/skills\/go\/SKILL\.md {2}protected path/);
+  assert.equal(checkProtected(['docs/agents.md', 'src/agents/list.dart', 'README.md']).ok, true, 'ordinary files with similar names are not caught');
+  assert.deepEqual(hardPathsInAllow(['AGENTS.md', '.agents/**', 'lib/**']), ['AGENTS.md', '.agents/**'], 'an Allow-paths entry that names them is reported');
+});
