@@ -9,8 +9,8 @@ export const SCOPES = ['user', 'project', 'local'];
 export const USAGE = [
   'usage: relevo <command> [--scope user|project|local]',
   '',
-  '  install   add the marketplace and install the plugin (default scope: user)',
-  '  update    update the marketplace and the plugin',
+  '  install   add the marketplace and install the plugin; asks where in a terminal (project by default)',
+  '  update    update the marketplace and the plugin (without --scope, the installation of this project)',
   '  doctor    check this repository (the same as /relevo:doctor)',
   '  version   print the version of this package',
   '',
@@ -22,14 +22,42 @@ export function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (!command || command === '--help' || command === '-h' || command === 'help') return { command: 'help' };
   if (!['install', 'update', 'doctor', 'version'].includes(command)) return { error: `unknown command "${command}"` };
-  let scope = 'user';
+  let scope = null;
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
     if (arg === '--scope') { scope = rest[i + 1]; i += 1; } else if (arg.startsWith('--scope=')) scope = arg.slice(8);
     else return { error: `unknown option "${arg}"` };
   }
-  if (!SCOPES.includes(scope)) return { error: `the scope must be one of ${SCOPES.join(', ')}` };
+  if (scope !== null && !SCOPES.includes(scope)) return { error: `the scope must be one of ${SCOPES.join(', ')}` };
   return { command, scope };
+}
+
+/** Whether the folder is inside a git work tree; `run` is the injected runner. A missing git counts as no. */
+export function isInsideGitRepo(run) {
+  const r = run('git', ['rev-parse', '--is-inside-work-tree']);
+  return r.code === 0 && r.output.trim() === 'true';
+}
+
+/**
+ * Which scope an install uses. A given scope wins. In a terminal the person is asked, with the project preselected
+ * inside a git repository and the machine outside one; without a terminal nothing waits: the same default is used and
+ * `reason` says why, to be printed.
+ */
+export function resolveScope({ given = null, interactive = false, inRepo = false }) {
+  if (given) return { scope: given };
+  const preferred = inRepo ? 'project' : 'user';
+  if (interactive) return { ask: true, preferred };
+  const why = inRepo ? 'this folder is inside a git repository, so the project scope is used' : 'this folder is not inside a git repository, so the machine scope is used';
+  return { scope: preferred, reason: `no --scope given and no terminal: ${why}` };
+}
+
+/** The choices of the list; the project says which folder gets the settings file. */
+export function scopeChoices({ cwd, inRepo }) {
+  return [
+    { value: 'project', label: `Project (${cwd})${inRepo ? '' : ' [not a git repository]'}: declared in .claude/settings.json, shared with your team` },
+    { value: 'user', label: 'Machine: every project of this machine' },
+    { value: 'local', label: 'Only me, in this project: not shared' }
+  ];
 }
 
 /** The `claude` invocations of a command, in order. */
@@ -43,7 +71,7 @@ export function steps(command, scope) {
   if (command === 'update') {
     return [
       { label: 'update the marketplace', args: ['plugin', 'marketplace', 'update', MARKETPLACE_NAME] },
-      { label: 'update the plugin', args: ['plugin', 'update', PLUGIN_ID, '--scope', scope] }
+      { label: 'update the plugin', args: ['plugin', 'update', PLUGIN_ID, ...(scope ? ['--scope', scope] : [])] }
     ];
   }
   return [];
@@ -53,7 +81,7 @@ export function steps(command, scope) {
  * Runs a command. Returns { code, lines }: the lines to print and the exit code. Stops at the first failing step
  * and says which one, so the person knows what was already done.
  */
-export function execute({ command, scope }, { run, has, version, doctorScript }) {
+export function execute({ command, scope }, { run, has, version, doctorScript, cwd = process.cwd() }) {
   const lines = [];
   if (command === 'version') return { code: 0, lines: [version] };
   if (command === 'doctor') {
@@ -74,9 +102,9 @@ export function execute({ command, scope }, { run, has, version, doctorScript })
       return { code: r.code || 1, lines };
     }
   }
-  const where = { user: 'for this machine', project: 'for this repository (declared in .claude/settings.json, so commit it to share it)', local: 'for this repository, only for you' }[scope];
-  lines.push(command === 'install'
-    ? `Relevo is installed ${where}. Restart Claude Code and run /relevo:doctor.`
-    : 'Relevo is up to date. Restart Claude Code to apply it.');
+  const where = { user: 'for this machine', project: 'for this repository', local: 'for this repository, only for you' }[scope];
+  const wrote = { user: 'your user settings', project: `.claude/settings.json of ${cwd}, so commit it to share it`, local: `.claude/settings.local.json of ${cwd}` }[scope];
+  if (command === 'install') lines.push(`Scope: ${scope} (${wrote}).`, `Relevo is installed ${where}. Restart Claude Code and run /relevo:doctor.`);
+  else lines.push('Relevo is up to date. Restart Claude Code to apply it.');
   return { code: 0, lines };
 }

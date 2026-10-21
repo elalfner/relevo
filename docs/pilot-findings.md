@@ -164,7 +164,7 @@ Run on two projects created for this: a Vue project from `npm create vue@latest`
 The commands the guide and the commands page name were run from the sandbox clone: `go-local.mjs 33 --dry-run` printed the worktree and the `claude -p` line with the limits and the closed tool lists that `docs/execution.md` describes; `next-step.mjs` printed the line for a `qa-failed` issue whose branch has only the specification, as the guide says; `stack-profile.mjs`, `platform-of.mjs`, `review-adapter.mjs`, `archive-state.mjs` and `doctor` had been run in the earlier passes.
 
 - **Corrected**: `review-state.mjs` printed a usage line that listed seven of its commands, so a person who typed it without arguments could not learn `waive`, `precheck` or `drain`; it lists all of them now.
-- **Seen and not fixed**: `status.mjs --repo owner/name` printed "Nothing is waiting on you." right after `gh` refused one of its reads (HTTP 403 on the Actions path, which this cloud session blocks). The message is true for the issues it could read, but it does not say that part of the data is missing. A person would want to be told; left as a follow-up.
+- **Seen, and fixed later by `status-says-what-it-could-not-read`**: `status.mjs --repo owner/name` printed "Nothing is waiting on you." right after `gh` refused one of its reads (HTTP 403 on the Actions path, which this cloud session blocks). The message is true for the issues it could read, but it does not say that part of the data is missing. A person would want to be told; left as a follow-up.
 - **Not tried**: a person new to Relevo following the guide from the start; the guide was read against the code, not used by someone who did not write it.
 
 ## Design reference (task 5.3 of `design-reference`)
@@ -213,6 +213,36 @@ Second attempt, after the Flutter step reached `main` and the branch with only t
 Built later as `build-toolchain`: the template now ships the Flutter and Laravel steps active, guarded by the stack, and `doctor` fails when a Flutter or Laravel platform has no active step. Task 4.1 is covered by the second build of #37, whose build job carries the same active, guarded Flutter block as the template (the sandbox file is not otherwise identical to the template) and which reached `relevo:built` with QA passed; the template itself was not copied into the sandbox again.
 
 The same trap waits for anyone who follows Get started: nothing there, nor in `/relevo:init` or `/relevo:doctor`, says that the build job needs the toolchain step enabled, and the first symptom is a QA failure after a paid run. Proposed: `doctor` should fail when the go workflow has no active toolchain step for a configured stack, and `init` should say so in its plan. Not done here.
+
+## A rejected cloud build keeps its work (sandbox #40, task 5.1 of `keep-rejected-work`)
+
+To see a rejection on purpose without touching the default branch of the sandbox, a branch `experiment/kept-test` carried the 0.3.1 go workflow with the Flutter step commented out (the failure of the first build of #37), and `relevo-go` was started by hand on that branch for #40, a small issue in format v2. A manual run reads the workflow file and `relevo.yml` of the branch it is started on. The first run was skipped in 14 seconds: #37 was built and unreviewed, and the limit of one per person kept #40 queued; the branch raised the limit to 2 and the second run built.
+
+Result, in about 3 minutes and 14 turns (about $0.50 notional): `relevo:qa-failed`; the branch `feature/40-...` holds the specification commit and a second commit `wip: rejected by QA (#40)` with the code; the comment says "holds the work that QA did not approve (2 of 2 tasks done); it was kept as work in progress so nothing is lost", repeats the finding (flutter and dart are not installed, so analyze and test could not run) and gives `/relevo:fix 40` with `/relevo:think` and `/relevo:issue 40` as the other way. So the commit inside the runner works, through the safe commit, with the files the developer reported.
+
+Not seen: `/relevo:fix 40` on a person's machine taking the finding from the comment and running the checks.
+
+## Declaring the plugin in the project (task 5.1 of `declare-plugin-in-project`)
+
+On a fresh clone of the sandbox with the plugin installed for the machine only, the `init` plan had the line "Declare the Relevo plugin in the project ... (claude plugin marketplace add ... --scope project ... && claude plugin install relevo@relevo --scope project)". After running those two commands the plan said the repository declares it, and `.claude/settings.json` was the only new file. The doctor warned before and passed after. Running it in a clone without `gh auth` showed that the check was inside the part that needs a GitHub sign-in, so it was moved to the local checks.
+
+Not seen: `/relevo:init` inside a Claude Code session asking the person to confirm that command.
+
+## `status` says what it could not read (task 4.1 of `status-says-what-it-could-not-read`)
+
+Run from this cloud session against the sandbox, where the proxy refuses the Actions paths: the report listed what waits (#37 to review, #40 to fix), the milestone line, and then "Could not read, so this report may be incomplete: the variable RELEVO_CLOUD_GO (... HTTP 403): the issues you could build by hand may be missing". Before the change it printed the same list with no warning, which for a person with nothing waiting would have been "Nothing is waiting on you.". The reason line repeats the text that `gh` printed, so it is long when `gh` wraps the proxy's message.
+
+## `relevo install` in a real terminal (task 5.1 of `interactive-install`)
+
+Run in a pseudo-terminal with a fake `claude` on the path, four cases: in a git repository, Enter on the preselected project installed with `--scope project` and said where the settings went; in the same repository, the down arrow and Enter installed with `--scope user`; in a plain folder the list marked the project as "[not a git repository]", preselected the machine, and Enter installed with `--scope user`; Esc printed "Cancelled: nothing was installed." and exited 130 with no `claude plugin` command run. Seen on the way: the command calls `claude --version` twice before it starts (once in the main flow and once in `execute`), which is harmless and left as it is.
+
+Not tried: a real terminal emulator that sends other key sequences, and a real Claude Code (the commands were a fake).
+
+## The toolchain check before the agent (sandbox #41, task 5.1 of `toolchain-preflight`)
+
+With `@elalfner/relevo@0.4.0` published, `relevo-go` was started by hand on the experiment branch (the 0.4.0 workflow with the Flutter step commented out) for #41, a small issue in format v2. The build job stopped at "Check the toolchain": within about 30 seconds of the start the issue was `relevo:qa-failed` with the comment "was not built: the runner has no flutter ... Nothing was built and no model turns were spent", and the next step pointing to `relevo-go.yml` and `/relevo:doctor`. There was no "This run used N turns" comment and no feature branch with code, so no model turn was spent, against about 14 turns and $0.50 notional for the same mistake in #37 and #40.
+
+Seen: the description of the label `relevo:qa-failed` says "QA still rejected after the retries; branch is pushed", which is not true for this case (nothing was built, no branch); the comment is clear, the label text is not. Also seen: the release workflow reported success 21 seconds after the tag, and npm showed the version about 100 seconds later ("may take a few minutes").
 
 ## Times and costs per run
 

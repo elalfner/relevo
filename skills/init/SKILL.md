@@ -53,6 +53,8 @@ Show it as it is. Each line says whether it is already `ok`, will be done, `diff
 
 For each line in the plan that is an install, show its exact command and ask for a yes to that command alone. Run it only on a yes. If the person declines, continue, say that dependency is still missing, and that `go` and `ship` will not run until the OpenSpec tool is installed.
 
+One install is not a dependency: `install.plugin-project` declares the Relevo plugin in the project, so that a teammate who clones the repository is offered it, even when the plugin is already installed for the machine. Show its exact command (the two `claude plugin` commands at the project scope) and run it only on a yes. If it ran, `.claude/settings.json` is new or changed: say that it is left for the person to commit. If the person declines, nothing else changes, and `/relevo:doctor` keeps warning about it. When the plan says that file is not valid JSON, do not touch it: tell the person to fix it.
+
 ### 5. Apply
 
 ```bash

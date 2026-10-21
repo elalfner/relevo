@@ -15,7 +15,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.3.1'
+  RELEVO_VERSION: '0.4.0'
 
 on:
   issues:
@@ -163,6 +163,36 @@ jobs:
         run: npm install --global @fission-ai/openspec
         env:
           OPENSPEC_TELEMETRY: '0'
+
+      # Stops before the agent, without spending a model turn, when the runner lacks a tool that the profile of the
+      # platform lists (the Flutter SDK, PHP and Composer, ...): otherwise the developer writes the code and QA only
+      # finds out at the end, after a full run. The package is unpacked outside the workspace on purpose: the agent needs
+      # a clean working tree. If you renamed the labels in relevo.yml, change the names below too.
+      - name: Check the toolchain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          PLATFORM: ${{ needs.decide.outputs.platform }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/relevo"
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo"
+          for f in scripts/toolchain-check.mjs scripts/render-message.mjs; do
+            [ -f "$RUNNER_TEMP/relevo/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
+          if result=$(node "$RUNNER_TEMP/relevo/scripts/toolchain-check.mjs" --platform "$PLATFORM" --plugin-root "$RUNNER_TEMP/relevo"); then
+            exit 0
+          fi
+          missing=$(printf '%s' "$result" | jq -r '.missing | join(", ")')
+          [ -n "$missing" ] || { echo "::error::The toolchain check failed: $result"; exit 1; }
+          title=$(gh issue view "$ISSUE" --json title --jq .title)
+          assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
+          body=$(jq -n --arg assignee "$assignee" --arg issue "$ISSUE" --arg title "$title" --arg tools "$missing" --arg platform "$PLATFORM" \
+            '{assignee: $assignee, issue: $issue, title: $title, tools: $tools, platform: $platform}' | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" toolchain_missing --config relevo.yml)
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue comment "$ISSUE" --body "$body"
+          echo "::error::The runner has no $missing, so nothing was built"
+          exit 1
 
       - id: agent
         uses: anthropics/claude-code-action@v1

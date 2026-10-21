@@ -23,4 +23,4 @@
 
 ## 5. Check on a real run
 
-- [ ] 5.1 In the sandbox, make QA reject a build (for example an issue whose test cannot pass) and confirm the branch holds the work in progress, the comment says `kept`, and `/relevo:fix` corrects it
+- [x] 5.1 In the sandbox, make QA reject a build (for example an issue whose test cannot pass) and confirm the branch holds the work in progress, the comment says `kept`, and `/relevo:fix` corrects it
