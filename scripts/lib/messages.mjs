@@ -260,6 +260,12 @@ const CATALOG = {
 
 export const MESSAGE_KINDS = Object.keys(REQUIRED);
 
+// ", N of M tasks are done" for the work that was kept, when the numbers are known.
+function tasksInfo(values, es) {
+  if (!present(values.tasks_done) || !present(values.tasks_total)) return '';
+  return es ? ` (${values.tasks_done} de ${values.tasks_total} tareas hechas)` : ` (${values.tasks_done} of ${values.tasks_total} tasks done)`;
+}
+
 function present(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
@@ -281,18 +287,22 @@ export function renderMessage(kind, data = {}, language = 'en') {
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {
-    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? 'fix' : null;
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? (values.branch_state === 'kept' ? 'kept' : 'fix') : null;
     const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
     if (!present(values.command) && step.command) values.command = step.command;
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
-    if (kind === 'qa_failed') values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
+    if (kind === 'qa_failed') {
+      // For kept work the next step says what the command does and the other way forward; the others are the bare command.
+      const kept = step.reason === 'kept';
+      values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}${kept ? ` (${step.hint})` : ''}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
+    }
   }
   if (kind === 'qa_failed') {
     const location = present(values.file) ? `${values.file}${present(values.line) ? `:${values.line}` : ''}` : '';
     values.location_suffix = location ? ` (${location})` : '';
     // `pushed: false` is the older way to say that the branch was not pushed because of a credential or a marker.
     const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
-    if (!['pushed', 'unsafe', 'not_pushed', 'existing'].includes(state)) throw new Error(`message "qa_failed" has an unknown branch_state "${state}"`);
+    if (!['pushed', 'unsafe', 'not_pushed', 'existing', 'kept'].includes(state)) throw new Error(`message "qa_failed" has an unknown branch_state "${state}"`);
     if (state === 'existing' && !present(values.recovery)) throw new Error('message "qa_failed" needs "recovery" when the branch already existed');
     const branchLines = {
       pushed: es
@@ -304,6 +314,9 @@ export function renderMessage(kind, data = {}, language = 'en') {
       not_pushed: es
         ? `La rama ${values.branch} no se subió; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} was not pushed; the state did not advance and no pull request was opened.`,
+      kept: es
+        ? `La rama ${values.branch} tiene el trabajo que QA no aprobó${tasksInfo(values, es)}; se guardó como trabajo en curso para que no se pierda. El estado no avanzó y no se abrió ningún pull request.`
+        : `The branch ${values.branch} holds the work that QA did not approve${tasksInfo(values, es)}; it was kept as work in progress so nothing is lost. The state did not advance and no pull request was opened.`,
       existing: es
         ? `La rama ${values.branch} ya existía en el remoto, así que no se tocó; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} already existed on the remote, so it was not touched; the state did not advance and no pull request was opened.`,

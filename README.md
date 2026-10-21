@@ -20,18 +20,18 @@ English · [Español](README.es.md) · [Documentation](docs/README.md)
 Relevo is a Claude Code plugin. In a terminal:
 
 ```bash
-npm install -g @elalfner/relevo
-relevo install
-```
-
-`relevo install` installs the plugin for every project of the machine. To install it for one repository only, run `relevo install --scope project` (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Without npm, the two `claude plugin` commands do the same:
-
-```bash
 claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
 claude plugin install relevo@relevo
 ```
 
-Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
+That installs it for every project of the machine. To install it for one repository only, add `--scope project` to the second command (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
+
+A shortcut, if you prefer one command: `npm install -g @elalfner/relevo` gives you `relevo install` (or `relevo install --scope project`), `relevo update` and `relevo doctor`.
+
+```bash
+npm install -g @elalfner/relevo
+relevo install
+```
 
 Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing. What you need and the first steps are in [Install](docs/install.md).
 

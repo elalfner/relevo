@@ -7,26 +7,26 @@ New here? [Get started](get-started.md) takes you from nothing to your first mer
 Relevo is a Claude Code plugin. In a terminal:
 
 ```bash
-npm install -g @elalfner/relevo
-relevo install
-```
-
-`relevo install` installs the plugin for every project of the machine. To install it for one repository only, run `relevo install --scope project` (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Without npm, the two `claude plugin` commands do the same:
-
-```bash
 claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
 claude plugin install relevo@relevo
 ```
 
-Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
+That installs it for every project of the machine. To install it for one repository only, add `--scope project` to the second command (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
+
+A shortcut, if you prefer one command: `npm install -g @elalfner/relevo` gives you `relevo install` (or `relevo install --scope project`), `relevo update` and `relevo doctor`.
+
+```bash
+npm install -g @elalfner/relevo
+relevo install
+```
 
 Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing.
 
 ## What is installed
 
 - **The plugin, and only the plugin.** The package `@elalfner/relevo` holds the manifest, the scripts, the skills, the agents, the stack profiles, the templates, the licence and the notice. It does not hold the documentation, the tests, the OpenSpec history, the changelog or the brand material; read those online in the [repository](https://github.com/elalfner/relevo).
-- **Machine or project.** `relevo install` (scope `user`) makes the commands available in every project of the machine. `--scope project` declares the plugin in `.claude/settings.json` of the repository, so everyone who opens it is offered the same plugin; `--scope local` keeps it to you. `relevo update` brings the plugin and its catalogue up to date.
-- **In the workflows.** Each workflow downloads the same package at the version it pins (`RELEVO_VERSION`), never the repository, and stops with the name of the missing file if the package lacks a script. `/relevo:doctor` reports a workflow without a pin or from the time they cloned the repository.
+- **Machine or project.** `claude plugin install relevo@relevo` (scope `user`, the default) makes the commands available in every project of the machine. `--scope project` declares the plugin in `.claude/settings.json` of the repository, so everyone who opens it is offered the same plugin; `--scope local` keeps it to you. `claude plugin marketplace update relevo` and `claude plugin update relevo@relevo` bring it up to date, which `relevo update` does in one command.
+- **In the workflows.** Each workflow downloads the same package at the version it pins (`RELEVO_VERSION`), never the repository, and stops with the name of the missing file if the package lacks a script. To move them to a newer version, change that line in each workflow after reading the changelog; `relevo update` does not touch your workflows. `/relevo:doctor` reports a workflow without a pin, with a pin that differs from the installed plugin, or from the time they cloned the repository.
 
 ## What you need
 
