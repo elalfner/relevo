@@ -15,7 +15,7 @@ export const ANTIGRAVITY_TOOLS = {
   Write: ['write_to_file'],
   Edit: ['replace_file_content', 'multi_replace_file_content'],
   NotebookEdit: [],
-  Bash: ['run_command', 'command_status'],
+  Bash: ['run_command'],
   Grep: ['grep_search'],
   Glob: ['find_by_name']
 };

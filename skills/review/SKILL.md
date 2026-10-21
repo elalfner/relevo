@@ -152,6 +152,14 @@ Only when `decide` exited 0.
 - `evidence.policy: local_only`: delete the `evidence/` folder now. Nothing is attached anywhere.
 - `evidence.policy: attach_to_pr`: GitHub has no API for attaching images, so you cannot upload them. List the files in `evidence/` and ask the person to drag them into the pull request description. Keep the folder until they say they did, then delete it.
 
+### 9. Return to base branch
+
+Restore the working tree to the base branch so the workspace remains clean on the base branch for other tasks or subsequent reviews:
+
+```bash
+git switch <base>
+```
+
 ## Report
 
 Finish with one short block: the issue, the review verdict, the checklist result, the pull request link (or why none was opened), and the issue's new state.

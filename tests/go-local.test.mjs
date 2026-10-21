@@ -58,6 +58,31 @@ test('the worktree lies outside the repository, so uncommitted changes in it do 
   assert.equal(plan.git[1][1], 'add');
 });
 
+test('Scenario: Local build with Antigravity - uses agent-guard and agy -p', () => {
+  const agyConfig = { ...config, agent: { build: 'antigravity' } };
+  const plan = planLocalRun({ issue: '42', repoRoot: REPO, config: agyConfig });
+  assert.equal(plan.claude[0], 'node');
+  assert.deepEqual(plan.claude[1], [
+    `${REPO}/scripts/agent-guard.mjs`,
+    'run',
+    '--',
+    'agy',
+    '-p',
+    '/relevo:go 42',
+  ]);
+  assert.deepEqual(plan.env, {});
+
+  const runner = fakeRunner();
+  const r = runLocal({ issue: '42', config: agyConfig, runner });
+  assert.equal(r.status, 0);
+  const spawned = runner.calls.find((c) => c.kind === 'stream');
+  assert.equal(spawned.cmd, 'node');
+  assert.equal(spawned.args[3], 'agy');
+
+  const enoent = runLocal({ issue: '42', config: agyConfig, runner: fakeRunner({ streamStatus: 'ENOENT' }) });
+  assert.match(enoent.messages.join('\n'), /the agy or node command was not found/);
+});
+
 test('Scenario: Run fails - the worktree stays and its path is printed', () => {
   const runner = fakeRunner({ streamStatus: 3 });
   const r = run(runner);

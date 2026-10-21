@@ -14,7 +14,17 @@ export const COPIED_FILES = ['LICENSE', 'NOTICE'];
 const FOREGROUND_HEADING = '## Subagents run in the foreground';
 const FOREGROUND_FOR_ANTIGRAVITY = `${FOREGROUND_HEADING}
 
-Call \`relevo-dev\` and \`relevo-qa\` with \`invoke_subagent\`, one at a time. The call returns at once and the report arrives later as a message: wait for it, do the next step only after it, and never end your turn while a subagent is running. This session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on \`building\` and nothing posted. If you cannot get a report, take the failure path.
+Call \`relevo-dev\` and \`relevo-qa\` with \`invoke_subagent\`, one at a time. In Antigravity, subagents run in the background and the report arrives later as a message. After calling \`invoke_subagent\`, do NOT poll with \`manage_subagents\` or loop in any way; simply output that you are waiting for the subagent's report and end your turn without further tool calls. Antigravity will automatically reactivate you when the subagent finishes. Once reactivated with the subagent report, verify it and proceed to the next step. If you cannot get a report or the subagent fails, take the failure path.
+`;
+
+const WHERE_RUNS_HEADING = '## Where it runs';
+const WHERE_RUNS_FOR_ANTIGRAVITY = (pluginDir) => `${WHERE_RUNS_HEADING}
+
+In the cloud the workflow starts this skill with the decision already made. A person can also start it on their machine: \`node ${pluginDir}/scripts/go-local.mjs <issue>\` runs it in a separate git worktree, with the same limits and tool lists as the workflow, and removes the worktree when it ends cleanly. Started by hand without that script, it needs a clean working tree (the preflight below stops otherwise).
+
+**When \`$ARGUMENTS\` has \`--local\`**, do not build in this session: run \`node ${pluginDir}/scripts/go-local.mjs <issue>\`, show what it prints, and stop. The build happens in the process that script starts, in its own worktree and with the closed tool lists, which a plain session does not have.
+
+**In an interactive Antigravity chat session** (started by hand without \`--decision\` and without \`--local\`), do not switch branches or build directly in this workspace root (multiple chat tabs share this workspace and will collide). Instead, invoke a builder subagent using \`invoke_subagent\` with \`Workspace: 'share'\` to execute the build inside an isolated ephemeral worktree. Wait for its completion message and report the outcome here, leaving the repository root clean on its base branch.
 `;
 
 const TOOL_WORDS = { Read: 'view_file', Write: 'write_to_file', Edit: 'replace_file_content' };
@@ -38,6 +48,11 @@ export function adaptText(text, { pluginDir }) {
     const re = new RegExp(`${FOREGROUND_HEADING}\\n\\n[^\\n]*\\n`);
     if (!re.test(out)) throw new Error(`"${FOREGROUND_HEADING}" is no longer followed by one paragraph: update the Antigravity renderer`);
     out = out.replace(re, FOREGROUND_FOR_ANTIGRAVITY);
+  }
+  if (out.includes(WHERE_RUNS_HEADING)) {
+    const re = new RegExp(`${WHERE_RUNS_HEADING}\\n\\n[\\s\\S]*?(?=\\n\\n## OpenSpec commands)`);
+    if (!re.test(out)) throw new Error(`"${WHERE_RUNS_HEADING}" block could not be matched: update the Antigravity renderer`);
+    out = out.replace(re, WHERE_RUNS_FOR_ANTIGRAVITY(pluginDir).trimEnd());
   }
   return out;
 }
