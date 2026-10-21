@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execute, parseArgs, steps } from '../scripts/lib/cli.mjs';
+import { execute, isInsideGitRepo, parseArgs, resolveScope, scopeChoices, steps } from '../scripts/lib/cli.mjs';
 
 const cli = new URL('../scripts/cli.mjs', import.meta.url).pathname;
 
@@ -29,7 +29,8 @@ test('the arguments are checked: a command is required, a scope must be known', 
   assert.match(parseArgs(['frobnicate']).error, /unknown command/);
   assert.match(parseArgs(['install', '--scope', 'galaxy']).error, /scope must be one of/);
   assert.match(parseArgs(['install', '--wat']).error, /unknown option/);
-  assert.deepEqual(parseArgs(['install']), { command: 'install', scope: 'user' });
+  assert.deepEqual(parseArgs(['install']), { command: 'install', scope: null }, 'no scope given: the command decides');
+  assert.deepEqual(parseArgs(['update']), { command: 'update', scope: null });
   assert.deepEqual(parseArgs(['install', '--scope=project']), { command: 'install', scope: 'project' });
   assert.deepEqual(parseArgs(['update', '--scope', 'local']), { command: 'update', scope: 'local' });
 });
@@ -95,4 +96,73 @@ test('the install pages and the cover show the same commands as the ones the com
     assert.match(text, /npm install -g @elalfner\/relevo/, p);
     assert.match(text, /relevo install --scope project/, p);
   }
+});
+
+test('Scenario: Choosing in a terminal - in a repository the project is preselected, outside one the machine', () => {
+  assert.deepEqual(resolveScope({ interactive: true, inRepo: true }), { ask: true, preferred: 'project' });
+  assert.deepEqual(resolveScope({ interactive: true, inRepo: false }), { ask: true, preferred: 'user' });
+  assert.deepEqual(resolveScope({ given: 'local', interactive: true, inRepo: true }), { scope: 'local' }, 'a given scope skips the question');
+});
+
+test('Scenario: No terminal - it never waits: project in a repository, machine outside one, and it says why', () => {
+  const inRepo = resolveScope({ interactive: false, inRepo: true });
+  assert.equal(inRepo.scope, 'project');
+  assert.match(inRepo.reason, /no --scope given and no terminal: this folder is inside a git repository, so the project scope is used/);
+  const out = resolveScope({ interactive: false, inRepo: false });
+  assert.equal(out.scope, 'user');
+  assert.match(out.reason, /not inside a git repository, so the machine scope is used/);
+  assert.equal(resolveScope({ given: 'user', interactive: false, inRepo: true }).reason, undefined);
+});
+
+test('Scenario: Not inside a repository - the list says so; the project option names the folder', () => {
+  const inside = scopeChoices({ cwd: '/work/app', inRepo: true });
+  assert.deepEqual(inside.map((c) => c.value), ['project', 'user', 'local']);
+  assert.match(inside[0].label, /^Project \(\/work\/app\): declared in \.claude\/settings\.json/);
+  assert.doesNotMatch(inside[0].label, /not a git repository/);
+  assert.match(scopeChoices({ cwd: '/home/ana', inRepo: false })[0].label, /\[not a git repository\]/);
+});
+
+test('git decides whether the folder is a repository, and a missing git counts as no', () => {
+  assert.equal(isInsideGitRepo(() => ({ code: 0, output: 'true\n' })), true);
+  assert.equal(isInsideGitRepo(() => ({ code: 128, output: 'fatal: not a git repository' })), false);
+  assert.equal(isInsideGitRepo(() => ({ code: 1, output: '' })), false);
+});
+
+test('Scenario: Updating - no scope is passed unless the person gives one', () => {
+  assert.deepEqual(steps('update', null).map((s) => s.args.join(' ')), ['plugin marketplace update relevo', 'plugin update relevo@relevo']);
+  assert.deepEqual(steps('update', 'project').map((s) => s.args.join(' ')), ['plugin marketplace update relevo', 'plugin update relevo@relevo --scope project']);
+  const { calls, deps } = fakeClaude();
+  const r = execute({ command: 'update', scope: null }, deps);
+  assert.equal(r.code, 0);
+  assert.deepEqual(calls, ['claude plugin marketplace update relevo', 'claude plugin update relevo@relevo']);
+});
+
+test('the installed message names the scope and where it was written', () => {
+  const { deps } = fakeClaude();
+  const at = (scope) => execute({ command: 'install', scope }, { ...deps, cwd: '/work/app' }).lines.join('\n');
+  assert.match(at('project'), /Scope: project \(\.claude\/settings\.json of \/work\/app, so commit it to share it\)\./);
+  assert.match(at('user'), /Scope: user \(your user settings\)\./);
+  assert.match(at('local'), /Scope: local \(\.claude\/settings\.local\.json of \/work\/app\)\./);
+});
+
+function fakeBin(dir) {
+  writeFileSync(join(dir, 'claude'), '#!/bin/sh\necho "claude $@" >> "$LOG"\nexit 0\n');
+  chmodSync(join(dir, 'claude'), 0o755);
+}
+
+test('Scenario: No terminal - the real command uses the project inside a git repository and the machine outside one, without waiting', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-cli-scope-'));
+  fakeBin(dir);
+  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}`, LOG: join(dir, 'log') };
+  const repo = mkdtempSync(join(tmpdir(), 'relevo-cli-repo-'));
+  spawnSync('git', ['init', '-q'], { cwd: repo });
+  const inRepo = spawnSync(process.execPath, [cli, 'install'], { cwd: repo, env, encoding: 'utf8', input: '', timeout: 15000 });
+  assert.equal(inRepo.status, 0, inRepo.stderr);
+  assert.match(inRepo.stdout, /relevo: no --scope given and no terminal: this folder is inside a git repository, so the project scope is used\./);
+  assert.match(readFileSync(join(dir, 'log'), 'utf8'), /claude plugin install relevo@relevo --scope project/);
+  const plain = mkdtempSync(join(tmpdir(), 'relevo-cli-plain-'));
+  const outside = spawnSync(process.execPath, [cli, 'install'], { cwd: plain, env: { ...env, GIT_CEILING_DIRECTORIES: tmpdir() }, encoding: 'utf8', input: '', timeout: 15000 });
+  assert.equal(outside.status, 0, outside.stderr);
+  assert.match(outside.stdout, /so the machine scope is used\./);
+  assert.match(readFileSync(join(dir, 'log'), 'utf8'), /claude plugin install relevo@relevo --scope user/);
 });

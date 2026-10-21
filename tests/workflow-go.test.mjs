@@ -230,3 +230,26 @@ test('the Relevo scripts for the reports are unpacked after the agent, never bef
   assert.match(build.slice(step, step + 400), /continue-on-error: true/);
   assert.equal((build.match(/mkdir -p \.relevo-plugin/g) ?? []).length, 1, 'once in the build job, and only after the agent');
 });
+
+test('Scenario: A runner without the toolchain - the check stops the job before the agent, outside the workspace, and says why', () => {
+  const build = jobText('build');
+  const step = build.indexOf('name: Check the toolchain');
+  assert.ok(step > build.indexOf('name: Install OpenSpec'), 'after the toolchain steps and OpenSpec');
+  assert.ok(step < build.indexOf('uses: anthropics/claude-code-action@v1'), 'before the agent: no model turn is spent');
+  const text = build.slice(step, build.indexOf('- id: agent'));
+  assert.match(text, /npm pack "@elalfner\/relevo@\$RELEVO_VERSION"/);
+  assert.match(text, /--strip-components=1 -C "\$RUNNER_TEMP\/relevo"/);
+  assert.doesNotMatch(text.replace(/^\s*#.*$/gm, ''), /\.relevo-plugin/, 'nothing is written in the workspace: the agent needs a clean tree');
+  assert.match(text, /toolchain-check\.mjs" --platform "\$PLATFORM" --plugin-root "\$RUNNER_TEMP\/relevo"/);
+  assert.match(text, /render-message\.mjs" toolchain_missing --config relevo\.yml/);
+  assert.match(text, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(text, /gh issue comment "\$ISSUE" --body "\$body"/);
+  assert.match(text, /exit 1\s*$/, 'the job fails after it commented');
+});
+
+test('the toolchain check names the guard of the scripts it runs, and runs nothing for a pass', () => {
+  const text = workflow.slice(workflow.indexOf('name: Check the toolchain'), workflow.indexOf('- id: agent'));
+  assert.match(text, /for f in scripts\/toolchain-check\.mjs scripts\/render-message\.mjs; do/);
+  assert.match(text, /lacks \$f/);
+  assert.match(text, /if result=\$\(node [^\n]*\); then\n\s+exit 0\n\s+fi/, 'a complete toolchain passes silently');
+});

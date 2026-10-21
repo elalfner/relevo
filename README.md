@@ -26,7 +26,7 @@ claude plugin install relevo@relevo
 
 That installs it for every project of the machine. To install it for one repository only, add `--scope project` to the second command (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
 
-A shortcut, if you prefer one command: `npm install -g @elalfner/relevo` gives you `relevo install` (or `relevo install --scope project`), `relevo update` and `relevo doctor`.
+A shortcut, if you prefer one command: `npm install -g @elalfner/relevo` gives you `relevo install`, which asks where to install it (the project is preselected; `relevo install --scope project` skips the question), `relevo update` and `relevo doctor`.
 
 ```bash
 npm install -g @elalfner/relevo

@@ -20,7 +20,7 @@ Distributed as a Claude Code plugin named `relevo`:
 
 ### `/relevo:init`
 
-No arguments. Looks at the repository, proposes the platforms, the settings and the workflows, shows a plan and applies it only after you agree. Safe to run again. A workflow that already exists and differs from the template is left as it is; for the go workflow the plan reminds you to check that its build job installs the toolchain of your stacks.
+No arguments. Looks at the repository, proposes the platforms, the settings and the workflows, shows a plan and applies it only after you agree. Safe to run again. A workflow that already exists and differs from the template is left as it is; for the go workflow the plan reminds you to check that its build job installs the toolchain of your stacks. It also offers, as an install you confirm command by command, to declare the plugin in the project (`claude plugin install relevo@relevo --scope project`), so that a teammate who clones the repository is offered it; the new `.claude/settings.json` is left for you to commit.
 
 ```text
 /relevo:init
@@ -78,7 +78,7 @@ The number of a `pr-open` issue whose pull request someone other than the author
 
 ### `/relevo:status`
 
-No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting.
+No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting. When a read from GitHub fails (for example a 403 on the repository variable that pauses the cloud), the report says which one under "Could not read" and that it may be incomplete, and an empty answer reads "Nothing is waiting on you. (from what could be read)".
 
 ```text
 /relevo:status
@@ -86,7 +86,7 @@ No arguments. Who is waiting on what, the `ready` issues assigned to you and any
 
 ### `/relevo:doctor`
 
-No arguments. Checks the tools, the skills, `relevo.yml`, the workflows and the repository settings, and says how to fix each problem. It also checks the installed plugin (its folders and version), that each workflow pins a version of the package (`RELEVO_VERSION`) and that the go workflow installs the toolchain of the stack of each Flutter or Laravel platform.
+No arguments. Checks the tools, the skills, `relevo.yml`, the workflows and the repository settings, and says how to fix each problem. It also checks the installed plugin (its folders and version), that each workflow pins a version of the package (`RELEVO_VERSION`) and that the go workflow installs the toolchain of the stack of each Flutter or Laravel platform. It warns when the repository does not declare the plugin in `.claude/settings.json`, because a teammate who clones it would not be offered it.
 
 ```text
 /relevo:doctor

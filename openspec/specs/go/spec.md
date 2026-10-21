@@ -192,7 +192,7 @@ Every commit `go` makes SHALL stage named files only (never "add all"), scan the
 - **THEN** nothing is committed or pushed and the issue is labelled `qa-failed` with the reason "protected path in the diff"
 
 ### Requirement: Unrecoverable problems end in qa-failed
-Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a stated reason, and SHALL push the branch except when the reason is a possible credential, a temporary marker, a protected path in the diff or an issue that changed after `ready`, or when the branch already exists, which `go` never touches. It SHALL NOT open a pull request or advance the state.
+Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a stated reason, and SHALL push the branch except when the reason is a possible credential, a temporary marker, a protected path in the diff or an issue that changed after `ready`, or when the branch already exists, which `go` never touches. When the reason is that QA rejected the work after the retries or that tasks were left unfinished, `go` SHALL first commit the work in progress, through the same safe commit as a successful build and with a message that says it is not approved, so that the push keeps it; if that commit is refused, `go` SHALL push nothing. It SHALL NOT open a pull request or advance the state.
 
 #### Scenario: Branch already exists
 - **WHEN** the feature branch already exists on the remote
@@ -213,6 +213,22 @@ Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a st
 #### Scenario: Ambiguity that changes behaviour
 - **WHEN** the issue is ambiguous in a way that changes observable behaviour
 - **THEN** `go` does not guess: the issue is labelled `needs-spec`, assigned to the spec writer, and nothing is pushed
+
+#### Scenario: QA rejects after the retries
+- **WHEN** QA still rejects the work after the retries and the safe commit accepts it
+- **THEN** the branch is pushed with a commit `wip: rejected by QA (#<n>)` that holds the work, the issue is `qa-failed`, no pull request is opened, and the comment says the branch holds work that QA did not approve
+
+#### Scenario: QA could not run the checks
+- **WHEN** QA rejected only because the analysis and the tests could not run
+- **THEN** the work is kept in the same way and the comment says what QA could not check
+
+#### Scenario: Tasks left unfinished
+- **WHEN** the developer finished with tasks still open
+- **THEN** the work done is committed and pushed as work in progress, and the comment says how many tasks are done
+
+#### Scenario: The safe commit refuses the work
+- **WHEN** the work in progress contains a protected path, a file outside the platform, a temporary marker or a possible credential
+- **THEN** nothing is committed or pushed, and the comment says the branch was not pushed and why
 
 ### Requirement: Successful hand-off
 On `QA PASSED`, `go` SHALL push the branch, label the issue `built`, and post the hand-off message to the assignee.
@@ -498,3 +514,22 @@ The fetcher SHALL take its references only from the issue, download only from th
 #### Scenario: Asset not available
 - **WHEN** the design needs an icon the project does not have
 - **THEN** `dev` reports it instead of inventing one
+
+### Requirement: The build checks the toolchain before the agent starts
+The build job of the go workflow SHALL check, before the agent step, that every tool listed by the profile of the platform of the issue is on the path of the runner, and when one is missing SHALL stop without running the agent, move the issue to `qa-failed` and post one comment that names the missing tools, says that nothing was built and what to do. It SHALL check nothing for a stack whose profile lists no tools, and SHALL run the check from a copy of the package outside the workspace.
+
+#### Scenario: A runner without the Flutter SDK
+- **WHEN** the platform is Flutter and `flutter` is not on the path of the runner
+- **THEN** the agent does not run, the issue is `qa-failed`, and the comment says `flutter` is missing, that no model turns were spent and that the toolchain step of `relevo-go.yml` must be enabled
+
+#### Scenario: A complete toolchain
+- **WHEN** every tool of the profile answers `--version`
+- **THEN** the check passes silently and the agent runs
+
+#### Scenario: A stack with no tools listed
+- **WHEN** the profile lists no tools
+- **THEN** nothing is checked and the agent runs
+
+#### Scenario: A clean working tree
+- **WHEN** the check runs
+- **THEN** it leaves nothing inside the workspace, so the agent's own preflight still finds a clean tree

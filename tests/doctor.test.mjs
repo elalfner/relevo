@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, readOnlyGh, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, pluginDeclaration, readOnlyGh, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { readFileSync } from 'node:fs';
@@ -785,4 +785,39 @@ test('the Laravel step is judged, Vue and unknown stacks are not', () => {
   assert.equal(toolchain(withGo('name: go\n', facts), 'api').status, 'fail');
   assert.equal(toolchain(withGo('name: go\n', facts), 'web'), undefined);
   assert.equal(toolchain(withGo('name: go\n', facts), 'x'), undefined);
+});
+
+const declared = (settings) => ({ exists: (p) => p === '.claude/settings.json' && settings !== undefined, read: () => settings });
+
+test('Scenario: Installed for the machine only - the fact says whether the committed settings declare the plugin', () => {
+  const ok = JSON.stringify({ extraKnownMarketplaces: { relevo: { source: { source: 'github', repo: 'elalfner/relevo' } } }, enabledPlugins: { 'relevo@relevo': true } });
+  assert.deepEqual(pluginDeclaration(declared(ok)), { declared: true });
+  assert.deepEqual(pluginDeclaration(declared(undefined)), { declared: false }, 'no file');
+  assert.deepEqual(pluginDeclaration(declared('{}')), { declared: false }, 'no plugin');
+  assert.deepEqual(pluginDeclaration(declared(JSON.stringify({ extraKnownMarketplaces: { relevo: {} }, enabledPlugins: { 'relevo@relevo': false } }))), { declared: false }, 'disabled');
+  assert.deepEqual(pluginDeclaration(declared(JSON.stringify({ enabledPlugins: { 'relevo@relevo': true } }))), { declared: false }, 'no marketplace');
+  assert.deepEqual(pluginDeclaration(declared('{ not json')), { unreadable: true });
+});
+
+test('Scenario: Declared - doctor passes; not declared - it warns with the fix and does not fail; unreadable - it warns; no fact - it says nothing', () => {
+  const pass = byId(runChecks(healthy({ pluginDeclared: { declared: true } })), 'plugin.declared');
+  assert.equal(pass.status, 'pass');
+  const warn = byId(runChecks(healthy({ pluginDeclared: { declared: false } })), 'plugin.declared');
+  assert.equal(warn.status, 'warn');
+  assert.match(warn.message, /a teammate who clones it is not offered the plugin/);
+  assert.match(warn.fix, /\/relevo:init.*--scope project.*commit \.claude\/settings\.json/);
+  assert.ok(!failing(runChecks(healthy({ pluginDeclared: { declared: false } }))).includes('plugin.declared'));
+  assert.equal(byId(runChecks(healthy({ pluginDeclared: { unreadable: true } })), 'plugin.declared').status, 'warn');
+  assert.equal(byId(runChecks(healthy()), 'plugin.declared'), undefined);
+});
+
+test('gatherFacts reads the settings file through the probes', () => {
+  const settings = JSON.stringify({ extraKnownMarketplaces: { relevo: {} }, enabledPlugins: { 'relevo@relevo': true } });
+  const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), exists: (p) => p === '.claude/settings.json', read: () => settings });
+  assert.deepEqual(f.pluginDeclared, { declared: true });
+});
+
+test('the plugin declaration is judged without a GitHub sign-in, because the settings file is local', () => {
+  const r = runChecks({ ...healthy({ pluginDeclared: { declared: false } }), repo: null, ghAuth: false });
+  assert.equal(byId(r, 'plugin.declared').status, 'warn');
 });
