@@ -25,4 +25,4 @@ Relevo works only with Claude Code. The maintainer works in Antigravity and want
 
 - New: `scripts/lib/adapters/` (source reader, renderer interface, `antigravity.mjs`), `scripts/agent-guard.mjs` and its library, `templates/agents/antigravity-step.yml`, the markers in `templates/workflows/relevo-go.yml`, tests.
 - Changed: `scripts/cli.mjs` and `scripts/lib/cli.mjs` (`init`, `update`), `scripts/lib/protected-paths.mjs`, `scripts/lib/doctor.mjs`, the `relevo.yml` schema (`agent.build`, `limits.run_max_tokens`), `docs/security.md`, `docs/install.md`, `docs/execution.md`, `docs/architecture-direction.md`, README, changelog, and the Spanish pages.
-- No new dependency. `skills/` and `agents/` change only where the design lists neutral wording fixes.
+- No new dependency. `agents/` and the Claude manifest do not change; of `skills/` only `init` does, with one question about which agent builds in the cloud.
