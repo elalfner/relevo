@@ -67,6 +67,15 @@ const TABLE = {
       who: 'assignee',
       hint: { en: 'describe what QA found', es: 'describe lo que encontró QA' },
     },
+    // The branch holds the work that QA rejected, committed as work in progress: correct it, or rethink the issue.
+    kept: {
+      command: '/relevo:fix {n}',
+      who: 'assignee',
+      hint: {
+        en: 'it checks and corrects the work that was kept; to rethink the issue instead, use /relevo:think and then /relevo:issue {n}',
+        es: 'verifica y corrige el trabajo que se guardó; para repensar el issue, usa /relevo:think y luego /relevo:issue {n}',
+      },
+    },
     'delete-branch': {
       command: null,
       who: 'assignee',
@@ -104,7 +113,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous'],
-  'qa-failed': ['fix', 'delete-branch'],
+  'qa-failed': ['fix', 'kept', 'delete-branch'],
 };
 
 const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
@@ -112,7 +121,7 @@ const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? '')
 /**
  * The next step for an issue in `state`.
  * `reason` picks the variant of `needs-spec` (`missing` by default, or `ambiguous`) and of `qa-failed`
- * (`fix` by default, or `delete-branch` when the branch holds only the specification).
+ * (`fix` by default, `kept` when the branch holds the work that QA rejected, or `delete-branch` when the branch holds only the specification).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
 export function nextStep({ state, reason = null, issue = null, language = 'en' } = {}) {

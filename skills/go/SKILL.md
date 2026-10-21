@@ -49,14 +49,22 @@ Never run `openspec init`, `archive`, `update` or `sync`, and never create files
 
 Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `outside the platform`, `possible credential or temporary marker in the diff`).
 
-1. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, a path outside the platform, or an issue that changed after `ready`; and never touch a branch that already existed.
-2. Move the issue to `qa-failed`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to qa-failed --current "<current labels, comma separated>"`, then apply the result with `gh issue edit`.
-3. Post one comment built by `render-message.mjs qa_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow), and `branch_state`:
-   - `pushed` (the default) when you pushed the branch;
+1. **Keep the work.** When the reason is `QA rejected after the retries` or `tasks left unfinished`, the developer's work exists only in the working tree of this run, so commit it before anything else, through the same script as step 6 and with the files its last report lists (created and modified) plus `tasks.md`:
+
+   ```bash
+   node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "wip: rejected by QA (#<issue>)" --allow "<allow_paths, comma separated>" --within "<path>" --change "<change_id>" -- <paths>
+   ```
+
+   The message is that exact subject and never changes: `fix` recognises the work by it. If the script exits 0, the work is on the branch and the `branch_state` is `kept` (with `tasks_done` and `tasks_total` from `openspec instructions apply --change "<change_id>" --json`). If it exits 1 it has refused (a protected path, a file outside the platform, a temporary marker or a possible credential): **do not push**, and the `branch_state` is `unsafe`, naming the file and line. If it fails for any other reason, do not push and use `not_pushed`. For every other reason there is no work to keep: go on.
+2. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, a path outside the platform, an issue that changed after `ready`, or when the commit of step 1 was refused; and never touch a branch that already existed.
+3. Move the issue to `qa-failed`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to qa-failed --current "<current labels, comma separated>"`, then apply the result with `gh issue edit`.
+4. Post one comment built by `render-message.mjs qa_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow), and `branch_state`:
+   - `kept` when you committed the work that QA rejected and pushed it (step 1);
+   - `pushed` (the default) when you pushed the branch and there was no work to keep;
    - `unsafe` when you did not push because of a possible credential, a temporary marker, a protected path or a path outside the platform;
    - `not_pushed` when you did not push for another reason, such as an issue that changed after `ready`;
    - `existing` when the branch already existed, together with `recovery` (step 2).
-4. Stop. Do not open a pull request and do not advance the state.
+5. Stop. Do not open a pull request and do not advance the state.
 
 ## Steps
 
