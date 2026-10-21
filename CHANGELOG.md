@@ -6,6 +6,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Added
 
+- **`/relevo:status` says what it could not read.** A read that `gh` refuses (the repository variable that pauses the cloud, the go workflow file, the comparison of a pull request with its base) is listed under "Could not read", with the reason, and an empty "Nothing is waiting on you." says "(from what could be read)". Before, the report looked complete, and without the pause variable it could leave out the issues you could build by hand. The JSON output has `unread`.
 - **`/relevo:init` declares the plugin in the project.** The plan has a new install line, confirmed with its exact command: `claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project`, so that a teammate who clones the repository is offered the plugin even when you installed it for your machine. The new `.claude/settings.json` is left for you to commit; a settings file that is not valid JSON is never rewritten. `/relevo:doctor` warns when the repository does not declare the plugin.
 
 ## [0.3.1] - 2026-10-21

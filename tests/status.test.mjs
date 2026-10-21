@@ -229,3 +229,68 @@ test('the status skill describes the new rows and the stuck-build alert', () => 
   assert.match(skill, /`RELEVO_CLOUD_GO` is `off`/);
   assert.match(skill, /`limits\.building_alert_hours`/);
 });
+
+// A fake gh whose reads can be refused one by one; every other read answers like an empty repository (one open pull request when asked).
+const gatherWith = ({ refuse = [], workflow = true, variable = 'on', withPr = false } = {}) => {
+  const gh = (args) => {
+    const path = args[args.length - 1];
+    const refused = refuse.find((k) => path.includes(k));
+    if (refused) throw new Error('HTTP 403 Forbidden');
+    if (path.includes('issues?')) return JSON.stringify([[]]);
+    if (path.includes('/pulls?')) return withPr ? JSON.stringify([[{ number: 40, head: { ref: 'feature/12-x', sha: 'abc' }, base: { ref: 'dev' }, user: { login: 'ana' }, html_url: 'https://x/pull/40', requested_reviewers: [] }]]) : JSON.stringify([[]]);
+    if (path.includes('/reviews')) return JSON.stringify([[]]);
+    if (path.includes('/timeline')) return JSON.stringify([[]]);
+    if (path.includes('/compare/')) return JSON.stringify({ ahead_by: 2 });
+    if (path.endsWith('.github/workflows/relevo-go.yml')) { if (!workflow) throw new Error('HTTP 404 Not Found'); return '{}'; }
+    if (path.endsWith('/actions/variables/RELEVO_CLOUD_GO')) { if (variable === null) throw new Error('HTTP 404 Not Found'); return JSON.stringify({ value: variable }); }
+    throw new Error(`unexpected ${path}`);
+  };
+  return gatherStatus({ gh, repo: 'acme/app', config });
+};
+
+test('Scenario: The pause variable cannot be read - it is recorded with its reason, and the rest of the data is kept', () => {
+  const data = gatherWith({ refuse: ['/actions/variables/'] });
+  assert.deepEqual(data.unread, [{ what: 'variable', reason: 'HTTP 403 Forbidden' }]);
+  assert.equal(data.cloudBuilds, true, 'the cautious answer is kept');
+});
+
+test('Scenario: A workflow that is not installed - that is the answer, and nothing is listed as unread', () => {
+  const data = gatherWith({ workflow: false, variable: null });
+  assert.deepEqual(data.unread, []);
+  assert.equal(data.cloudBuilds, false);
+  assert.deepEqual(gatherWith({ variable: null }).unread, [], 'a variable that does not exist is not a failure either');
+});
+
+test('the workflow file and the comparison of a pull request are recorded when they are refused', () => {
+  assert.deepEqual(gatherWith({ refuse: ['relevo-go.yml'] }).unread, [{ what: 'workflow', reason: 'HTTP 403 Forbidden' }]);
+  assert.deepEqual(gatherWith({ refuse: ['/compare/'], withPr: true }).unread, [{ what: 'compare', pr: 40, reason: 'HTTP 403 Forbidden' }]);
+});
+
+test('Scenario: Everything was read - no unread list, and the report is the same as before', () => {
+  const data = gatherWith({ withPr: true });
+  assert.deepEqual(data.unread, []);
+  const text = renderStatus(buildStatus({ config, me: 'ana', now: NOW, ...data }));
+  assert.doesNotMatch(text, /Could not read/);
+  assert.equal(text, 'Nothing is waiting on you.');
+});
+
+test('Scenario: Nothing waits and a read failed - the empty answer is qualified and the failed read is listed, in both languages', () => {
+  const data = gatherWith({ refuse: ['/actions/variables/'] });
+  const en = renderStatus(buildStatus({ config, me: 'ana', now: NOW, ...data }));
+  assert.match(en, /^Nothing is waiting on you\. \(from what could be read\)/);
+  assert.match(en, /Could not read, so this report may be incomplete:\n {2}the variable RELEVO_CLOUD_GO \(HTTP 403 Forbidden\): the issues you could build by hand may be missing/);
+  const es = renderStatus(buildStatus({ config, me: 'ana', now: NOW, ...data }), 'es');
+  assert.match(es, /^Nada espera por ti\. \(con lo que se pudo leer\)/);
+  assert.match(es, /No se pudo leer, así que este informe puede estar incompleto:\n {2}la variable RELEVO_CLOUD_GO \(HTTP 403 Forbidden\)/);
+  assert.ok(JSON.parse(JSON.stringify(buildStatus({ config, me: 'ana', now: NOW, ...data }))).unread.length === 1, 'the JSON carries it');
+});
+
+test('a report with things waiting still lists what could not be read, after them', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(1, ['relevo:built'])], unread: [{ what: 'compare', pr: 40, reason: 'HTTP 403' }, { what: 'workflow', reason: 'HTTP 500' }] });
+  const text = renderStatus(r);
+  assert.match(text, /^Waiting on you:/);
+  assert.ok(text.indexOf('Waiting on you') < text.indexOf('Could not read'));
+  assert.match(text, /the comparison of the branch of pull request #40 with the base \(HTTP 403\)/);
+  assert.match(text, /the workflow relevo-go\.yml \(HTTP 500\): the cloud is assumed to build/);
+  assert.doesNotMatch(text, /\(from what could be read\)/, 'something does wait, so the empty answer is not printed');
+});

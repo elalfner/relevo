@@ -8,7 +8,13 @@ import { cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 
 const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
+// The first line of an error, which is the reason a read failed.
+const reasonOf = (err) => String(err?.stderr ?? err?.message ?? err).trim().split('\n')[0];
+const notFound = (err) => /404|Not Found/i.test(String(err?.stderr ?? err?.message ?? err));
+
 export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
+  // The reads that fail and are not an answer; the report lists them so that a partial report is not taken for a complete one.
+  const unread = [];
   const names = resolveLabelNames(config.labels);
   const byNumber = new Map();
   LABELS.forEach((l) => {
@@ -44,8 +50,9 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
     let behind = 0;
     try {
       behind = JSON.parse(gh(['api', `repos/${repo}/compare/${pr.head.sha}...${pr.base.ref}`])).ahead_by ?? 0;
-    } catch {
+    } catch (err) {
       behind = 0;
+      unread.push({ what: 'compare', pr: pr.number, reason: reasonOf(err) });
     }
     prs.push({
       number: pr.number, issue, url: pr.html_url, author: pr.user.login,
@@ -54,7 +61,7 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
       approved: approvedBy.length > 0, behind_by: behind,
     });
   });
-  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }), cloudBuilds: readCloudBuilds({ gh, repo }) };
+  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }), cloudBuilds: readCloudBuilds({ gh, repo, unread }), unread };
 }
 
 /**
@@ -90,20 +97,24 @@ function readExternalBlocks({ ghLinks, issues, repo, config, names }) {
  * is not `off`. When the workflow cannot be read the answer is `true` (the cautious one: no extra rows, no claim
  * that a person must build by hand).
  */
-function readCloudBuilds({ gh, repo }) {
+function readCloudBuilds({ gh, repo, unread = [] }) {
   let workflowPresent;
   try {
     gh(['api', `repos/${repo}/contents/.github/workflows/relevo-go.yml`]);
     workflowPresent = true;
   } catch (err) {
-    if (!/404|Not Found/i.test(String(err.stderr ?? err.message ?? err))) return true;
+    if (!notFound(err)) {
+      unread.push({ what: 'workflow', reason: reasonOf(err) });
+      return true;
+    }
     workflowPresent = false;
   }
   let variable = null;
   try {
     variable = JSON.parse(gh(['api', `repos/${repo}/actions/variables/${CLOUD_VARIABLE}`])).value ?? null;
-  } catch {
+  } catch (err) {
     variable = null;
+    if (!notFound(err)) unread.push({ what: 'variable', reason: reasonOf(err) });
   }
   return cloudBuilds({ workflowPresent, variable });
 }

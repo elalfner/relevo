@@ -78,7 +78,7 @@ The number of a `pr-open` issue whose pull request someone other than the author
 
 ### `/relevo:status`
 
-No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting.
+No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting. When a read from GitHub fails (for example a 403 on the repository variable that pauses the cloud), the report says which one under "Could not read" and that it may be incomplete, and an empty answer reads "Nothing is waiting on you. (from what could be read)".
 
 ```text
 /relevo:status
