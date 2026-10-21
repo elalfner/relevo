@@ -232,6 +232,12 @@ Not seen: `/relevo:init` inside a Claude Code session asking the person to confi
 
 Run from this cloud session against the sandbox, where the proxy refuses the Actions paths: the report listed what waits (#37 to review, #40 to fix), the milestone line, and then "Could not read, so this report may be incomplete: the variable RELEVO_CLOUD_GO (... HTTP 403): the issues you could build by hand may be missing". Before the change it printed the same list with no warning, which for a person with nothing waiting would have been "Nothing is waiting on you.". The reason line repeats the text that `gh` printed, so it is long when `gh` wraps the proxy's message.
 
+## `relevo install` in a real terminal (task 5.1 of `interactive-install`)
+
+Run in a pseudo-terminal with a fake `claude` on the path, four cases: in a git repository, Enter on the preselected project installed with `--scope project` and said where the settings went; in the same repository, the down arrow and Enter installed with `--scope user`; in a plain folder the list marked the project as "[not a git repository]", preselected the machine, and Enter installed with `--scope user`; Esc printed "Cancelled: nothing was installed." and exited 130 with no `claude plugin` command run. Seen on the way: the command calls `claude --version` twice before it starts (once in the main flow and once in `execute`), which is harmless and left as it is.
+
+Not tried: a real terminal emulator that sends other key sequences, and a real Claude Code (the commands were a fake).
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
