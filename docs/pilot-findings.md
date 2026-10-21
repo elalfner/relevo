@@ -202,6 +202,14 @@ Package `@elalfner/relevo@0.3.0`, published by the release workflow with provena
 
 Not yet seen: a build in the sandbox with the new templates (task 6.2), because the templates must reach the default branch of the sandbox first and the marketplace entry must reach `main` of this repository.
 
+## First cloud build with the 0.3.0 workflows (sandbox #37, task 6.2 of `lean-install`)
+
+What worked: the label started the run; the `decide` job unpacked `@elalfner/relevo@0.3.0`, passed its guard and claimed the issue; the model action installed the plugin and ran `/relevo:go` and QA (14 turns, about $0.49 notional). So the plugin does install from the `npm` entry of the marketplace in a real run.
+
+What failed, and was my mistake: QA rejected the build with "Flutter SDK is not installed in the QA environment". I replaced the sandbox workflows with the 0.3.0 templates (the sandbox ones were several versions old) and lost the one line the sandbox had added by hand, the Flutter setup step. In the template, the toolchain of each stack is a commented example that the project must uncomment. Restored in the sandbox with a one-block change (`flutter-action` when the stack is `flutter`).
+
+The same trap waits for anyone who follows Get started: nothing there, nor in `/relevo:init` or `/relevo:doctor`, says that the build job needs the toolchain step enabled, and the first symptom is a QA failure after a paid run. Proposed: `doctor` should fail when the go workflow has no active toolchain step for a configured stack, and `init` should say so in its plan. Not done here.
+
 ## Times and costs per run
 
 `total_cost_usd` comes from the action's own result. With a subscription token this is the notional price, not a charge.
