@@ -2,7 +2,7 @@
 
 - [x] 1.1 Install `agy`, record in `docs/pilot-findings.md` its version, tool names, headless behaviour without a terminal and the `--print-timeout` default
 - [x] 1.2 Check skills, `disable-model-invocation`, plugin conversion, namespace and project plugin; record the script-path and agent-tool gaps
-- [ ] 1.3 Check that `commandExecutionPolicy` lets the stack's test command run for `relevo-dev` and `relevo-qa`, that a compound command (`cd x && y`) is matched by `command(cd)`, and that a subagent's result reaches a run whose main agent was told to wait
+- [x] 1.3 Check that a subagent with a command tool runs the stack-like commands under the default policy, how a compound command is matched, and that a subagent's result reaches the run
 - [x] 1.4 Run the headless command with `stream-json` and record the events, the per-step usage and how a refused tool shows
 - [ ] 1.5 On a scratch repository, run `agy -p` with `modelProvider: gemini` and a dedicated `GEMINI_API_KEY` secret on a GitHub runner; try ADC with `AGY_ADC_AUTH` from a workload identity and record whether either works unattended
 
@@ -27,6 +27,7 @@
 ## 5. The cloud build
 
 - [ ] 5.1 `scripts/agent-guard.mjs` and its library: child in its own process group, event counting, limits, kill, refused-tool detection, exit codes; tests with a fake process for each scenario
+- [ ] 5.1b A test that lists the programs the skills call and fails if one is missing from the allow list of the step
 - [ ] 5.2 Mark the model step of `templates/workflows/relevo-go.yml` and write `templates/agents/antigravity-step.yml`: install the pinned package and `agy`, render and install the plugin for the machine, write the user-level settings, run through the guard, job timeout, secret credential, report from the guard's summary; make the workflow writer substitute the block for `agent.build: antigravity`
 - [ ] 5.3 A test that the markers exist once and that the Claude and Antigravity renderings differ only inside the block
 - [ ] 5.4 Run the workflow on a scratch repository with a trivial issue and record the result, including a run that reaches a limit
