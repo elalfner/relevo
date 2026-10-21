@@ -76,6 +76,15 @@ const TABLE = {
         es: 'verifica y corrige el trabajo que se guardó; para repensar el issue, usa /relevo:think y luego /relevo:issue {n}',
       },
     },
+    // Nothing was built: the runner lacks a tool of the profile, and the fix is in the workflow, not a command.
+    toolchain: {
+      command: null,
+      who: 'assignee',
+      hint: {
+        en: 'install the toolchain in the build job of relevo-go.yml (the template has the step for Flutter and Laravel, and /relevo:doctor checks it), then remove relevo:qa-failed and label the issue relevo:ready again',
+        es: 'instala el toolchain en el job de build de relevo-go.yml (la plantilla trae el paso para Flutter y Laravel, y /relevo:doctor lo comprueba), luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+      },
+    },
     'delete-branch': {
       command: null,
       who: 'assignee',
@@ -113,7 +122,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous'],
-  'qa-failed': ['fix', 'kept', 'delete-branch'],
+  'qa-failed': ['fix', 'kept', 'toolchain', 'delete-branch'],
 };
 
 const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
