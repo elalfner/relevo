@@ -1,6 +1,6 @@
 {
   "name": "@elalfner/relevo",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Relevo: an automatic issue-to-merge workflow where an agent builds and people verify.",
   "type": "module",
   "license": "MIT",

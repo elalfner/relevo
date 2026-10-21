@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Added
 
 - **`relevo install` asks where to install.** Without `--scope`, in a terminal, it shows a list chosen with the arrows and Enter (or a number): Project, with the folder that gets `.claude/settings.json`, Machine, and Only me; the project is preselected inside a git repository and the machine outside one, and Esc or Ctrl-C cancel without changing anything. Without a terminal it never waits: it uses the project inside a repository and the machine outside one, and says why. No new dependency: the selector is part of the package.
@@ -11,6 +13,23 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **The cloud build checks the toolchain before the agent starts.** A new script, `toolchain-check.mjs`, probes each tool that the profile of the platform lists (`flutter`; `php` and `composer`) with `--version`, and the build job runs it right before the agent, from a copy of the package outside the workspace. If a tool is missing, no model turn is spent: the issue becomes `qa-failed` with the new comment `toolchain_missing` (English and Spanish), which names the tools and says to enable the toolchain step and apply `ready` again. Before this, the developer wrote the code and QA found out at the end, after a full run.
 - **`/relevo:status` says what it could not read.** A read that `gh` refuses (the repository variable that pauses the cloud, the go workflow file, the comparison of a pull request with its base) is listed under "Could not read", with the reason, and an empty "Nothing is waiting on you." says "(from what could be read)". Before, the report looked complete, and without the pause variable it could leave out the issues you could build by hand. The JSON output has `unread`.
 - **`/relevo:init` declares the plugin in the project.** The plan has a new install line, confirmed with its exact command: `claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project`, so that a teammate who clones the repository is offered the plugin even when you installed it for your machine. The new `.claude/settings.json` is left for you to commit; a settings file that is not valid JSON is never rewritten. `/relevo:doctor` warns when the repository does not declare the plugin.
+
+### Changed
+
+- **`relevo install` asks where to install**, and the project is the default inside a git repository. Before, without `--scope`, it installed for the machine. Pass `--scope user` to keep the old result without the question.
+
+### Known limits
+
+- The check of the toolchain before the agent starts (`toolchain-check.mjs`) was tested with fake tools and on the text of the workflow, not yet on a real runner without the SDK: it needs this version published first.
+- `relevo install` was tried in a pseudo-terminal with a fake `claude`, not in every terminal emulator and not with a real Claude Code.
+- `/relevo:init` declaring the plugin in the project was tried with the script and the two commands, not inside a Claude Code session that asks for the confirmation.
+- The workflows still pin the version of the package by hand (`RELEVO_VERSION`), and the package is still published with an npm token kept as the secret `NPM_TOKEN`.
+
+### Upgrading from 0.3.1
+
+- Run `/relevo:init`: it lists the five workflow templates as different (the version, and in `relevo-go.yml` the toolchain check). Copy them, then set `RELEVO_VERSION` to `0.4.0` in each, and `/relevo:doctor` will tell you if one is missing.
+- If the plugin is installed for your machine only, `/relevo:init` now offers to declare it in the project so that your team gets it; commit the new `.claude/settings.json`.
+- `relevo update` now updates the installation of the current project when you do not pass a scope.
 
 ## [0.3.1] - 2026-10-21
 
