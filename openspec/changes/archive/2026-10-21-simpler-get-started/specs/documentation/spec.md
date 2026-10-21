@@ -19,7 +19,7 @@ The documentation SHALL have a Get started page, in English and Spanish, with nu
 
 #### Scenario: One way to install
 - **WHEN** a person reads the install step
-- **THEN** it shows the two `claude plugin` commands once, and the npm command and `relevo` are left to the install page
+- **THEN** it shows the two `claude plugin` commands once, run in the project folder with the project scope written out, and the npm command and `relevo` are left to the install page
 
 #### Scenario: A project with dependencies
 - **WHEN** a person with a Vue or Laravel project reads the step that builds

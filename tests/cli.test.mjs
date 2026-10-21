@@ -85,10 +85,11 @@ test('the real entry point installs through a fake claude on the path and prints
   assert.match(bad.stderr, /usage: relevo/);
 });
 
-test('the install pages show the same commands as the ones the command line runs', () => {
+// Get started shows one way to install, with the project scope written out; the shortcut is for the other pages.
+test('the install pages and the cover show the same commands as the ones the command line runs', () => {
   const doc = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   const expected = steps('install', 'user').map((s) => `claude ${s.args.filter((a, i, all) => !(a === '--scope' || all[i - 1] === '--scope')).join(' ')}`);
-  for (const p of ['docs/install.md', 'docs/install.es.md', 'docs/get-started.md', 'docs/get-started.es.md', 'README.md', 'README.es.md']) {
+  for (const p of ['docs/install.md', 'docs/install.es.md', 'README.md', 'README.es.md']) {
     const text = doc(p);
     expected.forEach((line) => assert.ok(text.includes(line), `${p} shows "${line}"`));
     assert.match(text, /npm install -g @elalfner\/relevo/, p);
