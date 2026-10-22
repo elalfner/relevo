@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
 ### Added
 
 - **Relevo works with Antigravity.** `relevo init` asks which tools the team uses (Claude Code, Antigravity) and whether the scope is the project or the machine. For Antigravity it renders a native plugin from the same skills and agents, with the same commands (`/relevo:go`), and installs it into `.agents/plugins/relevo/` or, for the machine, with `agy plugin install`. The script path is written into the text (Antigravity does not substitute a plugin root variable), the agents `relevo-dev` and `relevo-qa` get an explicit tool list (QA without the tools that write), and a file `.relevo-adapter.json` records the version and a hash of each file so that `relevo update` can render again without overwriting an edit, and `doctor` can report it. Claude Code users change nothing.
