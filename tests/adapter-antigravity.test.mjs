@@ -85,13 +85,16 @@ test('Scenario: Unknown tool - the render stops and names it', () => {
 test('the subagent wait of go is said the way Antigravity works', () => {
   const go = file('skills/go/SKILL.md').content;
   assert.match(go, /`invoke_subagent`[\s\S]*the report arrives later as a message/);
+  assert.match(go, /terminate the subagent using `manage_subagents` \(`Action: "kill"/);
   assert.ok(!/Launch `relevo/.test(go));
   assert.throws(() => adaptText('## Subagents run in the foreground\n## Next\n', { pluginDir }), /no longer followed by one paragraph/);
 });
 
 test('interactive go in Antigravity isolates execution via Workspace: share subagent', () => {
   const go = file('skills/go/SKILL.md').content;
-  assert.match(go, /invoke_subagent[\s\S]*Workspace: 'share'/);
+  assert.match(go, /invoke_subagent[\s\S]*TypeName: "self"[\s\S]*Role: "relevo-builder"[\s\S]*Workspace: 'share'/);
+  assert.match(go, /schedule[\s\S]*DurationSeconds: 1200[\s\S]*TimerCondition:/);
+  assert.match(go, /manage_subagents[\s\S]*Action: "kill"/);
   assert.match(go, /multiple chat tabs share this workspace and will collide/);
 });
 
