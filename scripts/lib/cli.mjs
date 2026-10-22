@@ -9,8 +9,10 @@ export const SCOPES = ['user', 'project', 'local'];
 export const USAGE = [
   'usage: relevo <command> [--scope user|project|local]',
   '',
+  '  init      set up Relevo for the tools your team uses (Claude Code, Antigravity), in the project or on the machine',
+  '            relevo init [--tools claude,antigravity] [--scope project|machine] [--yes] [--force]',
   '  install   add the marketplace and install the plugin; asks where in a terminal (project by default)',
-  '  update    update the marketplace and the plugin (without --scope, the installation of this project)',
+  '  update    update the marketplace and the plugin (without --scope, the installation of this project), and render again the plugins that init made; --force overwrites files edited by hand',
   '  doctor    check this repository (the same as /relevo:doctor)',
   '  version   print the version of this package',
   '',
@@ -23,13 +25,15 @@ export function parseArgs(argv) {
   if (!command || command === '--help' || command === '-h' || command === 'help') return { command: 'help' };
   if (!['install', 'update', 'doctor', 'version'].includes(command)) return { error: `unknown command "${command}"` };
   let scope = null;
+  let force = false;
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
-    if (arg === '--scope') { scope = rest[i + 1]; i += 1; } else if (arg.startsWith('--scope=')) scope = arg.slice(8);
+    if (arg === '--force' && command === 'update') force = true;
+    else if (arg === '--scope') { scope = rest[i + 1]; i += 1; } else if (arg.startsWith('--scope=')) scope = arg.slice(8);
     else return { error: `unknown option "${arg}"` };
   }
   if (scope !== null && !SCOPES.includes(scope)) return { error: `the scope must be one of ${SCOPES.join(', ')}` };
-  return { command, scope };
+  return force ? { command, scope, force } : { command, scope };
 }
 
 /** Whether the folder is inside a git work tree; `run` is the injected runner. A missing git counts as no. */

@@ -122,11 +122,11 @@ test('Scenario: init asks where go runs and with which credential, and says what
 
 // ---------- stack profiles
 
-test('Scenario: init names the three stacks the plugin ships, their folders and targets', () => {
+test('Scenario: init names the stacks the plugin ships, their folders and targets', () => {
   const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
-  assert.match(init, /are the stacks Relevo ships with: `flutter`, `vue` and `laravel`/);
-  assert.match(init, /for Vue: `web`; Laravel has none/);
-  ['flutter', 'vue', 'laravel'].forEach((stack) => assert.ok(existsSync(new URL(`../stacks/${stack}.md`, import.meta.url)), `stacks/${stack}.md exists`));
+  assert.match(init, /are the stacks Relevo ships with: `flutter`, `vue`, `laravel` and `supabase`/);
+  assert.match(init, /for Vue: `web`; Laravel and Supabase have none/);
+  ['flutter', 'vue', 'laravel', 'supabase'].forEach((stack) => assert.ok(existsSync(new URL(`../stacks/${stack}.md`, import.meta.url)), `stacks/${stack}.md exists`));
 });
 
 test('the init skill offers the declaration of the plugin in the project as an install, with the settings file left to commit', () => {

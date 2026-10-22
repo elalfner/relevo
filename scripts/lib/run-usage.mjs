@@ -57,7 +57,7 @@ export function usageLine(usage, { subscription = false } = {}) {
 // Messages the Claude CLI and the API document for a usage limit, a quota or an empty credit balance. These patterns
 // are not from a failed run seen here (see docs/pilot-findings.md); a wrong guess only changes the wording of a
 // comment on a run that already failed.
-const LIMIT_RE = /usage limit|limit reached|rate[ _-]?limit|credit balance is too low|exceeded your (current )?quota|insufficient[ _]quota/i;
+const LIMIT_RE = /usage limit|limit reached|rate[ _-]?limit|credit balance is too low|exceeded your (current )?quota|quota exceeded|resource[ _]exhausted|insufficient[ _]quota/i;
 
 /** Does the log show that a usage limit, a quota or the credit was reached? */
 export function reachedUsageLimit(text) {

@@ -31,7 +31,7 @@ A profile is the file `stacks/<stack>.md` of the plugin. Its header is read by s
 - The skills it requires and the extra skills for each role.
 - A text with the hygiene the developer follows and what QA looks for in the diff.
 
-Relevo ships the `flutter`, `vue` and `laravel` profiles. `/relevo:go` resolves the profile of your platform and hands it to the developer and QA agents.
+Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:go` resolves the profile of your platform and hands it to the developer and QA agents.
 
 ## The profiles Relevo ships
 
@@ -40,6 +40,14 @@ Relevo ships the `flutter`, `vue` and `laravel` profiles. `/relevo:go` resolves 
 | `flutter` | `flutter analyze --no-pub` | `flutter test --reporter=compact --no-pub` | `dart format` | `android`, `ios`, `web` |
 | `vue` | `vue-tsc --build` then `eslint . --cache` | `vitest run` | `prettier --write src/` | `web` |
 | `laravel` | `vendor/bin/pint --test` | `php artisan test` | `vendor/bin/pint` | none |
+| `supabase` | `supabase db lint` | `supabase test db` | `npx prettier --write supabase/` | none |
+
+- The commands QA runs never rewrite your code. This matters for Vue: the `lint` script that `npm create vue` generates uses `--fix`, so the profile calls the tools directly (through `npx --no-install`, with the versions your project pins) and does not use `npm run lint`.
+- The `supabase` profile implements Database-as-Code for monorepo projects (e.g. `app` in Flutter and `backend` in Supabase):
+  - All tests execute hermetically against local Docker containers (`supabase test db` using pgTAP); Relevo agents never connect to remote cloud instances.
+  - The profile assigns the official `supabase/agent-skills` (`supabase` and `supabase-postgres-best-practices`) to `dev`, `qa`, and `issue`.
+  - The developer maintains test data in `supabase/seed.sql` idempotently (`INSERT ... ON CONFLICT DO NOTHING`).
+  - Deployments to the cloud after PR merge are managed via `.github/workflows/deploy-supabase.yml` (automatic push to Staging on `dev` and gated release to Production on `main`).
 
 - The commands QA runs never rewrite your code. This matters for Vue: the `lint` script that `npm create vue` generates uses `--fix`, so the profile calls the tools directly (through `npx --no-install`, with the versions your project pins) and does not use `npm run lint`.
 - Each profile was run on a project created for it (`npm create vue@latest` with TypeScript, Vitest, ESLint and Prettier; `composer create-project laravel/laravel`). The Vue `analyze` fails on a type error, a `v-for` without `:key`, an unused variable, an explicit `any` and a single-word component name, and does not fail on `v-html`, a listener that is never removed or props copied out of reactivity. The Laravel `analyze` and `test` fail on a style problem and on a failing test, and do not fail on a mass-assignment hole, an N+1 query or a missing authorisation. The text of each profile tells QA which of those to look for by reading.

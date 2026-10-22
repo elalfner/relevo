@@ -99,6 +99,22 @@ test('Scenario: Flutter profile - the plugin ships it with the commands, generat
   assert.deepEqual(Object.keys(r.profile.targets), ['android', 'ios', 'web']);
 });
 
+test('Scenario: Supabase profile - the plugin ships it with commands, tools, skills, and questions', () => {
+  const r = resolveProfile({ platform: { stack: 'supabase' }, pluginRoot: PLUGIN_ROOT, read: (p) => { try { return readFileSync(p.startsWith('/') ? p : join('/nonexistent', p), 'utf8'); } catch { return null; } } });
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.profile.commands.analyze, 'supabase db lint');
+  assert.equal(r.profile.commands.test, 'supabase test db');
+  assert.deepEqual(r.profile.tools, ['supabase', 'docker']);
+  assert.deepEqual(r.profile.requires_skills, ['supabase', 'supabase-postgres-best-practices']);
+  assert.deepEqual(r.profile.skills.dev, ['supabase', 'supabase-postgres-best-practices']);
+  assert.deepEqual(r.profile.skills.qa, ['supabase', 'supabase-postgres-best-practices']);
+  assert.deepEqual(r.profile.skills.issue, ['supabase', 'supabase-postgres-best-practices']);
+  assert.deepEqual(Object.keys(r.profile.targets), []);
+  assert.match(r.profile.questions, /Authorization & RLS/);
+  assert.doesNotMatch(r.profile.body, /Authorization & RLS/);
+  assert.match(r.profile.body, /ENABLE ROW LEVEL SECURITY/);
+});
+
 // ---------- the command
 
 function repo(files) {

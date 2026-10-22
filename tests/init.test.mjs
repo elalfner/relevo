@@ -355,3 +355,57 @@ test('Scenario: A settings file that cannot be read - a manual step, and nothing
 test('without the fact there is no plugin line, so older callers keep their plan', () => {
   assert.equal(get(plan(bare()), 'install.plugin-project'), undefined);
 });
+
+// ---- the agent that builds in the cloud
+
+const blocks = readFileSync(`${root}templates/agents/antigravity-step.yml`, 'utf8');
+const withBlocks = (answers) => planInit({ facts: factsFor(), answers: { ...ANSWERS, ...answers }, templates: { ...templates, agentBlocks: blocks }, current: empty(), admin: true });
+
+test('Scenario: Antigravity chosen - the go and queue workflows get the Antigravity blocks and the shared lines stay', () => {
+  const items = withBlocks({ agentBuild: 'antigravity' });
+  const go = wf(items, 'relevo-go.yml').content;
+  const queue = wf(items, 'relevo-queue.yml').content;
+  assert.ok(!go.includes('anthropics/claude-code-action'));
+  assert.match(go, /agent-guard\.mjs" run/);
+  assert.match(queue, /HAS_CREDENTIAL: \$\{\{ secrets\.GEMINI_API_KEY != '' \}\}/);
+  assert.ok(go.includes('name: Check the toolchain') && go.includes('go-plan.mjs'), 'the rest of the workflow is the shared one');
+  const claude = withBlocks({});
+  assert.equal(wf(claude, 'relevo-go.yml').content, goTemplate, 'Claude is still the template as it is');
+  assert.equal(wf(claude, 'relevo-queue.yml').content, workflows['relevo-queue.yml']);
+});
+
+test('an agent other than claude and antigravity is refused, and Antigravity without its blocks is an error', () => {
+  assert.throws(() => withBlocks({ agentBuild: 'gemini' }), /agentBuild must be one of claude, antigravity/);
+  assert.throws(() => planInit({ facts: factsFor(), answers: { ...ANSWERS, agentBuild: 'antigravity' }, templates, current: empty(), admin: true }), /no file of blocks/);
+});
+
+test('relevo.yml for Antigravity asks for a token limit instead of a cost limit, and validates', () => {
+  const text = renderConfig(template, { ...ANSWERS, agentBuild: 'antigravity', runMaxTokens: 3000000 });
+  assert.match(text, /run_max_tokens: 3000000/);
+  assert.ok(!/^\s*run_max_cost:/m.test(text));
+  assert.match(text, /\nagent:\n {2}build: antigravity\n$/);
+  assert.equal(loadConfig(text).ok, true);
+  assert.match(renderConfig(template, { ...ANSWERS, agentBuild: 'antigravity' }), /run_max_tokens: 2000000/);
+});
+
+test('Scenario: Supabase platform in init - offers skills install and MCP guidance', () => {
+  const facts = {
+    configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true },
+    skills: { ...Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), supabase: false, 'supabase-postgres-best-practices': false },
+    openspec: '1.14.1', secrets: [],
+  };
+  const answers = {
+    ...ANSWERS,
+    platforms: {
+      backend: { stack: 'supabase', path: 'supabase' },
+      app: { stack: 'flutter', path: 'app', targets: ['android'] },
+    },
+  };
+  const items = planInit({ facts, answers, templates, current: empty(), admin: true });
+  assert.equal(get(items, 'install.skill.supabase').status, 'todo');
+  assert.match(get(items, 'install.skill.supabase').command, /npx skills add supabase\/agent-skills --skill supabase/);
+  assert.equal(get(items, 'install.skill.supabase-postgres-best-practices').status, 'todo');
+  assert.match(get(items, 'install.skill.supabase-postgres-best-practices').command, /supabase-postgres-best-practices/);
+  assert.equal(get(items, 'manual.supabase-mcp').status, 'manual');
+  assert.match(get(items, 'manual.supabase-mcp').description, /Supabase MCP/);
+});

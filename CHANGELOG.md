@@ -4,6 +4,26 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
+### Added
+
+- **Relevo works with Antigravity.** `relevo init` asks which tools the team uses (Claude Code, Antigravity) and whether the scope is the project or the machine. For Antigravity it renders a native plugin from the same skills and agents, with the same commands (`/relevo:go`), and installs it into `.agents/plugins/relevo/` or, for the machine, with `agy plugin install`. The script path is written into the text (Antigravity does not substitute a plugin root variable), the agents `relevo-dev` and `relevo-qa` get an explicit tool list (QA without the tools that write), and a file `.relevo-adapter.json` records the version and a hash of each file so that `relevo update` can render again without overwriting an edit, and `doctor` can report it. Claude Code users change nothing.
+- **A cloud build with Antigravity CLI.** `agent.build: antigravity` in `relevo.yml` replaces the model step of the go workflow (the file is one: its agent step and its credential line are marked blocks) with `agy`, pinned by version and sha512, a user-level settings file with the web denied and only listed commands allowed, and a run guard (`agent-guard.mjs`) that reads the event stream, stops the agent at `limits.run_max_turns` or `limits.run_max_tokens` or at a time limit, and fails the run when a tool was refused (Antigravity exits 0 in that case). The secret is `GEMINI_API_KEY`. `limits.run_max_cost` is refused with this agent because it has no cost limit; `trust: public` is refused for now.
+- **Protected paths for the files of other agents.** `.agents/`, `.gemini/`, `AGENTS.md` and `GEMINI.md` (the last two at any depth) cannot be committed by a run.
+- **`doctor` knows Antigravity.** It checks the rendered plugin, and with `agent.build: antigravity` it looks for `GEMINI_API_KEY` instead of an Anthropic credential. `docs/security.md` says, for each agent, what is enforced, what is partial and what does not exist.
+- **`go-local.mjs` runs with Antigravity too.** With `agent.build: antigravity` it starts `agent-guard.mjs run` in the worktree, with the token and turn limits of `relevo.yml` and a time limit of 50 minutes, and keeps the worktree when the guard refuses to start. It uses your own `agy` settings, not the restricted ones of the cloud step.
+- **An interactive `/relevo:go` in Antigravity no longer builds in the workspace root.** It starts a `self` builder subagent with `Workspace: 'share'`, arms a `schedule` watchdog and ends the builder with `manage_subagents kill`, so that several chats can build at once without switching each other's branch.
+- **`review` goes back to the base branch** after opening the pull request, only in the main checkout and when no other worktree holds that branch; it never fails the review for it.
+- **Supabase stack.** A profile `stacks/supabase.md`, a deploy workflow template and `doctor` checks for the Supabase CLI, Docker and the Supabase skills.
+
+### Known limits
+
+- A local Antigravity run (`go-local.mjs`) does not write the restricted `agy` settings that the cloud step writes.
+
+- Antigravity was tried on CLI 1.4.4 with `agy -p` in scratch folders (commands, skills, subagents, permission rules, the event stream, plugin installation). The whole cloud workflow has not run on a real runner, and the key and the plugin installation on a clean runner are not yet checked.
+- That the quality of the adversarial QA holds with a Gemini model is not known.
+
 ## [0.4.0] - 2026-10-21
 
 ### Added

@@ -33,6 +33,8 @@ npm install -g @elalfner/relevo
 relevo install
 ```
 
+To use Relevo from Antigravity (the IDE, the App or the CLI), run `relevo init`: it asks which tools your team uses and installs a plugin rendered for each. Details in [Install](docs/install.md#other-tools-antigravity).
+
 Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing. What you need and the first steps are in [Install](docs/install.md).
 
 ## How it works

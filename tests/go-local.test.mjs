@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { planLocalRun, runLocal } from '../scripts/lib/go-local.mjs';
 import { runFlags } from '../scripts/lib/run-flags.mjs';
@@ -56,6 +58,58 @@ test('the worktree lies outside the repository, so uncommitted changes in it do 
   const plan = planLocalRun({ issue: '7', repoRoot: REPO, config });
   assert.ok(!plan.worktree.startsWith(`${REPO}/`));
   assert.equal(plan.git[1][1], 'add');
+});
+
+test('Scenario: Local build with Antigravity - agent-guard run with the limits, a time limit and a summary outside the worktree', () => {
+  const agyConfig = { ...config, agent: { build: 'antigravity' } };
+  const plan = planLocalRun({ issue: '42', repoRoot: REPO, config: agyConfig });
+  assert.equal(plan.claude[0], 'node');
+  const [guard, mode, ...rest] = plan.claude[1];
+  assert.match(guard, /scripts\/agent-guard\.mjs$/);
+  assert.ok(!guard.startsWith(REPO), 'the guard belongs to the plugin, not to the project');
+  assert.equal(mode, 'run');
+  assert.ok(!rest.includes('--') && !rest.includes('agy'));
+  const at = (name) => rest[rest.indexOf(name) + 1];
+  assert.equal(at('--prompt'), '/relevo:go 42');
+  assert.equal(at('--config'), 'relevo.yml');
+  assert.equal(at('--timeout-minutes'), '50');
+  assert.ok(!at('--summary').startsWith(plan.worktree));
+  assert.deepEqual(plan.env, {});
+
+  const runner = fakeRunner();
+  const r = runLocal({ issue: '42', config: agyConfig, runner });
+  assert.equal(r.status, 0);
+  const spawned = runner.calls.find((c) => c.kind === 'stream');
+  assert.equal(spawned.cmd, 'node');
+  assert.equal(spawned.args[1], 'run');
+
+  const enoent = runLocal({ issue: '42', config: agyConfig, runner: fakeRunner({ streamStatus: 'ENOENT' }) });
+  assert.match(enoent.messages.join('\n'), /the agy or node command was not found/);
+});
+
+test('Scenario: The guard accepts the planned command (real argument parser, stub agy)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-guard-test-'));
+  const stub = join(dir, 'agy');
+  writeFileSync(stub, '#!/bin/sh\necho \'{"type":"result","result":"ok"}\'\nexit 0\n');
+  chmodSync(stub, 0o755);
+  const agyConfig = { ...config, agent: { build: 'antigravity' } };
+  const plan = planLocalRun({ issue: '42', repoRoot: REPO, config: agyConfig });
+  const args = [...plan.claude[1], '--agy', stub, '--max-turns', '5', '--max-tokens', '5000'];
+  // the temp folder has no relevo.yml: the limits come from the flags instead of --config
+  args.splice(args.indexOf('--config'), 2);
+  const r = spawnSync('node', args, { cwd: dir, encoding: 'utf8' });
+  assert.ok(r.status !== 2, `the guard rejected the planned arguments: ${r.stderr}`);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('Scenario: The guard rejects the command - the worktree is kept and its path printed', () => {
+  const agyConfig = { ...config, agent: { build: 'antigravity' } };
+  const r = runLocal({ issue: '42', config: agyConfig, runner: fakeRunner({ streamStatus: 2 }) });
+  assert.equal(r.status, 2);
+  assert.equal(r.removed, false);
+  const out = r.messages.join('\n');
+  assert.match(out, /the run guard refused to start/);
+  assert.ok(out.includes(r.worktree));
 });
 
 test('Scenario: Run fails - the worktree stays and its path is printed', () => {

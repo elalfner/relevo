@@ -152,6 +152,16 @@ Only when `decide` exited 0.
 - `evidence.policy: local_only`: delete the `evidence/` folder now. Nothing is attached anywhere.
 - `evidence.policy: attach_to_pr`: GitHub has no API for attaching images, so you cannot upload them. List the files in `evidence/` and ask the person to drag them into the pull request description. Keep the folder until they say they did, then delete it.
 
+### 9. Return to base branch
+
+Restore the working tree to the base branch so the workspace remains clean on the base branch for other tasks or subsequent reviews, but only where that is possible: in the main checkout, and when no other worktree holds the base branch.
+
+```bash
+[ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ] && ! git worktree list --porcelain | grep -qx "branch refs/heads/<base>" && git switch <base>
+```
+
+If the condition does not hold (a separate worktree, or the base branch is checked out elsewhere), do not switch: say which branch the working tree stays on. If `git switch` fails, say so; it never changes the verdict or the state of the issue, because the pull request already exists.
+
 ## Report
 
 Finish with one short block: the issue, the review verdict, the checklist result, the pull request link (or why none was opened), and the issue's new state.

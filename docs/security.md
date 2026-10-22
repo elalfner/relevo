@@ -32,6 +32,28 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 - **The review script of a driven review is not a sandbox.** The runner refuses a script that reaches the file system or the process, but that is a tripwire; `qa` reads the script first and you should read one that touches anything sensitive.
 - **A person is still the last barrier.** QA and the audit catch what they are written to catch. A pull request that looks right can still be wrong; `review.mode` of `peer` or `roles` puts a second person on it.
 
+## Which agent builds
+
+`agent.build` in `relevo.yml` chooses the agent of the cloud build: `claude` (the default) or `antigravity`. Everything in the first table that a script or the platform enforces is the same for both. What belongs to the agent's own runner is not, and this table says how it differs. "Partial" means the control exists but is weaker than it sounds.
+
+| Control | Claude Code | Antigravity CLI |
+|---|---|---|
+| Closed tool list, no web | enforced by the runner | **partial**: `permissions.allow` and `permissions.deny` in a user-level settings file that the workflow writes outside the repository, so a pull request cannot loosen them. It is a list of command prefixes: `node` can run any script, as Bash can for Claude |
+| Turn limit | enforced by the runner | enforced by Relevo's run guard, which reads the event stream and stops the agent; the tool has no limit of its own |
+| Cost limit | enforced by the runner (a real ceiling with an API key) | **does not exist.** `limits.run_max_tokens` (enforced by the guard) and the quota and budget of the Google Cloud project that owns the key are the ceiling; a budget alert is not a cap, so use a key made only for Relevo in its own project with a quota |
+| Skills that only a person may start | `disable-model-invocation` | the same key is honoured (seen on CLI 1.4.4) |
+| Credential | `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` | `GEMINI_API_KEY` |
+| The agent itself | the action at `@v1` | the binary, pinned by version and sha512 in the workflow |
+| `trust: public` | allowed | refused until a later change lifts it |
+
+What the table does not say, for Antigravity:
+
+- **The key is readable by the agent's commands.** `GEMINI_API_KEY` is an environment variable of the run, so the agent can read it. A key limited to the Gemini API, in a project with a quota, makes that harmless in the worst case.
+- **A refused tool does not fail the tool.** Antigravity exits 0 when a tool is refused. The guard reads the refusal from the event stream and fails the run, and says which tool.
+- **The guard counts what the tool reports.** A turn is a model response, of the main agent or of a subagent. Tokens are input plus output as the tool reports them; tokens read from the cache are not counted, so the limit is more lenient than the work the model did.
+- **A prefix list is not an operating-system boundary.** The closed list restricts which commands the agent may start, not what an allowed command does. This is the same limit as the one above for Claude.
+- **Not tried:** that the quality of the adversarial QA holds with a Gemini model; a full cloud run on a real runner (see the known limits in the changelog); whether the CLI can update itself during a run.
+
 ## On a public repository
 
 - Set `trust: public`. Only a maintainer's `ready` starts a run, nothing runs on content from forks, and `review.mode` cannot be `none`.
@@ -41,6 +63,6 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 
 ## Secrets
 
-- Secrets live only in the secret store of the repository: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for the model, and `RELEVO_LINKS_TOKEN` for the repositories in `links`.
+- Secrets live only in the secret store of the repository: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (or `GEMINI_API_KEY` with `agent.build: antigravity`) for the model, and `RELEVO_LINKS_TOKEN` for the repositories in `links`.
 - They never go in `relevo.yml`, in an issue or in a commit, and `/relevo:doctor` shows only whether a secret exists, never its value.
 - Workflows do not expose secrets to code that comes from forks.
