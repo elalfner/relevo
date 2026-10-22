@@ -1,0 +1,75 @@
+name: Deploy Supabase Migrations
+
+# Automatically applies migrations to Supabase Cloud after Relevo pull requests are merged.
+# - Push to base branch ('dev'): deploys to Staging.
+# - Push to release branch ('main'): deploys to Production (under GitHub Environment protection).
+
+on:
+  push:
+    branches:
+      - dev   # Relevo base branch (Staging)
+      - main  # Relevo release branch (Production)
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    if: github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link and Push Migrations to Staging
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID_STAGING }}
+          supabase db push
+
+      - name: Deploy Edge Functions (if present)
+        if: hashFiles('supabase/functions/**') != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy
+
+  deploy-production:
+    name: Deploy to Production
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    # Configure the 'production' environment in GitHub Settings > Environments with required reviewers
+    # so human approval is mandatory before this job executes.
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link and Push Migrations to Production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID_PROD }}
+          supabase db push
+
+      - name: Deploy Edge Functions (if present)
+        if: hashFiles('supabase/functions/**') != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy
