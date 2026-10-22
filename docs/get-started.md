@@ -7,7 +7,7 @@ This page takes you from nothing to your first merged pull request, working alon
 ## Before you start
 
 - **Claude Code**, installed and signed in.
-- **A GitHub repository** that you administer, with a project in Flutter, Vue or Laravel.
+- **A GitHub repository** that you administer, with a project in Flutter, Vue, Laravel or Supabase.
 - **The GitHub CLI** signed in (`gh auth status`), and `git`.
 - **Node.js 20.19 or newer**, which the OpenSpec tool needs.
 - **A model credential** for the cloud builds: an API key from the Anthropic Console, or a Claude subscription.

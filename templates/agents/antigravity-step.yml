@@ -1,0 +1,70 @@
+# What `relevo-go.yml` and `relevo-queue.yml` run when `agent.build` in relevo.yml is `antigravity`. This file is not a
+# workflow: each block below replaces, in the shared workflow, the lines between the markers with the same name, and
+# nothing else of the workflow changes (a test checks it). Edit the shared workflow for anything that is not about the
+# agent. Written for ubuntu-latest (x86-64).
+#
+# What Antigravity CLI cannot do on its own, and what stands in for it (docs/security.md):
+#   turn and token limits  the run guard (scripts/agent-guard.mjs) reads the event stream and stops the agent; the numbers
+#                          are those of relevo.yml (limits.run_max_turns, limits.run_max_tokens)
+#   cost limit             none: the quota and the budget of the Google Cloud project that owns the key are the ceiling.
+#                          Use a key made for Relevo, in its own project, with a quota
+#   refused tools          the agent exits 0 when a tool is refused; the guard reads the refusal and fails the run
+#   closed tool list       the settings file written below: the web is denied and only listed commands are allowed. It is
+#                          a prefix list, not an operating-system boundary: `node` can run any script, as Bash can for Claude
+#   the key                GEMINI_API_KEY is an environment variable of the agent's own commands, so the agent can read it
+#   the binary             pinned by version and sha512 below; to update it, copy the url and the checksum from
+#                          https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json
+
+# relevo:credential begin
+          # Without a model credential the cloud cannot build: the issue stays ready and a comment says to run it locally.
+          HAS_CREDENTIAL: ${{ secrets.GEMINI_API_KEY != '' }}
+# relevo:credential end
+
+# relevo:agent-step begin
+      # Antigravity CLI, at the version and with the checksum written here. The installer script of the vendor takes
+      # the latest version; this takes only the one that was tried.
+      - name: Install the Antigravity CLI
+        env:
+          AGY_VERSION: '1.4.4'
+          AGY_URL: https://storage.googleapis.com/antigravity-public/antigravity-cli/1.4.4-4783783166214144/linux-x64/cli_linux_x64.tar.gz
+          AGY_SHA512: 7ce149d350344c1046c7b59b6659bcc5d659f351bf3a07c6c085887d93427ceb89d927752e4ccd0844b53ffb91d33d6a49f72835ceb276c7cffdd13cfb8023b8
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/agy.tar.gz" "$AGY_URL"
+          echo "$AGY_SHA512  $RUNNER_TEMP/agy.tar.gz" | sha512sum --check --strict -
+          tar -xzf "$RUNNER_TEMP/agy.tar.gz" -C "$RUNNER_TEMP" antigravity
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 "$RUNNER_TEMP/antigravity" "$HOME/.local/bin/agy"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          [ "$("$HOME/.local/bin/agy" --version)" = "$AGY_VERSION" ] || { echo "::error::agy is not version $AGY_VERSION"; exit 1; }
+
+      # The Relevo plugin is rendered from the package unpacked in the step "Check the toolchain" and installed for the
+      # machine, so nothing is added to the working tree (the agent needs it clean). The settings of the run go to the
+      # user-level file of the CLI, outside the repository: a pull request cannot loosen them.
+      - name: Set up the Antigravity run
+        env:
+          PLATFORM: ${{ needs.decide.outputs.platform }}
+        run: |
+          for f in scripts/cli.mjs scripts/agent-guard.mjs; do
+            [ -f "$RUNNER_TEMP/relevo/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
+          node "$RUNNER_TEMP/relevo/scripts/cli.mjs" init --tools antigravity --scope machine --yes
+          node "$RUNNER_TEMP/relevo/scripts/agent-guard.mjs" settings --platform "$PLATFORM" --plugin-root "$RUNNER_TEMP/relevo" --out "$HOME/.gemini/antigravity-cli/settings.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # The issue text is data, never instructions: the skill tells the agent so. The decision the `decide` job already
+      # made travels with the prompt, encoded so that the issue title in it is never read as an instruction. Both
+      # values reach the shell as variables, never pasted into the script.
+      - id: agent
+        env:
+          OPENSPEC_TELEMETRY: '0'
+          GH_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          DECISION: ${{ needs.decide.outputs.decision_b64 }}
+        run: |
+          node "$RUNNER_TEMP/relevo/scripts/agent-guard.mjs" run \
+            --prompt "/relevo:go $ISSUE --decision $DECISION" \
+            --config relevo.yml --timeout-minutes 50 \
+            --summary "$RUNNER_TEMP/relevo-guard-summary.json" --github-output "$GITHUB_OUTPUT"
+# relevo:agent-step end

@@ -243,3 +243,15 @@ test('the forbidden ways of driving are named only to forbid them', () => {
     assert.match(l, /[Nn]ever|no `adb|not/, `a line names a forbidden tool without forbidding it: ${l}`);
   });
 });
+
+test('Scenario: Pull request opened successfully - review restores the working tree to the base branch', () => {
+  assert.match(body, /### 9\. Return to base branch/);
+  assert.match(body, /git switch <base>/);
+});
+
+test('Scenario: Review runs in a separate worktree - it does not switch, and a failed switch never changes the verdict', () => {
+  assert.match(body, /git rev-parse --git-common-dir/);
+  assert.match(body, /git worktree list --porcelain/);
+  assert.match(body, /do not switch: say which branch the working tree stays on/);
+  assert.match(body, /never changes the verdict or the state of the issue/);
+});

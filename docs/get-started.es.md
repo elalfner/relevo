@@ -7,7 +7,7 @@ Esta página te lleva de cero a tu primer pull request fusionado, trabajando sol
 ## Antes de empezar
 
 - **Claude Code**, instalado y con la sesión iniciada.
-- **Un repositorio de GitHub** que administres, con un proyecto en Flutter, Vue o Laravel.
+- **Un repositorio de GitHub** que administres, con un proyecto en Flutter, Vue, Laravel o Supabase.
 - **La CLI de GitHub** con la sesión iniciada (`gh auth status`), y `git`.
 - **Node.js 20.19 o más reciente**, que necesita la herramienta OpenSpec.
 - **Una credencial del modelo** para las construcciones en la nube: una clave de API de la consola de Anthropic, o una suscripción de Claude.

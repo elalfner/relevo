@@ -21,6 +21,8 @@ export const SKILL_INSTALL = {
   'grill-with-docs': 'run `npx skills add mattpocock/skills` and choose it',
   grilling: 'run `npx skills add mattpocock/skills` and choose it',
   'domain-modeling': 'run `npx skills add mattpocock/skills` and choose it',
+  supabase: 'run `npx skills add supabase/agent-skills --skill supabase`',
+  'supabase-postgres-best-practices': 'run `npx skills add supabase/agent-skills --skill supabase-postgres-best-practices`',
 };
 export const OPENSPEC_INSTALL = 'npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'];
@@ -35,6 +37,8 @@ const TOOL_INSTALL = {
   php: 'install PHP 8.2 or newer: https://www.php.net/downloads',
   composer: 'install Composer: https://getcomposer.org/download/',
   npm: 'install Node.js, which includes npm: https://nodejs.org/',
+  supabase: 'install the Supabase CLI: brew install supabase/tap/supabase or see https://supabase.com/docs/guides/cli',
+  docker: 'install Docker: https://docs.docker.com/get-docker/ (macOS: brew install --cask docker or brew install orbstack)',
 };
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -121,6 +125,8 @@ export function gatherFacts(p) {
   };
 
   f.node = process.versions.node;
+  f.packageVersion = tryRun(() => JSON.parse(readFileSync(resolve(PLUGIN_ROOT, 'package.json'), 'utf8')).version);
+  f.adapters = p.adapters ? tryRun(() => p.adapters(), []) : [];
   f.openspec = tryRun(() => String(p.tool('openspec', ['--version'])).trim());
   f.git = tryRun(() => Boolean(p.tool('git', ['--version'])), false);
   f.gh = tryRun(() => Boolean(p.tool('gh', ['--version'])), false);
@@ -314,7 +320,20 @@ function gatherPlatforms(f, p, tryRun) {
     const resolved = resolveProfile({ platform, pluginRoot, read });
     const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets, profile: resolved.ok ? resolved.profile : null, errors: resolved.ok ? [] : resolved.errors, tools: [], targetTools: [] };
     if (resolved.ok) {
-      entry.tools = resolved.profile.tools.map((tool) => ({ tool, ok: available(tool) }));
+      (resolved.profile.requires_skills ?? []).forEach((name) => {
+        if (f.skills[name] === undefined && p.skillDirs) {
+          const dir = p.skillDirs.find((d) => p.exists(`${d}/${name}`));
+          f.skills[name] = dir !== undefined;
+        }
+      });
+      entry.tools = resolved.profile.tools.map((tool) => {
+        if (tool === 'docker') {
+          const cliOk = available('docker');
+          const daemonOk = cliOk ? tryRun(() => Boolean(p.tool('docker', ['info'])), false) : false;
+          return { tool, ok: daemonOk, cliOk };
+        }
+        return { tool, ok: available(tool) };
+      });
       entry.targetTools = platform.targets.map((target) => {
         const tool = resolved.profile.targets[target] ?? '';
         return { target, tool, ok: tool === '' ? true : available(tool) };
@@ -378,6 +397,8 @@ function gatherPlatforms(f, p, tryRun) {
 function executionChecks(f) {
   if (!Array.isArray(f.secrets)) return [];
   const r = [];
+  // Antigravity builds with a Gemini key and has no cost limit of its own: the checks of the Anthropic credential do not apply.
+  if (f.config?.agent?.build === 'antigravity') return antigravityExecutionChecks(f);
   const { mode } = credentialMode(f.secrets);
   const goWorkflow = f.workflows?.['relevo-go.yml'];
   const installed = Boolean(goWorkflow?.present);
@@ -397,6 +418,19 @@ function executionChecks(f) {
     }
   }
 
+  const variable = f.cloudVariable ?? null;
+  if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
+  else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
+  else r.push(pass('execution.cloud', 'the go workflow is not installed: ready issues are built on machines with /relevo:go'));
+  return r;
+}
+
+/** Where `go` builds when the agent is Antigravity: the key by name, and what stands in for the limits it lacks. */
+function antigravityExecutionChecks(f) {
+  const r = [];
+  const installed = Boolean(f.workflows?.['relevo-go.yml']?.present);
+  if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('execution.credential', 'the cloud builds with a Gemini key: Antigravity has no cost limit, so limits.run_max_tokens (enforced by the run guard) and the quota of the Google Cloud project that owns the key are the ceiling; use a key made only for Relevo'));
+  else r.push(pass('execution.credential', installed ? 'no GEMINI_API_KEY secret: the cloud cannot build (see the warning about the secret)' : 'no GEMINI_API_KEY and no go workflow: go builds on machines only'));
   const variable = f.cloudVariable ?? null;
   if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
   else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
@@ -443,10 +477,14 @@ function platformChecks(f) {
     (e.profile.ignored ?? []).forEach((x) => {
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
-    e.tools.forEach(({ tool, ok }) => {
+    e.tools.forEach(({ tool, ok, cliOk }) => {
       if (seen.has(`tool:${tool}`)) return;
       seen.add(`tool:${tool}`);
-      r.push(ok ? pass(`tools.${tool}`, `${tool} is installed`) : fail(`tools.${tool}`, `${tool} is not installed (platform ${e.name}, stack ${e.stack})`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+      if (tool === 'docker' && !ok && cliOk) {
+        r.push(warn(`tools.docker`, `docker is installed but the engine is stopped (platform ${e.name}, stack ${e.stack})`, 'start Docker Desktop or OrbStack'));
+      } else {
+        r.push(ok ? pass(`tools.${tool}`, `${tool} is installed`) : fail(`tools.${tool}`, `${tool} is not installed (platform ${e.name}, stack ${e.stack})`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+      }
     });
     e.targetTools.forEach(({ target, tool, ok }) => {
       const id = `tools.target.${e.name}.${target}`;
@@ -457,6 +495,8 @@ function platformChecks(f) {
     });
     e.profile.requires_skills.forEach((name) => {
       if (f.skills[name] === undefined) r.push(warn(`skills.${name}`, `platform ${e.name} requires the skill ${name}; it was not checked`, SKILL_INSTALL[name] ?? `install the skill ${name}`));
+      else if (!f.skills[name]) r.push(warn(`skills.${name}`, `platform ${e.name} requires the skill ${name}, which is not installed`, SKILL_INSTALL[name] ?? `install the skill ${name}`));
+      else r.push(pass(`skills.${name}`, `skill ${name} is installed (platform ${e.name})`));
     });
   });
 
@@ -502,6 +542,7 @@ export function runChecks(f) {
   r.push(f.gh ? pass('tools.gh', 'the GitHub CLI is installed') : fail('tools.gh', 'the GitHub CLI (gh) is not installed', 'install it from https://cli.github.com'));
   if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
   r.push(...platformChecks(f));
+  r.push(...adapterChecks(f));
 
   // skills that think invokes
   REQUIRED_SKILLS.forEach((name) => {
@@ -564,7 +605,10 @@ export function runChecks(f) {
 
   // automation readiness
   if (f.secrets === null) r.push(warn('automation.secret', 'could not list the repository secrets', 'check that you may read them, or look in Settings > Secrets'));
-  else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) r.push(pass('automation.secret', 'a model credential secret exists'));
+  else if (f.config?.agent?.build === 'antigravity') {
+    if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('automation.secret', 'a model credential secret exists (GEMINI_API_KEY)'));
+    else r.push(warn('automation.secret', 'no GEMINI_API_KEY secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add a key made only for Relevo, in its own Google Cloud project with a quota, to the repository secrets (init never touches it); for local builds nothing is needed'));
+  } else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) r.push(pass('automation.secret', 'a model credential secret exists'));
   else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
 
   Object.entries(f.workflows).forEach(([file, w]) => {
@@ -639,6 +683,23 @@ function pluginInstallChecks(f) {
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
   if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'to move them, change RELEVO_VERSION to the installed version after reading the changelog'));
   return r;
+}
+
+/**
+ * The plugins that `relevo init` rendered for a tool other than Claude Code: a file that is gone is a failure (the
+ * plugin cannot run), a file of another package version or edited by hand is a warning, because a team chooses when it
+ * moves and may keep an edit on purpose.
+ */
+function adapterChecks(f) {
+  return (f.adapters ?? []).flatMap((a) => {
+    const id = `adapters.antigravity.${a.scope}`;
+    const name = `the Antigravity plugin of the ${a.scope} (${a.dir})`;
+    const r = [];
+    if (a.missing.length > 0) r.push(fail(id, `${name} lacks ${a.missing.slice(0, 5).join(', ')}${a.missing.length > 5 ? ` and ${a.missing.length - 5} more` : ''}`, 'run `relevo update`'));
+    if (f.packageVersion && a.package !== f.packageVersion) r.push(warn(`${id}.version`, `${name} was rendered by Relevo ${a.package}, and this one is ${f.packageVersion}`, 'run `relevo update`'));
+    if (a.edited.length > 0) r.push(warn(`${id}.edited`, `${name} has files edited by hand: ${a.edited.slice(0, 5).join(', ')}`, 'keep them, or run `relevo update --force` to overwrite them'));
+    return r.length > 0 ? r : [pass(id, `${name} is complete and up to date`)];
+  });
 }
 
 /** Text report. */

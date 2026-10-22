@@ -32,6 +32,28 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 - **El script de una revisión conducida no es un entorno aislado.** El ejecutor rechaza un script que toque el sistema de archivos o el proceso, pero eso es una alarma; `qa` lee el script antes y tú debes leer uno que toque algo sensible.
 - **Una persona sigue siendo la última barrera.** QA y la auditoría detectan lo que están escritas para detectar. Un pull request que parece correcto aún puede estar mal; `review.mode` en `peer` o `roles` pone a una segunda persona sobre él.
 
+## Qué agente construye
+
+`agent.build` en `relevo.yml` elige el agente de la construcción en la nube: `claude` (el predeterminado) o `antigravity`. Todo lo de la primera tabla que hace cumplir un script o la plataforma es igual para los dos. Lo que pertenece al ejecutor propio del agente no lo es, y esta tabla dice en qué se diferencia. "Parcial" significa que el control existe pero es más débil de lo que suena.
+
+| Control | Claude Code | Antigravity CLI |
+|---|---|---|
+| Lista cerrada de herramientas, sin web | lo hace cumplir el ejecutor | **parcial**: `permissions.allow` y `permissions.deny` en un archivo de ajustes a nivel de usuario que el workflow escribe fuera del repositorio, así que un pull request no puede aflojarlos. Es una lista de prefijos de comandos: `node` puede ejecutar cualquier script, como Bash para Claude |
+| Límite de turnos | lo hace cumplir el ejecutor | lo hace cumplir la guardia de ejecución de Relevo, que lee el flujo de eventos y detiene al agente; la herramienta no tiene un límite propio |
+| Límite de costo | lo hace cumplir el ejecutor (un tope real con una clave de API) | **no existe.** `limits.run_max_tokens` (que hace cumplir la guardia) y la cuota y el presupuesto del proyecto de Google Cloud dueño de la clave son el tope; una alerta de presupuesto no es un tope, así que usa una clave hecha solo para Relevo en su propio proyecto con una cuota |
+| Skills que solo una persona puede iniciar | `disable-model-invocation` | se respeta la misma clave (visto en la CLI 1.4.4) |
+| Credencial | `ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN` | `GEMINI_API_KEY` |
+| El agente en sí | la action en `@v1` | el binario, fijado por versión y sha512 en el workflow |
+| `trust: public` | permitido | rechazado hasta que un cambio posterior lo levante |
+
+Lo que la tabla no dice, para Antigravity:
+
+- **La clave la pueden leer los comandos del agente.** `GEMINI_API_KEY` es una variable de entorno de la ejecución, así que el agente puede leerla. Una clave limitada a la API de Gemini, en un proyecto con una cuota, hace que eso sea inofensivo en el peor caso.
+- **Una herramienta rechazada no hace fallar a la herramienta.** Antigravity sale con 0 cuando se rechaza una herramienta. La guardia lee el rechazo del flujo de eventos y hace fallar la ejecución, y dice cuál fue.
+- **La guardia cuenta lo que reporta la herramienta.** Un turno es una respuesta del modelo, del agente principal o de un subagente. Los tokens son entrada más salida como los reporta la herramienta; los tokens leídos de la caché no se cuentan, así que el límite es más holgado que el trabajo que hizo el modelo.
+- **Una lista de prefijos no es una frontera del sistema operativo.** La lista cerrada restringe qué comandos puede iniciar el agente, no lo que hace un comando permitido. Es el mismo límite que el de arriba para Claude.
+- **No probado:** que la calidad de la QA adversarial se mantenga con un modelo de Gemini; una ejecución completa en la nube sobre un ejecutor real (mira los límites conocidos del changelog); si la CLI puede actualizarse sola durante una ejecución.
+
 ## En un repositorio público
 
 - Pon `trust: public`. Solo el `ready` de un mantenedor inicia una ejecución, nada corre con contenido de forks, y `review.mode` no puede ser `none`.
@@ -41,6 +63,6 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 
 ## Secretos
 
-- Los secretos viven solo en el almacén de secretos del repositorio: `ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN` para el modelo, y `RELEVO_LINKS_TOKEN` para los repositorios de `links`.
+- Los secretos viven solo en el almacén de secretos del repositorio: `ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN` (o `GEMINI_API_KEY` con `agent.build: antigravity`) para el modelo, y `RELEVO_LINKS_TOKEN` para los repositorios de `links`.
 - Nunca van en `relevo.yml`, en un issue ni en un commit, y `/relevo:doctor` muestra solo si un secreto existe, nunca su valor.
 - Los workflows no exponen secretos al código que viene de forks.

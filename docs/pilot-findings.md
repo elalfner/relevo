@@ -372,3 +372,38 @@ Every label change starts two queue runs (the label is removed and another is ad
 2. Remove the duplicate dispatch (G5). Reduced by task 3.12 (claiming happens in the light job, within seconds); not removed entirely.
 3. Split `relevo-go.yml` into a light job that runs the gates and a heavy job that builds only when the decision is `start`. Done in task 3.12, not yet seen running on GitHub.
 4. Re-run this pilot with a second person to cover the untested parts.
+
+# Antigravity CLI, checked before building the adapter (change `antigravity-adapter`, group 1)
+
+Date: 2026-10-21. Antigravity CLI `agy` 1.4.4, macOS arm64, using the cached login of the Antigravity IDE (no API key). Everything below was observed with `agy -p` in scratch folders; nothing was run against a runner yet (task 1.5 is open).
+
+## What holds
+
+| Question | Observed |
+|---|---|
+| Headless output | `agy -p "<prompt>" --output-format json` returns `status`, `response`, `num_turns` (user turns, not model steps), `usage`; it did not hang without a terminal at 1.4.4 (the reports of the hang were on 1.2.x) |
+| `--print-timeout` | The default is `0s` (waits for the turn), not 5 minutes as the documentation says: always pass it, and wrap the call in an outer timeout |
+| `stream-json` | One event per step (`init`, `step_update` with `step_type`, `tool_name`, `tool_info`, per-step `usage`, then `result`); steps and tokens can be counted while it runs |
+| Skills in `.agents/skills/<name>/` | Run as `/<name> <args>` in print mode; `$ARGUMENTS` expands to the arguments |
+| `disable-model-invocation: true` | Honoured: such a skill is not offered to the model and still runs when typed |
+| Global skills of the IDE (`~/.gemini/config/skills/`) | The CLI sees them |
+| `disable-model-invocation` in a skill of a project plugin | Honoured as well: the skill is not offered to the model |
+| Deny rule `command(curl)` in `~/.gemini/antigravity-cli/settings.json` | Blocks the call: the tool step ends in `ERROR`, the run ends `SUCCESS`, exit 0 |
+| A command that no rule allows, headless | Auto-denied; exit 0; the JSON has `denied_actions` and stderr says so; the model sees a failed tool |
+| Subagent call | Does not block: the main agent says it is waiting and the result arrives later as a system message inside the same run |
+| `tools: [run_command, view_file]` (YAML list) in an agent | Honoured, plus a fixed base (`manage_task`, `send_message`, `list_resources`, `read_resource`, `call_mcp_tool`) |
+| `agy plugin install <folder>` of a Claude Code plugin | Converts it (skills and agents copied, a `plugin.json` written); `agy plugin validate` says so |
+| Plugin namespace | A plugin `relevo` with a skill `go` is `/relevo:go`, as in Claude Code |
+| Project plugin | A plugin folder in `<project>/.agents/plugins/<name>/` is read by the CLI |
+
+## What does not hold, or differs from Claude Code
+
+- **`${CLAUDE_PLUGIN_ROOT}` and `${PLUGIN_ROOT}` are not set and not substituted in a skill.** The model improvised a lookup (`find`) instead, which is fragile and defeats a command allow rule. The installed path has to be written into the text.
+- **A converted Claude agent has no command tool.** `disallowedTools` is ignored, `model: sonnet` makes a native agent fail to load, `tools: A, B` as a string makes it fail to load (it must be a YAML list), and with no `tools` it gets only reading tools: it could not run the project's tests.
+- Agent tool names are the tool's own: `run_command`, `view_file`, `read_file`, `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `sed_file`, `grep_search`, `find_by_name`, `list_dir`, `search_web`, `read_url_content`, `invoke_subagent`. Permission rules use other action names (`command`, `read_file`, `write_file`, `read_url`, `execute_url`).
+- In a native plugin, agents declared in `agents.json` use `{"entries":[{"path":"..."}]}`; an agent's name is the one in its frontmatter, without the plugin prefix.
+- **Command rules apply to each command of a chain.** With only `command(node)` and `command(git)` allowed, `git status --short && node -v` and `cd /tmp && node -v` ran (`cd` needs no rule), and `node -v | cat` was denied because `cat` is not allowed. The allow list must name every program a skill pipes into.
+- **A subagent inherits the parent's allow rules and the default `commandExecutionPolicy` is enough.** A subagent with `tools: [run_command, view_file, write_to_file]` ran `node -v`, `git status --short`, `npm view left-pad version` (network) and a file write in the workspace, both with the default policy and with `commandExecutionPolicy: auto`.
+- **A subagent's result reaches the run via Reactive Wakeup.** The main agent states that it is waiting for the report and ends its turn without tool calls; the result arrives as a system message and the main agent is reactivated. Polling with `manage_subagents` must be forbidden in the skill prompt, as telling the agent "never end your turn" causes busy-wait loops.
+- **`command_status` is not in Antigravity's tool registry.** Mapping Claude's `Bash` tool to `['run_command', 'command_status']` breaks subagent executor creation (`failed to construct executor: unknown component: tool "command_status" not found`). It must map to `run_command` only.
+- **Not yet checked:** a keyless login on a runner, a real key on a runner.

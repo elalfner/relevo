@@ -242,3 +242,43 @@ test('Scenario: Invalid value - design.images must be true or false and the erro
     assert.ok(r.errors.some((e) => e.path === 'design.images' && /true or false/.test(e.message)), v);
   });
 });
+
+test('agent.build defaults to claude, and only claude and antigravity are accepted', () => {
+  assert.equal(loadConfig(MINIMAL).config.agent.build, 'claude');
+  const { ok, errors } = loadConfig('agent:\n  build: gemini\nlimits:\n  run_max_cost: 5\n');
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'agent.build' && /allowed values/.test(e.message)));
+});
+
+test('Scenario: A cost limit with Antigravity - validation fails and says what is the limit instead', () => {
+  const { ok, errors } = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\n');
+  assert.equal(ok, false);
+  const e = errors.find((x) => x.path === 'limits.run_max_cost');
+  assert.match(e.message, /no effect with agent\.build "antigravity"/);
+  assert.match(e.message, /limits\.run_max_tokens/);
+  assert.match(e.message, /quota of the Google Cloud project/);
+});
+
+test('with Antigravity the token limit is required, and a valid configuration needs no cost limit', () => {
+  const missing = loadConfig('agent:\n  build: antigravity\n');
+  assert.ok(missing.errors.some((e) => e.path === 'limits.run_max_tokens' && /is required/.test(e.message)));
+  assert.ok(!missing.errors.some((e) => e.path === 'limits.run_max_cost'), 'the cost limit is not asked for');
+  const good = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\n');
+  assert.equal(good.ok, true, JSON.stringify(good.errors));
+  assert.equal(good.config.limits.run_max_tokens, 2000000);
+  assert.equal(good.config.limits.run_max_cost, null);
+  assert.ok(loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 10\n').errors.some((e) => e.path === 'limits.run_max_tokens' && />= 1000/.test(e.message)));
+});
+
+test('with Claude the token limit has no effect and is refused, so no one believes it limits the run', () => {
+  const { ok, errors } = loadConfig('limits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\n');
+  assert.equal(ok, false);
+  assert.match(errors.find((e) => e.path === 'limits.run_max_tokens').message, /no effect with agent\.build "claude": the run is limited by limits\.run_max_cost/);
+});
+
+test('Scenario: Public repositories - trust public is refused with Antigravity', () => {
+  const { ok, errors } = loadConfig('trust: public\nagent:\n  build: antigravity\nreview:\n  mode: peer\nlimits:\n  run_max_tokens: 2000000\n');
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'trust' && /antigravity/.test(e.message)));
+  assert.equal(loadConfig('trust: public\nlimits:\n  run_max_cost: 5\n').ok, true, 'with Claude it still works');
+});

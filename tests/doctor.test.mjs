@@ -745,6 +745,74 @@ test('a Laravel platform with a target is refused by validation, so doctor never
   assert.equal(f.config, null);
 });
 
+const TS = '  backend:\n    stack: supabase\n    path: supabase\n';
+
+test('Scenario: Supabase platform - tools supabase and docker are probed and pass when present and engine running', () => {
+  const f = stackFacts(TS);
+  assert.equal(f.platformFacts[0].profile !== null, true);
+  assert.deepEqual(f.platformFacts[0].tools.map((t) => t.tool), ['supabase', 'docker']);
+  const results = stackChecks(f);
+  assert.equal(byId(results, 'tools.supabase').status, 'pass');
+  assert.equal(byId(results, 'tools.docker').status, 'pass');
+});
+
+test('Supabase CLI missing fails naming the platform and the install hint', () => {
+  const results = stackChecks(stackFacts(TS, ['supabase']));
+  const sb = byId(results, 'tools.supabase');
+  assert.equal(sb.status, 'fail');
+  assert.match(sb.message, /supabase is not installed \(platform backend, stack supabase\)/);
+  assert.match(sb.fix, /brew install supabase/);
+});
+
+test('Docker CLI missing fails naming the platform and the install hint', () => {
+  const results = stackChecks(stackFacts(TS, ['docker']));
+  const dk = byId(results, 'tools.docker');
+  assert.equal(dk.status, 'fail');
+  assert.match(dk.message, /docker is not installed \(platform backend, stack supabase\)/);
+  assert.match(dk.fix, /install Docker/);
+});
+
+test('Docker CLI present but engine stopped warns and instructs to start Docker Desktop or OrbStack', () => {
+  const text = `limits:\n  run_max_cost: 5\nplatforms:\n${TS}`;
+  const f = gatherFacts({
+    tool: (name, args) => {
+      if (name === 'docker' && args && args[0] === 'info') throw new Error('Cannot connect to daemon');
+      return 'ok';
+    },
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p === 'relevo.yml', read: () => text, listDir: () => [], skillDirs: [], repo: null,
+  });
+  const results = stackChecks(f);
+  const dk = byId(results, 'tools.docker');
+  assert.equal(dk.status, 'warn');
+  assert.match(dk.message, /docker is installed but the engine is stopped/);
+  assert.match(dk.fix, /start Docker Desktop or OrbStack/);
+});
+
+test('Supabase required skills are reported by doctor when missing or present', () => {
+  const text = `limits:\n  run_max_cost: 5\nplatforms:\n${TS}`;
+  const fMissing = gatherFacts({
+    tool: () => 'ok',
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p === 'relevo.yml', read: () => text, listDir: () => [], skillDirs: ['.agents/skills'], repo: null,
+  });
+  const resMissing = stackChecks(fMissing);
+  const skillWarn = byId(resMissing, 'skills.supabase');
+  assert.equal(skillWarn.status, 'warn');
+  assert.match(skillWarn.message, /platform backend requires the skill supabase/);
+  assert.match(skillWarn.fix, /npx skills add supabase\/agent-skills/);
+
+  const fPresent = gatherFacts({
+    tool: () => 'ok',
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p === 'relevo.yml' || p === '.agents/skills/supabase' || p === '.agents/skills/supabase-postgres-best-practices',
+    read: () => text, listDir: () => [], skillDirs: ['.agents/skills'], repo: null,
+  });
+  const resPresent = stackChecks(fPresent);
+  assert.equal(byId(resPresent, 'skills.supabase').status, 'pass');
+  assert.equal(byId(resPresent, 'skills.supabase-postgres-best-practices').status, 'pass');
+});
+
 test('the version a workflow pins is read from RELEVO_VERSION, and null when there is none', () => {
   const f = gatherFacts(probes({ localFiles: {}, remote: { 'relevo-queue.yml': "env:\n  RELEVO_VERSION: '0.2.0'\n", 'relevo-sla.yml': 'name: sla\n' } }));
   assert.equal(f.pluginPins['relevo-queue.yml'], '0.2.0');
@@ -820,4 +888,31 @@ test('gatherFacts reads the settings file through the probes', () => {
 test('the plugin declaration is judged without a GitHub sign-in, because the settings file is local', () => {
   const r = runChecks({ ...healthy({ pluginDeclared: { declared: false } }), repo: null, ghAuth: false });
   assert.equal(byId(r, 'plugin.declared').status, 'warn');
+});
+
+test('Scenario: Outdated plugin - a rendered Antigravity plugin is checked: complete, other version, edited by hand, missing file', () => {
+  const adapter = (over) => ({ scope: 'project', dir: '/r/.agents/plugins/relevo', package: '0.4.0', edited: [], missing: [], ...over });
+  const run = (adapters) => runChecks(healthy({ packageVersion: '0.4.0', adapters }));
+  assert.equal(byId(run([adapter()]), 'adapters.antigravity.project').status, 'pass');
+  assert.equal(run([]).filter((r) => r.id.startsWith('adapters.')).length, 0, 'nothing to say when no plugin was rendered');
+  const old = byId(run([adapter({ package: '0.3.0' })]), 'adapters.antigravity.project.version');
+  assert.equal(old.status, 'warn');
+  assert.match(old.message, /rendered by Relevo 0\.3\.0, and this one is 0\.4\.0/);
+  assert.match(old.fix, /relevo update/);
+  const edited = byId(run([adapter({ edited: ['skills/go/SKILL.md'] })]), 'adapters.antigravity.project.edited');
+  assert.equal(edited.status, 'warn');
+  assert.match(edited.fix, /--force/);
+  const gone = byId(run([adapter({ scope: 'machine', dir: '/h/.gemini/config/plugins/relevo', missing: ['plugin.json'] })]), 'adapters.antigravity.machine');
+  assert.equal(gone.status, 'fail');
+  assert.match(gone.message, /lacks plugin\.json/);
+});
+
+test('Scenario: Antigravity builds - the secret is GEMINI_API_KEY and there is no Anthropic credential to look for', () => {
+  const antigravity = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\n').config;
+  const run = (secrets) => runChecks(healthy({ config: antigravity, secrets }));
+  assert.equal(byId(run(['GEMINI_API_KEY']), 'automation.secret').status, 'pass');
+  assert.match(byId(run(['GEMINI_API_KEY']), 'execution.credential').message, /no cost limit[\s\S]*limits\.run_max_tokens[\s\S]*quota of the Google Cloud project/);
+  assert.equal(byId(run(['ANTHROPIC_API_KEY']), 'automation.secret').status, 'warn', 'an Anthropic key does not build with Antigravity');
+  assert.match(byId(run([]), 'automation.secret').fix, /key made only for Relevo/);
+  assert.equal(byId(run(['GEMINI_API_KEY']), 'execution.policy'), undefined, 'no subscription reminder');
 });

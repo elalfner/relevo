@@ -59,6 +59,7 @@ try {
 
 const templates = {
   config: readFileSync(`${root}/templates/relevo.yml`, 'utf8'),
+  agentBlocks: answers.agentBuild && answers.agentBuild !== 'claude' ? readFileSync(`${root}/templates/agents/${answers.agentBuild}-step.yml`, 'utf8') : null,
   workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, readFileSync(`${root}/templates/workflows/${f}`, 'utf8')])),
 };
 const keepPaths = ['openspec/specs/.gitkeep', 'openspec/changes/archive/.gitkeep'];

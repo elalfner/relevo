@@ -5,16 +5,38 @@
 //   capture(cmd, args, { cwd }) -> stdout (throws when the command fails)
 //   stream(cmd, args, { cwd, env }) -> exit status (the output goes to the terminal); throws with code ENOENT when missing
 
+import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { cloudBuilds } from './execution-mode.mjs';
 import { runFlags } from './run-flags.mjs';
 
 export const WORKTREES_FOLDER = '.relevo-worktrees';
+// The guard is part of the plugin, not of the project that is built, so it is found next to this file.
+const GUARD = fileURLToPath(new URL('../agent-guard.mjs', import.meta.url));
+// The same time limit as the cloud step of the Antigravity agent.
+export const GUARD_TIMEOUT_MINUTES = 50;
 
-/** What a local run will do, without doing it: the worktree and the `claude` command. Pure. */
+/** What a local run will do, without doing it: the worktree and the `claude` or `agy` command. Pure. */
 export function planLocalRun({ issue, repoRoot, config }) {
   const base = config.branches.base;
   const worktree = join(dirname(repoRoot), WORKTREES_FOLDER, `${basename(repoRoot)}-${issue}`);
+  const isAntigravity = config.agent?.build === 'antigravity';
+  const command = isAntigravity
+    ? ['node', [
+        GUARD,
+        'run',
+        '--prompt',
+        `/relevo:go ${issue}`,
+        '--config',
+        'relevo.yml',
+        '--timeout-minutes',
+        String(GUARD_TIMEOUT_MINUTES),
+        // outside the worktree, so a clean end can remove it and the agent finds the tree clean
+        '--summary',
+        join(tmpdir(), `relevo-guard-${basename(repoRoot)}-${issue}.json`),
+      ]]
+    : ['claude', ['-p', `/relevo:go ${issue}`, ...runFlags(config)]];
   return {
     issue,
     base,
@@ -23,9 +45,9 @@ export function planLocalRun({ issue, repoRoot, config }) {
       ['fetch', 'origin', base],
       ['worktree', 'add', '--detach', worktree, `origin/${base}`],
     ],
-    claude: ['claude', ['-p', `/relevo:go ${issue}`, ...runFlags(config)]],
+    claude: command,
     // Without this the agent may start a subagent in the background and end the run before it finishes.
-    env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' },
+    env: isAntigravity ? {} : { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' },
   };
 }
 
@@ -45,6 +67,7 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
     return { status: 2, worktree: null, removed: false, messages: ['not inside a git repository'] };
   }
   const plan = planLocalRun({ issue: String(issue), repoRoot, config });
+  const isAntigravity = config.agent?.build === 'antigravity';
 
   if (dryRun) {
     say(`worktree: ${plan.worktree} (from origin/${plan.base})`);
@@ -84,7 +107,10 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
     status = runner.stream(plan.claude[0], plan.claude[1], { cwd: plan.worktree, env: plan.env });
   } catch (err) {
     status = err.code === 'ENOENT' ? 127 : 1;
-    say(err.code === 'ENOENT' ? 'the claude command was not found: install Claude Code and the Relevo plugin' : `the run could not start: ${err.message}`);
+    const missing = config.agent?.build === 'antigravity'
+      ? 'the agy or node command was not found: install the Antigravity CLI'
+      : 'the claude command was not found: install Claude Code and the Relevo plugin';
+    say(err.code === 'ENOENT' ? missing : `the run could not start: ${err.message}`);
   }
 
   if (status === 0) {
@@ -97,6 +123,7 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
       return { status: 0, worktree: plan.worktree, removed: false, messages };
     }
   }
+  if (isAntigravity && status === 2) say('the run guard refused to start (usage error): see its message above');
   say(`the run ended with status ${status}; the worktree is kept for inspection: ${plan.worktree}`);
   return { status, worktree: plan.worktree, removed: false, messages };
 }

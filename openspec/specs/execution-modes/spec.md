@@ -72,11 +72,19 @@ After a cloud run, a comment on the issue SHALL give the number of turns, the co
 - **THEN** no comment is posted and the run is not reported as failed
 
 ### Requirement: A local run uses the same limits and tools as the cloud
-`go-local.mjs <issue>` SHALL run `/relevo:go <issue>` with `claude -p` on the person's machine, with the turn and cost limits of `relevo.yml` and the closed lists of allowed and disallowed tools that the workflow uses, written by one shared function. It SHALL warn when the cloud is also able to build the issue.
+`go-local.mjs <issue>` SHALL run `/relevo:go <issue>` in a separate git worktree using the runner configured by `agent.build` (`claude` with `claude -p` or `antigravity` with `agent-guard.mjs run` and `agy`), applying the respective turn, cost or token limits from `relevo.yml` and the tool restrictions of the workflow. With `antigravity` it SHALL pass the guard only arguments the guard accepts, and a run the guard refuses to start SHALL keep the worktree and print its path. It SHALL warn when the cloud is also able to build the issue.
 
 #### Scenario: Local build
 - **WHEN** the person runs `go-local.mjs 42`
-- **THEN** a worktree is created from the base branch, `claude -p "/relevo:go 42"` runs there with the flags of the workflow, and on a clean end the worktree is removed
+- **THEN** a worktree is created from the base branch, the agent runs there with the limits and flags of the workflow, and on a clean end the worktree is removed
+
+#### Scenario: Local build with Antigravity
+- **WHEN** `agent.build` is `antigravity` and the person runs `go-local.mjs 42`
+- **THEN** a worktree is created from the base branch, `agent-guard.mjs run` starts `agy` there for `/relevo:go 42` with the turn and token limits of `relevo.yml`, a time limit and a summary file outside the repository, and on a clean end the worktree is removed
+
+#### Scenario: The guard rejects the command
+- **WHEN** `agent.build` is `antigravity` and `agent-guard.mjs` exits with its usage code
+- **THEN** the run is reported as failed, the worktree is kept and its path is printed
 
 ### Requirement: A local run can be started from the go command
 `/relevo:go <issue> --local` SHALL run `go-local.mjs` for the issue and stop, instead of building in the interactive session, because the interactive session has neither the closed tool lists nor a worktree of its own.
@@ -86,7 +94,7 @@ After a cloud run, a comment on the issue SHALL give the number of turns, the co
 - **THEN** the skill runs `go-local.mjs 42`, shows its output and does not build in the session
 
 ### Requirement: A local run has its own working tree
-`go-local.mjs` SHALL run in a separate `git worktree` outside the repository's working tree, so that the person's uncommitted changes do not stop it, SHALL remove the worktree when the run ends cleanly and SHALL keep it, printing its path, otherwise.
+`go-local.mjs` and interactive Antigravity local builds SHALL run in a separate working tree outside the repository's main working tree, so that the person's uncommitted changes and concurrent sessions do not stop it or collide, SHALL remove the worktree when the run ends cleanly and SHALL keep it, printing its path, otherwise.
 
 #### Scenario: Uncommitted changes in the repository
 - **WHEN** the working tree of the repository has uncommitted changes
@@ -99,6 +107,25 @@ After a cloud run, a comment on the issue SHALL give the number of turns, the co
 #### Scenario: Cloud can also build it
 - **WHEN** the go workflow is installed, a credential exists and the variable is not `off`
 - **THEN** the command warns that the cloud may start the same issue and suggests setting `RELEVO_CLOUD_GO` to `off`
+
+### Requirement: An interactive Antigravity run executes in an isolated workspace
+When `/relevo:go <issue>` is executed in an interactive Antigravity chat without `--local`, the skill SHALL NOT switch branches or commit files on the repository root working tree. It SHALL delegate execution to an isolated builder subagent using `invoke_subagent` with `TypeName: "self"`, `Role: "relevo-builder"`, and `Workspace: 'share'`. The chat orchestrator SHALL arm a defensive timeout watchdog via `schedule` with `TimerCondition` referencing the builder's conversation ID, and SHALL explicitly terminate the builder subagent with `manage_subagents(Action: "kill")` upon receiving the final completion report or upon timeout, ensuring that ephemeral worktrees are destroyed and concurrent chat conversations do not collide.
+
+#### Scenario: Multiple concurrent Antigravity chats
+- **WHEN** a user triggers `/relevo:go 1` in Chat 1 and `/relevo:go 2` in Chat 2 within the same Antigravity window
+- **THEN** each chat dispatches its build via `Workspace: 'share'`, keeping the main repository root intact on its base branch and isolating commits and OpenSpec changes to their respective worktrees
+
+#### Scenario: Explicit self builder subagent
+- **WHEN** the skill `go` is rendered for Antigravity
+- **THEN** the interactive instructions mandate invoking `invoke_subagent` with `TypeName: "self"` and `Role: "relevo-builder"` rather than referencing an unregistered agent type name
+
+#### Scenario: Defensive watchdog timer
+- **WHEN** the interactive orchestrator launches the builder subagent
+- **THEN** it sets a safety timer via `schedule` with `TimerCondition` set to the builder conversation ID, waking up and taking the failure path if the builder hangs or crashes silently
+
+#### Scenario: Ephemeral worktree cleanup on completion
+- **WHEN** the interactive orchestrator receives the builder subagent's final report or reaches watchdog timeout
+- **THEN** it terminates the subagent via `manage_subagents(Action: "kill")`, releasing session memory and ensuring the ephemeral worktree is deleted
 
 ### Requirement: The build installs the toolchain of the stack of the issue
 The build job of the go workflow template SHALL install, without the project editing the template, the toolchain of each stack Relevo ships a profile for, each step guarded by the stack output of the decision job, so that only the toolchain of the platform of the issue is installed and the agent and QA can run the project's checks. Installing the dependencies of the project SHALL stay a choice of the project.

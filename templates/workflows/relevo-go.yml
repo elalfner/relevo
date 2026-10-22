@@ -15,7 +15,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.4.0'
+  RELEVO_VERSION: '0.5.0'
 
 on:
   issues:
@@ -82,8 +82,10 @@ jobs:
           GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          # relevo:credential begin
           # Without a model credential the cloud cannot build: the issue stays ready and a comment says to run it locally.
           HAS_CREDENTIAL: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          # relevo:credential end
         run: node .relevo-plugin/scripts/go-plan.mjs --repo "$GITHUB_REPOSITORY" --only "$ISSUE" --apply --claim --credential "$HAS_CREDENTIAL" --github-output "$GITHUB_OUTPUT"
 
       # See the same step in `build`. A failure before the issue is claimed (the plugin cannot be cloned, the
@@ -194,6 +196,7 @@ jobs:
           echo "::error::The runner has no $missing, so nothing was built"
           exit 1
 
+      # relevo:agent-step begin
       - id: agent
         uses: anthropics/claude-code-action@v1
         env:
@@ -233,6 +236,7 @@ jobs:
             --max-budget-usd 5
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
             --disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)"
+      # relevo:agent-step end
 
       # The scripts of the next two steps come from the plugin package. It is unpacked into the workspace only now, after the agent has
       # finished, because the agent's preflight needs a clean working tree and a checkout inside it would not be.

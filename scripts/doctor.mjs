@@ -6,6 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { adapterFacts } from './lib/adapters/install.mjs';
 import { gatherFacts, readOnlyGh, renderReport, runChecks } from './lib/doctor.mjs';
 
 const arg = (name) => {
@@ -31,7 +32,16 @@ const readFolder = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e
   return e.isFile() ? [{ path: e.name, content: readFileSync(path) }] : [];
 });
 
+const repoTop = (() => {
+  try {
+    return tool('git', ['rev-parse', '--show-toplevel']).trim() || null;
+  } catch {
+    return null;
+  }
+})();
+
 const facts = gatherFacts({
+  adapters: () => adapterFacts({ root: repoTop, home: homedir() }),
   tool,
   gh: readOnlyGh(gh),
   exists: existsSync,
