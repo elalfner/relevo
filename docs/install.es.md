@@ -44,13 +44,13 @@ relevo init --tools claude,antigravity --scope project
 - **Mantenlo al día.** `relevo update` vuelve a generar el plugin, y `relevo doctor` (y `/relevo:doctor`) avisan de un archivo que falta, de uno de otra versión y de uno editado a mano. `update` no sobrescribe un archivo editado salvo que pases `--force`.
 - **La carpeta del plugin no puede tener un espacio** (ni un carácter de shell) en su ruta, porque las skills ejecutan sus scripts por esa ruta; el comando lo dice y no cambia nada.
 - **`relevo init` no es `/relevo:init`.** El comando deja en su sitio los archivos de Relevo para una herramienta; la skill prepara las etiquetas, las reglas y los workflows del repositorio. Haz las dos cosas.
-- **Qué cambia respecto de Claude Code:** la construcción en la nube y lo que puede hacer cumplir ([Seguridad](security.es.md#qué-agente-construye)), y `/relevo:go <n> --local`, que inicia `claude` y por tanto es para Claude Code; en Antigravity ejecutas `/relevo:go <n>` en la propia sesión. Una construcción completa con Antigravity, local o en la nube, no se ha probado de extremo a extremo.
+- **Qué cambia respecto de Claude Code:** la construcción en la nube y lo que puede hacer cumplir ([Seguridad](security.es.md#qué-agente-construye)), y `/relevo:go <n> --local`, que inicia `claude`, o `agy` cuando `agent.build` es `antigravity`, en un worktree aparte; en una sesión de Antigravity `/relevo:go <n>` ya construye en un worktree aislado propio. Una construcción completa con Antigravity, local o en la nube, no se ha probado de extremo a extremo.
 
 ## Qué necesitas
 
 - **Claude Code**, donde corre el plugin.
 - **Un repositorio de GitHub.** La versión 1 usa GitHub para los issues, los pull requests y las Actions.
-- **Un proyecto en Flutter, Vue o Laravel.** Son los stacks para los que Relevo trae un perfil; en Flutter, `review` funciona hoy con Android en un dispositivo (la web necesita el autopilot, que está desactivado por defecto). Los demás stacks se declaran en [Stacks y plataformas](stacks.es.md).
+- **Un proyecto en Flutter, Vue, Laravel o Supabase.** Son los stacks para los que Relevo trae un perfil; en Flutter, `review` funciona hoy con Android en un dispositivo (la web necesita el autopilot, que está desactivado por defecto). Los demás stacks se declaran en [Stacks y plataformas](stacks.es.md).
 - **Herramientas con las que Relevo trabaja pero que no incluye:** la herramienta de línea de comandos de [OpenSpec](https://github.com/Fission-AI/OpenSpec) (Node.js 20.19 o más reciente), `git`, la CLI de GitHub (`gh`), la toolchain de tu plataforma y, para `think`, las skills que aparecen en [Comandos](commands.es.md#skills-que-usa-think). `/relevo:init` ofrece instalar lo que falte, un comando a la vez.
 - **Un secreto con la clave de API del modelo** en los secretos de GitHub Actions del repositorio, para las ejecuciones sin supervisión.
 - **Protección de ramas en la rama de integración.** En GitHub necesita un repositorio público o un plan de pago. Sin ella, aprobar y mergear solo se impone con la confirmación escrita que pide `ship`.
