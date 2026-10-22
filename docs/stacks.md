@@ -63,7 +63,7 @@ Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:g
 | 2 | `platforms.<name>.checks` in `relevo.yml` | Another command for a check, for example `fvm flutter test`. |
 | 3 | `.relevo/stacks/<stack>.md` | More hygiene, tools or skills for a stack. It adds to the plugin's profile and never replaces it. A stack the plugin does not ship is defined only by this file. |
 
-`/relevo:init` can create a commented file for the third layer. `/relevo:doctor` shows which layers each platform uses.
+`/relevo:init` can create a commented file for the third layer and leaves it for you to commit. Commit it: the cloud run and your teammates read it from git, so a file that stays only on your machine applies only there. `/relevo:doctor` shows which layers each platform uses, and warns while that file is not tracked by git.
 
 ## Extra skills per role
 

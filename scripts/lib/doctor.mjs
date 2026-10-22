@@ -13,7 +13,7 @@ import { loadConfig } from './config.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget } from './role-skills.mjs';
-import { ROLES, profileLocations, profileLookups, resolveProfile } from './stack-profile.mjs';
+import { ROLES, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
 export const SKILL_INSTALL = {
@@ -338,6 +338,14 @@ function gatherPlatforms(f, p, tryRun) {
         const tool = resolved.profile.targets[target] ?? '';
         return { target, tool, ok: tool === '' ? true : available(tool) };
       });
+      // The cloud and a fresh clone read the repository's layer from git, not from this working copy. `null` means
+      // git could not say (no git, or not a repository).
+      if (resolved.profile.layers.includes('repository')) {
+        const path = repositoryProfilePath(platform.stack);
+        if (!f.git) entry.repositoryLayerTracked = null;
+        else if (tryRun(() => { p.tool('git', ['ls-files', '--error-unmatch', path]); return true; }, false)) entry.repositoryLayerTracked = true;
+        else entry.repositoryLayerTracked = tryRun(() => { p.tool('git', ['rev-parse', '--is-inside-work-tree']); return true; }, false) ? false : null;
+      }
     }
     f.platformFacts.push(entry);
   });
@@ -474,6 +482,11 @@ function platformChecks(f) {
     }
     const layers = e.profile.layers.map((l) => (l === 'plugin' ? 'default of the plugin' : `.relevo/stacks/${e.stack}.md`)).join(' + ');
     r.push(pass(`platform.${e.name}.profile`, `platform ${e.name} (${e.stack}, ${e.path}): profile = ${layers}`));
+    if (e.repositoryLayerTracked === false) {
+      const path = `.relevo/stacks/${e.stack}.md`;
+      const effect = e.profile.layers.includes('plugin') ? `use only the plugin's profile for ${e.stack}, without your rules` : `have no profile for ${e.stack}`;
+      r.push(warn(`platform.${e.name}.profile.tracked`, `platform ${e.name}: ${path} is not tracked by git, so the cloud run and a fresh clone ${effect}`, `commit ${path} and push it with the rest of the repository's Relevo files`));
+    }
     (e.profile.ignored ?? []).forEach((x) => {
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });

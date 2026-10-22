@@ -232,7 +232,7 @@ test('Scenario: Existing legacy configuration - init keeps relevo.yml as it is',
   assert.equal(items.find((i) => i.id === 'config').content, undefined);
 });
 
-test('Scenario: the optional profile of the repository is created only when asked for, is not committed, and parses', async () => {
+test('Scenario: the optional profile of the repository is created only when asked for, is left for the person to commit, and parses', async () => {
   const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
   const facts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: {} };
   const without = planInit({ facts, answers: ANSWERS, templates, current: empty(), admin: true });
@@ -240,6 +240,7 @@ test('Scenario: the optional profile of the repository is created only when aske
   const asked = planInit({ facts, answers: { ...ANSWERS, stackProfiles: ['flutter'] }, templates, current: empty(), admin: true }).find((i) => i.id === 'stack-profile.flutter');
   assert.equal(asked.status, 'todo');
   assert.equal(asked.path, '.relevo/stacks/flutter.md');
+  assert.match(asked.description, /left for you to commit/);
   const parsed = parseProfile(asked.content);
   assert.deepEqual(parsed.errors, []);
   assert.equal(parsed.profile.stack, 'flutter');

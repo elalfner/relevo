@@ -4,6 +4,14 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`doctor` warns when the repository's profile is not in git.** When a platform's profile uses `.relevo/stacks/<stack>.md` and git does not track that file, `doctor` warns that the cloud run and a fresh clone use only the plugin's profile (or have no profile, for a stack the plugin does not ship) and says to commit it.
+
+### Fixed
+
+- **`init` no longer says the repository's profile is "not committed".** The words were read as "keep it out of git". The plan, the skill and the docs now say that `.relevo/stacks/<stack>.md` is created and left for you to commit, like `.claude/settings.json`, and the report names it among the new files to commit and push.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added

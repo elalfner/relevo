@@ -63,7 +63,7 @@ Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` 
 | 2 | `platforms.<nombre>.checks` en `relevo.yml` | Otro comando para una verificación, por ejemplo `fvm flutter test`. |
 | 3 | `.relevo/stacks/<stack>.md` | Más higiene, herramientas o skills para un stack. Se suma al perfil del plugin y nunca lo reemplaza. Un stack que el plugin no trae se define solo con este archivo. |
 
-`/relevo:init` puede crear un archivo comentado para la tercera capa. `/relevo:doctor` muestra qué capas usa cada plataforma.
+`/relevo:init` puede crear un archivo comentado para la tercera capa y lo deja para que le hagas commit. Hazle commit: la ejecución en la nube y tus compañeros lo leen de git, así que un archivo que se queda solo en tu máquina solo aplica ahí. `/relevo:doctor` muestra qué capas usa cada plataforma, y avisa mientras git no rastree ese archivo.
 
 ## Skills extra por rol
 

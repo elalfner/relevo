@@ -46,7 +46,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 ## Plataformas, perfiles y comprobaciones
 
 - Cada entrada de `platforms` tiene un `stack`, un `path` y, para los stacks que los tienen, `targets`. [Stacks y plataformas](stacks.es.md) explica los perfiles que se incluyen.
-- El perfil de un stack viene en capas: el archivo `stacks/<stack>.md` del plugin, y después `.relevo/stacks/<stack>.md` de tu repositorio. El tuyo añade texto de higiene, herramientas, skills y comandos que el plugin no tiene; no puede reemplazar un comando del plugin.
+- El perfil de un stack viene en capas: el archivo `stacks/<stack>.md` del plugin, y después `.relevo/stacks/<stack>.md` de tu repositorio. El tuyo añade texto de higiene, herramientas, skills y comandos que el plugin no tiene; no puede reemplazar un comando del plugin. Hazle commit, porque la nube y tus compañeros lo leen de git.
 - Para reemplazar un comando, escríbelo en `platforms.<name>.checks`, a la vista, por ejemplo `analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse"`. Solo se pueden reemplazar los comandos que nombra el perfil (`analyze`, `test`, `format`).
 
 ## Qué significan los límites
