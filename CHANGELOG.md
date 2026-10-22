@@ -8,6 +8,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - **`doctor` warns when the repository's profile is not in git.** When a platform's profile uses `.relevo/stacks/<stack>.md` and git does not track that file, `doctor` warns that the cloud run and a fresh clone use only the plugin's profile (or have no profile, for a stack the plugin does not ship) and says to commit it.
 
+### Changed
+
+- **The Flutter profile follows the official Flutter documentation**, as read on 2026-10-22: architecture and its case study, data and backend, testing, performance and the Dart MCP server. The developer and QA now cover the common layout errors, costly work and new futures in `build()`, long lists without a builder, `Opacity` and clipping in animations, heavy parsing on the UI isolate, `dart:html` and `package:js` (they prevent the Wasm build), and plugins in unit tests. The profile no longer imposes or assumes an architecture: the agents follow the one the project's rules declare, new code uses the layers of Flutter's guide only when none is declared, and QA reports an architecture finding only against a written rule. The Dart MCP server is named by its tools: the agents use the ones that write nothing, and never `dart_format`, `dart_fix`, `pub` or the tools that drive an app during a run. `*.mocks.dart` is left out of the review as generated code.
+
 ### Fixed
 
 - **`init` no longer says the repository's profile is "not committed".** The words were read as "keep it out of git". The plan, the skill and the docs now say that `.relevo/stacks/<stack>.md` is created and left for you to commit, like `.claude/settings.json`, and the report names it among the new files to commit and push.

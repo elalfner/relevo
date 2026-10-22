@@ -95,7 +95,7 @@ test('Scenario: Flutter profile - the plugin ships it with the commands, generat
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   assert.equal(r.profile.commands.analyze, 'flutter analyze --no-pub');
   assert.equal(r.profile.commands.test, 'flutter test --reporter=compact --no-pub');
-  assert.deepEqual(r.profile.generated, ['*.g.dart', '*.freezed.dart']);
+  assert.deepEqual(r.profile.generated, ['*.g.dart', '*.freezed.dart', '*.mocks.dart']);
   assert.deepEqual(Object.keys(r.profile.targets), ['android', 'ios', 'web']);
 });
 
@@ -162,7 +162,7 @@ test('nothing of the hygiene the agents used to carry was lost when it moved to 
     'loading, empty and error states',
     'Prevent double submission of actions',
     'Keep layouts from overflowing on small screens',
-    'Prefer the Dart tooling server',
+    'When a tool is missing, use the command of this profile',
     'Do not claim the code compiles, analyses clean or passes tests unless you ran the tools and saw it',
     'a `BuildContext` use or `setState` after an `await` without a `mounted` check',
     'a controller, stream subscription or listener created and never disposed',
