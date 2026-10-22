@@ -185,6 +185,20 @@ export function planInit({ facts, answers, templates, current, admin }) {
   if (!facts.openspec) items.push(item('install.openspec', 'todo', 'Install the OpenSpec command-line tool', { install: true, command: 'npm install --global @fission-ai/openspec', detail: OPENSPEC_INSTALL }));
   REQUIRED_SKILLS.filter((n) => !facts.skills[n]).forEach((n) => items.push(item(`install.skill.${n}`, 'todo', `Install the ${n} skill`, { install: true, command: n === 'openspec-explore' ? 'openspec init' : 'npx skills add mattpocock/skills', detail: SKILL_INSTALL[n] })));
 
+  const configuredPlatforms = facts.config?.platforms ?? answers.platforms ?? (answers.platform ? { app: LEGACY_PLATFORMS[answers.platform] } : {});
+  const hasSupabase = Object.values(configuredPlatforms).some((p) => p?.stack === 'supabase');
+  if (hasSupabase) {
+    ['supabase', 'supabase-postgres-best-practices'].forEach((skill) => {
+      if (facts.skills?.[skill] === false) {
+        items.push(item(`install.skill.${skill}`, 'todo', `Install the ${skill} skill`, {
+          install: true,
+          command: `npx skills add supabase/agent-skills --skill ${skill}`,
+          detail: SKILL_INSTALL[skill] ?? `run \`npx skills add supabase/agent-skills --skill ${skill}\``,
+        }));
+      }
+    });
+  }
+
   // the plugin, declared in the project so that a teammate who clones the repository is offered it
   if (facts.pluginDeclared?.declared) items.push(item('install.plugin-project', 'ok', 'The repository declares the Relevo plugin (.claude/settings.json)'));
   else if (facts.pluginDeclared?.unreadable) items.push(item('install.plugin-project', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to declare the Relevo plugin in the project'));
@@ -271,6 +285,9 @@ export function planInit({ facts, answers, templates, current, admin }) {
   if (links.length > 0) {
     if ((facts.secrets ?? []).includes('RELEVO_LINKS_TOKEN')) items.push(item('manual.links-token', 'ok', 'The RELEVO_LINKS_TOKEN secret exists (init never reads it)'));
     else items.push(item('manual.links-token', 'manual', `If ${links.join(', ')} ${links.length > 1 ? 'are' : 'is'} private, create a fine-grained token with read access to issues and pull requests and store it yourself as the secret RELEVO_LINKS_TOKEN (init never reads or writes it; Relevo only reads with it, and public repositories need none)`));
+  }
+  if (hasSupabase) {
+    items.push(item('manual.supabase-mcp', 'manual', 'To explore your Supabase database in Claude Code or Antigravity during /relevo:think, consider connecting the Supabase MCP server (see https://supabase.com/docs/guides/ai-tools)'));
   }
   items.push(item('manual.push', 'manual', 'Commit and push the new files to the default branch: a workflow only runs from there'));
 

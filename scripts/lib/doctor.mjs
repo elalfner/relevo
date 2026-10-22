@@ -21,6 +21,8 @@ export const SKILL_INSTALL = {
   'grill-with-docs': 'run `npx skills add mattpocock/skills` and choose it',
   grilling: 'run `npx skills add mattpocock/skills` and choose it',
   'domain-modeling': 'run `npx skills add mattpocock/skills` and choose it',
+  supabase: 'run `npx skills add supabase/agent-skills --skill supabase`',
+  'supabase-postgres-best-practices': 'run `npx skills add supabase/agent-skills --skill supabase-postgres-best-practices`',
 };
 export const OPENSPEC_INSTALL = 'npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'];
@@ -35,6 +37,8 @@ const TOOL_INSTALL = {
   php: 'install PHP 8.2 or newer: https://www.php.net/downloads',
   composer: 'install Composer: https://getcomposer.org/download/',
   npm: 'install Node.js, which includes npm: https://nodejs.org/',
+  supabase: 'install the Supabase CLI: brew install supabase/tap/supabase or see https://supabase.com/docs/guides/cli',
+  docker: 'install Docker: https://docs.docker.com/get-docker/ (macOS: brew install --cask docker or brew install orbstack)',
 };
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -316,7 +320,20 @@ function gatherPlatforms(f, p, tryRun) {
     const resolved = resolveProfile({ platform, pluginRoot, read });
     const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets, profile: resolved.ok ? resolved.profile : null, errors: resolved.ok ? [] : resolved.errors, tools: [], targetTools: [] };
     if (resolved.ok) {
-      entry.tools = resolved.profile.tools.map((tool) => ({ tool, ok: available(tool) }));
+      (resolved.profile.requires_skills ?? []).forEach((name) => {
+        if (f.skills[name] === undefined && p.skillDirs) {
+          const dir = p.skillDirs.find((d) => p.exists(`${d}/${name}`));
+          f.skills[name] = dir !== undefined;
+        }
+      });
+      entry.tools = resolved.profile.tools.map((tool) => {
+        if (tool === 'docker') {
+          const cliOk = available('docker');
+          const daemonOk = cliOk ? tryRun(() => Boolean(p.tool('docker', ['info'])), false) : false;
+          return { tool, ok: daemonOk, cliOk };
+        }
+        return { tool, ok: available(tool) };
+      });
       entry.targetTools = platform.targets.map((target) => {
         const tool = resolved.profile.targets[target] ?? '';
         return { target, tool, ok: tool === '' ? true : available(tool) };
@@ -460,10 +477,14 @@ function platformChecks(f) {
     (e.profile.ignored ?? []).forEach((x) => {
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
-    e.tools.forEach(({ tool, ok }) => {
+    e.tools.forEach(({ tool, ok, cliOk }) => {
       if (seen.has(`tool:${tool}`)) return;
       seen.add(`tool:${tool}`);
-      r.push(ok ? pass(`tools.${tool}`, `${tool} is installed`) : fail(`tools.${tool}`, `${tool} is not installed (platform ${e.name}, stack ${e.stack})`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+      if (tool === 'docker' && !ok && cliOk) {
+        r.push(warn(`tools.docker`, `docker is installed but the engine is stopped (platform ${e.name}, stack ${e.stack})`, 'start Docker Desktop or OrbStack'));
+      } else {
+        r.push(ok ? pass(`tools.${tool}`, `${tool} is installed`) : fail(`tools.${tool}`, `${tool} is not installed (platform ${e.name}, stack ${e.stack})`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+      }
     });
     e.targetTools.forEach(({ target, tool, ok }) => {
       const id = `tools.target.${e.name}.${target}`;
@@ -474,6 +495,8 @@ function platformChecks(f) {
     });
     e.profile.requires_skills.forEach((name) => {
       if (f.skills[name] === undefined) r.push(warn(`skills.${name}`, `platform ${e.name} requires the skill ${name}; it was not checked`, SKILL_INSTALL[name] ?? `install the skill ${name}`));
+      else if (!f.skills[name]) r.push(warn(`skills.${name}`, `platform ${e.name} requires the skill ${name}, which is not installed`, SKILL_INSTALL[name] ?? `install the skill ${name}`));
+      else r.push(pass(`skills.${name}`, `skill ${name} is installed (platform ${e.name})`));
     });
   });
 

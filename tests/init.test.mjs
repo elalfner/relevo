@@ -387,3 +387,25 @@ test('relevo.yml for Antigravity asks for a token limit instead of a cost limit,
   assert.equal(loadConfig(text).ok, true);
   assert.match(renderConfig(template, { ...ANSWERS, agentBuild: 'antigravity' }), /run_max_tokens: 2000000/);
 });
+
+test('Scenario: Supabase platform in init - offers skills install and MCP guidance', () => {
+  const facts = {
+    configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true },
+    skills: { ...Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), supabase: false, 'supabase-postgres-best-practices': false },
+    openspec: '1.14.1', secrets: [],
+  };
+  const answers = {
+    ...ANSWERS,
+    platforms: {
+      backend: { stack: 'supabase', path: 'supabase' },
+      app: { stack: 'flutter', path: 'app', targets: ['android'] },
+    },
+  };
+  const items = planInit({ facts, answers, templates, current: empty(), admin: true });
+  assert.equal(get(items, 'install.skill.supabase').status, 'todo');
+  assert.match(get(items, 'install.skill.supabase').command, /npx skills add supabase\/agent-skills --skill supabase/);
+  assert.equal(get(items, 'install.skill.supabase-postgres-best-practices').status, 'todo');
+  assert.match(get(items, 'install.skill.supabase-postgres-best-practices').command, /supabase-postgres-best-practices/);
+  assert.equal(get(items, 'manual.supabase-mcp').status, 'manual');
+  assert.match(get(items, 'manual.supabase-mcp').description, /Supabase MCP/);
+});
