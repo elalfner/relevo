@@ -41,7 +41,7 @@ Running `init` again SHALL not duplicate or overwrite existing correct configura
 - **THEN** it reports "nothing to do" for what is already correct
 
 ### Requirement: Init sets up the repository
-`init` SHALL: detect the repository, provider and stack; ask for the platforms (name, stack, path and, where the stack has them, targets), team members, spec writer, review mode and language; write `relevo.yml` with `platforms`; create the lifecycle labels; create the base branch if missing; configure branch protection and secret scanning; add the workflows (`go`, queue, daily digest); add the evidence directory to the ignore file; offer, without committing it, a commented `.relevo/stacks/<stack>.md`; and run `doctor`.
+`init` SHALL: detect the repository, provider and stack; ask for the platforms (name, stack, path and, where the stack has them, targets), team members, spec writer, review mode and language; write `relevo.yml` with `platforms`; create the lifecycle labels; create the base branch if missing; configure branch protection and secret scanning; add the workflows (`go`, queue, daily digest); add the evidence directory to the ignore file; offer a commented `.relevo/stacks/<stack>.md`, which it creates but does not commit and leaves for the person to commit with the other new files; and run `doctor`.
 
 #### Scenario: Fresh repository
 - **WHEN** `init` runs on a repository with none of the above
@@ -54,6 +54,10 @@ Running `init` again SHALL not duplicate or overwrite existing correct configura
 #### Scenario: Existing legacy configuration
 - **WHEN** `init` runs where `relevo.yml` has `platform: flutter-android`
 - **THEN** it keeps the setting as it is and changes nothing in it unless the person asks
+
+#### Scenario: Profile file of the repository
+- **WHEN** the person asks for a profile file for stack `flutter`
+- **THEN** the plan line says `.relevo/stacks/flutter.md` is created and left for the person to commit, `init` does not commit it, and the report lists it among the new files to commit and push
 
 ### Requirement: Init protects the repository and keeps OpenSpec in git
 `init` SHALL add a ruleset on the base and release branches that blocks deletion and force pushes and requires a pull request, with approvals not dismissed when commits are pushed; SHALL stop workflows from approving pull requests; and SHALL leave `.gitkeep` files in the empty OpenSpec folders so git keeps them. It SHALL NOT create files under `openspec/` by hand: with no OpenSpec root it tells the person to run the OpenSpec tool's own `init`.
@@ -172,7 +176,7 @@ Relevo SHALL declare its external dependencies: the OpenSpec command-line tool (
 - **THEN** no write operation is performed
 
 ### Requirement: Doctor reads the profile of each platform
-For each platform, `doctor` SHALL check the tools the profile requires, the tool of each target (a missing tool of a target is a warning, except `xcrun` on a machine that is not macOS, which is a notice), the skills the profile requires, and report which layers make up the profile (for example "flutter: plugin default + .relevo/stacks/flutter.md"). It SHALL fail when a platform's stack has no profile and warn about a value of the repository's profile that the plugin's profile ignores.
+For each platform, `doctor` SHALL check the tools the profile requires, the tool of each target (a missing tool of a target is a warning, except `xcrun` on a machine that is not macOS, which is a notice), the skills the profile requires, and report which layers make up the profile (for example "flutter: plugin default + .relevo/stacks/flutter.md"). It SHALL fail when a platform's stack has no profile and warn about a value of the repository's profile that the plugin's profile ignores. It SHALL warn when the profile uses `.relevo/stacks/<stack>.md` and git does not track that file.
 
 #### Scenario: Flutter with Android and web
 - **WHEN** a platform has stack `flutter` and targets `android` and `web`
@@ -185,6 +189,18 @@ For each platform, `doctor` SHALL check the tools the profile requires, the tool
 #### Scenario: iOS on Linux
 - **WHEN** a platform has target `ios` and the machine is not macOS
 - **THEN** `doctor` shows a notice that iOS can only be built and reviewed on macOS, and does not fail
+
+#### Scenario: Profile file of the repository not tracked
+- **WHEN** a platform's profile includes `.relevo/stacks/flutter.md` and git does not track that file
+- **THEN** `doctor` warns that the cloud run and a fresh clone use only the plugin's profile, and says to commit the file
+
+#### Scenario: Stack defined only by an untracked file
+- **WHEN** the plugin has no profile for the stack and `.relevo/stacks/<stack>.md` is not tracked by git
+- **THEN** `doctor` warns that the cloud run and a fresh clone have no profile for that stack, and says to commit the file
+
+#### Scenario: Profile file of the repository tracked
+- **WHEN** `.relevo/stacks/flutter.md` is tracked by git
+- **THEN** `doctor` reports the layers as before and adds no warning about it
 
 ### Requirement: Doctor reads the skills of the roles
 `doctor` SHALL list the skills resolved for each role, say which were left out and why, list the ones with scripts and whether they are allowed, warn when a role exceeds the size budget and warn when a skill folder differs from `skills-lock.json`.
