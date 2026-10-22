@@ -46,7 +46,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 ## Platforms, profiles and checks
 
 - Each entry of `platforms` has a `stack`, a `path` and, for stacks that have them, `targets`. [Stacks and platforms](stacks.md) explains the shipped profiles.
-- The profile of a stack comes in layers: the file `stacks/<stack>.md` of the plugin, then `.relevo/stacks/<stack>.md` of your repository. Yours adds hygiene text, tools, skills and commands the plugin does not have; it cannot replace a command of the plugin.
+- The profile of a stack comes in layers: the file `stacks/<stack>.md` of the plugin, then `.relevo/stacks/<stack>.md` of your repository. Yours adds hygiene text, tools, skills and commands the plugin does not have; it cannot replace a command of the plugin. Commit it, because the cloud and your teammates read it from git.
 - To replace a command, write it in `platforms.<name>.checks`, in the open, for example `analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse"`. Only the commands the profile names (`analyze`, `test`, `format`) can be replaced.
 
 ## What the limits mean
