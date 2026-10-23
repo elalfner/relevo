@@ -19,6 +19,11 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - **`init` no longer says the repository's profile is "not committed".** The words were read as "keep it out of git". The plan, the skill and the docs now say that `.relevo/stacks/<stack>.md` is created and left for you to commit, like `.claude/settings.json`, and the report names it among the new files to commit and push.
 
+### Known limits
+
+- The worktree of an interactive `/relevo:go` was tried by hand, with two runs at once on the sandbox repository; the issue numbers and the logs of that run were not kept. A session that ends midway leaves its worktree in `.relevo-worktrees/`, and `doctor` does not list leftover worktrees. `go-worktree.mjs create` reads `relevo.yml` from the current folder, so `/relevo:go` started from a subfolder of the repository stops with an error.
+- The Flutter profile follows the docs as read on 2026-10-22. The review autopilot for Android still drives the app with `flutter_driver`, which the Flutter testing docs now treat as legacy in favour of `integration_test`.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added
