@@ -54,3 +54,24 @@ test('the script resolves the platform from relevo.yml, takes --target, and exit
   assert.equal(run('--platform', 'nope').status, 2);
   assert.equal(run().status, 2);
 });
+
+test('Scenario: Web with autopilot off - the advice recommends verify, names precheck, in the language of relevo.yml', async () => {
+  const { autopilotAdvice } = await import('../scripts/lib/review-adapters.mjs');
+  const vue = adapterFor({ stack: 'vue', target: 'web' });
+  const en = autopilotAdvice(vue, { autopilot: 'off', language: 'en' });
+  assert.match(en, /review\.autopilot to verify/);
+  assert.match(en, /precheck is the cautious option/);
+  assert.match(en, /You still confirm every line, and lines about appearance are never marked automatically/);
+  assert.match(en, /commit it to the base branch/);
+  assert.match(autopilotAdvice(vue, { autopilot: 'off', language: 'es-MX' }), /review\.autopilot en verify.*precheck es la opción prudente.*apariencia nunca se marcan/s);
+  assert.equal(autopilotAdvice(vue, { autopilot: 'precheck' }), null);
+  assert.equal(autopilotAdvice(adapterFor({ stack: 'flutter', target: 'android' }), { autopilot: 'off' }), null);
+  assert.match(vue.capture, /capture\(name, check\)/);
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-ad-'));
+  const config = join(dir, 'relevo.yml');
+  writeFileSync(config, 'language: es\nlimits:\n  run_max_cost: 5\nplatforms:\n  site:\n    stack: vue\n    targets: [web]\n');
+  const out = JSON.parse(spawnSync('node', [CLI, '--config', config, '--platform', 'site'], { encoding: 'utf8' }).stdout);
+  assert.match(out.advice, /precheck es la opción prudente/);
+  writeFileSync(config, 'language: es\nreview:\n  autopilot: verify\nlimits:\n  run_max_cost: 5\nplatforms:\n  site:\n    stack: vue\n    targets: [web]\n');
+  assert.equal(JSON.parse(spawnSync('node', [CLI, '--config', config, '--platform', 'site'], { encoding: 'utf8' }).stdout).advice, null);
+});

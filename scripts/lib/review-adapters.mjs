@@ -1,12 +1,14 @@
 // How `review` gets a log and captures for a platform and a target, and whether the agent may drive it.
 // Implements "The review picks its adapter from the platform and the target" of openspec/specs/review/spec.md.
 
+import { pickLanguage } from './language.mjs';
+
 const DEFAULT_TARGET = { flutter: 'android', vue: 'web' };
 
 const ADAPTERS = {
   'flutter/android': { kind: 'device', log: 'adb logcat', capture: 'adb screencap', driver: 'flutter_driver', needs: ['adb'] },
-  'flutter/web': { kind: 'browser', log: 'the browser runner', capture: 'the browser runner', driver: 'flutter_driver', needs: ['a browser'] },
-  'vue/web': { kind: 'browser', log: 'the browser runner', capture: 'the browser runner', driver: 'playwright', needs: ['playwright'] },
+  'flutter/web': { kind: 'browser', log: 'the browser runner', capture: 'capture(name, check) of the browser runner', driver: 'flutter_driver', needs: ['a browser'] },
+  'vue/web': { kind: 'browser', log: 'the browser runner', capture: 'capture(name, check) of the browser runner', driver: 'playwright', needs: ['playwright'] },
 };
 
 const NOT_AVAILABLE = {
@@ -34,4 +36,15 @@ export function adapterFor({ stack, target }) {
 /** Whether a review of this adapter can run at all with the given autopilot mode: a browser has no manual way. */
 export function needsAutopilot(adapter) {
   return adapter.supported && adapter.kind === 'browser';
+}
+
+const ADVICE = {
+  en: 'A browser has no manual review. Set review.autopilot to verify in relevo.yml (precheck is the cautious option) and commit it to the base branch. You still confirm every line, and lines about appearance are never marked automatically.',
+  es: 'Un navegador no tiene revisión manual. Pon review.autopilot en verify en relevo.yml (precheck es la opción prudente) y haz commit en la rama base. Tú sigues confirmando cada línea, y las líneas sobre apariencia nunca se marcan automáticamente.',
+};
+
+/** What to tell the person when a browser review cannot start because review.autopilot is off; null otherwise. */
+export function autopilotAdvice(adapter, { autopilot = 'off', language = 'en' } = {}) {
+  if (!needsAutopilot(adapter) || autopilot !== 'off') return null;
+  return ADVICE[pickLanguage(language)];
 }
