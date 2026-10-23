@@ -58,3 +58,20 @@ In Antigravity interactive chat sessions, running `/relevo:go <issue>` automatic
 ## With Antigravity
 
 `agent.build: antigravity` makes the cloud build run `agy` instead of `claude-code-action`; the rest of the workflow, the gates and the reports are the same file. The secret is `GEMINI_API_KEY`, and the limit is `limits.run_max_tokens` instead of `limits.run_max_cost`, because Antigravity has no cost limit: a run guard that Relevo starts around the agent enforces the turn and token limits of `relevo.yml`, and the quota of the Google Cloud project that owns the key is the ceiling that really holds. What it can and cannot enforce is in [Security](security.md#which-agent-builds). `/relevo:init` asks which agent builds and writes the workflow and `relevo.yml` for it. This path has been tested on the text of the workflow, with a fake agent and on the commands of the real CLI, not yet on a real runner.
+
+## Shipping with a label
+
+`relevo-ship.yml` ships an approved issue when a person applies the label `relevo:ship` to it, with the same checks as `/relevo:ship` and no model, so it needs no model credential and no local copy. `/relevo:init` adds it in every setup, also when `go` runs only on machines. Like the other workflows it runs from the default branch, so it works once it is there. The repository variable `RELEVO_CLOUD_SHIP` set to `off` pauses it: the label then does nothing until you delete the variable and apply the label again.
+
+**The checks of the archive commit.** Shipping commits the archived specification to the branch and pushes it before the merge. A push made with the workflow's own token starts no workflow, so that commit gets no checks of its own. Because it changes only `openspec/`, the checks of the approved head count for it, and the comment after the merge says so. The same rule applies to `/relevo:ship`.
+
+**When the base branch requires checks.** Then GitHub refuses to merge a commit without them, and the run stops before archiving, naming what is missing. Set up a GitHub App once:
+
+1. Create a GitHub App owned by your account or organization (Settings > Developer settings > GitHub Apps), with no webhook, and the repository permissions Contents, Pull requests and Issues set to read and write.
+2. Install it on this repository only.
+3. Store its App ID as the repository secret `RELEVO_SHIP_APP_ID` and a private key it generated as `RELEVO_SHIP_APP_KEY`.
+4. Do not add the App to any ruleset's bypass list: it must follow the same rules as everyone.
+
+With the App, the run pushes, merges and closes with the App's token, so your CI runs on the archive commit, and the run waits up to 30 minutes for it. If the checks take longer, the run stops without merging, and applying the label again resumes from the merge. The App is also worth it when you rely on workflows that run on pushes to the base branch, because a merge made with the workflow's token starts none. `/relevo:doctor` says whether the App is needed and whether its secrets exist.
+
+**No checks at all.** If no check ran on the approved code, the label stops, because only the review vouches for it and a label cannot confirm that. Run `/relevo:ship <n>`, which asks you, or set `review.ship_without_ci: true` in `relevo.yml`.

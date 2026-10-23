@@ -6,7 +6,7 @@ test('label set matches the lifecycle spec', () => {
   const states = LABELS.filter((l) => l.kind === 'state').map((l) => l.key);
   assert.deepEqual(states, ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open']);
   const exits = LABELS.filter((l) => l.kind !== 'state').map((l) => l.key);
-  assert.deepEqual(exits.sort(), ['blocked', 'changes-requested', 'needs-reviewer', 'needs-spec', 'qa-failed']);
+  assert.deepEqual(exits.sort(), ['blocked', 'changes-requested', 'needs-reviewer', 'needs-spec', 'qa-failed', 'ship']);
   assert.ok(!LABEL_KEYS.includes('merged'), 'there is no merged label: the final state is the closed issue');
 });
 
@@ -36,6 +36,18 @@ test('side exits replace the lifecycle label', () => {
 
 test('needs-reviewer is an overlay: added next to the current state, nothing removed', () => {
   assert.deepEqual(transition(['relevo:pr-open'], 'needs-reviewer'), { add: ['relevo:needs-reviewer'], remove: [] });
+});
+
+test('Scenario: Label applied - ship is an overlay next to pr-open', () => {
+  assert.deepEqual(transition(['relevo:pr-open'], 'ship'), { add: ['relevo:ship'], remove: [] });
+  assert.deepEqual(transition(['relevo:pr-open', 'relevo:ship'], 'changes-requested'), {
+    add: ['relevo:changes-requested'],
+    remove: ['relevo:pr-open'],
+  });
+});
+
+test('Scenario: Run ends - clearAll removes the ship label with the rest', () => {
+  assert.deepEqual(clearAll(['relevo:pr-open', 'relevo:ship']).remove.sort(), ['relevo:pr-open', 'relevo:ship']);
 });
 
 test('no-op when the issue is already in the target state', () => {

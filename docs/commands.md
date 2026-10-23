@@ -76,6 +76,8 @@ The number of a `pr-open` issue whose pull request someone other than the author
 /relevo:ship 42
 ```
 
+**Or apply the label `relevo:ship` to the issue.** When the ship workflow is installed, GitHub runs the same steps with no model and no local copy, so you can ship from the browser or a phone. The label is your written confirmation, and the rest is checked as in the command. Only the person who ships under `review.merger` may use it: the approver, or the author with `merger: author`. Someone eligible who did not approve uses the command, which asks them to confirm that. When anything stops it (no approval on the current code, failing checks, conflicts, an open task, no checks at all, or a base branch that requires checks without the App), the run comments why, mentions you and removes the label. Apply it again once that is solved. [Where `go` runs](execution.md#shipping-with-a-label) explains the checks and the App.
+
 ### `/relevo:status`
 
 No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting. When a read from GitHub fails (for example a 403 on the repository variable that pauses the cloud), the report says which one under "Could not read" and that it may be incomplete, and an empty answer reads "Nothing is waiting on you. (from what could be read)".
@@ -136,7 +138,7 @@ By default the person does everything in `review` and the agent only observes. W
 - **A branch with only the specification is not "fixed".** `fix` says to delete the remote branch and apply `relevo:ready` again.
 - **The task list is checked.** Before the developer runs, the only open tasks are the corrections; one of them starts with `Test:` (a regression test) unless every correction ends with `(device only)`. After QA, none is open.
 - **`ship` can be run again.** If the change is already archived on the branch, `ship` goes on from the merge. If the archive leaves conflicts only inside `openspec/`, it reverts the archive commit, brings in the base branch and archives again, with normal pushes. A conflict in code stops it.
-- **An approval counts for the code it saw.** An approval given on an older commit does not count; after the archive commit, the approval on the head recorded at the start still does.
+- **An approval counts for the code it saw.** An approval given on an older commit does not count; after the archive commit, the approval on the head recorded at the start still does. So do its checks, when the archive commit has none of its own and changes only `openspec/`.
 - **The issue must be `pr-open`**, and `ship` names the missing command (`/relevo:review` or `/relevo:fix`) otherwise. The change is validated and has no open task before it is archived.
 - **Who runs `ship`.** With `review.merger: approver`, a member of `team.members` who is not the author or the spec writer (and, in `roles` mode, one of `team.approvers`). Someone eligible who did not approve confirms in writing that they did not.
 

@@ -58,3 +58,20 @@ En sesiones interactivas de chat de Antigravity, ejecutar `/relevo:go <issue>` e
 ## Con Antigravity
 
 `agent.build: antigravity` hace que la construcción en la nube ejecute `agy` en lugar de `claude-code-action`; el resto del workflow, las compuertas y los reportes son el mismo archivo. El secreto es `GEMINI_API_KEY`, y el límite es `limits.run_max_tokens` en lugar de `limits.run_max_cost`, porque Antigravity no tiene límite de costo: una guardia de ejecución que Relevo lanza alrededor del agente hace cumplir los límites de turnos y de tokens de `relevo.yml`, y la cuota del proyecto de Google Cloud dueño de la clave es el tope que de verdad se cumple. Lo que puede y no puede hacer cumplir está en [Seguridad](security.es.md#qué-agente-construye). `/relevo:init` pregunta qué agente construye y escribe el workflow y `relevo.yml` para él. Este camino se probó sobre el texto del workflow, con un agente falso y con los comandos de la CLI real, todavía no sobre un ejecutor real.
+
+## Fusionar con una etiqueta
+
+`relevo-ship.yml` fusiona un issue aprobado cuando una persona le pone la etiqueta `relevo:ship`, con las mismas comprobaciones que `/relevo:ship` y sin modelo, así que no necesita credencial del modelo ni copia local. `/relevo:init` lo añade en cualquier configuración, también cuando `go` corre solo en las máquinas. Como los otros workflows, corre desde la rama por defecto, así que funciona cuando está ahí. La variable del repositorio `RELEVO_CLOUD_SHIP` en `off` lo pausa: la etiqueta no hace nada hasta que borres la variable y vuelvas a poner la etiqueta.
+
+**Los checks del commit de archivo.** Fusionar hace commit de la especificación archivada en la rama y lo sube antes del merge. Un push hecho con el token propio del workflow no lanza ningún workflow, así que ese commit no tiene checks propios. Como solo cambia `openspec/`, cuentan los checks del head aprobado, y el comentario tras el merge lo dice. La misma regla vale para `/relevo:ship`.
+
+**Cuando la rama base exige checks.** Entonces GitHub se niega a fusionar un commit sin ellos, y la ejecución se detiene antes de archivar, diciendo qué falta. Configura una GitHub App una vez:
+
+1. Crea una GitHub App de tu cuenta u organización (Settings > Developer settings > GitHub Apps), sin webhook, con los permisos de repositorio Contents, Pull requests e Issues en lectura y escritura.
+2. Instálala solo en este repositorio.
+3. Guarda su App ID como el secret del repositorio `RELEVO_SHIP_APP_ID` y una clave privada generada por ella como `RELEVO_SHIP_APP_KEY`.
+4. No añadas la App a la lista de excepciones (bypass) de ningún ruleset: tiene que seguir las mismas reglas que todos.
+
+Con la App, la ejecución sube, fusiona y cierra con el token de la App, así que tu CI corre sobre el commit de archivo, y la ejecución lo espera hasta 30 minutos. Si los checks tardan más, se detiene sin fusionar, y volver a poner la etiqueta sigue desde el merge. La App también vale la pena cuando dependes de workflows que corren con los pushes a la rama base, porque un merge hecho con el token del workflow no lanza ninguno. `/relevo:doctor` dice si hace falta la App y si existen sus secrets.
+
+**Ningún check.** Si no corrió ningún check sobre el código aprobado, la etiqueta se detiene, porque solo la revisión lo respalda y una etiqueta no puede confirmarlo. Ejecuta `/relevo:ship <n>`, que te lo pregunta, o pon `review.ship_without_ci: true` en `relevo.yml`.

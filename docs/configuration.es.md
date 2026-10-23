@@ -24,6 +24,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `review.mode` | `none` (en solitario), `peer` o `roles` | `peer` |
 | `review.merger` | quién ejecuta `/relevo:ship`: `author` o `approver` | `approver` |
 | `review.autopilot` | cuánto de la revisión puede conducir el agente: `off` (la persona lo hace todo), `precheck` (el agente recorre las líneas y anota su resultado; la persona confirma cada línea) o `verify` (el agente también puede marcar las líneas que probó con una aserción, un finder semántico, el log o el código de salida de un comando del proyecto; la persona confirma el resto y da el acuerdo). Un destino web necesita `precheck` o `verify`, y la revisión recomienda `verify`; haz commit del ajuste en la rama base | `off` |
+| `review.ship_without_ci` | `true` deja que la etiqueta `relevo:ship` fusione un pull request sobre el que no corrió ningún check; `/relevo:ship` se lo pregunta a la persona | `false` |
 | `review.allowed_origins` | orígenes web que una revisión conducida puede visitar además de `localhost`, por ejemplo `https://staging.example.com` | `[]` |
 | `skills.allow_scripts` | nombres de las skills extra que tienen scripts y pueden usarse; una skill con scripts que no está en la lista se deja fuera, y `/relevo:doctor` lo dice | vacío |
 | `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando | 2 |

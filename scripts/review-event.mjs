@@ -52,7 +52,16 @@ if (eventName === 'pull_request_review') {
 
 const pr = { number: prData.number, url: prData.html_url, author: prData.user.login };
 const labels = JSON.parse(realGh(['api', `repos/${repo}/issues/${number}`])).labels.map((l) => (typeof l === 'string' ? l : l.name));
-const decision = planReviewEvent({ config, event, pr, issue: { number, labels } });
+// The approval names the ship label only where the ship workflow runs: it runs from the default branch.
+const shipWorkflow = event.kind === 'review' && event.state === 'approved' && (() => {
+  try {
+    realGh(['api', `repos/${repo}/contents/.github/workflows/relevo-ship.yml`, '--silent']);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const decision = planReviewEvent({ config, event, pr, issue: { number, labels }, shipWorkflow });
 if (!decision) {
   console.log(JSON.stringify({ action: 'none' }));
   process.exit(0);

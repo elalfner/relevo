@@ -24,6 +24,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `review.mode` | `none` (solo), `peer` or `roles` | `peer` |
 | `review.merger` | who runs `/relevo:ship`: `author` or `approver` | `approver` |
 | `review.autopilot` | how much of the review the agent may drive: `off` (the person does everything), `precheck` (the agent walks the lines and records its result; the person confirms every line) or `verify` (the agent may also mark lines it proved with an assertion, a semantic finder, the log or the exit code of a project command; the person confirms the rest and agrees). A web target needs `precheck` or `verify`, and the review recommends `verify`; commit the setting to the base branch | `off` |
+| `review.ship_without_ci` | `true` lets the `relevo:ship` label merge a pull request on which no check ran; `/relevo:ship` asks the person instead | `false` |
 | `review.allowed_origins` | web origins a driven review may visit besides `localhost`, for example `https://staging.example.com` | `[]` |
 | `skills.allow_scripts` | names of the extra skills that have scripts and may be used; a skill with scripts that is not listed is left out, and `/relevo:doctor` says so | empty |
 | `limits.built_unreviewed_per_person` | built issues one person may have waiting | 2 |

@@ -16,11 +16,12 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | `blocked` | ninguno: empieza cuando se fusionan los issues de los que depende | nadie |
 | `built` | `/relevo:review <n>` | la persona asignada |
 | `in-review` | `/relevo:review <n>` para continuar; si algo falla, `/relevo:fix <n>` | la persona asignada |
-| `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub | quien aprueba |
+| `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub; o pon `relevo:ship` al issue | quien aprueba |
 | `needs-spec` | `/relevo:issue <n>`; si la pregunta necesita explorarse, antes `/relevo:think #<n>` | quien escribe la spec |
 | `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready` | la persona asignada |
 | `changes-requested` | `/relevo:fix <n>` | el autor |
 | `needs-reviewer` | ninguno: asigna un revisor, o pide a alguien que lo tome | quien escribe la spec |
+| `ship` | ninguno: el workflow de ship lo está fusionando; si se detiene, su comentario dice por qué y se quita la etiqueta | nadie |
 
 Antes de que un issue tenga estado, `/relevo:think` explora la idea y `/relevo:issue` escribe el issue. `/relevo:status` muestra quién espera a quién.
 
