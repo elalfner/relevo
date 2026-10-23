@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-23
+
 ### Added
 
 - **Screenshots in a browser review.** The review script gets `capture(name, check, { fullPage })`: `check` asserts the state the shot shows and runs first, so a screenshot saved under the wrong name fails instead of passing unnoticed. The PNG goes to the run's output folder, the agent sees only its path, and it is recorded in the review state. Captures are taken while the person tests: `review-state.mjs capture` refuses after `agree`.
@@ -17,6 +19,14 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **The browser runner enforces the gates itself.** `web-review.mjs` reads the review state (`--state`) and refuses before any browser starts when the autopilot is `off`, the data was not confirmed, the review is agreed, or the script is not the one QA passed. It also refuses a script that takes a screenshot itself, saves a PDF, trace, video, HAR, download or storage state, uploads a local file or passes any `path:` option, and it writes the script's console, redacted, to `script-console.txt` instead of its own output. When the page itself fails, it names that (for example a 500 on a module) before the script's timeout. A run with the default `--out` warns before it replaces a log; each extra run uses `evidence/run-<port>`.
 - **The review skill has a browser branch** in steps 2, 3, 5, 8 and 9, a plan of the walk in the brief (`browser`, `command`, `read`, `server <port>`), project commands that leave tracked files as they were, a warning when `relevo.yml` has uncommitted changes, and an evidence hand-off that offers only the PNG files and deletes a folder with none without asking. `review-adapter.mjs` gives the advice for `review.autopilot: off` on a browser (recommend `verify`, `precheck` as the cautious option) in the language of `relevo.yml`, and `review-brief.mjs --autopilot` adds a fixed note that the person confirms every line.
 - A project command's exit code can now verify a line in `verify`; a line checked by reading code, CI or docs is only pre-checked.
+
+### Known limits
+
+- The new browser review has not yet run on a real Vue issue: the runner, the preflight, the extra servers and the guard were tested with a real Chromium and real processes, but a whole `/relevo:review` on the sandbox repository, with a dev server running from the working tree, is still to do.
+- `extra-server.mjs` and `dev-server-guard.mjs` need `lsof`. Where it is missing (Windows) no extra server is started and the review does not switch to the base branch; it says why.
+- `extra-server.mjs` looks for `.env` files in the folder it runs from; for a platform in a subfolder (`platforms.<name>.path`) the agent must run it there.
+- The script check and `qa-pass` are a tripwire: they stop a mistake, not an agent that skips them on purpose.
+- A review script written for 0.6.0 that calls `page.screenshot` or `console.log`, or a run without `review-state.mjs init`, `confirm-env` and `qa-pass`, is now refused.
 
 ## [0.6.0] - 2026-10-23
 
