@@ -916,3 +916,53 @@ test('Scenario: Antigravity builds - the secret is GEMINI_API_KEY and there is n
   assert.match(byId(run([]), 'automation.secret').fix, /key made only for Relevo/);
   assert.equal(byId(run(['GEMINI_API_KEY']), 'execution.policy'), undefined, 'no subscription reminder');
 });
+
+test('Scenario: Profile file of the repository not tracked - doctor warns that the cloud and a clone use only the plugin profile', () => {
+  const profile = { ...FLUTTER, layers: ['plugin', 'repository'] };
+  const results = runChecks(healthy({ platformFacts: [{ ...flutterPlatform({ profile }), repositoryLayerTracked: false }] }));
+  const w = byId(results, 'platform.app.profile.tracked');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /\.relevo\/stacks\/flutter\.md is not tracked by git/);
+  assert.match(w.message, /use only the plugin's profile/);
+  assert.match(w.fix, /commit \.relevo\/stacks\/flutter\.md/);
+});
+
+test('Scenario: Stack defined only by an untracked file - doctor warns that the cloud and a clone have no profile', () => {
+  const profile = { ...FLUTTER, stack: 'elixir', layers: ['repository'] };
+  const platform = { ...flutterPlatform({ profile }), stack: 'elixir', repositoryLayerTracked: false };
+  const w = byId(runChecks(healthy({ platformFacts: [platform] })), 'platform.app.profile.tracked');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /have no profile for elixir/);
+});
+
+test('Scenario: Profile file of the repository tracked - no warning; nor when git cannot say', () => {
+  const profile = { ...FLUTTER, layers: ['plugin', 'repository'] };
+  [true, null, undefined].forEach((tracked) => {
+    const results = runChecks(healthy({ platformFacts: [{ ...flutterPlatform({ profile }), repositoryLayerTracked: tracked }] }));
+    assert.equal(byId(results, 'platform.app.profile.tracked'), undefined);
+    assert.match(byId(results, 'platform.app.profile').message, /default of the plugin \+ \.relevo\/stacks\/flutter\.md/);
+  });
+});
+
+test('gatherFacts asks git whether the repository layer is tracked', () => {
+  const files = {
+    'relevo.yml': 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a]\nplatforms:\n  app:\n    stack: flutter\n    path: .\n    targets: [android]\n',
+    '.relevo/stacks/flutter.md': '---\nstack: flutter\n---\nOur rule.\n',
+  };
+  const gather = ({ git = true, tracked, repo = true }) => gatherFacts({
+    tool: (name, args) => {
+      if (name !== 'git') return 'ok';
+      if (!git) throw new Error('not found');
+      if (args[0] === 'ls-files' && args[1] === '--error-unmatch') { if (!tracked) throw new Error('did not match'); return `${args[2]}\n`; }
+      if (args[0] === 'rev-parse') { if (!repo) throw new Error('not a git repository'); return 'true\n'; }
+      return 'git version 2.50.0\n';
+    },
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: 'o/r',
+  }).platformFacts[0];
+  assert.deepEqual(gather({ tracked: true }).profile.layers, ['plugin', 'repository']);
+  assert.equal(gather({ tracked: true }).repositoryLayerTracked, true);
+  assert.equal(gather({ tracked: false }).repositoryLayerTracked, false);
+  assert.equal(gather({ tracked: false, repo: false }).repositoryLayerTracked, null);
+  assert.equal(gather({ git: false }).repositoryLayerTracked, null);
+});

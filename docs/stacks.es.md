@@ -43,6 +43,7 @@ Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` 
 | `supabase` | `supabase db lint` | `supabase test db` | `npx prettier --write supabase/` | ninguno |
 
 - Los comandos que ejecuta QA nunca reescriben tu código. Importa en Vue: el script `lint` que genera `npm create vue` usa `--fix`, así que el perfil llama a las herramientas directamente (con `npx --no-install`, con las versiones que fija tu proyecto) y no usa `npm run lint`.
+- El perfil `flutter` sigue la documentación oficial de Flutter (arquitectura, datos y backend, testing, performance y el servidor MCP de Dart), leída el 2026-10-22. El desarrollo evita, y QA busca en el diff, los errores comunes de layout, el trabajo caro en `build()`, las listas largas sin builder, `Opacity` y los recortes dentro de animaciones, el parseo pesado en el isolate de la UI y `dart:html` (impide compilar a Wasm). Con el servidor MCP de Dart los agentes usan solo las herramientas que no escriben nada (`analyze_files`, `lsp`, `read_package_uris`, y `run_tests` cuando está activo). El perfil no impone una arquitectura: los agentes siguen la que declaren tus reglas, y solo si no declaras ninguna el código nuevo usa las capas de la guía de arquitectura de Flutter. QA solo reporta un hallazgo de arquitectura contra una regla que escribiste. Si tu proyecto exige objetos Command y Result, un paquete de manejo de estado o una estructura de carpetas, escríbelo en tus reglas (`qa.rules_from`).
 - El perfil `supabase` implementa *Database-as-Code* para proyectos monorepo (por ejemplo `app` en Flutter y `backend` en Supabase):
   - Todas las pruebas corren de forma hermética contra contenedores temporales en Docker local (`supabase test db` con pgTAP); los agentes de Relevo nunca tocan instancias en la nube.
   - El perfil asigna las skills oficiales de `supabase/agent-skills` (`supabase` y `supabase-postgres-best-practices`) a los roles `dev`, `qa` e `issue`.
@@ -63,7 +64,7 @@ Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` 
 | 2 | `platforms.<nombre>.checks` en `relevo.yml` | Otro comando para una verificación, por ejemplo `fvm flutter test`. |
 | 3 | `.relevo/stacks/<stack>.md` | Más higiene, herramientas o skills para un stack. Se suma al perfil del plugin y nunca lo reemplaza. Un stack que el plugin no trae se define solo con este archivo. |
 
-`/relevo:init` puede crear un archivo comentado para la tercera capa. `/relevo:doctor` muestra qué capas usa cada plataforma.
+`/relevo:init` puede crear un archivo comentado para la tercera capa y lo deja para que le hagas commit. Hazle commit: la ejecución en la nube y tus compañeros lo leen de git, así que un archivo que se queda solo en tu máquina solo aplica ahí. `/relevo:doctor` muestra qué capas usa cada plataforma, y avisa mientras git no rastree ese archivo.
 
 ## Skills extra por rol
 

@@ -6,12 +6,13 @@
 //   stream(cmd, args, { cwd, env }) -> exit status (the output goes to the terminal); throws with code ENOENT when missing
 
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cloudBuilds } from './execution-mode.mjs';
 import { runFlags } from './run-flags.mjs';
+import { WORKTREES_FOLDER, worktreePath } from './worktree-path.mjs';
 
-export const WORKTREES_FOLDER = '.relevo-worktrees';
+export { WORKTREES_FOLDER };
 // The guard is part of the plugin, not of the project that is built, so it is found next to this file.
 const GUARD = fileURLToPath(new URL('../agent-guard.mjs', import.meta.url));
 // The same time limit as the cloud step of the Antigravity agent.
@@ -20,7 +21,7 @@ export const GUARD_TIMEOUT_MINUTES = 50;
 /** What a local run will do, without doing it: the worktree and the `claude` or `agy` command. Pure. */
 export function planLocalRun({ issue, repoRoot, config }) {
   const base = config.branches.base;
-  const worktree = join(dirname(repoRoot), WORKTREES_FOLDER, `${basename(repoRoot)}-${issue}`);
+  const worktree = worktreePath(repoRoot, issue);
   const isAntigravity = config.agent?.build === 'antigravity';
   const command = isAntigravity
     ? ['node', [

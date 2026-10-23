@@ -27,9 +27,21 @@ Launch `relevo:dev` and `relevo:qa` in the foreground and wait for each report b
 
 ## Where it runs
 
-In the cloud the workflow starts this skill with the decision already made. A person can also start it on their machine: `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>` runs it in a separate git worktree, with the same limits and tool lists as the workflow, and removes the worktree when it ends cleanly. Started by hand without that script, it needs a clean working tree (the preflight below stops otherwise).
+In the cloud the workflow starts this skill with the decision already made. A person can also start it on their machine: `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>` runs it in a separate git worktree, with the same limits and tool lists as the workflow, and removes the worktree when it ends cleanly.
 
 **When `$ARGUMENTS` has `--local`**, do not build in this session: run `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>`, show what it prints, and stop. The build happens in the process that script starts, in its own worktree and with the closed tool lists, which a plain session does not have.
+
+**In an interactive session** (started by hand without `--decision` and without `--local`), do not build in the folder you were started in: another session may be building another issue there, and the person may have changes of their own. Before step 0, make a worktree for the issue:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/go-worktree.mjs create <issue>
+```
+
+- Exit 0: it prints `{"worktree": "<path>", "base": "<base>"}`. Enter it with `EnterWorktree` and its `path` (never its `name`, which would branch from the default branch and not from the base of the project). From then on every step, command and agent works in that folder.
+- Exit 4: the session is already in a linked worktree (a run of `go-local.mjs`, or one the person made). Build where you are, make no worktree, and skip the exit below.
+- Any other exit (for example 3, the worktree of this issue already exists because another run is building it or a failed one left it): show its message and stop without changing anything.
+
+At the end of the run, before the final report, leave the worktree: call `ExitWorktree` with `keep`. Then, from the folder you came from, remove it with `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-worktree.mjs remove <issue>` when the outcome is `built` or a gate decision that stopped before step 2 (nothing was built, so nothing is lost). After the failure path, or if the run stopped for any other reason, leave the worktree on disk and say its path in the report.
 
 ## OpenSpec commands
 

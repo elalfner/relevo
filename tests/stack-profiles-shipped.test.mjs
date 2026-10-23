@@ -91,3 +91,14 @@ test('relevo.yml accepts platforms of both stacks and checks their targets again
   const goodCheck = loadConfig('limits:\n  run_max_cost: 5\nplatforms:\n  api:\n    stack: laravel\n    checks:\n      analyze: vendor/bin/pint --test && vendor/bin/phpstan analyse\n', lookups);
   assert.equal(goodCheck.ok, true, JSON.stringify(goodCheck.errors));
 });
+
+test('Scenario: Flutter profile - the rules of the official docs are in the body, mocks are generated, and no architecture is imposed', () => {
+  const p = profile('flutter');
+  assert.deepEqual(p.generated, ['*.g.dart', '*.freezed.dart', '*.mocks.dart']);
+  ['ListView', 'Column', 'TextField', 'Row', 'showDialog', 'ScrollController', 'builder constructors', 'Opacity', 'Isolate.run', 'dart:html', 'package:web', 'analyze_files', 'read_package_uris', 'run_tests', 'dart_format', 'dart_fix', 'hot_reload', 'launch_app', 'MissingPluginException', 'build_runner'].forEach((word) => assert.ok(p.body.includes(word), `flutter: ${word}`));
+  assert.match(p.body, /Command and Result objects, and any state-management package, are not required by this profile/);
+  assert.match(p.body, /report only what breaks a rule the project wrote down/);
+  assert.doesNotMatch(p.body, /\b(must|always) use (Command|Result|provider|freezed)/i);
+  assert.doesNotMatch(p.body, /AI rules/i);
+  assert.ok(Buffer.byteLength(p.body) <= 8 * 1024, `the Flutter body is ${Buffer.byteLength(p.body)} bytes`);
+});

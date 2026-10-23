@@ -43,6 +43,7 @@ Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:g
 | `supabase` | `supabase db lint` | `supabase test db` | `npx prettier --write supabase/` | none |
 
 - The commands QA runs never rewrite your code. This matters for Vue: the `lint` script that `npm create vue` generates uses `--fix`, so the profile calls the tools directly (through `npx --no-install`, with the versions your project pins) and does not use `npm run lint`.
+- The `flutter` profile follows the official Flutter documentation (architecture, data and backend, testing, performance, and the Dart MCP server), as read on 2026-10-22. The developer avoids, and QA looks for in the diff, the common layout errors, costly work in `build()`, long lists without a builder, `Opacity` and clipping in animations, heavy parsing on the UI isolate and `dart:html` (it prevents the Wasm build). With the Dart MCP server the agents use only the tools that write nothing (`analyze_files`, `lsp`, `read_package_uris`, `run_tests` when enabled). The profile does not impose an architecture: the agents follow the one your rules declare, and only with none declared does new code use the layers of Flutter's architecture guide. QA reports an architecture finding only against a rule you wrote down. If your project requires Command and Result objects, a state-management package or a layout of folders, write it in your rules (`qa.rules_from`).
 - The `supabase` profile implements Database-as-Code for monorepo projects (e.g. `app` in Flutter and `backend` in Supabase):
   - All tests execute hermetically against local Docker containers (`supabase test db` using pgTAP); Relevo agents never connect to remote cloud instances.
   - The profile assigns the official `supabase/agent-skills` (`supabase` and `supabase-postgres-best-practices`) to `dev`, `qa`, and `issue`.
@@ -63,7 +64,7 @@ Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:g
 | 2 | `platforms.<name>.checks` in `relevo.yml` | Another command for a check, for example `fvm flutter test`. |
 | 3 | `.relevo/stacks/<stack>.md` | More hygiene, tools or skills for a stack. It adds to the plugin's profile and never replaces it. A stack the plugin does not ship is defined only by this file. |
 
-`/relevo:init` can create a commented file for the third layer. `/relevo:doctor` shows which layers each platform uses.
+`/relevo:init` can create a commented file for the third layer and leaves it for you to commit. Commit it: the cloud run and your teammates read it from git, so a file that stays only on your machine applies only there. `/relevo:doctor` shows which layers each platform uses, and warns while that file is not tracked by git.
 
 ## Extra skills per role
 
