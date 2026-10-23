@@ -154,8 +154,34 @@ test('Scenario: the skill says where it runs - in the cloud with a decision, or 
   assert.match(body, /## Where it runs/);
   assert.match(body, /scripts\/go-local\.mjs <issue>/);
   assert.match(body, /separate git worktree, with the same limits and tool lists as the workflow/);
-  assert.match(body, /Started by hand without that script, it needs a clean working tree/);
   assert.ok(existsSync(root('scripts/go-local.mjs')));
+});
+
+const whereItRuns = body.match(/## Where it runs\n\n([\s\S]*?)\n\n## OpenSpec commands/)[1];
+
+test('Scenario: Two issues at once - an interactive run makes its worktree with go-worktree.mjs and enters it by path before the preflight', () => {
+  assert.ok(existsSync(root('scripts/go-worktree.mjs')));
+  assert.match(whereItRuns, /\*\*In an interactive session\*\* \(started by hand without `--decision` and without `--local`\)/);
+  assert.match(whereItRuns, /Before step 0, make a worktree for the issue/);
+  assert.match(whereItRuns, /scripts\/go-worktree\.mjs create <issue>/);
+  assert.match(whereItRuns, /`EnterWorktree` and its `path` \(never its `name`/);
+  assert.ok(body.indexOf('go-worktree.mjs create') < body.indexOf('### 0. Preflight'));
+});
+
+test('Scenario: No worktree where one exists - the cloud and --local skip it, a linked worktree builds in place, the same issue twice stops', () => {
+  assert.match(whereItRuns, /without `--decision` and without `--local`/);
+  assert.match(whereItRuns, /Exit 4: the session is already in a linked worktree[^\n]*Build where you are, make no worktree, and skip the exit below/);
+  assert.match(whereItRuns, /Any other exit \(for example 3[^\n]*\): show its message and stop without changing anything/);
+});
+
+test('Scenario: Clean end and failure - the worktree is removed when the issue is built or a gate stopped it, and kept after the failure path', () => {
+  assert.match(whereItRuns, /call `ExitWorktree` with `keep`/);
+  assert.match(whereItRuns, /go-worktree\.mjs remove <issue>` when the outcome is `built` or a gate decision that stopped before step 2/);
+  assert.match(whereItRuns, /After the failure path, or if the run stopped for any other reason, leave the worktree on disk and say its path/);
+});
+
+test('Scenario: Review stays in the main working tree - the go skill does not touch review', () => {
+  assert.ok(!/go-worktree|EnterWorktree/.test(readFileSync(root('skills/review/SKILL.md'), 'utf8')));
 });
 
 test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does not build in the session', () => {

@@ -46,7 +46,7 @@ What to build, the path of a saved agreement, or the number of an issue to rewri
 
 ### `/relevo:go [issue-number] [--local] [--decision <base64>]`
 
-The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `--local` builds it on your machine in a separate worktree. `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
+The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `/relevo:go` in a Claude Code session builds it on your machine in a worktree of its own (so two can run at once), and `--local` does the same in a separate process with the closed tool lists of the workflow. `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
 
 ```text
 /relevo:go 42 --local
