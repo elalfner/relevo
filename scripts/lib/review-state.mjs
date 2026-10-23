@@ -1,6 +1,8 @@
 // State of one on-device review, and the rule that decides whether a pull request may be opened.
 // Implements "Pull request only after verification" of openspec/specs/review/spec.md.
 
+import { createHash } from 'node:crypto';
+
 export const STATUSES = ['pending', 'ok', 'fail'];
 
 const same = (a, b) => a.class === b.class && a.excerpt === b.excerpt;
@@ -78,6 +80,8 @@ export function syncState(state, items) {
   state.audit = null;
   state.waivers = [];
   state.agreed = false;
+  // The code changed, so the review script must be read by QA again.
+  state.qaScript = null;
   return state;
 }
 
@@ -93,12 +97,34 @@ export function setItem(state, id, status, note = null) {
   return state;
 }
 
-const driving = (state) => {
+/**
+ * Throws unless the agent may drive the review: autopilot is not off and the person confirmed the data.
+ * With `open`, the review must also not be agreed yet (the browser runner asks for it).
+ */
+export function assertDriving(state, { open = false } = {}) {
   const mode = state.autopilot ?? 'off';
   if (mode === 'off') throw new Error('the agent does not drive the review: review.autopilot is "off"');
   if (!state.envConfirmed) throw new Error('the person has not confirmed in writing that the app points to non-production data: run "confirm-env" after they do');
+  if (open && state.agreed) throw new Error('the review is closed: the person already agreed to open the pull request');
   return mode;
-};
+}
+
+/** The sha256 of a review script, as `qa-pass` records it and the runner compares it. */
+export const scriptHash = (text) => createHash('sha256').update(String(text)).digest('hex');
+
+/** QA passed this exact script; any later change to it needs a new pass. */
+export function qaPass(state, path, text) {
+  state.qaScript = { path, sha256: scriptHash(text) };
+  return state;
+}
+
+/** Record a screenshot that was taken. Captures belong to the open review, so one after the agreement is refused. */
+export function recordCapture(state, path) {
+  if (state.agreed) throw new Error('the review is closed: captures are taken while the person tests, before the agreement');
+  state.captures ??= [];
+  if (!state.captures.includes(path)) state.captures.push(path);
+  return state;
+}
 
 /** The person confirmed that the app under review does not point to production data. */
 export function confirmEnv(state) {
@@ -108,7 +134,7 @@ export function confirmEnv(state) {
 
 /** The agent's own result for a line, apart from the person's confirmation. Modes precheck and verify only. */
 export function precheckItem(state, id, result, note = null) {
-  driving(state);
+  assertDriving(state);
   if (!['ok', 'fail'].includes(result)) throw new Error('a pre-check result is ok or fail');
   const item = state.items.find((i) => i.id === id);
   if (!item) throw new Error(`there is no checklist item ${id}`);
@@ -119,7 +145,7 @@ export function precheckItem(state, id, result, note = null) {
 
 /** The agent marks a line as verified automatically, saying how. Mode verify only; the line becomes ok but stays labelled. */
 export function autoItem(state, id, how) {
-  const mode = driving(state);
+  const mode = assertDriving(state);
   if (mode !== 'verify') throw new Error(`a line can be verified automatically only when review.autopilot is "verify" (it is "${mode}")`);
   const why = String(how ?? '').trim();
   if (!why) throw new Error('say how the line was verified: auto <number> <the assertion, finder or log that proved it>');

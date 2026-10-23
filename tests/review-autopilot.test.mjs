@@ -135,3 +135,36 @@ test('the checklist marks automatic lines', () => {
   assert.match(out, /- \[x\] 2\. \*\*Two\*\*.*_\(verified automatically: the title was asserted\)_/);
   assert.match(out, /- \[ \] 1\. \*\*One\*\*: when a, then b$/m);
 });
+
+test('assertDriving: with open, an agreed review is closed; without it, precheck and auto behave as before', async () => {
+  const { assertDriving } = await import('../scripts/lib/review-state.mjs');
+  const state = { autopilot: 'precheck', envConfirmed: true, agreed: true };
+  assert.equal(assertDriving(state), 'precheck');
+  assert.throws(() => assertDriving(state, { open: true }), /the review is closed/);
+  assert.throws(() => assertDriving({ ...state, autopilot: 'off' }, { open: true }), /review\.autopilot is "off"/);
+  assert.throws(() => assertDriving({ ...state, envConfirmed: false }, { open: true }), /non-production data/);
+});
+
+test('Scenario: Capture after the agreement - refused, and the captures are unchanged', () => {
+  const { run, show } = review('precheck');
+  assert.equal(run('', 'capture', 'evidence/01_initial.png').status, 0);
+  run('', 'agree');
+  const late = run('', 'capture', 'evidence/02_late.png');
+  assert.equal(late.status, 2);
+  assert.match(late.stderr, /the review is closed: captures are taken while the person tests/);
+  assert.deepEqual(show().captures, ['evidence/01_initial.png']);
+});
+
+test('qa-pass records the hash of the exact script, and a sync after a fix clears it', () => {
+  const { dir, run, show } = review('precheck');
+  const script = join(dir, 'review-web.mjs');
+  writeFileSync(script, 'export default async function () {}\n');
+  const r = run('', 'qa-pass', script);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /any change to it needs a new pass/);
+  assert.equal(show().qaScript.path, script);
+  assert.match(show().qaScript.sha256, /^[0-9a-f]{64}$/);
+  assert.equal(run('', 'qa-pass', join(dir, 'missing.mjs')).status, 2);
+  assert.equal(run('', 'sync', join(dir, 'change')).status, 0);
+  assert.equal(show().qaScript, null);
+});
