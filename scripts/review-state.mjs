@@ -3,7 +3,8 @@
 //   review-state.mjs init <change-dir> [--autopilot off|precheck|verify]   build the checklist from the change's scenarios
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
 //   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
-//   review-state.mjs capture <path>               record a screenshot that was taken
+//   review-state.mjs capture <path>               record a screenshot that was taken (refused after "agree")
+//   review-state.mjs qa-pass <script>             QA passed this browser review script; the runner runs only this exact content
 //   review-state.mjs audit [<log-file>|-] [--package <id>] [--pid <n>]
 //                                                 audit the device log (stdin by default), write the report;
 //                                                 with --package only that app's lines are audited
@@ -24,7 +25,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname, join } from 'node:path';
 import { checklistFromChange } from './lib/checklist.mjs';
 import { auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
-import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, newState, precheckItem, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
+import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, newState, precheckItem, qaPass, recordCapture, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
 
 const argv = process.argv.slice(2);
 const si = argv.indexOf('--state');
@@ -72,10 +73,16 @@ try {
     }
     case 'capture': {
       if (!rest[0]) fail('usage: review-state.mjs capture <path>');
-      const state = load();
-      state.captures.push(rest[0]);
+      const state = recordCapture(load(), rest[0]);
       save(state);
       console.log(`recorded ${rest[0]}`);
+      break;
+    }
+    case 'qa-pass': {
+      if (!rest[0] || !existsSync(rest[0])) fail('usage: review-state.mjs qa-pass <script>');
+      const state = qaPass(load(), rest[0], readFileSync(rest[0], 'utf8'));
+      save(state);
+      console.log(`QA passed ${rest[0]} (sha256 ${state.qaScript.sha256.slice(0, 12)}); any change to it needs a new pass`);
       break;
     }
     case 'drain': {
@@ -164,7 +171,7 @@ try {
       break;
     }
     default:
-      fail('usage: review-state.mjs <init|set|sync|capture|drain|audit|waive|waived|confirm-env|precheck|auto|auto-list|agree|show|decide> [...]');
+      fail('usage: review-state.mjs <init|set|sync|capture|qa-pass|drain|audit|waive|waived|confirm-env|precheck|auto|auto-list|agree|show|decide> [...]');
   }
 } catch (err) {
   fail(err.message);
