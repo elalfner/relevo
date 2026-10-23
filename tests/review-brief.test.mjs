@@ -67,3 +67,18 @@ test('the script prints the brief and exits 2 without arguments', () => {
   assert.match(r.stdout, /^#42 Birthday list\n/);
   assert.equal(spawnSync('node', [cli], { encoding: 'utf8' }).status, 2);
 });
+
+test('Scenario: Plan shown up front - with precheck or verify a fixed note says the person confirms every line, in both languages', () => {
+  const issue = { number: 42, title: 'Birthday list', body: BODY };
+  const plain = reviewBrief({ issue, built: BUILT });
+  assert.equal(reviewBrief({ issue, built: BUILT, autopilot: 'off' }), plain);
+  const en = reviewBrief({ issue, built: BUILT, autopilot: 'precheck' });
+  assert.equal(en, `${plain}\nThe agent walks the lines below first; you confirm every line, and lines about appearance are never marked automatically.`);
+  const es = reviewBrief({ issue, built: BUILT, autopilot: 'verify', language: 'es' }).split('\n').pop();
+  assert.match(es, /tú confirmas cada línea, y las líneas sobre apariencia nunca se marcan automáticamente/);
+  assert.ok(es.length <= MAX_LINE);
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-brief-'));
+  writeFileSync(join(dir, 'body.md'), BODY);
+  const cli = spawnSync('node', [new URL('../scripts/review-brief.mjs', import.meta.url).pathname, '--issue', '42', '--title', 'Birthday list', '--body-file', join(dir, 'body.md'), '--autopilot', 'verify'], { encoding: 'utf8' });
+  assert.match(cli.stdout, /you confirm every line/);
+});

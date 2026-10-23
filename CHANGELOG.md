@@ -4,6 +4,20 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **Screenshots in a browser review.** The review script gets `capture(name, check, { fullPage })`: `check` asserts the state the shot shows and runs first, so a screenshot saved under the wrong name fails instead of passing unnoticed. The PNG goes to the run's output folder, the agent sees only its path, and it is recorded in the review state. Captures are taken while the person tests: `review-state.mjs capture` refuses after `agree`.
+- **`scripts/web-preflight.mjs`** checks a browser review before it drives: `node_modules`, Playwright and its Chromium, and the address with the module scripts of its page. Playwright is installed only with the person's permission, with `--no-save`, and `package-lock.json` is restored. With `--wait` it is the readiness probe of a server the agent started.
+- **`scripts/extra-server.mjs`** starts, checks and stops the dev servers the agent needs for lines that require another configuration: a free port only, a process group of its own, a record in `evidence/servers.json`, and it never stops a server it did not start. It refuses to remove a variable while `.env` files exist, because the dev server loads them by itself; it never reads them.
+- **`scripts/dev-server-guard.mjs`**: the review no longer switches to the base branch while the dev server under review runs from the working tree, which broke that server until it was restarted.
+- **`review-state.mjs qa-pass`** records the hash of the review script QA passed; the runner refuses any other content, so an edited script needs QA again.
+
+### Changed
+
+- **The browser runner enforces the gates itself.** `web-review.mjs` reads the review state (`--state`) and refuses before any browser starts when the autopilot is `off`, the data was not confirmed, the review is agreed, or the script is not the one QA passed. It also refuses a script that takes a screenshot itself, saves a PDF, trace, video, HAR, download or storage state, uploads a local file or passes any `path:` option, and it writes the script's console, redacted, to `script-console.txt` instead of its own output. When the page itself fails, it names that (for example a 500 on a module) before the script's timeout. A run with the default `--out` warns before it replaces a log; each extra run uses `evidence/run-<port>`.
+- **The review skill has a browser branch** in steps 2, 3, 5, 8 and 9, a plan of the walk in the brief (`browser`, `command`, `read`, `server <port>`), project commands that leave tracked files as they were, a warning when `relevo.yml` has uncommitted changes, and an evidence hand-off that offers only the PNG files and deletes a folder with none without asking. `review-adapter.mjs` gives the advice for `review.autopilot: off` on a browser (recommend `verify`, `precheck` as the cautious option) in the language of `relevo.yml`, and `review-brief.mjs --autopilot` adds a fixed note that the person confirms every line.
+- A project command's exit code can now verify a line in `verify`; a line checked by reading code, CI or docs is only pre-checked.
+
 ## [0.6.0] - 2026-10-23
 
 ### Added
