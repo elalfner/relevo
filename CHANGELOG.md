@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-23
+
 ### Added
 
 - **`doctor` warns when the repository's profile is not in git.** When a platform's profile uses `.relevo/stacks/<stack>.md` and git does not track that file, `doctor` warns that the cloud run and a fresh clone use only the plugin's profile (or have no profile, for a stack the plugin does not ship) and says to commit it.
