@@ -4,6 +4,26 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-23
+
+### Added
+
+- **`doctor` warns when the repository's profile is not in git.** When a platform's profile uses `.relevo/stacks/<stack>.md` and git does not track that file, `doctor` warns that the cloud run and a fresh clone use only the plugin's profile (or have no profile, for a stack the plugin does not ship) and says to commit it.
+
+### Changed
+
+- **An interactive `/relevo:go` in Claude Code builds in a worktree of its own.** Before, it built in the checkout of the session, so two sessions building two issues changed each other's branch and OpenSpec files, and your uncommitted changes stopped a run. Now the skill makes the worktree with the new `scripts/go-worktree.mjs` (`.relevo-worktrees/` next to the repository, from `origin/<base>`, the place `--local` already uses), enters it with `EnterWorktree` by path, and builds there while you watch in your session. It is removed when the issue ends `built` or a gate stops the run before anything is built, and kept, with its path, after a failure. A second run on the same issue stops and names the worktree. The cloud, `--local` and a session that is already in a worktree build where they are. `/relevo:review` still runs in the main checkout.
+- **The Flutter profile follows the official Flutter documentation**, as read on 2026-10-22: architecture and its case study, data and backend, testing, performance and the Dart MCP server. The developer and QA now cover the common layout errors, costly work and new futures in `build()`, long lists without a builder, `Opacity` and clipping in animations, heavy parsing on the UI isolate, `dart:html` and `package:js` (they prevent the Wasm build), and plugins in unit tests. The profile no longer imposes or assumes an architecture: the agents follow the one the project's rules declare, new code uses the layers of Flutter's guide only when none is declared, and QA reports an architecture finding only against a written rule. The Dart MCP server is named by its tools: the agents use the ones that write nothing, and never `dart_format`, `dart_fix`, `pub` or the tools that drive an app during a run. `*.mocks.dart` is left out of the review as generated code.
+
+### Fixed
+
+- **`init` no longer says the repository's profile is "not committed".** The words were read as "keep it out of git". The plan, the skill and the docs now say that `.relevo/stacks/<stack>.md` is created and left for you to commit, like `.claude/settings.json`, and the report names it among the new files to commit and push.
+
+### Known limits
+
+- The worktree of an interactive `/relevo:go` was tried by hand, with two runs at once on the sandbox repository; the issue numbers and the logs of that run were not kept. A session that ends midway leaves its worktree in `.relevo-worktrees/`, and `doctor` does not list leftover worktrees. `go-worktree.mjs create` reads `relevo.yml` from the current folder, so `/relevo:go` started from a subfolder of the repository stops with an error.
+- The Flutter profile follows the docs as read on 2026-10-22. The review autopilot for Android still drives the app with `flutter_driver`, which the Flutter testing docs now treat as legacy in favour of `integration_test`.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added

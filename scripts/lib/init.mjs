@@ -208,11 +208,11 @@ export function planInit({ facts, answers, templates, current, admin }) {
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));
   else items.push(item('config', 'todo', 'Create relevo.yml from the answers', { content: renderConfig(templates.config, { base, release, ...answers }) }));
 
-  // optional stack profiles of the repository (created only when asked for, and never committed by init)
+  // optional stack profiles of the repository (created only when asked for; init never commits them, the person does)
   (answers.stackProfiles ?? []).forEach((stack) => {
     const path = `.relevo/stacks/${stack}.md`;
     if ((current.stackProfiles ?? {})[stack]) items.push(item(`stack-profile.${stack}`, 'ok', `${path} exists`));
-    else items.push(item(`stack-profile.${stack}`, 'todo', `Create ${path}, a commented profile that adds to the plugin's (not committed)`, { path, content: stackProfileTemplate(stack) }));
+    else items.push(item(`stack-profile.${stack}`, 'todo', `Create ${path}, a commented profile that adds to the plugin's (left for you to commit)`, { path, content: stackProfileTemplate(stack) }));
   });
 
   // labels

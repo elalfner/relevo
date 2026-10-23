@@ -43,11 +43,20 @@ test('Scenario: No Claude token remains', () => {
 });
 
 test('Scenario: Script calls - the same arguments, the absolute path of the plugin', () => {
-  const before = source.skills.flatMap((s) => [s.body, ...s.files.map((f) => f.content)]).join('\n');
+  // The "Where it runs" block of `go` is replaced whole for Antigravity (its own instructions, its own scripts), so it is
+  // left out of both sides; everything else must keep every call.
+  const withoutWhereRuns = (t) => t.replace(/## Where it runs\n\n[\s\S]*?(?=\n\n## OpenSpec commands)/, '');
+  const before = withoutWhereRuns(source.skills.flatMap((s) => [s.body, ...s.files.map((f) => f.content)]).join('\n'));
   const calls = before.match(/\$\{CLAUDE_PLUGIN_ROOT\}/g).length;
-  const after = out.files.filter((f) => f.path.startsWith('skills/')).map((f) => f.content).join('\n');
+  const after = withoutWhereRuns(out.files.filter((f) => f.path.startsWith('skills/')).map((f) => f.content).join('\n'));
   assert.equal(after.split(pluginDir).length - 1, calls, 'every use of the variable became the path');
   assert.match(adaptText('run `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-plan.mjs 12 --claim`', { pluginDir }), new RegExp(`node ${pluginDir}/scripts/go-plan.mjs 12 --claim`));
+});
+
+test('Scenario: The Claude Code worktree instructions of go do not reach the Antigravity plugin', () => {
+  const go = out.files.find((f) => f.path === 'skills/go/SKILL.md').content;
+  assert.ok(!/EnterWorktree|ExitWorktree|go-worktree\.mjs/.test(go), 'the Claude tools and script are named in the Antigravity go skill');
+  assert.match(go, /Workspace: 'share'/);
 });
 
 test('a label that looks like an agent name is not renamed', () => {
