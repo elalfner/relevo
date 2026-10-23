@@ -99,7 +99,7 @@ Do not add links to this session or attribution lines to the commit.
 
 ### 4. Check again
 
-The push may start new checks or dismiss an approval. Wait for any running checks (`gh pr checks <number> --repo <owner/name> --watch`), then run `ship-check.mjs` again, exactly as in step 1 and adding `--baseline <baseline>`, so an approval given on the head before the archive still counts. If it now says the pull request has conflicts, see below. If it says anything else to stop, show the reasons and stop. The most common one is an approval dismissed by the push: tell the person that the repository must not dismiss approvals on new commits (`/relevo:doctor` checks it).
+The push may start new checks or dismiss an approval. Wait for any running checks (`gh pr checks <number> --repo <owner/name> --watch`), then run `ship-check.mjs` again, exactly as in step 1 and adding `--baseline <baseline>`, so an approval given on the head before the archive still counts. When the archive commit has no checks of its own and changes only `openspec/`, `ship-check` judges the checks of `<baseline>` instead, and its summary says `checksFrom: baseline`; do not ask about `no-ci` then. If it now says the pull request has conflicts, see below. If it says anything else to stop, show the reasons and stop. The most common one is an approval dismissed by the push: tell the person that the repository must not dismiss approvals on new commits (`/relevo:doctor` checks it).
 
 **The archive left conflicts.** If the only reason is `CONFLICTING`, the base branch changed the specifications the archive wrote. Recover with normal pushes only, never a force-push:
 
@@ -126,3 +126,5 @@ The subject is the pull request title, which already ends with the issue number.
 Finish with one short block: the issue, the pull request, the merge commit, that the issue is closed and the labels removed.
 
 End with this reminder: promoting `<base>` to `<release>` is a separate pull request, with a version tag. `ship` does not do it.
+
+When the repository has the ship workflow (`.github/workflows/relevo-ship.yml`), add one line: next time, the person who ships can apply the `relevo:ship` label to the issue instead, and GitHub ships it with the same checks, without a local copy.

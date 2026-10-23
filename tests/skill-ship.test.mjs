@@ -119,3 +119,9 @@ test('Scenario: Conflict only in specifications / in code - normal pushes only, 
   assert.match(body, /never a force-push/);
   assert.doesNotMatch(body, /git push[^\n]*--force/);
 });
+
+test('the skill knows that the checks of the approved head carry over, and names the label', () => {
+  assert.match(body, /checksFrom: baseline/);
+  assert.match(body, /do not ask about `no-ci` then/);
+  assert.match(body, /apply the `relevo:ship` label/);
+});

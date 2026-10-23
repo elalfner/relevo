@@ -25,7 +25,7 @@ test('no workflow clones the plugin repository for its scripts', () => {
 test('every script a job runs from the plugin exists in the package and is named by a guard that stops the run', () => {
   files.forEach((f) => {
     const text = read(`templates/workflows/${f}`);
-    const ran = [...text.matchAll(/node \.relevo-plugin\/(scripts\/[\w.-]+\.mjs)/g)].map((m) => m[1]);
+    const ran = [...text.matchAll(/node "?(?:\.relevo-plugin|\$RUNNER_TEMP\/relevo)\/(scripts\/[\w.-]+\.mjs)/g)].map((m) => m[1]);
     assert.ok(ran.length > 0, `${f} runs a plugin script`);
     const guarded = [...text.matchAll(/for f in ([^;\n]+?);? do\n/g)].flatMap((m) => m[1].trim().split(/\s+/));
     ran.forEach((script) => {
@@ -40,7 +40,7 @@ test('the guard runs before the script it protects, in the same job', () => {
   files.forEach((f) => {
     const text = read(`templates/workflows/${f}`);
     const guard = text.indexOf('lacks $f');
-    const first = text.indexOf('node .relevo-plugin/scripts/');
+    const first = text.search(/node "?(?:\.relevo-plugin|\$RUNNER_TEMP\/relevo)\/scripts\//);
     assert.ok(guard > 0 && guard < first, `${f}: install and guard come first`);
   });
 });

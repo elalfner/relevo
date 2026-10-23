@@ -20,6 +20,8 @@ export const SETTINGS = [
   { path: 'review.merger', type: 'enum', allowed: ['author', 'approver'], default: 'approver' },
   { path: 'review.autopilot', type: 'enum', allowed: ['off', 'precheck', 'verify'], default: 'off' },
   { path: 'review.allowed_origins', type: 'origin-list', default: [] },
+  // Whether the ship workflow may merge when no check ran on any commit; /relevo:ship asks the person instead.
+  { path: 'review.ship_without_ci', type: 'bool', default: false },
   { path: 'limits.built_unreviewed_per_person', type: 'int', min: 1, default: 2 },
   { path: 'limits.concurrent_agents', type: 'int', min: 1, default: 3 },
   { path: 'limits.review_sla_hours', type: 'int', min: 1, default: 8 },

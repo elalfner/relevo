@@ -25,7 +25,10 @@ export const SKILL_INSTALL = {
   'supabase-postgres-best-practices': 'run `npx skills add supabase/agent-skills --skill supabase-postgres-best-practices`',
 };
 export const OPENSPEC_INSTALL = 'npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
-export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'];
+export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'];
+// The repository variable that pauses the ship workflow, and the secrets of the GitHub App it pushes with.
+export const SHIP_VARIABLE = 'RELEVO_CLOUD_SHIP';
+export const SHIP_APP_SECRETS = ['RELEVO_SHIP_APP_ID', 'RELEVO_SHIP_APP_KEY'];
 const REQUIRED_WORKFLOWS = new Set(['relevo-go.yml']);
 // How to ask a tool that it is there (most answer --version), and how to install the ones Relevo knows.
 const TOOL_PROBE = { adb: ['version'] };
@@ -70,10 +73,10 @@ export function refMatches(pattern, branch, defaultBranch) {
 
 /**
  * What the repository enforces on a branch, from its rulesets and its classic protection.
- * Returns { protected, pullRequestRequired, approvals, dismissStale, blocksDeletion, blocksForcePush }.
+ * Returns { protected, pullRequestRequired, approvals, dismissStale, lastPushApproval, requiredChecks, blocksDeletion, blocksForcePush }.
  */
 export function summarizeProtection({ rulesets = [], classic = null, branch, defaultBranch }) {
-  const out = { protected: false, pullRequestRequired: false, approvals: 0, dismissStale: false, blocksDeletion: false, blocksForcePush: false };
+  const out = { protected: false, pullRequestRequired: false, approvals: 0, dismissStale: false, lastPushApproval: false, requiredChecks: false, blocksDeletion: false, blocksForcePush: false };
   rulesets.filter((r) => r.target === 'branch' && r.enforcement === 'active').forEach((r) => {
     const include = r.conditions?.ref_name?.include ?? [];
     const exclude = r.conditions?.ref_name?.exclude ?? [];
@@ -84,7 +87,9 @@ export function summarizeProtection({ rulesets = [], classic = null, branch, def
         out.pullRequestRequired = true;
         out.approvals = Math.max(out.approvals, rule.parameters?.required_approving_review_count ?? 0);
         if (rule.parameters?.dismiss_stale_reviews_on_push) out.dismissStale = true;
+        if (rule.parameters?.require_last_push_approval) out.lastPushApproval = true;
       }
+      if (rule.type === 'required_status_checks') out.requiredChecks = true;
       if (rule.type === 'deletion') out.blocksDeletion = true;
       if (rule.type === 'non_fast_forward') out.blocksForcePush = true;
     });
@@ -96,7 +101,9 @@ export function summarizeProtection({ rulesets = [], classic = null, branch, def
       out.pullRequestRequired = true;
       out.approvals = Math.max(out.approvals, pr.required_approving_review_count ?? 0);
       if (pr.dismiss_stale_reviews) out.dismissStale = true;
+      if (pr.require_last_push_approval) out.lastPushApproval = true;
     }
+    if (classic.required_status_checks) out.requiredChecks = true;
     if (classic.allow_deletions?.enabled === false) out.blocksDeletion = true;
     if (classic.allow_force_pushes?.enabled === false) out.blocksForcePush = true;
   }
@@ -210,6 +217,7 @@ export function gatherFacts(p) {
     f.canApprove = tryRun(() => api(`repos/${f.repo}/actions/permissions/workflow`).can_approve_pull_request_reviews, null);
     f.secrets = tryRun(() => api(`repos/${f.repo}/actions/secrets`).secrets.map((s) => s.name));
     f.cloudVariable = tryRun(() => api(`repos/${f.repo}/actions/variables/${CLOUD_VARIABLE}`).value, null);
+    f.shipVariable = tryRun(() => api(`repos/${f.repo}/actions/variables/${SHIP_VARIABLE}`).value, null);
     // The repositories this one may depend on: can they be read, and are they private (then a token is needed)?
     f.links = (f.config?.links ?? []).map((link) => {
       const info = tryRun(() => api(`repos/${link}`), null);
@@ -602,6 +610,7 @@ export function runChecks(f) {
       else if (f.config?.review?.mode !== 'none' && p.approvals < 1) r.push(fail(`repo.protection.${key}`, `${name} requires a pull request but no approval`, `require at least 1 approving review on ${name}`));
       else r.push(pass(`repo.protection.${key}`, `${name} requires a pull request${p.approvals ? ` with ${p.approvals} approval(s)` : ''}`));
       if (p?.dismissStale) r.push(fail(`repo.dismiss-stale.${key}`, `${name} dismisses approvals when new commits are pushed; the spec archive commit pushed by \`ship\` would dismiss the approval`, `turn off "dismiss stale pull request approvals when new commits are pushed" on ${name}`));
+      if (p?.lastPushApproval) r.push(fail(`repo.last-push.${key}`, `${name} requires the most recent push to be approved by someone else; the spec archive commit pushed by \`ship\` would need a new approval`, `turn off "require approval of the most recent reviewable push" on ${name}`));
     });
   }
   if (!f.protectionUnavailable && !f.protectionError) {
@@ -642,10 +651,32 @@ export function runChecks(f) {
   }
   r.push(...linkChecks(f));
   r.push(...executionChecks(f));
+  r.push(...shipChecks(f));
   if (f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
     if (f.secrets.includes('RELEVO_PLUGIN_TOKEN')) r.push(pass('automation.plugin-secret', 'the RELEVO_PLUGIN_TOKEN secret exists for the private plugin repository'));
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));
   }
+  return r;
+}
+
+/**
+ * What the ship workflow needs, when it is on the default branch: the App secrets when the base branch requires checks
+ * (a push with the workflow token starts none, so the archive commit would never get them), and whether it is paused.
+ * Its label is checked with the other labels, and it needs no model credential.
+ */
+function shipChecks(f) {
+  const r = [];
+  if (!f.workflows?.['relevo-ship.yml']?.present) return r;
+  const base = f.config?.branches?.base ?? 'base';
+  if (f.protectionError || f.protectionUnavailable) return r;
+  if (f.protection?.base?.requiredChecks) {
+    if (f.secrets === null) r.push(warn('ship.app', `${base} requires status checks and the secrets could not be listed, so the ship App was not checked`, `check that ${SHIP_APP_SECRETS.join(' and ')} exist`));
+    else if (SHIP_APP_SECRETS.every((s) => f.secrets.includes(s))) r.push(pass('ship.app', `${base} requires status checks and the ship App secrets exist, so the relevo:ship label pushes with the App and the checks run on the archive commit`));
+    else r.push(fail('ship.app', `${base} requires status checks, so the relevo:ship label cannot ship here: the archive commit pushed with the workflow token would never get its checks`, `create a GitHub App for this repository and store its id and private key as ${SHIP_APP_SECRETS.join(' and ')} (docs/execution.md, "Shipping with a label"), or ship with /relevo:ship`));
+  } else {
+    r.push(pass('ship.app', `${base} requires no status checks, so the checks of the approved head carry over to the archive commit and the ship workflow needs no App`));
+  }
+  if (String(f.shipVariable ?? '').trim().toLowerCase() === 'off') r.push(warn('ship.paused', `the relevo:ship label is paused (${SHIP_VARIABLE} is off)`, `delete the repository variable ${SHIP_VARIABLE}, or set it to on, to ship with the label again`));
   return r;
 }
 

@@ -4,6 +4,17 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **Ship with a label.** The new workflow template `relevo-ship.yml` ships an issue when a person applies `relevo:ship` to it: the steps of `/relevo:ship` (`scripts/ship-unattended.mjs`), with the same checks and no model, so it needs no model credential and no local copy. The label is the written confirmation of the person who ships under `review.merger`; anything that stops it is commented on the issue and the label is removed. Nothing from the pull request's branch runs, and `relevo.yml` is read from the base branch. `RELEVO_CLOUD_SHIP=off` pauses it. `/relevo:init` creates the label and adds the workflow in every setup.
+- **A GitHub App for repositories that require checks.** With the secrets `RELEVO_SHIP_APP_ID` and `RELEVO_SHIP_APP_KEY`, the ship workflow pushes, merges and closes with the App's token, so the project's CI runs on the archive commit, and waits for it.
+- **`review.ship_without_ci`** (default `false`) lets the label merge a pull request on which no check ran.
+- `/relevo:doctor` fails when the base branch requires approval of the last push, and checks what the ship workflow needs. The approval comment names the label when the ship workflow is installed.
+
+### Changed
+
+- **The checks of the approved head count for the archive commit** when it changes only `openspec/` and has no checks of its own, in `/relevo:ship` too, so a push that started no workflow no longer reads as "no CI".
+
 ## [0.7.0] - 2026-10-23
 
 ### Added

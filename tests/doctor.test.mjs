@@ -221,7 +221,7 @@ test('protection comes from active rulesets and from classic branch protection',
     rules: [{ type: 'pull_request', parameters: { required_approving_review_count: 2, dismiss_stale_reviews_on_push: true } }, { type: 'deletion' }, { type: 'non_fast_forward' }],
   };
   const a = summarizeProtection({ rulesets: [ruleset], branch: 'dev', defaultBranch: 'main' });
-  assert.deepEqual(a, { protected: true, pullRequestRequired: true, approvals: 2, dismissStale: true, blocksDeletion: true, blocksForcePush: true });
+  assert.deepEqual(a, { protected: true, pullRequestRequired: true, approvals: 2, dismissStale: true, lastPushApproval: false, requiredChecks: false, blocksDeletion: true, blocksForcePush: true });
   assert.equal(summarizeProtection({ rulesets: [ruleset], branch: 'main', defaultBranch: 'main' }).protected, false);
   assert.equal(summarizeProtection({ rulesets: [{ ...ruleset, enforcement: 'disabled' }], branch: 'dev', defaultBranch: 'main' }).protected, false);
   const classic = summarizeProtection({ classic: { required_pull_request_reviews: { required_approving_review_count: 1, dismiss_stale_reviews: false } }, branch: 'dev', defaultBranch: 'main' });
@@ -965,4 +965,53 @@ test('gatherFacts asks git whether the repository layer is tracked', () => {
   assert.equal(gather({ tracked: false }).repositoryLayerTracked, false);
   assert.equal(gather({ tracked: false, repo: false }).repositoryLayerTracked, null);
   assert.equal(gather({ git: false }).repositoryLayerTracked, null);
+});
+
+test('Scenario: Approval of the last push required - doctor fails, naming the archive commit', () => {
+  const r = byId(runChecks(healthy({ protection: { base: { ...PROTECTED, lastPushApproval: true }, release: PROTECTED } })), 'repo.last-push.base');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /archive commit pushed by `ship` would need a new approval/);
+  assert.match(r.fix, /require approval of the most recent reviewable push/);
+});
+
+test('last-push approval and required checks are read from rulesets and from classic protection', () => {
+  const ruleset = {
+    target: 'branch', enforcement: 'active', conditions: { ref_name: { include: ['refs/heads/dev'], exclude: [] } },
+    rules: [{ type: 'pull_request', parameters: { required_approving_review_count: 1, require_last_push_approval: true } }, { type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'test' }] } }],
+  };
+  const a = summarizeProtection({ rulesets: [ruleset], branch: 'dev', defaultBranch: 'main' });
+  assert.equal(a.lastPushApproval, true);
+  assert.equal(a.requiredChecks, true);
+  const classic = summarizeProtection({ classic: { required_pull_request_reviews: { require_last_push_approval: true }, required_status_checks: { contexts: ['test'] } }, branch: 'dev', defaultBranch: 'main' });
+  assert.equal(classic.lastPushApproval, true);
+  assert.equal(classic.requiredChecks, true);
+});
+
+test('Scenario: No required checks - the ship workflow needs no App and the checks carry over', () => {
+  const r = byId(runChecks(healthy()), 'ship.app');
+  assert.equal(r.status, 'pass');
+  assert.match(r.message, /checks of the approved head carry over/);
+});
+
+test('Scenario: Required checks without the App - doctor fails and names the secrets', () => {
+  const required = { ...PROTECTED, requiredChecks: true };
+  const r = byId(runChecks(healthy({ protection: { base: required, release: PROTECTED } })), 'ship.app');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /cannot ship here/);
+  assert.match(r.fix, /RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY/);
+  const withApp = byId(runChecks(healthy({ protection: { base: required, release: PROTECTED }, secrets: ['ANTHROPIC_API_KEY', 'RELEVO_SHIP_APP_ID', 'RELEVO_SHIP_APP_KEY'] })), 'ship.app');
+  assert.equal(withApp.status, 'pass');
+});
+
+test('Scenario: Ship paused - doctor warns that the label is paused', () => {
+  const r = byId(runChecks(healthy({ shipVariable: 'off' })), 'ship.paused');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /RELEVO_CLOUD_SHIP is off/);
+});
+
+test('the ship checks are skipped when the ship workflow is not installed', () => {
+  const workflows = { ...healthy().workflows, 'relevo-ship.yml': { present: false, local: false, remote: false } };
+  const results = runChecks(healthy({ workflows, shipVariable: 'off', protection: { base: { ...PROTECTED, requiredChecks: true }, release: PROTECTED } }));
+  assert.equal(byId(results, 'ship.app'), undefined);
+  assert.equal(byId(results, 'ship.paused'), undefined);
 });
