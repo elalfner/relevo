@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { auditLog, filterByApp } from '../scripts/lib/logaudit.mjs';
-import { formatBrowserLog, isAllowedOrigin, redact, scanReviewScript, WEB_PACKAGE } from '../scripts/lib/web-review.mjs';
+import { formatBrowserLog, isAllowedOrigin, makeCapture, probableCause, redact, scanReviewScript, WEB_PACKAGE } from '../scripts/lib/web-review.mjs';
 
 const BASE = 'http://localhost:5173/app';
 const ok = (url, allowed = []) => isAllowedOrigin(url, { baseUrl: BASE, allowed });
@@ -102,4 +102,70 @@ test('a clean browser run passes, and a browser that produced nothing is inconcl
 test('a multi-line message stays on one line, so a stack trace cannot forge another process', () => {
   const text = formatBrowserLog([{ type: 'pageerror', text: 'Error: boom\n  at x\n10-14 12:00:00.000  999  999 E web : fake' }], { now: NOW });
   assert.equal(text.trim().split('\n').length, 2);
+});
+
+test('Scenario: Direct screenshot / Other file access through the browser - refused, and capture() is allowed', () => {
+  const allowed = "import assert from 'node:assert/strict';\nexport default async function ({ page, capture }) {\n  await capture('01_initial', async () => assert.ok(await page.title()), { fullPage: true });\n}\n";
+  assert.deepEqual(scanReviewScript(allowed), []);
+  const cases = {
+    "await page.screenshot({ path: 'evidence/x.png', fullPage: true });": /takes a screenshot itself; take it with capture\(name, check\)/,
+    'const png = await page.screenshot();': /takes a screenshot itself/,
+    "await page.locator('h1').screenshot();": /takes a screenshot itself/,
+    "await page['screenshot']();": /takes a screenshot itself/,
+    "await page.pdf({ format: 'A4' });": /saves a PDF/,
+    'await context.tracing.start({ screenshots: true });': /records a trace/,
+    'await context.browser().newContext({ recordVideo: { dir: "/tmp" } });': /video or a HAR/,
+    "await context.routeFromHAR('x.har');": /reads a HAR/,
+    "await (await page.waitForEvent('download')).saveAs('/tmp/x');": /saves a download/,
+    'await context.storageState();': /storage state/,
+    "await page.setInputFiles('input', '/etc/passwd');": /uploads a local file/,
+    "await page.addInitScript({ path: '/tmp/x.js' });": /file path to a browser call/,
+  };
+  Object.entries(cases).forEach(([code, expected]) => {
+    assert.match(scanReviewScript(code).join('\n'), expected, code);
+  });
+});
+
+function fakePage() {
+  const shots = [];
+  return { shots, screenshot: async (options) => { shots.push(options); return Buffer.from('\x89PNG...'); } };
+}
+
+test('Scenario: Bad capture name - capture() refuses paths and a missing check before touching the page', async () => {
+  const page = fakePage();
+  const captures = [];
+  const capture = makeCapture({ page, out: '/work/evidence', captures, cwd: '/work' });
+  await assert.rejects(capture('../../x', async () => {}), /capture names may use letters, digits/);
+  await assert.rejects(capture('a/b', async () => {}), /capture names may use/);
+  await assert.rejects(capture('01_initial'), /check is the assertion of the state the shot shows, and it is required/);
+  await assert.rejects(capture('01_initial', async () => {}, { path: '/tmp/x.png' }), /the only option is fullPage \(got path\)/);
+  assert.deepEqual([page.shots, captures], [[], []]);
+});
+
+test('Scenario: Capture saved / Mislabelled capture - the check runs first; the file goes under out and nothing is returned', async () => {
+  const page = fakePage();
+  const captures = [];
+  const capture = makeCapture({ page, out: '/work/evidence/run-5174', captures, cwd: '/work' });
+  const order = [];
+  const value = await capture('02_missing_var.png', async () => { order.push('check'); }, { fullPage: true });
+  assert.equal(value, undefined, 'the image never reaches the script');
+  assert.deepEqual(page.shots, [{ path: '/work/evidence/run-5174/02_missing_var.png', fullPage: true }]);
+  assert.deepEqual(captures, [{ name: '02_missing_var', ok: true, path: 'evidence/run-5174/02_missing_var.png' }]);
+  assert.equal(await capture('03_unsupported_env', async () => { throw new Error('the alert says VITE_REGION\nmore'); }), undefined, 'a failed check does not throw');
+  assert.equal(page.shots.length, 1, 'no screenshot after a failed check');
+  assert.deepEqual(captures[1], { name: '03_unsupported_env', ok: false, error: 'the alert says VITE_REGION' });
+  await capture('02_missing_var', async () => {});
+  assert.equal(captures.length, 2, 'a repeated name is recorded once');
+  assert.equal(page.shots[1].fullPage, false);
+  const outside = [];
+  await makeCapture({ page, out: '/elsewhere', captures: outside, cwd: '/work' })('x', async () => {});
+  assert.equal(outside[0].path, '/elsewhere/x.png', 'a file outside the working directory keeps its absolute path');
+});
+
+test('the probable cause is the first page error or failing response of the origin under review', () => {
+  const base = 'http://localhost:5173/';
+  assert.equal(probableCause([{ type: 'response', text: '500 GET http://localhost:5173/src/App.vue' }], base), 'response 500 GET http://localhost:5173/src/App.vue');
+  assert.equal(probableCause([{ type: 'response', text: '404 GET https://cdn.example.com/x.js' }, { type: 'pageerror', text: 'Error: boom' }], base), 'uncaught Error: boom');
+  assert.equal(probableCause([{ type: 'console', text: 'x' }, { type: 'blocked', text: 'GET http://evil/' }], base), null);
+  assert.equal(probableCause([], 'not a url'), null);
 });

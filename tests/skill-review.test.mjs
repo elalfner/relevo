@@ -227,7 +227,8 @@ test('Scenario: Origin not allowed / Script reaches the file system - QA reads t
   const qa = autopilot.indexOf('launch `relevo:qa` on the script, read-only');
   const run = autopilot.indexOf('web-review.mjs --script');
   assert.ok(qa > 0 && run > qa, 'QA comes before the runner');
-  assert.match(autopilot, /Only if it answers `QA PASSED`, run/);
+  assert.match(autopilot, /Only if it answers `QA PASSED`, record that exact script with `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/review-state\.mjs qa-pass evidence\/review-web\.mjs`/);
+  assert.ok(autopilot.indexOf('qa-pass') < autopilot.indexOf('web-review.mjs --script'), 'qa-pass comes before the runner');
   assert.match(autopilot, /a refused script is not run in any other way/);
   assert.match(autopilot, /can reach only `localhost`, the address under review and `review\.allowed_origins`/);
   assert.match(autopilot, /a tripwire, not a sandbox/);
@@ -254,4 +255,80 @@ test('Scenario: Review runs in a separate worktree - it does not switch, and a f
   assert.match(body, /git worktree list --porcelain/);
   assert.match(body, /do not switch: say which branch the working tree stays on/);
   assert.match(body, /never changes the verdict or the state of the issue/);
+});
+
+test('Scenario: Browser library missing / App not answering - a browser review runs the preflight before driving, installs only with permission and --no-save', () => {
+  const step2 = body.slice(body.indexOf('### 2. Start, or resume'), body.indexOf('### 3. Brief'));
+  assert.match(step2, /For a `browser` adapter there is no `adb`/);
+  assert.match(step2, /web-preflight\.mjs --url <address>/);
+  assert.match(step2, /Ask for permission to install them; only on a yes run `npm install --no-save playwright` and `npx playwright install chromium`/);
+  assert.match(step2, /git diff --quiet -- package-lock\.json \|\| git restore -- package-lock\.json/);
+  assert.match(step2, /`3`: there is no `node_modules`/);
+  assert.ok(autopilot.indexOf('web-preflight.mjs --url') < autopilot.indexOf('web-review.mjs --script'), 'the preflight runs again before the first run');
+});
+
+test('Scenario: Capture saved / Each capture proves the state it shows - capture() with a check, the shot list check by QA, and no screenshot otherwise', () => {
+  assert.match(autopilot, /capture\("<name>", async \(\) => \{ <the check of that shot> \}, \{ fullPage: true \}\)/);
+  assert.match(autopilot, /it rejects a `capture` name that is not on the shot list, and a check that would also hold for another shot/);
+  assert.match(autopilot, /the runner refuses `page\.screenshot`/);
+  assert.match(autopilot, /You never open the PNG files/);
+  assert.match(body, /each shot also names what proves the page shows that state and no other shot's/);
+});
+
+test('Scenario: Script edited after QA - any change needs QA and qa-pass again', () => {
+  assert.match(autopilot, /Any change to the script afterwards, even one port, needs `relevo:qa` and `qa-pass` again/);
+});
+
+test('Scenario: Capture after the agreement - captures belong to the walk; after agreeing the agent does not drive again', () => {
+  assert.match(body, /the shot list is taken while the person tests, before the agreement, and `review-state\.mjs capture` refuses after `agree`/);
+  assert.match(body, /If the person asks for screenshots after agreeing, point to the files already in `evidence\/` and do not drive again/);
+});
+
+test('Scenario: Run with another configuration / Audit of the normal run - extra servers by script, one --out each, only the normal log audited', () => {
+  assert.match(autopilot, /extra-server\.mjs start --port <port> \[--set NAME=value\] \[--unset NAME\] -- npx vite --port <port> --strictPort/);
+  assert.match(autopilot, /web-preflight\.mjs --url http:\/\/localhost:<port> --wait 30000/);
+  assert.match(autopilot, /extra-server\.mjs check --port <port>/);
+  assert.match(autopilot, /--out evidence\/run-<port>/);
+  assert.match(autopilot, /extra-server\.mjs stop --port <port>/);
+  assert.match(autopilot, /The server the person started is never stopped or restarted/);
+  const step5 = body.slice(body.indexOf('### 5. Audit the log'), body.indexOf('### 6. Decide'));
+  assert.match(step5, /audit only the log of the normal run, never one of `evidence\/run-<port>\/`/);
+  assert.match(step5, /review-state\.mjs audit evidence\/web-log\.txt --package web/);
+});
+
+test('Scenario: An environment file exists - environment files are never read', () => {
+  assert.match(body, /Never read the project's environment files/);
+  assert.match(autopilot, /refuses `--unset` while an environment file exists/);
+});
+
+test('Scenario: Plan shown up front - the brief carries the mode and the plan of the walk', () => {
+  const step3 = body.slice(body.indexOf('### 3. Brief'), body.indexOf('### 4. While the person tests'));
+  assert.match(step3, /review-brief\.mjs [^\n]*--autopilot <review\.autopilot>/);
+  assert.match(step3, /`<n>\. <method>: <how>`, where the method is `browser` .*`command` .*`read` .*`server <port>`/s);
+  assert.match(step3, /before the person confirms the data/);
+});
+
+test('Scenario: A command rewrites a file - project commands leave tracked files as they were', () => {
+  assert.match(autopilot, /never a script that fixes or formats files/);
+  assert.match(autopilot, /Run `git status --porcelain` before and after: if a tracked file changed, restore it/);
+  assert.match(autopilot, /A line checked only by reading code, CI or docs is recorded with `precheck` and what you found, never with `auto`/);
+});
+
+test('Scenario: No screenshots / Screenshots attached by the person - only PNGs are offered', () => {
+  const step8 = body.slice(body.indexOf('### 8. Evidence'), body.indexOf('### 9.'));
+  assert.match(step8, /List only the images, in every run folder \(`find evidence -name '\*\.png'`\)/);
+  assert.match(step8, /When there is no image, delete the folder without asking/);
+});
+
+test('Scenario: The person\'s dev server runs from the working tree - the guard comes before the switch', () => {
+  const step9 = body.slice(body.indexOf('### 9.'), body.indexOf('## Report'));
+  const guard = step9.indexOf('dev-server-guard.mjs --url');
+  assert.ok(guard > 0 && step9.indexOf('extra-server.mjs stop --all') < guard);
+  assert.match(step9, /Switch only when the guard exits 0/);
+});
+
+test('Scenario: Autopilot set for this review - an uncommitted relevo.yml is named, never committed', () => {
+  assert.match(body, /`git status --porcelain -- relevo\.yml` prints anything/);
+  assert.match(body, /Never stage or commit `relevo\.yml` in this review/);
+  assert.match(body, /stop and show its `advice` as it is/);
 });
