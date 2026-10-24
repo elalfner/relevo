@@ -76,6 +76,8 @@ El número de un issue `pr-open` cuyo pull request aprobó alguien que no es el 
 /relevo:ship 42
 ```
 
+**O pon la etiqueta `relevo:ship` al issue.** Con el workflow de ship instalado, GitHub hace los mismos pasos sin modelo y sin copia local, así que puedes fusionar desde el navegador o el celular. La etiqueta es tu confirmación escrita, y lo demás se comprueba igual que en el comando. Solo puede usarla quien fusiona según `review.merger`: quien aprobó, o el autor con `merger: author`. Quien es elegible pero no aprobó usa el comando, que le pide confirmarlo. Cuando algo lo detiene (no hay aprobación sobre el código actual, checks que fallan, conflictos, una tarea abierta, ningún check, o una rama base que exige checks sin la App), la ejecución comenta por qué, te menciona y quita la etiqueta. Vuelve a ponerla cuando esté resuelto. [Dónde corre `go`](execution.es.md#fusionar-con-una-etiqueta) explica los checks y la App.
+
 ### `/relevo:status`
 
 Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cualquier construcción que dejó de reportar. Cuando falla una lectura de GitHub (por ejemplo un 403 en la variable del repositorio que pausa la nube), el informe dice cuál en "No se pudo leer" y que puede estar incompleto, y una respuesta vacía dice "Nada espera por ti. (con lo que se pudo leer)".
@@ -136,7 +138,7 @@ Por defecto la persona lo hace todo en `review` y el agente solo observa. Con `r
 - **Una rama que solo tiene la especificación no se "corrige".** `fix` dice que borres la rama remota y vuelvas a aplicar `relevo:ready`.
 - **La lista de tareas se comprueba.** Antes del desarrollador, las únicas tareas abiertas son las correcciones; una empieza por `Test:` (un test de regresión), salvo que todas las correcciones terminen con `(device only)`. Tras QA, no queda ninguna abierta.
 - **`ship` se puede ejecutar otra vez.** Si el cambio ya está archivado en la rama, `ship` sigue desde el merge. Si el archivo deja conflictos solo dentro de `openspec/`, revierte el commit de archivo, trae la rama base y archiva de nuevo, con pushes normales. Un conflicto en código lo detiene.
-- **Una aprobación vale para el código que vio.** Una aprobación dada sobre un commit anterior no cuenta; tras el commit de archivo, sigue contando la dada sobre la cabeza registrada al empezar.
+- **Una aprobación vale para el código que vio.** Una aprobación dada sobre un commit anterior no cuenta; tras el commit de archivo, sigue contando la dada sobre la cabeza registrada al empezar. También sus checks, cuando el commit de archivo no tiene checks propios y solo cambia `openspec/`.
 - **El issue debe estar en `pr-open`**, y `ship` nombra el comando que falta (`/relevo:review` o `/relevo:fix`) si no. El cambio se valida y no tiene tareas abiertas antes de archivarse.
 - **Quién ejecuta `ship`.** Con `review.merger: approver`, un miembro de `team.members` que no sea el autor ni quien escribe la spec (y, en modo `roles`, uno de `team.approvers`). Quien sea elegible pero no aprobó confirma por escrito que no lo hizo.
 

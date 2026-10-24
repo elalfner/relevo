@@ -9,7 +9,8 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 | Amenaza | Medida | Quién lo hace cumplir |
 |---|---|---|
 | El agente empuja a la rama base o a la de publicación | una regla que permite al agente crear solo ramas `feature/*`; `/relevo:init` la crea y `/relevo:doctor` avisa si falta | la plataforma |
-| El agente o la automatización aprueba o fusiona | aprobar y fusionar son actos humanos explícitos: `/relevo:ship` pide una confirmación escrita, y el autor no puede aprobar su propio pull request | la plataforma, y `ship` |
+| El agente o la automatización aprueba o fusiona | aprobar y fusionar son actos humanos explícitos: `/relevo:ship` pide una confirmación escrita, el workflow de ship fusiona solo cuando una persona puso `relevo:ship` (una etiqueta de un bot no fusiona nada), y el autor no puede aprobar su propio pull request | la plataforma, y `ship` |
+| Un pull request hace a su autor elegible para fusionarlo | el workflow de ship lee `relevo.yml` de la rama base y sus scripts del paquete publicado, y no ejecuta nada de la rama (git corre sin hooks) | el runner, y un script |
 | El texto de un issue, comentario o log se toma como una instrucción | el texto se trata como datos, y el agente tiene una lista cerrada de herramientas sin acceso a la web (`WebFetch`, `WebSearch`, `curl` y `wget` se rechazan) | el ejecutor |
 | El issue se edita después de que alguien le puso `ready` | el texto aprobado se resume con un hash y `go` se niega a construir otro distinto (`issue-hash.mjs`) | un script |
 | Una ejecución cambia los archivos que controlan el workflow | los workflows, `relevo.yml`, `.relevo/`, las carpetas de skills y el archivo de reglas del proyecto son rutas protegidas; un commit que las toca se rechaza (`commit-change.mjs`) | un script |
@@ -65,6 +66,6 @@ Lo que la tabla no dice, para Antigravity:
 
 ## Secretos
 
-- Los secretos viven solo en el almacén de secretos del repositorio: `ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN` (o `GEMINI_API_KEY` con `agent.build: antigravity`) para el modelo, y `RELEVO_LINKS_TOKEN` para los repositorios de `links`.
+- Los secretos viven solo en el almacén de secretos del repositorio: `ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN` (o `GEMINI_API_KEY` con `agent.build: antigravity`) para el modelo, `RELEVO_LINKS_TOKEN` para los repositorios de `links`, y `RELEVO_SHIP_APP_ID` y `RELEVO_SHIP_APP_KEY` para la GitHub App del workflow de ship, cuando la rama base exige checks.
 - Nunca van en `relevo.yml`, en un issue ni en un commit, y `/relevo:doctor` muestra solo si un secreto existe, nunca su valor.
 - Los workflows no exponen secretos al código que viene de forks.

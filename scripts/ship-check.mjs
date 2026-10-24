@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
 import { shipDecision } from './lib/ship.mjs';
+import { baselineChecks, loadPr } from './lib/ship-github.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,9 +27,9 @@ if (!existsSync(configPath)) fail(`relevo.yml not found at ${configPath}. Run /r
 const loaded = loadConfig(readFileSync(configPath, 'utf8'));
 if (!loaded.ok) fail(loaded.errors.map((e) => `error: ${e.message}`).join('\n'));
 
-const FIELDS = 'number,state,isDraft,mergeable,title,author,reviews,statusCheckRollup,headRefName,headRefOid,baseRefName';
 let pr;
 let invoker = arg('invoker');
+let carried;
 
 if (arg('input')) {
   pr = JSON.parse(readFileSync(arg('input'), 'utf8'));
@@ -36,10 +37,10 @@ if (arg('input')) {
   const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
   const branch = arg('branch');
   if (!repo || !branch) fail('usage: ship-check.mjs --repo owner/name --branch <branch> [--invoker login] [--config relevo.yml]');
-  const found = JSON.parse(realGh(['pr', 'list', '--repo', repo, '--head', branch, '--state', 'all', '--json', 'number,state', '--limit', '5']));
-  const open = found.find((p) => p.state === 'OPEN') ?? found[0];
-  pr = open ? JSON.parse(realGh(['pr', 'view', String(open.number), '--repo', repo, '--json', FIELDS])) : null;
+  pr = loadPr(realGh, repo, branch);
   invoker ??= realGh(['api', 'user', '--jq', '.login']).trim();
+  // The archive commit may have no checks of its own; the approved head's count when only openspec/ changed since.
+  if (pr && arg('baseline')) carried = baselineChecks(realGh, repo, arg('baseline'), pr.headRefOid);
 }
 
 const decision = shipDecision({
@@ -49,6 +50,7 @@ const decision = shipDecision({
   baseline: arg('baseline'),
   labels: arg('labels') === undefined ? undefined : arg('labels').split(',').map((l) => l.trim()).filter(Boolean),
   issue: arg('issue'),
+  baselineChecks: carried,
 });
 console.log(JSON.stringify(decision, null, 2));
 process.exit(decision.allowed ? 0 : 1);

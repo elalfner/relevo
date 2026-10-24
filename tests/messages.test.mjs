@@ -224,3 +224,25 @@ test('Scenario: No credential - the cloud_not_configured message names the local
   assert.match(es, /`\/relevo:go 42` en tu máquina/);
   assert.throws(() => renderMessage('cloud_not_configured', { issue: 1 }), /actor/);
 });
+
+test('the ship messages render in both languages and mention only the person who applied the label', () => {
+  const data = { actor: 'persona-c', issue: 31, reasons: 'checks are failing: test', approvers: '@persona-b', base: 'dev', pr: '#40', commit: 'abcdef1', run: 'https://example.com/run/1', };
+  ['ship_stopped', 'ship_not_approver', 'ship_no_ci', 'ship_needs_app', 'ship_done', 'ship_failed'].forEach((kind) => {
+    ['en', 'es'].forEach((language) => {
+      const text = renderMessage(kind, data, language);
+      assert.match(text, /#31/, `${kind} ${language}`);
+      assert.doesNotMatch(text, /\{\{/, `${kind} ${language} left a placeholder`);
+    });
+  });
+  assert.match(renderMessage('ship_needs_app', data), /RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY/);
+  assert.match(renderMessage('ship_no_ci', data, 'es'), /review.ship_without_ci: true/);
+  assert.match(renderMessage('ship_failed', { issue: 31, run: 'https://example.com/run/1' }), /^#31 was not shipped[^]*\nRead the log/);
+  assert.match(renderMessage('ship_failed', { issue: 31, run: 'https://example.com/run/1', actor: 'persona-c' }), /\n@persona-c read the log/);
+});
+
+test('Scenario: Approval - the label is named only when the ship workflow is installed', () => {
+  const base = { recipient: 'persona-c', issue: 31, reviewer: 'persona-c' };
+  assert.doesNotMatch(renderMessage('approved', base), /label/);
+  assert.match(renderMessage('approved', { ...base, ship_label: 'relevo:ship' }), /Or apply the label relevo:ship/);
+  assert.match(renderMessage('approved', { ...base, ship_label: 'relevo:ship' }, 'es'), /O pon la etiqueta relevo:ship/);
+});

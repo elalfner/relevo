@@ -23,6 +23,17 @@ test('Scenario: Defaults - absent optional settings use the documented defaults'
   assert.equal(config.trust, 'private-team');
 });
 
+test('Scenario: Unattended ships without CI - review.ship_without_ci defaults to false', () => {
+  assert.equal(loadConfig(MINIMAL).config.review.ship_without_ci, false);
+  assert.equal(loadConfig(`${MINIMAL}review:\n  ship_without_ci: true\n`).config.review.ship_without_ci, true);
+});
+
+test('Scenario: Invalid ship setting - review.ship_without_ci must be true or false', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}review:\n  ship_without_ci: yes\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'review.ship_without_ci' && /true or false/.test(e.message)));
+});
+
 test('Scenario: Cost limit is mandatory - validation fails without run_max_cost', () => {
   const { ok, errors } = loadConfig('review:\n  mode: none\n');
   assert.equal(ok, false);
