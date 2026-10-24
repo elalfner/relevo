@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, pluginDeclaration, readOnlyGh, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, isVueWeb, playwrightFacts, pluginDeclaration, readOnlyGh, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { resolveProfile } from '../scripts/lib/stack-profile.mjs';
 
 const PLUGIN_ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
@@ -680,11 +683,12 @@ test('the entry point is looked for inside the folder of the platform', () => {
   assert.deepEqual(autopilotChecks(f).map((r) => r.status), ['pass', 'pass']);
 });
 
-test('Scenario: Vue without Playwright - doctor warns and gives the install command', () => {
+test('Scenario: Vue without Playwright - doctor warns, names /relevo:init and gives the install command of the platform folder', () => {
   const results = autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_VUE, playwright: false }));
   assert.equal(results.length, 1);
   assert.equal(results[0].status, 'warn');
-  assert.match(results[0].fix, /npm install -D playwright/);
+  assert.match(results[0].fix, /run \/relevo:init/);
+  assert.match(results[0].fix, /`cd apps\/site && npm install -D playwright && npx playwright install chromium`/);
   assert.equal(autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_VUE, playwright: true }))[0].status, 'pass');
 });
 
@@ -1014,4 +1018,25 @@ test('the ship checks are skipped when the ship workflow is not installed', () =
   const results = runChecks(healthy({ workflows, shipVariable: 'off', protection: { base: { ...PROTECTED, requiredChecks: true }, release: PROTECTED } }));
   assert.equal(byId(results, 'ship.app'), undefined);
   assert.equal(byId(results, 'ship.paused'), undefined);
+});
+
+test('playwrightFacts resolves Playwright from the folder of the platform, not from where the command runs', () => {
+  const tool = (name, args) => execFileSync(name, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const repo = mkdtempSync(join(tmpdir(), 'relevo-pw-'));
+  const pkg = join(repo, 'apps/site/node_modules/playwright');
+  mkdirSync(pkg, { recursive: true });
+  const browser = join(repo, 'chromium');
+  writeFileSync(join(pkg, 'package.json'), '{"name":"playwright","main":"index.js"}');
+  writeFileSync(join(pkg, 'index.js'), `module.exports = { chromium: { executablePath: () => ${JSON.stringify(browser)} } };`);
+  const exists = (p) => p === browser;
+  assert.deepEqual(playwrightFacts(join(repo, 'apps/site'), { tool, exists }), { playwright: true, chromium: true });
+  assert.deepEqual(playwrightFacts(join(repo, 'apps/site'), { tool, exists: () => false }), { playwright: true, chromium: false });
+  assert.deepEqual(playwrightFacts(repo, { tool, exists }), { playwright: false, chromium: false });
+});
+
+test('isVueWeb: a Vue platform with no targets or with web, and nothing else', () => {
+  assert.equal(isVueWeb({ stack: 'vue' }), true);
+  assert.equal(isVueWeb({ stack: 'vue', targets: ['web'] }), true);
+  assert.equal(isVueWeb({ stack: 'vue', targets: ['desktop'] }), false);
+  assert.equal(isVueWeb({ stack: 'flutter', targets: ['web'] }), false);
 });

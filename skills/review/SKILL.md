@@ -79,7 +79,7 @@ If `evidence/review-state.json` exists for this issue, resume: show the confirme
 
 Otherwise: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs init openspec/changes/<change folder> --autopilot <review.autopilot>`, then clear the log so the audit only sees this session: `adb -s <serial> logcat -c`. Then ask the person to start the app, or restart it if it was already open, so that the log names its process and the audit can ignore other apps on the device.
 
-For a `browser` adapter there is no `adb` and no device log: after `init`, run the preflight against the address under review (the one the person gives; for Vue, `http://localhost:5173` when they give none):
+For a `browser` adapter there is no `adb` and no device log: after `init`, run the preflight from the folder of the platform, against the address under review (the one the person gives; for Vue, `http://localhost:5173` when they give none):
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/web-preflight.mjs --url <address>
@@ -87,8 +87,9 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/web-preflight.mjs --url <address>
 
 It prints JSON and exits by what is missing. Tell the person in their language:
 
-- `3`: there is no `node_modules`; ask them to run `npm install` first, and stop until they say it is done.
-- `4` or `5`: Playwright or its Chromium is missing. Ask for permission to install them; only on a yes run `npm install --no-save playwright` and `npx playwright install chromium`, then `git diff --quiet -- package-lock.json || git restore -- package-lock.json` (npm can rewrite the lock file even with `--no-save`), and run the preflight again.
+- `3` (there is no `node_modules`) or `7` (the installed dependencies do not match `package-lock.json`, for example after the merge changed it): when `install` is `null` there is no lock file to install from; ask the person to install the dependencies themselves and stop until they say it is done. Otherwise show the `install` command exactly as printed and ask for a yes to that command alone; never compose another one. Only on a yes run it from the folder of the platform, then `git status --porcelain -- package.json <the lock file>`: if either changed, restore it with `git restore --` and say which. Then run the preflight again. If the install fails, show its error and stop: do not retry it with package scripts or another command, and do not drive. If the person says no, stop without driving; the issue stays as it is. After an install, if the person's dev server is already running, tell them to restart it before you check the address again; never restart it yourself.
+- `4`: Playwright does not resolve from the project. Install nothing: say that Playwright is missing from the development dependencies of the project, that `/relevo:init` adds it once for everyone (or `npm install -D playwright` in the folder of the platform, committed on the base branch), and stop without driving.
+- `5`: the Chromium of Playwright is missing. It lives outside the project: ask for permission, and only on a yes run `npx playwright install chromium` from the folder of the platform, then run the preflight again.
 - `6`: the app does not answer, or one of its modules answers 400 or more (`detail` names it). Keep its `start` and `env` for step 3: the person starts the app there. If the app was already running and a module fails, tell them to restart their server; never do it yourself.
 - `0`: ready.
 

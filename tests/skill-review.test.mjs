@@ -257,14 +257,27 @@ test('Scenario: Review runs in a separate worktree - it does not switch, and a f
   assert.match(body, /never changes the verdict or the state of the issue/);
 });
 
-test('Scenario: Browser library missing / App not answering - a browser review runs the preflight before driving, installs only with permission and --no-save', () => {
+test('Scenario: Browser library missing / App not answering - a browser review runs the preflight before driving and never installs Playwright', () => {
   const step2 = body.slice(body.indexOf('### 2. Start, or resume'), body.indexOf('### 3. Brief'));
   assert.match(step2, /For a `browser` adapter there is no `adb`/);
+  assert.match(step2, /run the preflight from the folder of the platform/);
   assert.match(step2, /web-preflight\.mjs --url <address>/);
-  assert.match(step2, /Ask for permission to install them; only on a yes run `npm install --no-save playwright` and `npx playwright install chromium`/);
-  assert.match(step2, /git diff --quiet -- package-lock\.json \|\| git restore -- package-lock\.json/);
-  assert.match(step2, /`3`: there is no `node_modules`/);
+  assert.match(step2, /`4`: Playwright does not resolve from the project\. Install nothing/);
+  assert.match(step2, /`\/relevo:init` adds it once for everyone/);
+  assert.match(step2, /`5`: the Chromium of Playwright is missing\. It lives outside the project: ask for permission, and only on a yes run `npx playwright install chromium`/);
+  assert.doesNotMatch(body, /--no-save/);
   assert.ok(autopilot.indexOf('web-preflight.mjs --url') < autopilot.indexOf('web-review.mjs --script'), 'the preflight runs again before the first run');
+});
+
+test('Scenario: Dependencies missing / Dependencies stale / Install fails - a confirmed frozen install of the lock file, nothing else', () => {
+  const step2 = body.slice(body.indexOf('### 2. Start, or resume'), body.indexOf('### 3. Brief'));
+  assert.match(step2, /`3` \(there is no `node_modules`\) or `7` \(the installed dependencies do not match `package-lock\.json`/);
+  assert.match(step2, /when `install` is `null` there is no lock file to install from; ask the person to install the dependencies themselves/);
+  assert.match(step2, /show the `install` command exactly as printed and ask for a yes to that command alone; never compose another one/);
+  assert.match(step2, /git status --porcelain -- package\.json <the lock file>/);
+  assert.match(step2, /If the install fails, show its error and stop: do not retry it with package scripts or another command, and do not drive/);
+  assert.match(step2, /If the person says no, stop without driving/);
+  assert.match(step2, /tell them to restart it before you check the address again; never restart it yourself/);
 });
 
 test('Scenario: Capture saved / Each capture proves the state it shows - capture() with a check, the shot list check by QA, and no screenshot otherwise', () => {

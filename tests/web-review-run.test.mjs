@@ -197,7 +197,7 @@ test('without Playwright the runner says how to install it', async () => {
     child.on('close', (status) => done({ status, stderr }));
   });
   if (r.status === 1 && /Playwright cannot be resolved/.test(r.stderr)) {
-    assert.match(r.stderr, /npm install --no-save playwright/);
+    assert.match(r.stderr, /run \/relevo:init, or "npm install -D playwright"/);
     assert.match(r.stderr, /npx playwright install chromium/);
   }
   else assert.ok([0, 1].includes(r.status), 'Playwright is available through the plugin itself here');
