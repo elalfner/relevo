@@ -136,3 +136,12 @@ test('the init skill offers the declaration of the plugin in the project as an i
   assert.match(init, /`\.claude\/settings\.json` is new or changed: say that it is left for the person to commit/);
   assert.match(init, /not valid JSON, do not touch it/);
 });
+
+test('Scenario: Vue platform without the browser library / Declined - init installs Playwright as a dev dependency left to commit, then Chromium', () => {
+  const text = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  const step4 = text.slice(text.indexOf('### 4. Offer the installs'), text.indexOf('### 5. Apply'));
+  assert.match(step4, /`install\.playwright\.<platform>` adds Playwright to the platform's development dependencies, and `install\.chromium\.<platform>` downloads its Chromium/);
+  assert.match(step4, /`package\.json` and the lock file of that platform changed: say that they are left for the person to commit/);
+  assert.match(step4, /a browser review of that platform stops until it is installed/);
+  assert.match(step4, /leave the file as it is/);
+});

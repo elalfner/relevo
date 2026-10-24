@@ -56,6 +56,8 @@ For each line in the plan that is an install, show its exact command and ask for
 
 One install is not a dependency: `install.plugin-project` declares the Relevo plugin in the project, so that a teammate who clones the repository is offered it, even when the plugin is already installed for the machine. Show its exact command (the two `claude plugin` commands at the project scope) and run it only on a yes. If it ran, `.claude/settings.json` is new or changed: say that it is left for the person to commit. If the person declines, nothing else changes, and `/relevo:doctor` keeps warning about it. When the plan says that file is not valid JSON, do not touch it: tell the person to fix it.
 
+For a Vue platform reviewed in a browser, the plan has two installs, in this order: `install.playwright.<platform>` adds Playwright to the platform's development dependencies, and `install.chromium.<platform>` downloads its Chromium. Run each from the repository root exactly as shown (the command enters the platform folder itself). If Playwright was added, `package.json` and the lock file of that platform changed: say that they are left for the person to commit with the other new files, on the base branch, so that every review finds Playwright. If the person declines either one, continue and say that a browser review of that platform stops until it is installed, and that `/relevo:doctor` keeps warning about it. A `review.autopilot` line among the manual steps means the existing `relevo.yml` keeps the autopilot `off`: say that a browser review needs `precheck` or `verify`, and leave the file as it is.
+
 ### 5. Apply
 
 ```bash

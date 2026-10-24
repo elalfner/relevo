@@ -3,11 +3,12 @@
 // under review with the module scripts its page loads. Usage:
 //   node scripts/web-preflight.mjs --url http://localhost:5173 [--timeout 5000] [--wait 30000]
 // With --wait it is also the readiness probe of a server the agent started: the address is retried until it answers.
-// Prints { ok, check, detail, start, env } as JSON: `start` is the command that starts the app, `env` the variable
-// names of .env.example (the real environment files are never read).
-//   exit 0: ready   exit 3: no node_modules (run npm install)   exit 4: Playwright does not resolve
-//   exit 5: the Chromium of Playwright is missing   exit 6: the address or one of its modules does not answer below 400
-//   exit 2: bad arguments
+// Prints { ok, check, detail, start, env, install } as JSON: `start` is the command that starts the app, `env` the
+// variable names of .env.example (the real environment files are never read), `install` the frozen install command of
+// the lock file (null without one).
+//   exit 0: ready   exit 3: no node_modules   exit 7: node_modules does not match package-lock.json
+//   exit 4: Playwright does not resolve from the project   exit 5: the Chromium of Playwright is missing
+//   exit 6: the address or one of its modules does not answer below 400   exit 2: bad arguments
 
 import { existsSync, readFileSync } from 'node:fs';
 import { loadPlaywright } from './lib/web-review.mjs';

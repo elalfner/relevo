@@ -73,7 +73,7 @@ const secrets = Object.fromEntries(secretNames.filter((n) => process.env[n]).map
 const hide = (text) => redact(text, secrets);
 
 const playwright = loadPlaywright();
-if (!playwright) stop(1, 'Playwright cannot be resolved from this project: with the person\'s permission, install it with "npm install --no-save playwright" and "npx playwright install chromium", then restore package-lock.json if npm changed it');
+if (!playwright) stop(1, 'Playwright cannot be resolved from this project: it belongs in its development dependencies; run /relevo:init, or "npm install -D playwright" and "npx playwright install chromium" in the folder of the platform, and commit the change on the base branch');
 
 if (arg('out') === undefined && existsSync(join(out, 'web-log.txt'))) {
   tell(`warning: ${join(out, 'web-log.txt')} is replaced; a run against another server uses an --out of its own (evidence/run-<port>)`);

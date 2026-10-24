@@ -110,6 +110,36 @@ export function summarizeProtection({ rulesets = [], classic = null, branch, def
   return out;
 }
 
+// ---------- Playwright of a platform
+
+/** Is the platform a Vue platform reviewed in a browser? `web` is the only target of Vue, and its default. */
+export const isVueWeb = (platform) => platform?.stack === 'vue' && (!platform.targets?.length || platform.targets.includes('web'));
+
+/**
+ * Does Playwright resolve from the folder of a platform, and is its Chromium installed? Resolving from the folder, not
+ * from where the command runs, finds the node_modules of a platform in a subfolder. `tool(name, args)` throws when the
+ * command fails; `exists(path)`.
+ */
+export function playwrightFacts(dir, { tool, exists }) {
+  const where = "require.resolve('playwright', { paths: [require('node:path').resolve(process.argv[1])] })";
+  try {
+    tool('node', ['-e', where, dir || '.']);
+  } catch {
+    return { playwright: false, chromium: false };
+  }
+  try {
+    const path = String(tool('node', ['-e', `process.stdout.write(require(${where}).chromium.executablePath())`, dir || '.'])).trim();
+    return { playwright: true, chromium: path !== '' && Boolean(exists(path)) };
+  } catch {
+    return { playwright: true, chromium: false };
+  }
+}
+
+/** playwrightFacts of each Vue platform with a web target, by platform name. */
+export function vueWebFacts(platforms, deps) {
+  return Object.fromEntries(Object.entries(platforms ?? {}).filter(([, p]) => isVueWeb(p)).map(([name, p]) => [name, playwrightFacts(p.path, deps)]));
+}
+
 // ---------- gather
 
 /**
@@ -371,7 +401,7 @@ function gatherPlatforms(f, p, tryRun) {
           const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
           entry.driverDependency = /^\s*flutter_driver\s*:/m.test(pubspec ?? '');
         } else if (platform.stack === 'vue') {
-          entry.playwright = tryRun(() => Boolean(p.tool('node', ['-e', "require.resolve('playwright')"])), false);
+          entry.playwright = playwrightFacts(platform.path, { tool: p.tool, exists: p.exists }).playwright;
         }
         return entry;
       }),
@@ -540,7 +570,7 @@ function platformChecks(f) {
       if (!e.driverDependency) r.push(warn(`autopilot.${e.name}.dependency`, `platform ${e.name} does not depend on flutter_driver (dev_dependencies), which the driven review needs`, 'add flutter_driver: { sdk: flutter } under dev_dependencies in pubspec.yaml'));
       else r.push(pass(`autopilot.${e.name}.dependency`, `platform ${e.name} depends on flutter_driver`));
     } else if (e.stack === 'vue') {
-      if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, 'npm install -D playwright && npx playwright install chromium'));
+      if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, `run /relevo:init, which offers it, or \`${e.path && e.path !== '.' ? `cd ${e.path} && ` : ''}npm install -D playwright && npx playwright install chromium\` and commit package.json and the lock file`));
       else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
     } else {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));

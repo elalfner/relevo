@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { gatherFacts, readOnlyGh, WORKFLOW_FILES } from './lib/doctor.mjs';
+import { gatherFacts, readOnlyGh, vueWebFacts, WORKFLOW_FILES } from './lib/doctor.mjs';
 import { applyPlan, planInit, renderPlan, skipItems } from './lib/init.mjs';
 
 const arg = (name) => {
@@ -49,6 +49,8 @@ const facts = gatherFacts({
   skillDirs: ['.claude/skills', '.agents/skills', `${homedir()}/.claude/skills`],
   repo,
 });
+
+facts.vueWeb = vueWebFacts(facts.config?.platforms ?? answers.platforms ?? {}, { tool, exists: existsSync });
 
 let admin = false;
 try {
