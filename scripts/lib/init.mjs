@@ -9,7 +9,7 @@ import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow } from './agent-workflow.mjs';
-import { OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WORKFLOW_FILES } from './doctor.mjs';
+import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WORKFLOW_FILES } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -96,6 +96,9 @@ export function renderConfig(template, answers = {}) {
     if (answers.runMaxTokens !== undefined) out = set(out, 'run_max_tokens', answers.runMaxTokens);
   } else if (answers.runMaxCost !== undefined) out = set(out, 'run_max_cost', answers.runMaxCost);
   if (answers.language) out = set(out, 'language', answers.language);
+  // A browser review is always driven by the agent, so a Vue web platform cannot keep the autopilot off.
+  const autopilot = answers.autopilot ?? (Object.values(platforms ?? {}).some(isVueWeb) ? 'precheck' : null);
+  if (autopilot) out = set(out, 'autopilot', autopilot);
   const check = loadConfig(out);
   if (!check.ok) throw new Error(`the answers produce an invalid relevo.yml: ${check.errors.map((e) => e.message).join('; ')}`);
   return out;
@@ -197,6 +200,20 @@ export function planInit({ facts, answers, templates, current, admin }) {
         }));
       }
     });
+  }
+
+  // What a browser review of each Vue platform needs: Playwright in its development dependencies, and its Chromium.
+  Object.entries(configuredPlatforms).filter(([, p]) => isVueWeb(p)).forEach(([name, p]) => {
+    const found = facts.vueWeb?.[name];
+    if (!found) return;
+    const cd = p.path && p.path !== '.' ? `cd ${p.path} && ` : '';
+    if (found.playwright) items.push(item(`install.playwright.${name}`, 'ok', `Playwright resolves from platform ${name}`));
+    else items.push(item(`install.playwright.${name}`, 'todo', `Add Playwright to the development dependencies of platform ${name}, which its browser review needs (package.json and the lock file are left for you to commit)`, { install: true, command: `${cd}npm install -D playwright`, detail: 'It changes package.json and the lock file of the platform: commit them on the base branch, so that every review finds Playwright. If you decline, a browser review of this platform stops until it is installed.' }));
+    if (found.playwright && found.chromium) items.push(item(`install.chromium.${name}`, 'ok', `The Chromium of Playwright is installed for platform ${name}`));
+    else items.push(item(`install.chromium.${name}`, 'todo', `Install the Chromium of Playwright for platform ${name}`, { install: true, command: `${cd}npx playwright install chromium`, detail: 'It downloads the browser to the cache of your user, outside the repository. If you decline, a browser review of this platform stops until it is installed.' }));
+  });
+  if (facts.config && (facts.config.review?.autopilot ?? 'off') === 'off' && Object.values(configuredPlatforms).some(isVueWeb)) {
+    items.push(item('review.autopilot', 'manual', 'A browser review of a Vue platform is driven by the agent: set review.autopilot to precheck (or verify) in relevo.yml'));
   }
 
   // the plugin, declared in the project so that a teammate who clones the repository is offered it

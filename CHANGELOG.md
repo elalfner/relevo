@@ -10,9 +10,12 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **A GitHub App for repositories that require checks.** With the secrets `RELEVO_SHIP_APP_ID` and `RELEVO_SHIP_APP_KEY`, the ship workflow pushes, merges and closes with the App's token, so the project's CI runs on the archive commit, and waits for it.
 - **`review.ship_without_ci`** (default `false`) lets the label merge a pull request on which no check ran.
 - `/relevo:doctor` fails when the base branch requires approval of the last push, and checks what the ship workflow needs. The approval comment names the label when the ship workflow is installed.
+- **A browser review installs the project's dependencies when you agree.** `scripts/web-preflight.mjs` now also detects `node_modules` that does not match `package-lock.json` (exit 7), for example after the merge with the base branch, and prints the frozen install of the lock file. The review offers that exact command (`npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts` or `yarn install --immutable`) instead of asking you to run `npm install` yourself; it never runs package scripts and never retries another way.
+- **`/relevo:init` sets up a Vue platform for its browser review:** it offers to add Playwright to the platform's development dependencies and to download its Chromium, and a new `relevo.yml` with a Vue web platform gets `review.autopilot: precheck`.
 
 ### Changed
 
+- **A browser review no longer installs Playwright with `--no-save`.** That install was removed by the next `npm install`, so every review asked for it again. Playwright now belongs in the project's development dependencies: when it is missing, the review stops and points to `/relevo:init`. For a project set up before this release, run `/relevo:init` once and commit `package.json` and the lock file. Doctor's Playwright check now resolves it from the folder of the platform and names `/relevo:init` as the fix.
 - **The checks of the approved head count for the archive commit** when it changes only `openspec/` and has no checks of its own, in `/relevo:ship` too, so a push that started no workflow no longer reads as "no CI".
 
 ## [0.7.0] - 2026-10-23

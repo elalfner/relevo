@@ -412,3 +412,55 @@ test('Scenario: Supabase platform in init - offers skills install and MCP guidan
   assert.equal(get(items, 'manual.supabase-mcp').status, 'manual');
   assert.match(get(items, 'manual.supabase-mcp').description, /Supabase MCP/);
 });
+
+// ---------- what a browser review of Vue needs
+
+const VUE = { site: { stack: 'vue', path: 'apps/site', targets: ['web'] } };
+const vuePlan = (vueWeb, platforms = VUE, over = {}) => planInit({ facts: bare({ vueWeb, ...over }), answers: { ...ANSWERS, platform: undefined, platforms }, templates, current: empty(), admin: true });
+
+test('Scenario: Vue platform without the browser library - init offers it as a dev dependency in the platform folder, then its Chromium', () => {
+  const items = vuePlan({ site: { playwright: false, chromium: false } });
+  const add = items.find((i) => i.id === 'install.playwright.site');
+  assert.deepEqual([add.status, add.install, add.command], ['todo', true, 'cd apps/site && npm install -D playwright']);
+  assert.match(add.description, /left for you to commit/);
+  const browser = items.find((i) => i.id === 'install.chromium.site');
+  assert.deepEqual([browser.status, browser.command], ['todo', 'cd apps/site && npx playwright install chromium']);
+  assert.ok(items.indexOf(add) < items.indexOf(browser), 'Playwright is added before its browser');
+  assert.match(renderPlan(items), /\(cd apps\/site && npm install -D playwright\)/);
+});
+
+test('Scenario: Browser not installed / Already set up - only what is missing is offered', () => {
+  const chromiumOnly = vuePlan({ site: { playwright: true, chromium: false } });
+  assert.equal(chromiumOnly.find((i) => i.id === 'install.playwright.site').status, 'ok');
+  assert.equal(chromiumOnly.find((i) => i.id === 'install.chromium.site').status, 'todo');
+  const ready = vuePlan({ site: { playwright: true, chromium: true } });
+  assert.deepEqual(ready.filter((i) => /^install\.(playwright|chromium)\./.test(i.id)).map((i) => i.status), ['ok', 'ok']);
+  const atRoot = vuePlan({ app: { playwright: false, chromium: false } }, { app: { stack: 'vue', path: '.' } });
+  assert.equal(atRoot.find((i) => i.id === 'install.playwright.app').command, 'npm install -D playwright');
+});
+
+test('init offers no Playwright for a platform that is not Vue on the web', () => {
+  const flutter = plan(bare({ vueWeb: {} }));
+  assert.equal(flutter.some((i) => /^install\.(playwright|chromium)\./.test(i.id)), false);
+  const desktop = vuePlan({}, { site: { stack: 'vue', path: 'apps/site', targets: ['desktop'] } });
+  assert.equal(desktop.some((i) => /^install\.(playwright|chromium)\./.test(i.id)), false);
+});
+
+test('Scenario: New configuration with a Vue web platform - relevo.yml has review.autopilot precheck', () => {
+  const config = loadConfig(vuePlan({ site: { playwright: true, chromium: true } }).find((i) => i.id === 'config').content).config;
+  assert.equal(config.review.autopilot, 'precheck');
+  const flutter = loadConfig(plan(bare()).find((i) => i.id === 'config').content).config;
+  assert.equal(flutter.review.autopilot, 'off');
+  assert.equal(loadConfig(renderConfig(template, { platforms: VUE, autopilot: 'verify' })).config.review.autopilot, 'verify');
+});
+
+test('Scenario: Existing configuration with the autopilot off - a manual step, and relevo.yml is not rewritten', () => {
+  const text = 'limits:\n  run_max_cost: 5\nreview:\n  autopilot: off\nplatforms:\n  site:\n    stack: vue\n    path: apps/site\n    targets: [web]\n';
+  const items = planInit({ facts: bare({ configText: text, config: loadConfig(text).config, vueWeb: { site: { playwright: true, chromium: true } } }), answers: ANSWERS, templates, current: empty(), admin: true });
+  assert.equal(items.find((i) => i.id === 'config').status, 'ok');
+  const manual = items.find((i) => i.id === 'review.autopilot');
+  assert.equal(manual.status, 'manual');
+  assert.match(manual.description, /set review\.autopilot to precheck \(or verify\)/);
+  const on = text.replace('autopilot: off', 'autopilot: precheck');
+  assert.equal(planInit({ facts: bare({ configText: on, config: loadConfig(on).config, vueWeb: {} }), answers: ANSWERS, templates, current: empty(), admin: true }).some((i) => i.id === 'review.autopilot'), false);
+});
