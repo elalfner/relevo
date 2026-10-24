@@ -71,7 +71,7 @@ test('Scenario: Explicit confirmation - with approval, passing checks and the ri
   assert.equal(d.allowed, true);
   assert.deepEqual(d.reasons, []);
   assert.deepEqual(d.confirm, ['merge']);
-  assert.deepEqual(d.summary, { pr: 40, title: 'Summary screen', author: 'persona-b', branch: 'feature/31-summary', base: 'dev', mode: 'peer', approvedBy: ['persona-c'], checks: 'passing' });
+  assert.deepEqual(d.summary, { pr: 40, title: 'Summary screen', author: 'persona-b', branch: 'feature/31-summary', base: 'dev', head: null, mode: 'peer', approvedBy: ['persona-c'], checks: 'passing', checksFrom: 'head' });
 });
 
 test('Scenario: Conflicts - stops and tells the author to synchronise', () => {

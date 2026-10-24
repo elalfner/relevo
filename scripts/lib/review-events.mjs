@@ -16,8 +16,11 @@ function summarise(body, es) {
   return text.length > SUMMARY_LENGTH ? `${text.slice(0, SUMMARY_LENGTH)}…` : text;
 }
 
-/** Returns { action, labels: { add, remove }, comment } or null when the event changes nothing. */
-export function planReviewEvent({ config, event, pr, issue }) {
+/**
+ * Returns { action, labels: { add, remove }, comment } or null when the event changes nothing.
+ * shipWorkflow: the ship workflow is installed on the default branch, so the approval also names its label.
+ */
+export function planReviewEvent({ config, event, pr, issue, shipWorkflow = false }) {
   if (config.review.mode === 'none') return null;
   const names = resolveLabelNames(config.labels);
   const has = (key) => issue.labels.includes(names[key]);
@@ -49,7 +52,7 @@ export function planReviewEvent({ config, event, pr, issue }) {
     return {
       action: 'approved',
       labels: { add: [], remove: [] },
-      comment: { kind: 'approved', data: { recipient, issue: issue.number, reviewer: event.reviewer, pr: pr.url } },
+      comment: { kind: 'approved', data: { recipient, issue: issue.number, reviewer: event.reviewer, pr: pr.url, ...(shipWorkflow ? { ship_label: names.ship } : {}) } },
     };
   }
   return null;

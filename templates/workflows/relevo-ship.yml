@@ -1,0 +1,126 @@
+# Relevo: ships an issue when a person applies the `relevo:ship` label to it.
+# Copy to .github/workflows/relevo-ship.yml. If you renamed the ship label in relevo.yml, change it below too.
+#
+# It runs the steps of /relevo:ship with the same rules, and no model: it needs no model credential. The person who
+# applied the label is the one judged (they must be the one who ships under review.merger), and the label is their
+# written confirmation. It archives the specification on the branch, squash-merges the pull request, closes the issue
+# and removes its labels. When anything stops it, it comments why on the issue and removes the label. Nothing from the
+# pull request's branch is run: the scripts come from the published package and relevo.yml from the base branch.
+#
+# Checks: a push with the workflow token starts no workflows, so the archive commit gets no checks of its own. The
+# checks of the approved head count for it, because it changes only openspec/. If the base branch REQUIRES status
+# checks, GitHub refuses that merge: create a GitHub App for this repository (contents, pull requests and issues:
+# read and write), store its id as the secret RELEVO_SHIP_APP_ID and its private key as RELEVO_SHIP_APP_KEY. The run
+# then pushes, merges and closes with the App's token, so your CI runs on the archive commit, and waits for it. The App
+# is also worth it when you rely on workflows that run on pushes to the base branch. Never add it to a bypass list.
+#
+# The repository variable RELEVO_CLOUD_SHIP set to `off` pauses it: the label then does nothing.
+# This workflow runs from the default branch; it works only once it is there.
+
+name: relevo-ship
+
+# The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
+# were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
+env:
+  RELEVO_VERSION: '0.7.0'
+
+on:
+  issues:
+    types: [labeled]
+
+# One ship per issue: a second label event waits for the first run and then finds the label gone or the issue closed.
+concurrency:
+  group: relevo-ship-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  # To start the queue (relevo-queue.yml) after the close, which the workflow token's close does not start by itself.
+  actions: write
+
+jobs:
+  ship:
+    # Any sender: a label applied by a bot is removed by the script without shipping anything.
+    if: vars.RELEVO_CLOUD_SHIP != 'off' && github.event.label.name == 'relevo:ship' && !github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    # The run may wait up to 30 minutes for the checks of the archive commit.
+    timeout-minutes: 45
+    env:
+      HAS_APP: ${{ secrets.RELEVO_SHIP_APP_ID != '' && secrets.RELEVO_SHIP_APP_KEY != '' }}
+    steps:
+      # Only with the App: a token for this repository, used to push, merge and close.
+      - name: App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEVO_SHIP_APP_ID }}
+          private-key: ${{ secrets.RELEVO_SHIP_APP_KEY }}
+
+      # The default branch, which holds this workflow and names the base branch. The script switches to the feature
+      # branch in this checkout only to run git and OpenSpec on it; it never installs or runs anything from it.
+      - uses: actions/checkout@v4
+        with:
+          path: work
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the Relevo scripts
+        # The published package at the version pinned above, unpacked outside the checkout so that the archive sees
+        # a clean working tree. A package without a script this job runs stops the run here, before anything changes.
+        run: |
+          mkdir -p "$RUNNER_TEMP/relevo"
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo"
+          for f in scripts/ship-unattended.mjs scripts/scan-diff.mjs scripts/check-archive.mjs scripts/stage.mjs scripts/fix-tasks.mjs scripts/conflict-scope.mjs scripts/render-message.mjs; do
+            [ -f "$RUNNER_TEMP/relevo/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
+
+      - name: Install OpenSpec
+        run: npm install --global @fission-ai/openspec
+        env:
+          OPENSPEC_TELEMETRY: '0'
+
+      - name: Ship
+        working-directory: work
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PUSH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          OPENSPEC_TELEMETRY: '0'
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.sender.login }}
+          ACTOR_TYPE: ${{ github.event.sender.type }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          node "$RUNNER_TEMP/relevo/scripts/ship-unattended.mjs" --repo "$GITHUB_REPOSITORY" --issue "$ISSUE" --actor "$ACTOR" --actor-type "$ACTOR_TYPE" --work .
+
+      # A run that fails before it could comment (the package cannot be installed, a git or GitHub error) leaves the
+      # label on the issue with nobody told. If the label is still there, remove it and say so.
+      # If you renamed the ship label in relevo.yml, change the name below too.
+      - name: Report a run that ended without an outcome
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.sender.login }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
+          if ! printf '%s\n' "$labels" | grep -qx 'relevo:ship'; then
+            exit 0
+          fi
+          gh issue edit "$ISSUE" --remove-label relevo:ship
+          body=""
+          if [ -f "$RUNNER_TEMP/relevo/scripts/render-message.mjs" ]; then
+            body=$(jq -n --arg issue "$ISSUE" --arg run "$RUN_URL" --arg actor "$ACTOR" '{issue: $issue, run: $run, actor: $actor}' | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" ship_failed --config work/relevo.yml) || body=""
+          fi
+          [ -n "$body" ] || body="@$ACTOR #$ISSUE was not shipped: the run ended without an outcome. Read the log to see why: $RUN_URL"
+          gh issue comment "$ISSUE" --body "$body"

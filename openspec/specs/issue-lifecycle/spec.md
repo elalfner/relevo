@@ -43,7 +43,7 @@ A workflow reacting to pull request review events SHALL keep the lifecycle label
 
 #### Scenario: Approval
 - **WHEN** a reviewer approves
-- **THEN** the issue stays `pr-open` and the person who will run `ship` is mentioned
+- **THEN** the issue stays `pr-open` and the person who will run `ship` is mentioned, with both ways to ship: applying the `ship` label when the ship workflow is installed, or running `/relevo:ship <n>`
 
 ### Requirement: Reviewer selection
 When a pull request is opened, the reviewer SHALL be chosen from `team.members`, excluding the author and the spec writer, as the member with the fewest open review requests, ties broken in rotation. In `roles` mode only members of `team.approvers` are eligible. When nobody is eligible the issue SHALL be labelled `needs-reviewer`.
@@ -132,3 +132,14 @@ The next step shown by every hand-off and failure message SHALL come from one ta
 #### Scenario: Spanish repository
 - **WHEN** `language` is `es`
 - **THEN** the line is written in Spanish and the command stays unchanged
+
+### Requirement: The ship label is a request, not a state
+The lifecycle SHALL have a `ship` label (default name `relevo:ship`) that asks for an unattended ship. It SHALL be added next to `pr-open` and SHALL NOT replace it, it SHALL be renamable in `labels` like the others, and every ship run SHALL remove it whether it merges or stops.
+
+#### Scenario: Label applied
+- **WHEN** a person applies `relevo:ship` to a `pr-open` issue
+- **THEN** the issue has both labels until the run ends
+
+#### Scenario: Run ends
+- **WHEN** the run merges or stops
+- **THEN** `relevo:ship` is no longer on the issue

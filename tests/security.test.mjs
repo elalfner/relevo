@@ -52,7 +52,7 @@ test('Scenario: Public repository - generated code always gets a human review (r
 });
 
 test('Scenario: Fork pull request - no workflow is triggered by content from a fork', () => {
-  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-review.yml'].forEach((f) => {
+  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-review.yml', 'relevo-ship.yml'].forEach((f) => {
     const text = read(`templates/workflows/${f}`);
     assert.doesNotMatch(text, /^\s*pull_request_target:/m, `${f} must not use pull_request_target, which runs with secrets`);
     assert.ok(!text.split('\n').some((l) => /^\s+ref:.*pull_request\.head\./.test(l)), `${f} must not check out pull request code`);
@@ -106,7 +106,7 @@ test('the go workflow never opens the run to strangers or prints tool results', 
 });
 
 test('no workflow clones the plugin repository for its scripts: the published package is the only source', () => {
-  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'].forEach((f) => {
+  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'].forEach((f) => {
     const text = read(`templates/workflows/${f}`);
     assert.doesNotMatch(text, /repository: elalfner\/relevo/, `${f} must not check out the plugin repository`);
     assert.doesNotMatch(text, /secrets\.RELEVO_PLUGIN_TOKEN \|\| github\.token/, f);
