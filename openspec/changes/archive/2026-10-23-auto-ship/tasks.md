@@ -45,4 +45,7 @@
 ## 8. Check
 
 - [x] 8.1 Run the full test suite and `openspec validate auto-ship`
-- [ ] 8.2 In the sandbox repository, ship one issue by label without required checks and one with required checks and the App, and confirm the merge, the close, the labels and the queue dispatch
+
+## Workflow follow-up
+
+- After the next release publishes the package with `ship-unattended.mjs`, in the sandbox repository, ship one issue by label without required checks and one with required checks and the App, and confirm the merge, the close, the labels and the queue dispatch.
