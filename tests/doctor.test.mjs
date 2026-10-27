@@ -1101,3 +1101,46 @@ test('gatherFacts reads the hook and the remote session', () => {
   assert.deepEqual(f.webHook, { declared: true });
   assert.equal(f.remoteSession, process.env.CLAUDE_CODE_REMOTE === 'true');
 });
+
+const HOSTED_GO = GO_TEMPLATE;
+const FRONT_GO = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]');
+const FRONT_CONFIG = loadConfig(`${CONFIG_TEXT}runner:\n  labels: [self-hosted, Front]\n`).config;
+const runner = (over) => runChecks(over).filter((r) => r.id.startsWith('automation.runner'));
+
+test('Scenario: A workflow edited by hand - doctor fails, names the file and says to set runner.labels or restore ubuntu-latest', () => {
+  const [r] = runner(withGo(FRONT_GO)).filter((x) => x.status === 'fail');
+  assert.equal(r.id, 'automation.runner.relevo-go.yml');
+  assert.match(r.message, /relevo-go\.yml runs on \[self-hosted, Front\] and relevo\.yml says \[ubuntu-latest\]/);
+  assert.match(r.fix, /set runner\.labels: \[self-hosted, Front\] in relevo\.yml .* restore runs-on: ubuntu-latest in relevo-go\.yml/);
+});
+
+test('Scenario: Workflows and setting agree - the runner check passes and one warning explains the persistence assumption', () => {
+  const res = runner({ ...withGo(FRONT_GO), config: FRONT_CONFIG });
+  assert.deepEqual(res.map((r) => [r.id, r.status]), [['automation.runner', 'pass'], ['automation.runner.persistence', 'warn']]);
+  assert.match(res[1].message, /assumes it keeps its files between jobs/);
+  assert.match(res[1].message, /permissions of the runner's user/);
+  assert.doesNotMatch(res[1].message, /ephemeral/, 'doctor does not claim to know whether the runner is ephemeral');
+  assert.match(res[1].fix, /ephemeral runner .* or a container is the real barrier/);
+});
+
+test('Scenario: Hosted runner - the runner check passes and no persistence warning appears', () => {
+  const res = runner(withGo(HOSTED_GO));
+  assert.deepEqual(res.map((r) => [r.id, r.status]), [['automation.runner', 'pass']]);
+});
+
+test('the setting says self-hosted and a workflow still runs on ubuntu-latest - the file is named', () => {
+  const [r] = runner({ ...withGo(HOSTED_GO), config: FRONT_CONFIG }).filter((x) => x.status === 'fail');
+  assert.match(r.message, /runs on \[ubuntu-latest\] and relevo\.yml says \[self-hosted, Front\]/);
+  assert.match(r.fix, /change runs-on in relevo-go\.yml to \[self-hosted, Front\]/);
+});
+
+test('the order of the labels does not matter, and an expression in runs-on is not judged', () => {
+  const swapped = FRONT_GO.replaceAll('[self-hosted, Front]', '[Front, self-hosted]');
+  assert.deepEqual(runner({ ...withGo(swapped), config: FRONT_CONFIG }).filter((x) => x.status === 'fail'), []);
+  const expr = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: ${{ vars.RUNNER }}');
+  assert.deepEqual(runner(withGo(expr)).filter((x) => x.status === 'fail'), []);
+});
+
+test('a repository with no workflow text read and the default runner gets no runner result at all', () => {
+  assert.deepEqual(runner(healthy()), []);
+});

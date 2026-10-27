@@ -701,6 +701,7 @@ export function runChecks(f) {
 
   r.push(...pluginInstallChecks(f));
   r.push(...toolchainChecks(f));
+  r.push(...runnerChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
@@ -754,6 +755,38 @@ function toolchainChecks(f) {
       ? pass(`automation.toolchain.${e.name}`, `the go workflow installs the toolchain of platform ${e.name} (${e.stack})`)
       : fail(`automation.toolchain.${e.name}`, `the go workflow installs no toolchain for platform ${e.name} (${e.stack}), so every cloud build would fail QA after spending the run`, `enable ${step} of the build job in relevo-go.yml (the template has it active; compare with /relevo:init), or, if you install it another way, ignore this`);
   });
+}
+
+const HOSTED_RUNNER = ['ubuntu-latest'];
+
+/** The labels written in a `runs-on` line: `[self-hosted, Front]` or `ubuntu-latest`; null for an expression we cannot judge. */
+function parseRunsOn(value) {
+  if (value.includes('${{')) return null;
+  const inner = value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1) : value;
+  return inner.split(',').map((l) => l.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+}
+
+/**
+ * Does every Relevo workflow run on the runner that relevo.yml names (`runner.labels`, else ubuntu-latest)? A workflow
+ * edited by hand to another runner is reported with the file, because the next copy of the template would undo it. A
+ * runner that is not GitHub's is only assumed to persist: Relevo cannot tell, and says so instead of claiming.
+ */
+function runnerChecks(f) {
+  const wanted = f.config?.runner?.labels ?? HOSTED_RUNNER;
+  const same = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
+  const r = [];
+  let judged = 0;
+  Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
+    if (!w.present || typeof w.text !== 'string') return;
+    judged += 1;
+    const found = [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => parseRunsOn(m[1])).filter((l) => l !== null);
+    const other = found.find((labels) => !same(labels, wanted));
+    if (other) r.push(fail(`automation.runner.${file}`, `${file} runs on [${other.join(', ')}] and relevo.yml says [${wanted.join(', ')}]`, same(wanted, HOSTED_RUNNER) ? `set runner.labels: [${other.join(', ')}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${file}` : `change runs-on in ${file} to [${wanted.join(', ')}], or change runner.labels in relevo.yml`));
+  });
+  if (r.length > 0) return r;
+  if (judged > 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
+  if (!same(wanted, HOSTED_RUNNER)) r.push(warn('automation.runner.persistence', `the runner [${wanted.join(', ')}] is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
+  return r;
 }
 
 /** Does the committed settings file declare the plugin? It is a local fact, so it needs no GitHub sign-in. */

@@ -30,7 +30,7 @@ test('the person who applied the label is passed through the environment, never 
 });
 
 test('Scenario: Scripts changed in the pull request - nothing from the branch is installed or run', () => {
-  assert.doesNotMatch(active, /npm (ci|install)(?! --global @fission-ai\/openspec)/);
+  assert.doesNotMatch(active, /npm (ci|install)(?! --prefix "\$RUNNER_TEMP\/openspec" "@fission-ai\/openspec@\$OPENSPEC_VERSION")/);
   assert.doesNotMatch(active, /composer|flutter|pub get|\bmake\b/);
   assert.doesNotMatch(active, /ref:.*head/);
   assert.match(active, /node "\$RUNNER_TEMP\/relevo\/scripts\/ship-unattended\.mjs"/);

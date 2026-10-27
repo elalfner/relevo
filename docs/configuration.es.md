@@ -34,6 +34,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `limits.building_alert_hours` | horas sin actividad antes de reportar como atascado un issue en `building` ([Dónde corre `go`](execution.es.md)) | 3 |
 | `limits.run_max_cost` | **obligatorio** con `agent.build: claude` (el valor por defecto), y se rechaza con `antigravity`: dólares por ejecución sin supervisión; elige el tuyo | 5 |
 | `limits.run_max_tokens` | **obligatorio** con `agent.build: antigravity`, y se rechaza con `claude`: tokens por ejecución sin supervisión, que la guardia de ejecución de Relevo hace cumplir porque Antigravity no tiene un límite propio | ninguno |
+| `runner.labels` | runner de todos los workflows de Relevo, como lista de etiquetas (`[self-hosted, Front]`); `/relevo:init` la escribe en los archivos de workflow y `/relevo:doctor` comprueba que coincidan. Relevo asume que cualquier runner persiste entre jobs, así que no hay un ajuste para eso ([Runners self-hosted](execution.es.md#runners-self-hosted)) | `[ubuntu-latest]` |
 | `agent.build` | qué agente construye en la nube: `claude`, o `antigravity` (lo que cada uno puede y no puede hacer cumplir está en [Seguridad](security.es.md)) | `claude` |
 | `qa.retries` | intentos del desarrollador después de que QA rechaza | 1 |
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |

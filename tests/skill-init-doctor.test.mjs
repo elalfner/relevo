@@ -158,3 +158,10 @@ test('init offers the OpenSpec hook for web sessions on a yes, through the scrip
 test('doctor says it checks the OpenSpec hook in a web session', () => {
   assert.match(load('doctor').meta.description, /in a web session whether the repository installs OpenSpec/);
 });
+
+test('Scenario: Init asks for the runner labels only for a self-hosted runner, and never whether it is ephemeral', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /whether the repository runs its GitHub Actions on a self-hosted runner\. Ask nothing more when the answer is no/);
+  assert.match(init, /`runnerLabels` \(a list of runner labels, only for a self-hosted runner\)/);
+  assert.match(init, /do not ask whether the runner is ephemeral/);
+});
