@@ -12,4 +12,4 @@
 
 ## 3. Check
 
-- [ ] 3.1 After the setting is made on npmjs.com and the secret deleted, publish the next release with it and see the provenance and no token in the log
+- [x] 3.1 After the setting is made on npmjs.com and the secret deleted, publish the next release with it and see the provenance and no token in the log

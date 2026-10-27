@@ -113,6 +113,8 @@ test('RELEASING.md explains the Trusted Publisher: the exact fields, the secret 
   assert.match(text, /Under Allowed actions tick Allow `npm publish`/, 'the box that lets the workflow publish directly');
   assert.match(text, /fields cannot be changed later/);
   assert.match(text, /Require two-factor authentication and disallow tokens/, 'the hardening npm recommends, after the first release that works');
+  assert.match(text, /Save it before you push the tag/, 'the connection has to exist before the run starts');
+  assert.match(text, /Pending validation/);
   assert.match(text, /Re-run failed jobs/);
   assert.match(text, /Do not rename `release\.yml`/);
   assert.doesNotMatch(text, /stored as the repository secret `NPM_TOKEN`/, 'the old setup is gone');
