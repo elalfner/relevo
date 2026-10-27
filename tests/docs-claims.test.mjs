@@ -207,10 +207,12 @@ test('the example issue of the page passes the check Relevo applies', () => {
 test('the output the page quotes is output the code produces', () => {
   const messages = read('scripts/lib/messages.mjs');
   const initSource = ['scripts/init.mjs', 'scripts/lib/init.mjs'].map((f) => read(f)).join('\n');
-  const doctor = renderReport([{ status: 'pass', message: 'a' }, { status: 'fail', message: 'b', fix: 'c' }]);
+  const sample = [{ status: 'pass', message: 'a' }, { status: 'fail', message: 'b', fix: 'c' }, { status: 'warn', message: 'd', fix: 'e' }, { status: 'note', message: 'f' }];
+  // The default report shows what needs action; the passes are listed only with --all, and the page says so.
+  const doctor = `${renderReport(sample)}\n${renderReport(sample, { all: true })}`;
   [['docs/get-started.md', ['is built', 'Your next step']], ['docs/get-started.es.md', ['está construida', 'Tu siguiente paso']]].filter(([f]) => exists(f)).forEach(([f, quoted]) => {
     const page = read(f);
-    [...quoted.map((q) => [q, messages]), ['[pass]', doctor], ['[FAIL]', doctor], ['fix:', doctor], ['[will do]', initSource], ['[by hand]', initSource]].forEach(([phrase, source]) => {
+    [...quoted.map((q) => [q, messages]), ['[pass]', doctor], ['[FAIL]', doctor], ['[warn]', doctor], ['[note]', doctor], ['fix:', doctor], ['FAILURES', doctor], ['WARNINGS', doctor], ['NOTES', doctor], ['--all', doctor], ['[will do]', initSource], ['[by hand]', initSource]].forEach(([phrase, source]) => {
       assert.ok(page.includes(phrase), `${f} does not quote "${phrase}"`);
       const needle = source === initSource ? phrase.slice(1, -1) : phrase; // init writes the tag between brackets
       assert.ok(source.includes(needle), `the code never produces "${phrase}"`);

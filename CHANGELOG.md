@@ -4,6 +4,12 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **`/relevo:doctor` puts what needs action first.** The text report starts with a line that says what it judged (the repository, and whether the workflows were read from the default branch or the working copy), then lists the `FAILURES`, the `WARNINGS` and the `NOTES`, each with its count, and only counts the checks that passed. `/relevo:doctor --all` (and `relevo doctor --all`) lists every check as before. `--json` still lists every check and the exit status is the same: 1 only when a check failed. A person or a program that parsed the text layout should use `--json`.
+- **A new level, `note`,** for information that asks for nothing: the reminder about the terms of a subscription token, the subscription explanation, a skill reserved for you and iOS on a machine that is not macOS. A note is neither a failure nor a warning.
+- **One result per cause.** Workflows that run on another runner than `runner.labels` (the check of 0.8.0 printed one failure per file) are one failure that names them all, and so are workflows that are not installed, disabled or not yet listed. The closing line counts results, not files.
+
 ## [0.8.0] - 2026-10-26
 
 ### Added

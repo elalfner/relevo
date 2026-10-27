@@ -88,10 +88,12 @@ No arguments. Who is waiting on what, the `ready` issues assigned to you and any
 
 ### `/relevo:doctor`
 
-No arguments. Checks the tools, the skills, `relevo.yml`, the workflows and the repository settings, and says how to fix each problem. It also checks the installed plugin (its folders and version), that each workflow pins a version of the package (`RELEVO_VERSION`) and that the go workflow installs the toolchain of the stack of each Flutter or Laravel platform. It warns when the repository does not declare the plugin in `.claude/settings.json`, because a teammate who clones it would not be offered it. In a web session it also warns when the repository has no hook that installs OpenSpec at the start of the session; on a terminal it says nothing about it.
+One optional argument, `--all`. Checks the tools, the skills, `relevo.yml`, the workflows and the repository settings, and says how to fix each problem. It also checks the installed plugin (its folders and version), that each workflow pins a version of the package (`RELEVO_VERSION`) and that the go workflow installs the toolchain of the stack of each Flutter or Laravel platform. It warns when the repository does not declare the plugin in `.claude/settings.json`, because a teammate who clones it would not be offered it. In a web session it also warns when the repository has no hook that installs OpenSpec at the start of the session; on a terminal it says nothing about it.
+
+The report starts with a line that says what it judged: the repository, and whether the workflows were read from the default branch (which is what GitHub runs) or from the working copy. Then it lists, in this order, the `FAILURES` (each `[FAIL]` line with its `fix:`), the `WARNINGS` (`[warn]`, which do not stop you) and the `NOTES` (`[note]`, information that asks nothing of you). The checks that passed are only counted: `--all` lists them too, each as `[pass]`. Files that fail for the same reason are one line that names them all, and the closing line counts those lines. The exit status is 1 only when a check failed; `relevo doctor --json` always lists every check, with its level.
 
 ```text
-/relevo:doctor
+/relevo:doctor [--all]
 ```
 
 ## The issue format
