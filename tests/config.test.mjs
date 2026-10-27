@@ -23,6 +23,17 @@ test('Scenario: Defaults - absent optional settings use the documented defaults'
   assert.equal(config.trust, 'private-team');
 });
 
+test('Scenario: Unattended ships without CI - review.ship_without_ci defaults to false', () => {
+  assert.equal(loadConfig(MINIMAL).config.review.ship_without_ci, false);
+  assert.equal(loadConfig(`${MINIMAL}review:\n  ship_without_ci: true\n`).config.review.ship_without_ci, true);
+});
+
+test('Scenario: Invalid ship setting - review.ship_without_ci must be true or false', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}review:\n  ship_without_ci: yes\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'review.ship_without_ci' && /true or false/.test(e.message)));
+});
+
 test('Scenario: Cost limit is mandatory - validation fails without run_max_cost', () => {
   const { ok, errors } = loadConfig('review:\n  mode: none\n');
   assert.equal(ok, false);
@@ -281,4 +292,41 @@ test('Scenario: Public repositories - trust public is refused with Antigravity',
   assert.equal(ok, false);
   assert.ok(errors.some((e) => e.path === 'trust' && /antigravity/.test(e.message)));
   assert.equal(loadConfig('trust: public\nlimits:\n  run_max_cost: 5\n').ok, true, 'with Claude it still works');
+});
+
+test('Scenario: Default runner - without a runner key the workflows run on ubuntu-latest', () => {
+  const { ok, config } = loadConfig(MINIMAL);
+  assert.equal(ok, true);
+  assert.deepEqual(config.runner.labels, ['ubuntu-latest']);
+});
+
+test('Scenario: Self-hosted runner with labels - a list of labels is accepted as written', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}runner:\n  labels: [self-hosted, Front]\n`);
+  assert.equal(ok, true);
+  assert.deepEqual(config.runner.labels, ['self-hosted', 'Front']);
+});
+
+test('Scenario: Empty list - validation fails and says the list needs at least one label', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  labels: []\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'runner.labels' && /at least one label/.test(e.message)));
+});
+
+test('Scenario: A single string - validation fails and says it must be a list of labels', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  labels: self-hosted\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'runner.labels' && /list of runner labels/.test(e.message)));
+});
+
+test('a runner label that is not a string is rejected', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  labels: [self-hosted, 3]\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'runner.labels' && /non-empty strings/.test(e.message)));
+});
+
+test('Scenario: A persistence key - runner.ephemeral does not exist and the message says why', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  ephemeral: true\n`);
+  assert.equal(ok, false);
+  const e = errors.find((x) => x.path === 'runner.ephemeral');
+  assert.match(e.message, /assumes every runner persists/);
 });

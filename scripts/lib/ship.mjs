@@ -67,11 +67,13 @@ export function checkRollup(rollup = []) {
  * baseline optional: the head commit recorded when ship started; an approval given on it still counts
  * labels   optional: the names of the issue's labels; when given, the issue must be pr-open
  * issue    optional: the issue number, used in the messages about the state
+ * baselineChecks optional: { archiveOnly, rollup } of the baseline. When the head differs from it only under
+ *          `openspec/` (archiveOnly) and the head has no checks of its own, the baseline's checks are judged.
  * Returns { allowed, reasons, confirm, summary }.
  *   reasons  why it must stop (empty when allowed)
  *   confirm  what the person must still confirm in writing, always including "merge"
  */
-export function shipDecision({ config, pr, invoker, baseline, labels, issue }) {
+export function shipDecision({ config, pr, invoker, baseline, labels, issue, baselineChecks }) {
   const reasons = [];
   const warnings = [];
   const confirm = ['merge'];
@@ -95,7 +97,17 @@ export function shipDecision({ config, pr, invoker, baseline, labels, issue }) {
   if (pr.mergeable === 'CONFLICTING') reasons.push('the pull request has conflicts: the author must synchronise the branch with the base branch');
   else if (pr.mergeable !== 'MERGEABLE') reasons.push('GitHub has not finished checking whether the pull request can be merged: try again in a minute');
 
-  const checks = checkRollup(pr.statusCheckRollup);
+  // A push with the workflow token starts no workflows, so the archive commit may have no checks: the checks of the
+  // approved head still vouch for the code when only the specifications changed since.
+  let checks = checkRollup(pr.statusCheckRollup);
+  let checksFrom = 'head';
+  if (checks.state === 'none' && baselineChecks?.archiveOnly) {
+    const carried = checkRollup(baselineChecks.rollup);
+    if (carried.state !== 'none') {
+      checks = carried;
+      checksFrom = 'baseline';
+    }
+  }
   if (checks.state === 'failing') reasons.push(`checks are failing: ${checks.failing.join(', ')}`);
   else if (checks.state === 'pending') reasons.push(`checks are still running: ${checks.pending.join(', ')}`);
   else if (checks.state === 'none') confirm.push('no-ci');
@@ -156,6 +168,6 @@ export function shipDecision({ config, pr, invoker, baseline, labels, issue }) {
     allowed: reasons.length === 0,
     reasons,
     confirm,
-    summary: { pr: pr.number, title: pr.title, author, branch: pr.headRefName, base: pr.baseRefName, mode, approvedBy, checks: checks.state, ...(warnings.length > 0 ? { warnings } : {}) },
+    summary: { pr: pr.number, title: pr.title, author, branch: pr.headRefName, base: pr.baseRefName, head: pr.headRefOid ?? null, mode, approvedBy, checks: checks.state, checksFrom, ...(warnings.length > 0 ? { warnings } : {}) },
   };
 }

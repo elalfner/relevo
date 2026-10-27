@@ -25,7 +25,10 @@ export const SKILL_INSTALL = {
   'supabase-postgres-best-practices': 'run `npx skills add supabase/agent-skills --skill supabase-postgres-best-practices`',
 };
 export const OPENSPEC_INSTALL = 'npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
-export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'];
+export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'];
+// The repository variable that pauses the ship workflow, and the secrets of the GitHub App it pushes with.
+export const SHIP_VARIABLE = 'RELEVO_CLOUD_SHIP';
+export const SHIP_APP_SECRETS = ['RELEVO_SHIP_APP_ID', 'RELEVO_SHIP_APP_KEY'];
 const REQUIRED_WORKFLOWS = new Set(['relevo-go.yml']);
 // How to ask a tool that it is there (most answer --version), and how to install the ones Relevo knows.
 const TOOL_PROBE = { adb: ['version'] };
@@ -70,10 +73,10 @@ export function refMatches(pattern, branch, defaultBranch) {
 
 /**
  * What the repository enforces on a branch, from its rulesets and its classic protection.
- * Returns { protected, pullRequestRequired, approvals, dismissStale, blocksDeletion, blocksForcePush }.
+ * Returns { protected, pullRequestRequired, approvals, dismissStale, lastPushApproval, requiredChecks, blocksDeletion, blocksForcePush }.
  */
 export function summarizeProtection({ rulesets = [], classic = null, branch, defaultBranch }) {
-  const out = { protected: false, pullRequestRequired: false, approvals: 0, dismissStale: false, blocksDeletion: false, blocksForcePush: false };
+  const out = { protected: false, pullRequestRequired: false, approvals: 0, dismissStale: false, lastPushApproval: false, requiredChecks: false, blocksDeletion: false, blocksForcePush: false };
   rulesets.filter((r) => r.target === 'branch' && r.enforcement === 'active').forEach((r) => {
     const include = r.conditions?.ref_name?.include ?? [];
     const exclude = r.conditions?.ref_name?.exclude ?? [];
@@ -84,7 +87,9 @@ export function summarizeProtection({ rulesets = [], classic = null, branch, def
         out.pullRequestRequired = true;
         out.approvals = Math.max(out.approvals, rule.parameters?.required_approving_review_count ?? 0);
         if (rule.parameters?.dismiss_stale_reviews_on_push) out.dismissStale = true;
+        if (rule.parameters?.require_last_push_approval) out.lastPushApproval = true;
       }
+      if (rule.type === 'required_status_checks') out.requiredChecks = true;
       if (rule.type === 'deletion') out.blocksDeletion = true;
       if (rule.type === 'non_fast_forward') out.blocksForcePush = true;
     });
@@ -96,11 +101,43 @@ export function summarizeProtection({ rulesets = [], classic = null, branch, def
       out.pullRequestRequired = true;
       out.approvals = Math.max(out.approvals, pr.required_approving_review_count ?? 0);
       if (pr.dismiss_stale_reviews) out.dismissStale = true;
+      if (pr.require_last_push_approval) out.lastPushApproval = true;
     }
+    if (classic.required_status_checks) out.requiredChecks = true;
     if (classic.allow_deletions?.enabled === false) out.blocksDeletion = true;
     if (classic.allow_force_pushes?.enabled === false) out.blocksForcePush = true;
   }
   return out;
+}
+
+// ---------- Playwright of a platform
+
+/** Is the platform a Vue platform reviewed in a browser? `web` is the only target of Vue, and its default. */
+export const isVueWeb = (platform) => platform?.stack === 'vue' && (!platform.targets?.length || platform.targets.includes('web'));
+
+/**
+ * Does Playwright resolve from the folder of a platform, and is its Chromium installed? Resolving from the folder, not
+ * from where the command runs, finds the node_modules of a platform in a subfolder. `tool(name, args)` throws when the
+ * command fails; `exists(path)`.
+ */
+export function playwrightFacts(dir, { tool, exists }) {
+  const where = "require.resolve('playwright', { paths: [require('node:path').resolve(process.argv[1])] })";
+  try {
+    tool('node', ['-e', where, dir || '.']);
+  } catch {
+    return { playwright: false, chromium: false };
+  }
+  try {
+    const path = String(tool('node', ['-e', `process.stdout.write(require(${where}).chromium.executablePath())`, dir || '.'])).trim();
+    return { playwright: true, chromium: path !== '' && Boolean(exists(path)) };
+  } catch {
+    return { playwright: true, chromium: false };
+  }
+}
+
+/** playwrightFacts of each Vue platform with a web target, by platform name. */
+export function vueWebFacts(platforms, deps) {
+  return Object.fromEntries(Object.entries(platforms ?? {}).filter(([, p]) => isVueWeb(p)).map(([name, p]) => [name, playwrightFacts(p.path, deps)]));
 }
 
 // ---------- gather
@@ -160,6 +197,8 @@ export function gatherFacts(p) {
   f.openspecRootTracked = tryRun(() => String(p.tool('git', ['ls-files', 'openspec'])).trim().length > 0, false);
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
   f.pluginDeclared = pluginDeclaration(p);
+  f.webHook = webHookDeclaration(p);
+  f.remoteSession = process.env.CLAUDE_CODE_REMOTE === 'true';
 
   // Workflows: what runs on GitHub is what is on the default branch, not what is in the working copy, so once the
   // repository is known they are read from there. `present` says whether the file is where it has to be; `local`
@@ -210,6 +249,7 @@ export function gatherFacts(p) {
     f.canApprove = tryRun(() => api(`repos/${f.repo}/actions/permissions/workflow`).can_approve_pull_request_reviews, null);
     f.secrets = tryRun(() => api(`repos/${f.repo}/actions/secrets`).secrets.map((s) => s.name));
     f.cloudVariable = tryRun(() => api(`repos/${f.repo}/actions/variables/${CLOUD_VARIABLE}`).value, null);
+    f.shipVariable = tryRun(() => api(`repos/${f.repo}/actions/variables/${SHIP_VARIABLE}`).value, null);
     // The repositories this one may depend on: can they be read, and are they private (then a token is needed)?
     f.links = (f.config?.links ?? []).map((link) => {
       const info = tryRun(() => api(`repos/${link}`), null);
@@ -281,6 +321,28 @@ export function pluginDeclaration(p) {
   try {
     const settings = JSON.parse(p.read(path));
     return { declared: Boolean(settings?.extraKnownMarketplaces?.relevo) && settings?.enabledPlugins?.['relevo@relevo'] === true };
+  } catch {
+    return { unreadable: true };
+  }
+}
+
+// The one-line `SessionStart` hook that installs OpenSpec in a session of Claude Code on the web. It does nothing
+// outside a remote session, and nothing when `openspec` already runs; `|| true` keeps a failed install from failing the hook.
+export const WEB_HOOK_COMMAND = '[ "$CLAUDE_CODE_REMOTE" = "true" ] && ! command -v openspec >/dev/null 2>&1 && OPENSPEC_TELEMETRY=0 npm install --global @fission-ai/openspec || true';
+
+/** Does a `SessionStart` entry install OpenSpec? The package name is what is matched, so a hook written by hand counts. */
+const installsOpenspec = (entry) => (entry?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('@fission-ai/openspec'));
+
+/**
+ * Whether the committed settings file has a `SessionStart` hook that installs OpenSpec: { declared } or, when the file
+ * is not valid JSON, { unreadable: true }. A missing file is { declared: false }.
+ */
+export function webHookDeclaration(p) {
+  const path = '.claude/settings.json';
+  if (!p.exists(path)) return { declared: false };
+  try {
+    const settings = JSON.parse(p.read(path));
+    return { declared: Array.isArray(settings?.hooks?.SessionStart) && settings.hooks.SessionStart.some(installsOpenspec) };
   } catch {
     return { unreadable: true };
   }
@@ -363,7 +425,7 @@ function gatherPlatforms(f, p, tryRun) {
           const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
           entry.driverDependency = /^\s*flutter_driver\s*:/m.test(pubspec ?? '');
         } else if (platform.stack === 'vue') {
-          entry.playwright = tryRun(() => Boolean(p.tool('node', ['-e', "require.resolve('playwright')"])), false);
+          entry.playwright = playwrightFacts(platform.path, { tool: p.tool, exists: p.exists }).playwright;
         }
         return entry;
       }),
@@ -532,7 +594,7 @@ function platformChecks(f) {
       if (!e.driverDependency) r.push(warn(`autopilot.${e.name}.dependency`, `platform ${e.name} does not depend on flutter_driver (dev_dependencies), which the driven review needs`, 'add flutter_driver: { sdk: flutter } under dev_dependencies in pubspec.yaml'));
       else r.push(pass(`autopilot.${e.name}.dependency`, `platform ${e.name} depends on flutter_driver`));
     } else if (e.stack === 'vue') {
-      if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, 'npm install -D playwright && npx playwright install chromium'));
+      if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, `run /relevo:init, which offers it, or \`${e.path && e.path !== '.' ? `cd ${e.path} && ` : ''}npm install -D playwright && npx playwright install chromium\` and commit package.json and the lock file`));
       else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
     } else {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
@@ -576,6 +638,7 @@ export function runChecks(f) {
   else r.push(fail('openspec.root', 'the OpenSpec root is missing or not tracked by git, so a clean checkout (and the runner) has no `openspec/`', 'run /relevo:init, then commit openspec/config.yaml and the .gitkeep files'));
   r.push(f.evidenceIgnored ? pass('evidence.ignored', 'evidence/ is ignored by git') : fail('evidence.ignored', 'evidence/ is not in .gitignore; `review` would put screenshots in git', 'add the line `evidence/` to .gitignore (or run /relevo:init)'));
   r.push(...pluginDeclaredChecks(f));
+  r.push(...webHookChecks(f));
 
   // GitHub side
   if (!f.repo || !f.ghAuth) {
@@ -602,6 +665,7 @@ export function runChecks(f) {
       else if (f.config?.review?.mode !== 'none' && p.approvals < 1) r.push(fail(`repo.protection.${key}`, `${name} requires a pull request but no approval`, `require at least 1 approving review on ${name}`));
       else r.push(pass(`repo.protection.${key}`, `${name} requires a pull request${p.approvals ? ` with ${p.approvals} approval(s)` : ''}`));
       if (p?.dismissStale) r.push(fail(`repo.dismiss-stale.${key}`, `${name} dismisses approvals when new commits are pushed; the spec archive commit pushed by \`ship\` would dismiss the approval`, `turn off "dismiss stale pull request approvals when new commits are pushed" on ${name}`));
+      if (p?.lastPushApproval) r.push(fail(`repo.last-push.${key}`, `${name} requires the most recent push to be approved by someone else; the spec archive commit pushed by \`ship\` would need a new approval`, `turn off "require approval of the most recent reviewable push" on ${name}`));
     });
   }
   if (!f.protectionUnavailable && !f.protectionError) {
@@ -637,15 +701,38 @@ export function runChecks(f) {
 
   r.push(...pluginInstallChecks(f));
   r.push(...toolchainChecks(f));
+  r.push(...runnerChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
   }
   r.push(...linkChecks(f));
   r.push(...executionChecks(f));
+  r.push(...shipChecks(f));
   if (f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
     if (f.secrets.includes('RELEVO_PLUGIN_TOKEN')) r.push(pass('automation.plugin-secret', 'the RELEVO_PLUGIN_TOKEN secret exists for the private plugin repository'));
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));
   }
+  return r;
+}
+
+/**
+ * What the ship workflow needs, when it is on the default branch: the App secrets when the base branch requires checks
+ * (a push with the workflow token starts none, so the archive commit would never get them), and whether it is paused.
+ * Its label is checked with the other labels, and it needs no model credential.
+ */
+function shipChecks(f) {
+  const r = [];
+  if (!f.workflows?.['relevo-ship.yml']?.present) return r;
+  const base = f.config?.branches?.base ?? 'base';
+  if (f.protectionError || f.protectionUnavailable) return r;
+  if (f.protection?.base?.requiredChecks) {
+    if (f.secrets === null) r.push(warn('ship.app', `${base} requires status checks and the secrets could not be listed, so the ship App was not checked`, `check that ${SHIP_APP_SECRETS.join(' and ')} exist`));
+    else if (SHIP_APP_SECRETS.every((s) => f.secrets.includes(s))) r.push(pass('ship.app', `${base} requires status checks and the ship App secrets exist, so the relevo:ship label pushes with the App and the checks run on the archive commit`));
+    else r.push(fail('ship.app', `${base} requires status checks, so the relevo:ship label cannot ship here: the archive commit pushed with the workflow token would never get its checks`, `create a GitHub App for this repository and store its id and private key as ${SHIP_APP_SECRETS.join(' and ')} (docs/execution.md, "Shipping with a label"), or ship with /relevo:ship`));
+  } else {
+    r.push(pass('ship.app', `${base} requires no status checks, so the checks of the approved head carry over to the archive commit and the ship workflow needs no App`));
+  }
+  if (String(f.shipVariable ?? '').trim().toLowerCase() === 'off') r.push(warn('ship.paused', `the relevo:ship label is paused (${SHIP_VARIABLE} is off)`, `delete the repository variable ${SHIP_VARIABLE}, or set it to on, to ship with the label again`));
   return r;
 }
 
@@ -670,6 +757,38 @@ function toolchainChecks(f) {
   });
 }
 
+const HOSTED_RUNNER = ['ubuntu-latest'];
+
+/** The labels written in a `runs-on` line: `[self-hosted, Front]` or `ubuntu-latest`; null for an expression we cannot judge. */
+function parseRunsOn(value) {
+  if (value.includes('${{')) return null;
+  const inner = value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1) : value;
+  return inner.split(',').map((l) => l.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+}
+
+/**
+ * Does every Relevo workflow run on the runner that relevo.yml names (`runner.labels`, else ubuntu-latest)? A workflow
+ * edited by hand to another runner is reported with the file, because the next copy of the template would undo it. A
+ * runner that is not GitHub's is only assumed to persist: Relevo cannot tell, and says so instead of claiming.
+ */
+function runnerChecks(f) {
+  const wanted = f.config?.runner?.labels ?? HOSTED_RUNNER;
+  const same = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
+  const r = [];
+  let judged = 0;
+  Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
+    if (!w.present || typeof w.text !== 'string') return;
+    judged += 1;
+    const found = [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => parseRunsOn(m[1])).filter((l) => l !== null);
+    const other = found.find((labels) => !same(labels, wanted));
+    if (other) r.push(fail(`automation.runner.${file}`, `${file} runs on [${other.join(', ')}] and relevo.yml says [${wanted.join(', ')}]`, same(wanted, HOSTED_RUNNER) ? `set runner.labels: [${other.join(', ')}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${file}` : `change runs-on in ${file} to [${wanted.join(', ')}], or change runner.labels in relevo.yml`));
+  });
+  if (r.length > 0) return r;
+  if (judged > 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
+  if (!same(wanted, HOSTED_RUNNER)) r.push(warn('automation.runner.persistence', `the runner [${wanted.join(', ')}] is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
+  return r;
+}
+
 /** Does the committed settings file declare the plugin? It is a local fact, so it needs no GitHub sign-in. */
 function pluginDeclaredChecks(f) {
   const r = [];
@@ -677,6 +796,18 @@ function pluginDeclaredChecks(f) {
   else if (f.pluginDeclared?.declared) r.push(pass('plugin.declared', 'the repository declares the Relevo plugin in .claude/settings.json, so a teammate who opens it is offered it'));
   else if (f.pluginDeclared) r.push(warn('plugin.declared', 'the repository does not declare the Relevo plugin in .claude/settings.json: a teammate who clones it is not offered the plugin and finds no /relevo: commands', 'run /relevo:init, or claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin and claude plugin install relevo@relevo --scope project, and commit .claude/settings.json'));
   return r;
+}
+
+/**
+ * Does the repository install OpenSpec in the sessions of Claude Code on the web? The hook has no use on a terminal,
+ * where OpenSpec stays installed, so it is judged only when doctor itself runs in a remote session. It warns: the
+ * project can run without it, but every new session starts without OpenSpec.
+ */
+function webHookChecks(f) {
+  if (!f.remoteSession || !f.webHook) return [];
+  if (f.webHook.unreadable) return [warn('web.openspec-hook', '.claude/settings.json is not valid JSON, so it cannot be checked whether it installs OpenSpec in web sessions', 'fix the file; /relevo:init then offers the hook')];
+  if (f.webHook.declared) return [pass('web.openspec-hook', 'the repository installs OpenSpec at the start of a web session (SessionStart hook in .claude/settings.json)')];
+  return [warn('web.openspec-hook', 'this is a web session and the repository has no SessionStart hook that installs OpenSpec, so every new session starts without it and go cannot run', `run /relevo:init to add the hook, commit .claude/settings.json, or install it now: ${OPENSPEC_INSTALL}`)];
 }
 
 /**

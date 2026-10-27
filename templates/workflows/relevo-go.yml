@@ -10,12 +10,18 @@
 # Keep the numbers in claude_args in line with limits.run_max_turns and limits.run_max_cost.
 # Where the numbers disagree the lower one wins, so this file can only make a run cheaper than relevo.yml says.
 
+# Runner: `runs-on` comes from `runner.labels` in relevo.yml (`/relevo:init` writes it into this file, `/relevo:doctor` checks it).
+# The runner needs git, gh and jq; Node and the tools of the job are installed per job. A self-hosted runner is assumed to
+# persist between jobs, so the job puts its tools under $RUNNER_TEMP and removes what it adds to the workspace.
+
 name: relevo-go
 
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.7.0'
+  RELEVO_VERSION: '0.8.0'
+  # The version of OpenSpec that the job installs for itself.
+  OPENSPEC_VERSION: '1.14.3'
 
 on:
   issues:
@@ -109,6 +115,11 @@ jobs:
           gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
           gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
 
+      # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
+      - name: Remove what this job added
+        if: always()
+        run: rm -rf .relevo-plugin
+
   build:
     needs: decide
     if: needs.decide.outputs.action == 'start'
@@ -162,7 +173,10 @@ jobs:
       # the packages, so they need no such option.
 
       - name: Install OpenSpec
-        run: npm install --global @fission-ai/openspec
+        # Under the temporary folder of the job, at the pinned version: nothing global is left on a runner that persists.
+        run: |
+          npm install --prefix "$RUNNER_TEMP/openspec" "@fission-ai/openspec@$OPENSPEC_VERSION" --no-fund --no-audit
+          echo "$RUNNER_TEMP/openspec/node_modules/.bin" >> "$GITHUB_PATH"
         env:
           OPENSPEC_TELEMETRY: '0'
 
@@ -185,12 +199,13 @@ jobs:
           if result=$(node "$RUNNER_TEMP/relevo/scripts/toolchain-check.mjs" --platform "$PLATFORM" --plugin-root "$RUNNER_TEMP/relevo"); then
             exit 0
           fi
-          missing=$(printf '%s' "$result" | jq -r '.missing | join(", ")')
+          # No jq here: the tool that is missing may be jq itself, and the comment must still be posted.
+          missing=$(printf '%s' "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).missing.join(", "))')
           [ -n "$missing" ] || { echo "::error::The toolchain check failed: $result"; exit 1; }
           title=$(gh issue view "$ISSUE" --json title --jq .title)
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
-          body=$(jq -n --arg assignee "$assignee" --arg issue "$ISSUE" --arg title "$title" --arg tools "$missing" --arg platform "$PLATFORM" \
-            '{assignee: $assignee, issue: $issue, title: $title, tools: $tools, platform: $platform}' | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" toolchain_missing --config relevo.yml)
+          body=$(ASSIGNEE="$assignee" TITLE="$title" TOOLS="$missing" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, title: e.TITLE, tools: e.TOOLS, platform: e.PLATFORM}))' \
+            | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" toolchain_missing --config relevo.yml)
           gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
           gh issue comment "$ISSUE" --body "$body"
           echo "::error::The runner has no $missing, so nothing was built"
@@ -300,3 +315,8 @@ jobs:
           else
             gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
           fi
+
+      # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
+      - name: Remove what this job added
+        if: always()
+        run: rm -rf .relevo-plugin

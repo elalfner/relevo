@@ -123,6 +123,37 @@ test('Scenario: Queued states its reason - for capacity and for the agent limit,
   assert.match(renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'es'), /agentes simult/);
 });
 
+test('Scenario: Applied without permission - urgent_denied names who applied it, in both languages and for a public repository', () => {
+  const en = renderMessage('urgent_denied', { issue: 9, actor: 'stranger' }, 'en');
+  assert.match(en, /^#9: the urgent label was removed because only people with write access/);
+  assert.match(en, /keeps its place in the queue/);
+  assert.match(en, /Applied by: @stranger/);
+  assert.match(renderMessage('urgent_denied', { issue: 9, actor: 'stranger' }, 'es'), /se quitó la etiqueta de urgente.*Aplicada por: @stranger/s);
+  assert.match(renderMessage('urgent_denied_maintainer', { issue: 9, actor: 'persona-w' }, 'en'), /this repository is public, so only maintainers/);
+  assert.match(renderMessage('urgent_denied_maintainer', { issue: 9, actor: 'persona-w' }, 'es'), /repositorio es público/);
+  const unknown = renderMessage('urgent_denied', { issue: 9 }, 'en');
+  assert.ok(!unknown.includes('@'), 'without a known applier nobody is mentioned');
+  assert.throws(() => renderMessage('urgent_denied', {}), /needs "issue"/);
+});
+
+test('Scenario: Built after an urgent start - the message says how many built issues wait for the assignee', () => {
+  const en = renderMessage('built', { ...BUILT, urgent: true, built_waiting: 3 }, 'en');
+  assert.match(en, /Started ahead of the queue \(urgent\): you now have 3 built issues waiting for your review\./);
+  assert.match(renderMessage('built', { ...BUILT, urgent: true, built_waiting: 3 }, 'es'), /Empezó antes que la cola \(urgente\): ahora tienes 3 issues construidos/);
+  assert.doesNotMatch(renderMessage('built', BUILT, 'en'), /ahead of the queue/, 'a normal build says nothing about it');
+});
+
+test('Scenario: Urgent and blocked - the notice says urgent does not skip dependencies, and nobody is mentioned', () => {
+  const data = { issue: 9, title: 'Summary', blockers: '#7' };
+  const urgent = renderMessage('blocked_notice', { ...data, urgent: true }, 'en');
+  assert.match(urgent, /The urgent label does not skip dependencies/);
+  assert.match(renderMessage('blocked_notice', { ...data, urgent: true }, 'es'), /no salta las dependencias/);
+  assert.doesNotMatch(renderMessage('blocked_notice', data, 'en'), /urgent/);
+  ['en', 'es'].forEach((lang) => {
+    assert.ok(!urgent.includes('@') && !renderMessage('blocked_notice', { ...data, urgent: true }, lang).includes('@'), 'a waiting state does not notify');
+  });
+});
+
 // ---------- Next step from one table, the recovery for an existing branch, the hash of the text it was built from
 
 const FAILED = { assignee: 'persona-b', issue: 31, title: 'Summary', finding: 'branch already exists', branch: 'feature/31-summary' };
@@ -223,4 +254,26 @@ test('Scenario: No credential - the cloud_not_configured message names the local
   assert.match(es, /#42 está listo, pero la nube no puede construirlo/);
   assert.match(es, /`\/relevo:go 42` en tu máquina/);
   assert.throws(() => renderMessage('cloud_not_configured', { issue: 1 }), /actor/);
+});
+
+test('the ship messages render in both languages and mention only the person who applied the label', () => {
+  const data = { actor: 'persona-c', issue: 31, reasons: 'checks are failing: test', approvers: '@persona-b', base: 'dev', pr: '#40', commit: 'abcdef1', run: 'https://example.com/run/1', };
+  ['ship_stopped', 'ship_not_approver', 'ship_no_ci', 'ship_needs_app', 'ship_done', 'ship_failed'].forEach((kind) => {
+    ['en', 'es'].forEach((language) => {
+      const text = renderMessage(kind, data, language);
+      assert.match(text, /#31/, `${kind} ${language}`);
+      assert.doesNotMatch(text, /\{\{/, `${kind} ${language} left a placeholder`);
+    });
+  });
+  assert.match(renderMessage('ship_needs_app', data), /RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY/);
+  assert.match(renderMessage('ship_no_ci', data, 'es'), /review.ship_without_ci: true/);
+  assert.match(renderMessage('ship_failed', { issue: 31, run: 'https://example.com/run/1' }), /^#31 was not shipped[^]*\nRead the log/);
+  assert.match(renderMessage('ship_failed', { issue: 31, run: 'https://example.com/run/1', actor: 'persona-c' }), /\n@persona-c read the log/);
+});
+
+test('Scenario: Approval - the label is named only when the ship workflow is installed', () => {
+  const base = { recipient: 'persona-c', issue: 31, reviewer: 'persona-c' };
+  assert.doesNotMatch(renderMessage('approved', base), /label/);
+  assert.match(renderMessage('approved', { ...base, ship_label: 'relevo:ship' }), /Or apply the label relevo:ship/);
+  assert.match(renderMessage('approved', { ...base, ship_label: 'relevo:ship' }, 'es'), /O pon la etiqueta relevo:ship/);
 });

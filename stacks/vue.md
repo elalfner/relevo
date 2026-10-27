@@ -20,7 +20,7 @@ targets:
 
 ## Verification
 
-Run the commands of this profile from the folder of the platform: `analyze` (type check, then linter), `test` and `format`. They use the versions pinned in the project (`npx --no-install`), so the dependencies must be installed; if they are not, say so instead of installing anything new.
+Run the commands of this profile from the folder of the platform: `analyze` (type check, then linter), `test` and `format`. They use the versions pinned in the project (`npx --no-install`), so the dependencies must be installed; if they are not, say so instead of installing anything new. Only the review may install them: it offers the frozen install of the project's lock file (`npm ci --ignore-scripts`) and runs it on a yes.
 
 Do not claim the code type-checks, lints or passes tests unless you ran the commands and saw the result. The commands written here are read-only on purpose: the `lint` script that `npm create vue` generates uses `--fix` and rewrites files, so do not run `npm run lint` as a check. Only `format` writes.
 
@@ -57,7 +57,7 @@ Do not spend time re-checking what `analyze` already enforces: read its output.
 
 ## Targets
 
-- `web`: needs a browser; no extra tool. The review of a web target is always driven by the agent (`review.autopilot` must be `precheck` or `verify`) with a Playwright script that `qa` reads first; Playwright is a dependency of the project, installed with `npm install -D playwright` and `npx playwright install chromium`.
+- `web`: needs a browser; no extra tool. The review of a web target is always driven by the agent (`review.autopilot` must be `precheck` or `verify`) with a Playwright script that `qa` reads first; Playwright is a development dependency of the project: `/relevo:init` offers to add it (`npm install -D playwright`) and its Chromium (`npx playwright install chromium`), and the review never installs Playwright itself.
 
 ## Questions for the issue writer
 

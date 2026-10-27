@@ -4,12 +4,16 @@
 # Change the time below to suit your team (cron is in UTC).
 # The scripts come from the published package @elalfner/relevo, at the version pinned in RELEVO_VERSION.
 
+# Runner: `runs-on` comes from `runner.labels` in relevo.yml (`/relevo:init` writes it into this file, `/relevo:doctor` checks it).
+# The runner needs git, gh and jq; Node and the tools of the job are installed per job. A self-hosted runner is assumed to
+# persist between jobs, so the job puts its tools under $RUNNER_TEMP and removes what it adds to the workspace.
+
 name: relevo-digest
 
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.7.0'
+  RELEVO_VERSION: '0.8.0'
 
 on:
   schedule:
@@ -52,3 +56,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node .relevo-plugin/scripts/digest.mjs --repo "$GITHUB_REPOSITORY"
+
+      # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
+      - name: Remove what this job added
+        if: always()
+        run: rm -rf .relevo-plugin

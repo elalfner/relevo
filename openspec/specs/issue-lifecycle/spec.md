@@ -43,7 +43,7 @@ A workflow reacting to pull request review events SHALL keep the lifecycle label
 
 #### Scenario: Approval
 - **WHEN** a reviewer approves
-- **THEN** the issue stays `pr-open` and the person who will run `ship` is mentioned
+- **THEN** the issue stays `pr-open` and the person who will run `ship` is mentioned, with both ways to ship: applying the `ship` label when the ship workflow is installed, or running `/relevo:ship <n>`
 
 ### Requirement: Reviewer selection
 When a pull request is opened, the reviewer SHALL be chosen from `team.members`, excluding the author and the spec writer, as the member with the fewest open review requests, ties broken in rotation. In `roles` mode only members of `team.approvers` are eligible. When nobody is eligible the issue SHALL be labelled `needs-reviewer`.
@@ -132,3 +132,44 @@ The next step shown by every hand-off and failure message SHALL come from one ta
 #### Scenario: Spanish repository
 - **WHEN** `language` is `es`
 - **THEN** the line is written in Spanish and the command stays unchanged
+
+### Requirement: The ship label is a request, not a state
+The lifecycle SHALL have a `ship` label (default name `relevo:ship`) that asks for an unattended ship. It SHALL be added next to `pr-open` and SHALL NOT replace it, it SHALL be renamable in `labels` like the others, and every ship run SHALL remove it whether it merges or stops.
+
+#### Scenario: Label applied
+- **WHEN** a person applies `relevo:ship` to a `pr-open` issue
+- **THEN** the issue has both labels until the run ends
+
+#### Scenario: Run ends
+- **WHEN** the run merges or stops
+- **THEN** `relevo:ship` is no longer on the issue
+
+### Requirement: The urgent label is a request, not a state
+The lifecycle SHALL have an `urgent` label (default name `relevo:urgent`) that asks for an issue to be started before the others and without waiting for the assignee's review capacity. It SHALL be added next to the current state and SHALL NOT replace it, it SHALL be renamable in `labels` like the others, and it SHALL NOT change the owner or the next step of the issue. It SHALL NOT close the issue to editing: an issue that is `needs-spec` and `urgent` can still be corrected by its spec writer.
+
+#### Scenario: Label applied to a queued issue
+- **WHEN** a person applies `relevo:urgent` to a `queued` issue
+- **THEN** the issue has both labels, and `queued` is replaced by `building` only when the issue starts
+
+#### Scenario: Label stays through the lifecycle
+- **WHEN** an urgent issue is built
+- **THEN** it is `built` with `relevo:urgent` still on it, and the label is removed with the other Relevo labels when the issue is closed
+
+#### Scenario: Issue sent back to the spec writer
+- **WHEN** an urgent issue is labelled `needs-spec`
+- **THEN** it keeps `relevo:urgent`, can be edited, and the next step is the one of `needs-spec`
+
+#### Scenario: Renamed label
+- **WHEN** `labels.urgent` is set in `relevo.yml`
+- **THEN** every behaviour of the label applies to the configured name
+
+### Requirement: Dependencies are not skipped by urgent
+A `blocked` issue SHALL stay `blocked` while a `Depends-on` issue is not merged, whether or not it is `urgent`, and the notice that makes it `blocked` SHALL say so when the issue carries `urgent`.
+
+#### Scenario: Urgent and blocked
+- **WHEN** an urgent issue becomes `blocked`
+- **THEN** the notice names the issues it waits for and says that `urgent` does not skip dependencies
+
+#### Scenario: Dependency merges
+- **WHEN** the last dependency of a `blocked` urgent issue is merged
+- **THEN** the issue is evaluated before the non-urgent ones

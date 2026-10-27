@@ -41,7 +41,7 @@ Running `init` again SHALL not duplicate or overwrite existing correct configura
 - **THEN** it reports "nothing to do" for what is already correct
 
 ### Requirement: Init sets up the repository
-`init` SHALL: detect the repository, provider and stack; ask for the platforms (name, stack, path and, where the stack has them, targets), team members, spec writer, review mode and language; write `relevo.yml` with `platforms`; create the lifecycle labels; create the base branch if missing; configure branch protection and secret scanning; add the workflows (`go`, queue, daily digest); add the evidence directory to the ignore file; offer a commented `.relevo/stacks/<stack>.md`, which it creates but does not commit and leaves for the person to commit with the other new files; and run `doctor`.
+`init` SHALL: detect the repository, provider and stack; ask for the platforms (name, stack, path and, where the stack has them, targets), team members, spec writer, review mode and language; write `relevo.yml` with `platforms`; create the lifecycle labels, including the `ship` label; create the base branch if missing; configure branch protection and secret scanning; add the workflows (`go`, queue, daily digest, ship); add the evidence directory to the ignore file; offer a commented `.relevo/stacks/<stack>.md`, which it creates but does not commit and leaves for the person to commit with the other new files; and run `doctor`.
 
 #### Scenario: Fresh repository
 - **WHEN** `init` runs on a repository with none of the above
@@ -58,6 +58,10 @@ Running `init` again SHALL not duplicate or overwrite existing correct configura
 #### Scenario: Profile file of the repository
 - **WHEN** the person asks for a profile file for stack `flutter`
 - **THEN** the plan line says `.relevo/stacks/flutter.md` is created and left for the person to commit, `init` does not commit it, and the report lists it among the new files to commit and push
+
+#### Scenario: Local-only setup keeps the ship workflow
+- **WHEN** the person chooses that `go` runs only on each person's machine
+- **THEN** the ship workflow is still added, because it needs no model credential
 
 ### Requirement: Init protects the repository and keeps OpenSpec in git
 `init` SHALL add a ruleset on the base and release branches that blocks deletion and force pushes and requires a pull request, with approvals not dismissed when commits are pushed; SHALL stop workflows from approving pull requests; and SHALL leave `.gitkeep` files in the empty OpenSpec folders so git keeps them. It SHALL NOT create files under `openspec/` by hand: with no OpenSpec root it tells the person to run the OpenSpec tool's own `init`.
@@ -99,11 +103,15 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **THEN** `doctor` reports that check as failed and shows the validation messages
 
 ### Requirement: Doctor checks repository protection
-`doctor` SHALL check branch protection and rulesets on the base and release branches, that the automation cannot approve pull requests, and that approvals are not dismissed when new commits are pushed (required because the spec archive is committed after approval).
+`doctor` SHALL check branch protection and rulesets on the base and release branches, that the automation cannot approve pull requests, that approvals are not dismissed when new commits are pushed, and that approval of the most recent push is not required (both required because the spec archive is committed after approval).
 
 #### Scenario: Approvals dismissed on push
 - **WHEN** the base branch dismisses approvals when new commits are pushed
 - **THEN** `doctor` reports a failure explaining that the archive commit would dismiss the approval
+
+#### Scenario: Approval of the last push required
+- **WHEN** the base branch requires the most recent push to be approved by someone other than its author
+- **THEN** `doctor` reports a failure explaining that the archive commit would need a new approval
 
 ### Requirement: Doctor checks the repository contents
 `doctor` SHALL check that the OpenSpec root is tracked by git (an empty `openspec/` folder is not stored, so a clean checkout or the runner would have none), that `evidence/` is ignored by git, that the lifecycle labels and the base branch exist, and that the plugin repository can be cloned by the runner with the credential the workflow uses.
@@ -270,7 +278,7 @@ When `review.autopilot` is not `off`, `doctor` SHALL check, for each Flutter pla
 
 #### Scenario: Vue without Playwright
 - **WHEN** `review.autopilot` is `verify` and a Vue platform cannot resolve Playwright
-- **THEN** `doctor` warns and gives the install command
+- **THEN** `doctor` warns, names `/relevo:init` as the fix, and gives the install command that saves Playwright to the platform's development dependencies
 
 #### Scenario: Autopilot off
 - **WHEN** `review.autopilot` is `off`
@@ -349,3 +357,128 @@ When `init` detects or configures a platform with stack `supabase`, it SHALL off
 #### Scenario: Init guidance for Supabase MCP
 - **WHEN** `init` finishes configuring a `supabase` platform
 - **THEN** its final manual steps list the command to add the Supabase MCP server for interactive design sessions
+
+### Requirement: Doctor checks what the ship workflow needs
+When the ship workflow is installed on the default branch, `doctor` SHALL check that the `ship` label exists and, when the base branch requires status checks, that the two GitHub App secrets of the ship workflow exist (without reading them). It SHALL report the state of `RELEVO_CLOUD_SHIP`, and SHALL NOT require a model credential for it.
+
+#### Scenario: Required checks without the App
+- **WHEN** the base branch requires status checks and the App secrets do not exist
+- **THEN** `doctor` fails that check, says that the label cannot ship in this repository, and names the secrets and the page that explains how to create the App
+
+#### Scenario: No required checks
+- **WHEN** the base branch requires no status checks
+- **THEN** `doctor` passes without the App secrets and says that the checks of the approved head carry over to the archive commit
+
+#### Scenario: Ship paused
+- **WHEN** `RELEVO_CLOUD_SHIP` is `off`
+- **THEN** `doctor` warns that the `ship` label is paused
+
+### Requirement: Init sets up what a browser review of Vue needs
+For each platform with stack `vue` and a `web` target, `init` SHALL offer, as installs confirmed one at a time, adding the browser library to the platform's development dependencies and installing its browser. It SHALL leave the changed manifest and lock file for the person to commit. When it creates `relevo.yml` with such a platform, it SHALL set `review.autopilot` to `precheck`.
+
+#### Scenario: Vue platform without the browser library
+- **WHEN** `init` plans a repository with a Vue platform with a `web` target whose folder cannot resolve Playwright
+- **THEN** the plan shows `npm install -D playwright`, run in the platform's folder, as an install to confirm, and, after it runs, says that `package.json` and the lock file are left for the person to commit
+
+#### Scenario: Browser not installed
+- **WHEN** Playwright resolves from the platform's folder but its Chromium is not installed, or Playwright was just added
+- **THEN** the plan shows `npx playwright install chromium`, run in the platform's folder, as an install to confirm
+
+#### Scenario: Already set up
+- **WHEN** Playwright resolves and its Chromium is installed
+- **THEN** the plan reports both as already in place and offers nothing
+
+#### Scenario: Declined
+- **WHEN** the person declines either install
+- **THEN** `init` continues, says a browser review of that platform will stop until it is installed, and `doctor` keeps warning
+
+#### Scenario: New configuration with a Vue web platform
+- **WHEN** `init` creates `relevo.yml` and a platform has stack `vue` and a `web` target
+- **THEN** the file has `review.autopilot: precheck`
+
+#### Scenario: Existing configuration with the autopilot off
+- **WHEN** `relevo.yml` already exists with `review.autopilot: off` and a Vue web platform
+- **THEN** `init` does not rewrite the file, and lists a manual step saying that a browser review needs `review.autopilot` set to `precheck` or `verify`
+
+### Requirement: Init offers OpenSpec for web sessions
+`init` SHALL plan, as an install the person confirms with the exact hook shown, a `SessionStart` hook in the repository's `.claude/settings.json` that installs the OpenSpec command line in a session of Claude Code on the web when it is missing, and SHALL list the line as already done when the hook is there. The hook SHALL run nothing outside a remote session and nothing when OpenSpec already runs. `init` SHALL keep every other setting of the file, SHALL leave the changed file for the person to commit, and SHALL NOT write the hook when the person declines.
+
+#### Scenario: A repository without the hook
+- **WHEN** `.claude/settings.json` has no `SessionStart` hook that installs OpenSpec
+- **THEN** the plan has an install line that shows the hook, and nothing is written before the person says yes
+
+#### Scenario: A settings file with other settings
+- **WHEN** the person agrees and `.claude/settings.json` already holds other settings or other hooks
+- **THEN** the hook is added next to them and none of them changes
+
+#### Scenario: A repository that already has the hook
+- **WHEN** `.claude/settings.json` has a `SessionStart` hook that installs OpenSpec
+- **THEN** the line is reported as already in place and nothing is added twice
+
+#### Scenario: A settings file that cannot be read
+- **WHEN** `.claude/settings.json` is not valid JSON
+- **THEN** the line is a manual one that asks the person to fix the file, and `init` does not touch it
+
+#### Scenario: The person declines
+- **WHEN** the person says no to the hook
+- **THEN** `init` continues and writes nothing for it, and `doctor` keeps warning in a remote session
+
+### Requirement: Doctor warns when a web session has no OpenSpec hook
+When `doctor` runs inside a remote session and the repository's `.claude/settings.json` has no `SessionStart` hook that installs OpenSpec, it SHALL report a warning with the fix next to it, and the warning SHALL NOT be a failure. It SHALL report nothing about the hook when it does not run in a remote session. It SHALL NOT change anything.
+
+#### Scenario: A remote session without the hook
+- **WHEN** `doctor` runs with `CLAUDE_CODE_REMOTE` set to `true` and the repository has no such hook
+- **THEN** it reports a warning that names the hook and says to run `/relevo:init`
+
+#### Scenario: A remote session with the hook
+- **WHEN** `doctor` runs in a remote session and the hook is there
+- **THEN** it reports a passed check
+
+#### Scenario: A terminal
+- **WHEN** `doctor` runs outside a remote session
+- **THEN** it reports no check about the hook, whether or not the hook exists
+
+### Requirement: Init writes the runner into the workflows
+`init` SHALL generate every Relevo workflow with `runs-on` set from `runner.labels` (`ubuntu-latest` when absent), SHALL ask for the labels only when the person says the repository uses a self-hosted runner, and SHALL keep the `runs-on` of a workflow it rewrites equal to `runner.labels`.
+
+#### Scenario: Default
+- **WHEN** the person gives no runner
+- **THEN** the workflows run on `ubuntu-latest` and `relevo.yml` has no `runner` key
+
+#### Scenario: Self-hosted
+- **WHEN** the person says the repository uses a self-hosted runner with the labels `self-hosted` and `Front`
+- **THEN** `relevo.yml` gets `runner.labels: [self-hosted, Front]` and every generated workflow runs on `[self-hosted, Front]`
+
+#### Scenario: Regenerating a workflow
+- **WHEN** `init` rewrites or adds a workflow in a repository that sets `runner.labels`
+- **THEN** the workflow runs on those labels and not on `ubuntu-latest`
+
+### Requirement: Doctor checks the runner of the workflows
+`doctor` SHALL compare the `runs-on` of each Relevo workflow on the default branch with `runner.labels` and SHALL fail on a difference, naming the file and the fix. When the runner is not `ubuntu-latest`, it SHALL warn once that Relevo assumes the runner persists between jobs, that the code the agent writes runs with the permissions of the runner's user, and that an ephemeral runner or a container is the real barrier. It SHALL NOT claim to know whether the runner is ephemeral.
+
+#### Scenario: A workflow edited by hand
+- **WHEN** `relevo.yml` has no `runner` key and `relevo-go.yml` on the default branch runs on `[self-hosted, Front]`
+- **THEN** `doctor` fails, names `relevo-go.yml` and says to set `runner.labels` or restore `ubuntu-latest`
+
+#### Scenario: Workflows and setting agree
+- **WHEN** every Relevo workflow runs on `[self-hosted, Front]` and `runner.labels` is `[self-hosted, Front]`
+- **THEN** the runner check passes and one warning explains that the runner is assumed to persist
+
+#### Scenario: Hosted runner
+- **WHEN** `runner.labels` is absent and every workflow runs on `ubuntu-latest`
+- **THEN** the runner check passes and no persistence warning appears
+
+### Requirement: The urgent label is created and checked
+`init` SHALL create the `urgent` label together with the other lifecycle labels, with the name given in `labels` when there is one, and `doctor` SHALL report it as missing when it does not exist in the repository. A repository set up before this label existed SHALL be told by `doctor` how to create it, and no other check SHALL change.
+
+#### Scenario: Fresh repository
+- **WHEN** `init` runs on a repository without Relevo labels
+- **THEN** the plan lists `relevo:urgent` among the labels it will create
+
+#### Scenario: Repository set up earlier
+- **WHEN** `doctor` runs on a repository that has every label except `relevo:urgent`
+- **THEN** it fails the labels check, names `relevo:urgent` and says that `init` creates it
+
+#### Scenario: Renamed label
+- **WHEN** `labels.urgent` is `prio:now`
+- **THEN** `init` creates `prio:now` and `doctor` checks for `prio:now`

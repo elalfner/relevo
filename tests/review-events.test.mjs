@@ -41,6 +41,16 @@ test('Scenario: Approval - the issue stays pr-open and the approver (merger: app
   assert.match(renderMessage(d.comment.kind, d.comment.data), /\/relevo:ship 12/);
 });
 
+test('Scenario: Approval - with the ship workflow installed, the label is named next to the command', () => {
+  const d = planReviewEvent({ config, event: review('approved'), pr, issue: issue(['relevo:pr-open']), shipWorkflow: true });
+  assert.equal(d.comment.data.ship_label, 'relevo:ship');
+  const text = renderMessage(d.comment.kind, d.comment.data);
+  assert.match(text, /\/relevo:ship 12/);
+  assert.match(text, /Or apply the label relevo:ship/);
+  const without = planReviewEvent({ config, event: review('approved'), pr, issue: issue(['relevo:pr-open']) });
+  assert.equal(without.comment.data.ship_label, undefined);
+});
+
 test('with merger: author the author is told to run ship', () => {
   const c = { ...config, review: { ...config.review, merger: 'author' } };
   const d = planReviewEvent({ config: c, event: review('approved'), pr, issue: issue(['relevo:pr-open']) });

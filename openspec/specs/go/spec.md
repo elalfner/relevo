@@ -43,18 +43,46 @@ Before building, `go` SHALL verify that the issue states scenarios and edge case
 - **THEN** the issue is labelled `blocked` and the notice names `acme/api#12`
 
 ### Requirement: Gate 3, capacity
-`go` SHALL NOT start an issue for an assignee who already has `limits.built_unreviewed_per_person` issues in `built`.
+`go` SHALL NOT start an issue for an assignee who already has `limits.built_unreviewed_per_person` issues in `built`, unless the issue carries a valid `urgent` label. A valid `urgent` label SHALL skip this gate only: every other gate and the limit `limits.concurrent_agents` still apply to the issue.
 
 #### Scenario: Assignee at capacity
 - **WHEN** the assignee has 2 issues in `built` and the limit is 2
 - **THEN** the issue is labelled `queued`, one comment says the assignee is at the limit (without mentioning anyone), and it starts when the assignee's count drops below the limit
 
+#### Scenario: Urgent issue for an assignee at capacity
+- **WHEN** the assignee has 2 issues in `built`, the limit is 2, the issue carries a valid `urgent` label and an agent slot is free
+- **THEN** the issue starts, and the assignee then has 3 issues in `built` once it finishes
+
+#### Scenario: Urgent issue is still blocked by a dependency
+- **WHEN** the issue carries a valid `urgent` label and a `Depends-on` issue is not merged
+- **THEN** the issue is labelled `blocked`, and the notice says that `urgent` does not skip dependencies
+
+#### Scenario: Urgent issue with an incomplete spec
+- **WHEN** the issue carries a valid `urgent` label and its spec is incomplete
+- **THEN** the issue is labelled `needs-spec` as for any other issue
+
+#### Scenario: Urgent issue and no free agent slot
+- **WHEN** the issue carries a valid `urgent` label and `limits.concurrent_agents` agents are already running
+- **THEN** the issue is labelled `queued`, one comment says it waits for a free agent slot, and it is the first to start when a slot frees up
+
 ### Requirement: Queue order
-Eligible issues SHALL be started in first-in-first-out order of the time `ready` was applied. An ineligible issue SHALL be skipped without blocking the others and SHALL keep its position.
+Eligible issues SHALL be started in first-in-first-out order of the time `ready` was applied, except that issues with a valid `urgent` label SHALL be considered before all the others, and in first-in-first-out order among themselves. An ineligible issue SHALL be skipped without blocking the others and SHALL keep its position.
 
 #### Scenario: Head of line is blocked
 - **WHEN** the oldest issue is `blocked` and a newer issue is eligible
 - **THEN** the newer issue starts, and the older one starts first once it becomes eligible
+
+#### Scenario: Urgent issue jumps the line
+- **WHEN** one agent slot is free, an older `queued` issue has no `urgent` label and a newer issue has a valid one
+- **THEN** the newer issue takes the slot and the older one stays `queued`
+
+#### Scenario: Several urgent issues
+- **WHEN** two issues carry a valid `urgent` label and only one agent slot is free
+- **THEN** the one whose `ready` label is older starts
+
+#### Scenario: Urgent label added to a queued issue
+- **WHEN** a person with the required permission applies `urgent` to a `queued` issue
+- **THEN** the queue is evaluated at once, without waiting for the next scheduled run
 
 ### Requirement: Concurrency and cost limits
 `go` SHALL run at most one agent per issue and at most `limits.concurrent_agents` agents overall. A run that exceeds `limits.run_max_turns` or `limits.run_max_cost` SHALL be stopped by the runner: the agent cannot see its own counters and does not try to stop itself.
@@ -231,11 +259,15 @@ Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a st
 - **THEN** nothing is committed or pushed, and the comment says the branch was not pushed and why
 
 ### Requirement: Successful hand-off
-On `QA PASSED`, `go` SHALL push the branch, label the issue `built`, and post the hand-off message to the assignee.
+On `QA PASSED`, `go` SHALL push the branch, label the issue `built`, and post the hand-off message to the assignee. When the issue was started by skipping the capacity gate because of a valid `urgent` label, the message SHALL say so and SHALL state how many issues the assignee has in `built`.
 
 #### Scenario: Built
 - **WHEN** QA passes
 - **THEN** the issue is `built`, the branch is pushed and the assignee is mentioned once
+
+#### Scenario: Built after an urgent start
+- **WHEN** QA passes for an issue that started over the assignee's capacity because of `urgent`
+- **THEN** the message tells the assignee that the issue skipped the queue and how many issues are now waiting for their review
 
 ### Requirement: The queue only acts on waiting issues
 The queue SHALL act only on issues that are already `queued` or `blocked`. An issue that has just been marked `ready` is handled by the `go` workflow that the label started, so the queue SHALL NOT apply its decision or dispatch a build for it.
@@ -533,3 +565,63 @@ The build job of the go workflow SHALL check, before the agent step, that every 
 #### Scenario: A clean working tree
 - **WHEN** the check runs
 - **THEN** it leaves nothing inside the workspace, so the agent's own preflight still finds a clean tree
+
+### Requirement: Without OpenSpec go does not continue from memory
+When the environment check finds that the OpenSpec command line does not run, `go` SHALL stop, show the command that installs it, and say that the change files must not be written by hand. It SHALL NOT create anything under `openspec/changes/`, and SHALL NOT go on by reading the code and recalling the format.
+
+#### Scenario: OpenSpec is missing
+- **WHEN** `go` runs and `openspec` does not run
+- **THEN** it stops before claiming work or creating a branch
+- **AND** the message gives the install command and says that nothing is written under `openspec/changes/` by hand
+
+#### Scenario: The agent is tempted to continue
+- **WHEN** the check has failed for OpenSpec
+- **THEN** the text of the skill forbids going on, and the structure test of the plugin fails if it does not
+
+### Requirement: A build leaves nothing behind on the runner
+A Relevo workflow SHALL NOT assume that its runner is a new machine. It SHALL install the tools it needs in the temporary folder of the job at a pinned version, not globally and not in the home folder of the runner's user, and SHALL end each job with a step that always runs and removes from the workspace what the job added. On a GitHub-hosted runner this SHALL change nothing a person can observe.
+
+#### Scenario: OpenSpec is installed per job
+- **WHEN** a build job needs OpenSpec
+- **THEN** it installs the pinned version under the temporary folder of the job and puts it on the path of that job only
+
+#### Scenario: A failed job still cleans up
+- **WHEN** the agent step fails or the job is cancelled
+- **THEN** the final step still removes the files the job added to the workspace
+
+#### Scenario: Two jobs on the same machine
+- **WHEN** two Relevo jobs run one after the other on the same self-hosted runner
+- **THEN** the second finds no tool, setting or credential file that the first one wrote outside the workspace and the temporary folder
+
+### Requirement: The workflows name the tools they assume
+A Relevo workflow SHALL list the tools it needs on the runner beyond what it installs (`git`, `gh`, `jq` and Node), and the toolchain check of the build job SHALL fail before the agent starts, without a model turn, when one is not on the path of the runner.
+
+#### Scenario: A runner without jq
+- **WHEN** the runner has no `jq` on its path
+- **THEN** the build job stops before the agent, the issue becomes `relevo:qa-failed` and the comment names `jq` and says nothing was built
+
+### Requirement: The agent's settings do not outlive the job
+When the agent is configured through a user-level settings file written by the workflow, that file SHALL be written under the temporary folder of the job, or removed by the final step, so that a later job on the same runner does not run with it.
+
+#### Scenario: Antigravity settings
+- **WHEN** the Antigravity build step writes its settings file
+- **THEN** the file is gone once the job ends, whether it succeeded or not
+
+### Requirement: The urgent label requires the permission of ready
+The `urgent` label SHALL be valid only when the person who last applied it has the permission that `ready` requires: write or maintain access, and maintain access only when `trust` is `public`. When the label is not valid, `go` SHALL remove it, post one comment that says why and names who applied it, and evaluate the issue as a normal one.
+
+#### Scenario: Applied by someone with write access
+- **WHEN** a collaborator with write access applies `urgent` and `trust` is `private-team`
+- **THEN** the label is valid
+
+#### Scenario: Applied without permission
+- **WHEN** a user without write access applies `urgent` to a `queued` issue
+- **THEN** the label is removed, one comment says that `urgent` needs the permission of `ready`, and the issue stays `queued` in its normal position
+
+#### Scenario: Public repository
+- **WHEN** `trust` is `public` and a collaborator with write but not maintain access applies `urgent`
+- **THEN** the label is removed and the comment says that only a maintainer may apply it
+
+#### Scenario: Applied by a bot
+- **WHEN** an application or bot applies `urgent`
+- **THEN** the label is not valid and is removed, as for a person without permission

@@ -19,6 +19,16 @@ test('Scenario: Returned to the spec writer - needs-spec may be edited', () => {
   assert.deepEqual(canEditIssue(issue([name('needs-spec')])), { editable: true });
 });
 
+test('Scenario: Issue sent back to the spec writer - needs-spec with urgent may still be edited', () => {
+  assert.deepEqual(canEditIssue(issue([name('needs-spec'), name('urgent')])), { editable: true });
+});
+
+test('urgent next to a state that closes the issue does not open it', () => {
+  const r = canEditIssue(issue([name('urgent'), name('queued')]));
+  assert.equal(r.editable, false);
+  assert.equal(r.label, name('queued'));
+});
+
 for (const [scenario, key] of [['Issue ready', 'ready'], ['Build in progress', 'building'], ['Waiting to start', 'blocked'], ['Waiting to start', 'queued'], ['Already built', 'built']]) {
   test(`Scenario: ${scenario} - ${key} is refused and names the label`, () => {
     const r = canEditIssue(issue([name(key)]));

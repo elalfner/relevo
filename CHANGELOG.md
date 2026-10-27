@@ -4,6 +4,33 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-26
+
+### Added
+
+- **Choose where the Relevo workflows run.** The new setting `runner.labels` in `relevo.yml` (default `[ubuntu-latest]`) names the runner of every workflow, for example `[self-hosted, Front]`. `/relevo:init` writes it into the workflows it adds, and `/relevo:doctor` fails when the `runs-on` of a workflow on the default branch is not the one in `relevo.yml`. There is no setting for whether the runner is ephemeral: Relevo cannot check it, so a runner other than GitHub's is assumed to keep its files between jobs, and `doctor` says so.
+- **The workflows leave nothing behind on a runner that persists.** Each job installs OpenSpec under its temporary folder at a pinned version (`OPENSPEC_VERSION`) instead of globally, the Antigravity run keeps its binary, plugin and settings in a home folder of the job, and a last step that always runs removes what the job added to the workspace. The toolchain check also covers `git`, `gh`, `jq` and `node`, and reports a missing tool without needing `jq` to do it.
+- **`relevo:urgent`: start an issue without waiting its turn.** An overlay label, next to the issue's state, that puts the issue before all the others in the queue and skips the check of the assignee's unreviewed work (`limits.built_unreviewed_per_person`). It skips nothing else: a complete specification, merged dependencies and `limits.concurrent_agents` still apply, and an urgent issue with a dependency still open is `blocked` with a notice that says so. It counts only when the person who applied it could mark the issue `ready` (write access, or maintainer access when `trust` is `public`); any other label is removed with a comment that names who applied it. Applying it to a `queued` issue starts the queue evaluation at once, and the hand-off message of an issue that started over the limit says how many built issues the assignee now has waiting. `/relevo:init` creates the label and `/relevo:doctor` checks it; a repository set up earlier runs `/relevo:init` once. The name can be changed in `labels.urgent`.
+- **Ship with a label.** The new workflow template `relevo-ship.yml` ships an issue when a person applies `relevo:ship` to it: the steps of `/relevo:ship` (`scripts/ship-unattended.mjs`), with the same checks and no model, so it needs no model credential and no local copy. The label is the written confirmation of the person who ships under `review.merger`; anything that stops it is commented on the issue and the label is removed. Nothing from the pull request's branch runs, and `relevo.yml` is read from the base branch. `RELEVO_CLOUD_SHIP=off` pauses it. `/relevo:init` creates the label and adds the workflow in every setup.
+- **A GitHub App for repositories that require checks.** With the secrets `RELEVO_SHIP_APP_ID` and `RELEVO_SHIP_APP_KEY`, the ship workflow pushes, merges and closes with the App's token, so the project's CI runs on the archive commit, and waits for it.
+- **`review.ship_without_ci`** (default `false`) lets the label merge a pull request on which no check ran.
+- `/relevo:doctor` fails when the base branch requires approval of the last push, and checks what the ship workflow needs. The approval comment names the label when the ship workflow is installed.
+- **A browser review installs the project's dependencies when you agree.** `scripts/web-preflight.mjs` now also detects `node_modules` that does not match `package-lock.json` (exit 7), for example after the merge with the base branch, and prints the frozen install of the lock file. The review offers that exact command (`npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts` or `yarn install --immutable`) instead of asking you to run `npm install` yourself; it never runs package scripts and never retries another way.
+- **`/relevo:init` sets up a Vue platform for its browser review:** it offers to add Playwright to the platform's development dependencies and to download its Chromium, and a new `relevo.yml` with a Vue web platform gets `review.autopilot: precheck`.
+
+### Changed
+
+- **A workflow edited by hand to another runner now fails `/relevo:doctor`.** Set `runner.labels` in `relevo.yml` to the labels of that runner (one line, for example `runner:` and `  labels: [self-hosted, Front]`) and the check passes with a note that the runner is assumed to persist.
+- **OpenSpec in the sessions of Claude Code on the web.** `/relevo:init` offers, with a yes to it alone, a `SessionStart` hook in `.claude/settings.json` that installs OpenSpec when it is missing, only in a remote session (`scripts/web-hook.mjs` adds it and keeps the rest of the file). `/relevo:doctor` warns in a web session when the repository has no such hook. When OpenSpec does not run, the preflight of `go` now says to stop, gives the install command and forbids writing the change files by hand, so the agent no longer goes on from memory.
+- **A browser review no longer installs Playwright with `--no-save`.** That install was removed by the next `npm install`, so every review asked for it again. Playwright now belongs in the project's development dependencies: when it is missing, the review stops and points to `/relevo:init`. For a project set up before this release, run `/relevo:init` once and commit `package.json` and the lock file. Doctor's Playwright check now resolves it from the folder of the platform and names `/relevo:init` as the fix.
+- **The checks of the approved head count for the archive commit** when it changes only `openspec/` and has no checks of its own, in `/relevo:ship` too, so a push that started no workflow no longer reads as "no CI".
+
+### Known limits
+
+- `runner.labels` and the per-job cleanup have not run on a real self-hosted runner. Two things are assumed and not checked: that the runner empties `$RUNNER_TEMP` between jobs, and that `claude-code-action` leaves no token or cache outside the workspace. Run `relevo-go` once on such a runner and look at what it leaves before relying on either.
+- With `agent.build: antigravity`, the job now uses a home folder of its own (`HOME` under `$RUNNER_TEMP`); that path is tested on the text of the workflow and with a fake agent, not on a real runner.
+- `/relevo:doctor` cannot see an SDK installed on the machine: with the Flutter or PHP step of `relevo-go.yml` commented out because the runner already has the SDK, it still reports that the go workflow installs no toolchain, and that failure can be ignored.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added

@@ -37,6 +37,28 @@ A repository with the `go` workflow but no `ANTHROPIC_API_KEY` or `CLAUDE_CODE_O
 
 The build job of the go workflow installs the toolchain of the stack of the platform of the issue, so that the agent and QA can run the checks of your project: Flutter with `subosito/flutter-action` and PHP with Composer for Laravel with `shivammathur/setup-php`. Each step is guarded by the stack, so only the one for the issue runs. Vue needs only Node, which the job already has. Change the versions and the caching in `relevo-go.yml` to suit the project. Installing the dependencies is yours to add (`npm ci --ignore-scripts`, `composer install --no-scripts`), because the package manager and the lockfile vary. `/relevo:doctor` fails when a Flutter or Laravel platform has no active step, because every cloud build would then fail QA after spending the run. As a second guard, the build job checks, right before the agent starts, that every tool the profile of the platform lists (`flutter`; `php` and `composer`) is on the path of the runner. If one is missing, no model turn is spent: the issue becomes `relevo:qa-failed` with a comment that names the missing tools and says to enable the toolchain step and to apply `ready` again after removing `qa-failed`.
 
+## Self-hosted runners
+
+The Relevo workflows run on `ubuntu-latest` unless `relevo.yml` names another runner. To use your own, list its labels:
+
+```yaml
+runner:
+  labels: [self-hosted, Front]
+```
+
+`/relevo:init` asks whether you use a self-hosted runner and writes the labels into `relevo.yml` and into every `runs-on` of the workflows it adds. `runs-on` is read before any step runs, so a workflow cannot read `relevo.yml` itself: the file and the workflows have to agree, and `/relevo:doctor` fails and names the file when they do not (for example after you edited a workflow by hand, or when the ship workflow comes from a newer template). To change the runner later, change `runner.labels` and each `runs-on`.
+
+What Relevo assumes of the runner:
+
+- **It has `git`, `gh` and `jq`.** GitHub's images have them and yours may not. The build job checks them with the tools of the stack, and a runner that lacks one stops before the agent, without a model turn, with a comment on the issue that names the tool. Node is installed by the job.
+- **It keeps its files between jobs.** Relevo never asks whether the runner is ephemeral, because it cannot check the answer. Each job installs OpenSpec under the temporary folder of the job at the version in `OPENSPEC_VERSION`, not globally; the Antigravity run keeps its binary, plugin and settings in a home folder of the job; and a last step, which runs even when the job fails, removes what the job added to the workspace. It does not clean the rest of the workspace, because your own jobs may rely on its caches.
+- **Toolchains are yours to provide.** On a self-hosted runner you can keep the Flutter or PHP steps of `relevo-go.yml` (they install the toolchain per job) or preinstall the SDKs on the machine and comment the steps out; the toolchain check of the build job passes either way as long as the tools are on the path. `/relevo:doctor` cannot see an SDK on the machine, so with the step commented out it still reports that the go workflow installs no toolchain; that failure can be ignored in this case, so keep a note of why the step is off.
+- **Antigravity needs x86-64 Linux.** The pinned binary is `linux-x64`.
+
+A runner with `limits.concurrent_agents: 1` is the same machine that runs your pull request checks, so a build of up to 60 minutes holds them up. Add runners with the same labels rather than raising the limit.
+
+The agent's code runs with the permissions of the runner's user, which on your own machine can reach your network. An ephemeral runner, or a container, is the barrier; see [Security](security.md#what-it-does-not-protect). Not yet checked on a real self-hosted runner: what `claude-code-action` leaves outside the workspace.
+
 ## What a cloud run reports
 
 After each cloud run a comment gives the turns, the cost and the tokens that the agent runner's log reports (the cost is notional with a subscription). When the log does not have them nothing is posted. A run that stopped because the usage limit or the credit was reached says so and tells you to apply `ready` again later; any other failure keeps the generic comment with the link to the run.
@@ -58,3 +80,20 @@ In Antigravity interactive chat sessions, running `/relevo:go <issue>` automatic
 ## With Antigravity
 
 `agent.build: antigravity` makes the cloud build run `agy` instead of `claude-code-action`; the rest of the workflow, the gates and the reports are the same file. The secret is `GEMINI_API_KEY`, and the limit is `limits.run_max_tokens` instead of `limits.run_max_cost`, because Antigravity has no cost limit: a run guard that Relevo starts around the agent enforces the turn and token limits of `relevo.yml`, and the quota of the Google Cloud project that owns the key is the ceiling that really holds. What it can and cannot enforce is in [Security](security.md#which-agent-builds). `/relevo:init` asks which agent builds and writes the workflow and `relevo.yml` for it. This path has been tested on the text of the workflow, with a fake agent and on the commands of the real CLI, not yet on a real runner.
+
+## Shipping with a label
+
+`relevo-ship.yml` ships an approved issue when a person applies the label `relevo:ship` to it, with the same checks as `/relevo:ship` and no model, so it needs no model credential and no local copy. `/relevo:init` adds it in every setup, also when `go` runs only on machines. Like the other workflows it runs from the default branch, so it works once it is there. The repository variable `RELEVO_CLOUD_SHIP` set to `off` pauses it: the label then does nothing until you delete the variable and apply the label again.
+
+**The checks of the archive commit.** Shipping commits the archived specification to the branch and pushes it before the merge. A push made with the workflow's own token starts no workflow, so that commit gets no checks of its own. Because it changes only `openspec/`, the checks of the approved head count for it, and the comment after the merge says so. The same rule applies to `/relevo:ship`.
+
+**When the base branch requires checks.** Then GitHub refuses to merge a commit without them, and the run stops before archiving, naming what is missing. Set up a GitHub App once:
+
+1. Create a GitHub App owned by your account or organization (Settings > Developer settings > GitHub Apps), with no webhook, and the repository permissions Contents, Pull requests and Issues set to read and write.
+2. Install it on this repository only.
+3. Store its App ID as the repository secret `RELEVO_SHIP_APP_ID` and a private key it generated as `RELEVO_SHIP_APP_KEY`.
+4. Do not add the App to any ruleset's bypass list: it must follow the same rules as everyone.
+
+With the App, the run pushes, merges and closes with the App's token, so your CI runs on the archive commit, and the run waits up to 30 minutes for it. If the checks take longer, the run stops without merging, and applying the label again resumes from the merge. The App is also worth it when you rely on workflows that run on pushes to the base branch, because a merge made with the workflow's token starts none. `/relevo:doctor` says whether the App is needed and whether its secrets exist.
+
+**No checks at all.** If no check ran on the approved code, the label stops, because only the review vouches for it and a label cannot confirm that. Run `/relevo:ship <n>`, which asks you, or set `review.ship_without_ci: true` in `relevo.yml`.

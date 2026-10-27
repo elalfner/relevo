@@ -31,6 +31,14 @@ test('the workflow runs the go skill of this plugin with the issue number', () =
   assert.ok(existsSync(`${root}skills/go/SKILL.md`));
 });
 
+test('Scenario: Built after an urgent start - the go skill carries urgent and built_waiting from the decision to the message', () => {
+  const skill = readFileSync(`${root}skills/go/SKILL.md`, 'utf8');
+  assert.match(skill, /`urgent` \(true\) and `built_waiting`/, 'the start decision lists the fields');
+  assert.match(skill, /`urgent` and `built_waiting` copied from the decision when it has them/, 'the built message receives them');
+  // The workflow starts the skill with the decision as it is: no input of the workflow changes for the urgent label.
+  assert.doesNotMatch(workflow, /urgent/);
+});
+
 test('Scenario: Fork pull request - the key comes from the secret store and nothing is triggered by forks', () => {
   assert.match(workflow, /anthropic_api_key: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}/);
   assert.doesNotMatch(workflow, /pull_request/);
@@ -38,8 +46,15 @@ test('Scenario: Fork pull request - the key comes from the secret store and noth
 });
 
 test('OpenSpec is installed with telemetry off', () => {
-  assert.match(workflow, /npm install --global @fission-ai\/openspec/);
   assert.match(workflow, /OPENSPEC_TELEMETRY: '0'/);
+});
+
+test('Scenario: OpenSpec is installed per job - the pinned version goes under the temporary folder, never globally', () => {
+  const active = workflow.replace(/^\s*#.*$/gm, '');
+  assert.match(active, /npm install --prefix "\$RUNNER_TEMP\/openspec" "@fission-ai\/openspec@\$OPENSPEC_VERSION"/);
+  assert.match(active, /echo "\$RUNNER_TEMP\/openspec\/node_modules\/\.bin" >> "\$GITHUB_PATH"/);
+  assert.match(workflow, /^  OPENSPEC_VERSION: '\d+\.\d+\.\d+'$/m);
+  assert.doesNotMatch(active, /npm install --global|npm i -g/);
 });
 
 test('Scenario: Subagent in the background - the unattended run keeps subagents in the foreground', () => {

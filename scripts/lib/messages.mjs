@@ -29,10 +29,18 @@ const REQUIRED = {
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
   ready_denied_maintainer: ['issue'],
+  urgent_denied: ['issue'],
+  urgent_denied_maintainer: ['issue'],
   blocked_notice: ['issue', 'title', 'blockers'],
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
   queued_agents: ['issue', 'title'],
   fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
+  ship_stopped: ['actor', 'issue', 'reasons'],
+  ship_not_approver: ['actor', 'issue'],
+  ship_no_ci: ['actor', 'issue'],
+  ship_needs_app: ['actor', 'issue', 'base'],
+  ship_done: ['issue', 'pr', 'base'],
+  ship_failed: ['issue', 'run'],
 };
 
 // The lifecycle state whose next step each message shows (see next-step.mjs, the only place that knows the commands).
@@ -52,6 +60,7 @@ const CATALOG = {
       '',
       'What happened: {{tasks_done}} of {{tasks_total}} tasks done, QA passed.',
       'Branch: {{branch}}',
+      'Started ahead of the queue (urgent): you now have {{built_waiting}} built issues waiting for your review.',
       'Built from the issue text: {{issue_hash_short}}',
       'What to test: {{scenarios}} scenarios (checklist below)',
       'Riskiest area, check it first: {{risk}}',
@@ -93,6 +102,7 @@ const CATALOG = {
       '',
       'Pull request: {{pr}}',
       'Your next step: {{command}}',
+      'Or apply the label {{ship_label}} to this issue: it ships on GitHub, with no local copy.',
     ],
     needs_reviewer: [
       '@{{spec_writer}} #{{issue}} "{{title}}" has no available reviewer',
@@ -134,10 +144,19 @@ const CATALOG = {
       '#{{issue}} was not started: this repository is public, so only maintainers can mark an issue ready, and the label was removed',
       'Applied by: @{{actor}}',
     ],
+    urgent_denied: [
+      '#{{issue}}: the urgent label was removed because only people with write access can ask for an early start. The issue keeps its place in the queue.',
+      'Applied by: @{{actor}}',
+    ],
+    urgent_denied_maintainer: [
+      '#{{issue}}: the urgent label was removed because this repository is public, so only maintainers can ask for an early start. The issue keeps its place in the queue.',
+      'Applied by: @{{actor}}',
+    ],
     blocked_notice: [
       '#{{issue}} "{{title}}" is blocked',
       '',
       'Waiting for {{blockers}} to be merged. It starts automatically when they are.',
+      '{{urgent_note}}',
     ],
     queued_capacity: [
       '#{{issue}} "{{title}}" is queued',
@@ -157,6 +176,41 @@ const CATALOG = {
       'Commit: {{commit}}',
       '@{{recipient}} {{ask}}',
     ],
+    ship_stopped: [
+      '@{{actor}} #{{issue}} was not shipped',
+      '',
+      'Why: {{reasons}}',
+      'Nothing was merged and the issue keeps its state; the relevo:ship label was removed. Apply it again once this is solved, or run `/relevo:ship {{issue}}`.',
+    ],
+    ship_not_approver: [
+      '@{{actor}} #{{issue}} was not shipped: you did not approve this pull request',
+      '',
+      'An eligible person who did not approve has to say so in writing, and a label cannot. Run `/relevo:ship {{issue}}`, which asks you to confirm it, or ask {{approvers}} to apply the label. The label was removed.',
+    ],
+    ship_no_ci: [
+      '@{{actor}} #{{issue}} was not shipped: no check ran on this pull request',
+      '',
+      'Nothing but the review vouches for this code, and the label cannot confirm that. Run `/relevo:ship {{issue}}`, which asks you, or set `review.ship_without_ci: true` in relevo.yml to let the label merge without checks. The label was removed.',
+    ],
+    ship_needs_app: [
+      '@{{actor}} #{{issue}} was not shipped: {{base}} requires status checks',
+      '',
+      'The archive commit needs its own checks, and a push with the workflow token starts none. Create a GitHub App for this repository and store its id and private key as the secrets RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY (see docs/execution.md), or run `/relevo:ship {{issue}}`. Nothing was archived; the label was removed.',
+    ],
+    ship_done: [
+      '#{{issue}} shipped ✅',
+      '',
+      'Pull request {{pr}} was squash-merged into {{base}} as {{commit}}.',
+      'Applied by: @{{actor}}',
+      '{{checks_note}}',
+      'The issue is closed and its labels removed. Promoting {{base}} to the release branch is a separate pull request.',
+    ],
+    ship_failed: [
+      '#{{issue}} was not shipped: the run ended without an outcome',
+      '',
+      '{{log_line}}',
+      'When the cause is fixed, apply relevo:ship again: a specification already archived is not archived twice.',
+    ],
   },
   es: {
     built: [
@@ -164,6 +218,7 @@ const CATALOG = {
       '',
       'Qué pasó: {{tasks_done}} de {{tasks_total}} tareas hechas, QA aprobado.',
       'Rama: {{branch}}',
+      'Empezó antes que la cola (urgente): ahora tienes {{built_waiting}} issues construidos esperando tu revisión.',
       'Construida con el texto del issue: {{issue_hash_short}}',
       'Qué probar: {{scenarios}} escenarios (checklist abajo)',
       'Zona más riesgosa, revísala primero: {{risk}}',
@@ -205,6 +260,7 @@ const CATALOG = {
       '',
       'Pull request: {{pr}}',
       'Tu siguiente paso: {{command}}',
+      'O pon la etiqueta {{ship_label}} a este issue: se fusiona en GitHub, sin copia local.',
     ],
     needs_reviewer: [
       '@{{spec_writer}} #{{issue}} "{{title}}" no tiene revisor disponible',
@@ -246,10 +302,19 @@ const CATALOG = {
       '#{{issue}} no se inició: este repositorio es público, así que solo quienes mantienen el proyecto pueden marcar un issue como ready, y se quitó la etiqueta',
       'Aplicada por: @{{actor}}',
     ],
+    urgent_denied: [
+      '#{{issue}}: se quitó la etiqueta de urgente porque solo quienes tienen acceso de escritura pueden pedir un inicio anticipado. El issue conserva su lugar en la cola.',
+      'Aplicada por: @{{actor}}',
+    ],
+    urgent_denied_maintainer: [
+      '#{{issue}}: se quitó la etiqueta de urgente porque este repositorio es público, así que solo quienes mantienen el proyecto pueden pedir un inicio anticipado. El issue conserva su lugar en la cola.',
+      'Aplicada por: @{{actor}}',
+    ],
     blocked_notice: [
       '#{{issue}} "{{title}}" está bloqueado',
       '',
       'Espera a que se fusionen {{blockers}}. Empieza solo cuando lo estén.',
+      '{{urgent_note}}',
     ],
     queued_capacity: [
       '#{{issue}} "{{title}}" está en cola',
@@ -268,6 +333,41 @@ const CATALOG = {
       'QA: {{qa}}',
       'Commit: {{commit}}',
       '@{{recipient}} {{ask}}',
+    ],
+    ship_stopped: [
+      '@{{actor}} #{{issue}} no se fusionó',
+      '',
+      'Por qué: {{reasons}}',
+      'No se fusionó nada y el issue conserva su estado; se quitó la etiqueta relevo:ship. Vuelve a ponerla cuando esté resuelto, o ejecuta `/relevo:ship {{issue}}`.',
+    ],
+    ship_not_approver: [
+      '@{{actor}} #{{issue}} no se fusionó: tú no aprobaste este pull request',
+      '',
+      'Quien es elegible pero no aprobó tiene que decirlo por escrito, y una etiqueta no puede. Ejecuta `/relevo:ship {{issue}}`, que te pide confirmarlo, o pide a {{approvers}} que ponga la etiqueta. Se quitó la etiqueta.',
+    ],
+    ship_no_ci: [
+      '@{{actor}} #{{issue}} no se fusionó: no corrió ningún check en este pull request',
+      '',
+      'Solo la revisión respalda este código, y la etiqueta no puede confirmarlo. Ejecuta `/relevo:ship {{issue}}`, que te lo pregunta, o pon `review.ship_without_ci: true` en relevo.yml para que la etiqueta fusione sin checks. Se quitó la etiqueta.',
+    ],
+    ship_needs_app: [
+      '@{{actor}} #{{issue}} no se fusionó: {{base}} exige status checks',
+      '',
+      'El commit del archivo necesita sus propios checks, y un push con el token del workflow no lanza ninguno. Crea una GitHub App para este repositorio y guarda su id y su clave privada como los secrets RELEVO_SHIP_APP_ID y RELEVO_SHIP_APP_KEY (ver docs/execution.es.md), o ejecuta `/relevo:ship {{issue}}`. No se archivó nada; se quitó la etiqueta.',
+    ],
+    ship_done: [
+      '#{{issue}} fusionada ✅',
+      '',
+      'El pull request {{pr}} se fusionó con squash en {{base}} como {{commit}}.',
+      'La pidió: @{{actor}}',
+      '{{checks_note}}',
+      'El issue está cerrado y sin etiquetas. Promover {{base}} a la rama de release es un pull request aparte.',
+    ],
+    ship_failed: [
+      '#{{issue}} no se fusionó: la ejecución terminó sin resultado',
+      '',
+      '{{log_line}}',
+      'Cuando la causa esté resuelta, vuelve a poner relevo:ship: una especificación ya archivada no se archiva dos veces.',
     ],
   },
 };
@@ -297,7 +397,16 @@ export function renderMessage(kind, data = {}, language = 'en') {
   });
   const language_ = pickLanguage(language);
   const es = language_ === 'es';
+  // The person who applied the label is mentioned when the run knows who it was.
+  if (kind === 'ship_failed') {
+    const who = present(values.actor) ? `@${values.actor} ` : '';
+    values.log_line = es ? `${who}${who ? 'lee' : 'Lee'} el log para ver por qué: ${values.run}` : `${who}${who ? 'read' : 'Read'} the log to see why: ${values.run}`;
+  }
   if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
+  // Urgent does not skip dependencies: an urgent issue that is blocked says so.
+  if (kind === 'blocked_notice' && values.urgent === true) {
+    values.urgent_note = es ? 'La etiqueta de urgente no salta las dependencias: empieza primero en la cola cuando se fusionen.' : 'The urgent label does not skip dependencies: it goes first in the queue once they are merged.';
+  }
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {
