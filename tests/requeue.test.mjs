@@ -89,6 +89,36 @@ test('the script ignores a ready issue even when it would start', () => {
   assert.equal(out.summary.start, 1);
 });
 
+test('Scenario: Urgent label added to a queued issue - the queue starts it over the assignee capacity, and only with a valid label', () => {
+  const fullFor = (urgent) => [
+    issue(1, urgent ? ['relevo:queued', 'relevo:urgent'] : ['relevo:queued'], urgent ? { urgent_by: urgent } : {}),
+    issue(2, ['relevo:built']), issue(3, ['relevo:built']),
+  ];
+  const permissions = { luz: 'write', marta: 'read' };
+  const startsFor = (issues) => startable(ownedByQueue(planGo({ config, issues, permissions }).decisions, issues, names));
+  assert.deepEqual(startsFor(fullFor(null)), [], 'without the label it waits for capacity');
+  assert.deepEqual(startsFor(fullFor('luz')), [1], 'a valid label starts it');
+  assert.deepEqual(startsFor(fullFor('marta')), [], 'a label from someone without permission starts nothing');
+});
+
+test('the script starts an urgent queued issue over capacity, removes nothing else and prints it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'requeue-urgent-'));
+  writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub'));
+  const run = (urgentBy) => {
+    const issues = [issue(1, ['relevo:queued', 'relevo:urgent'], { urgent_by: urgentBy }), issue(2, ['relevo:built']), issue(3, ['relevo:built'])];
+    writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues, completed: [], running: [], permissions: { luz: 'write', marta: 'read' } }));
+    const r = spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout);
+  };
+  const valid = run('luz');
+  assert.deepEqual(valid.start, [1]);
+  assert.equal(valid.summary.start, 1);
+  const denied = run('marta');
+  assert.deepEqual(denied.start, []);
+  assert.equal(denied.summary.queue, 1);
+});
+
 test('Scenario: Dependency finishes in the other repository - the scheduled run starts the blocked issue once the state says it is completed', () => {
   const dir = mkdtempSync(join(tmpdir(), 'requeue-links-'));
   writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub').replace('links: []', 'links: [acme/api]'));

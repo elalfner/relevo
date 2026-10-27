@@ -27,7 +27,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `review.ship_without_ci` | `true` deja que la etiqueta `relevo:ship` fusione un pull request sobre el que no corrió ningún check; `/relevo:ship` se lo pregunta a la persona | `false` |
 | `review.allowed_origins` | orígenes web que una revisión conducida puede visitar además de `localhost`, por ejemplo `https://staging.example.com` | `[]` |
 | `skills.allow_scripts` | nombres de las skills extra que tienen scripts y pueden usarse; una skill con scripts que no está en la lista se deja fuera, y `/relevo:doctor` lo dice | vacío |
-| `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando | 2 |
+| `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando; un issue con una etiqueta `relevo:urgent` válida empieza igualmente | 2 |
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |
 | `limits.run_max_turns` | turnos por ejecución sin supervisión | 100 |
