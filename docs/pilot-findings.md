@@ -420,11 +420,11 @@ Local checks of the change `upgrade-path` (tasks 1.2 to 1.4), made with the publ
 
 ### `git merge-file` on the real case (task 1.3)
 
-Files: the five workflows of `viali_panel_vue` as they are in its working copy (text of the 0.5.0 templates, pin raised by hand to `0.7.0`, runner `[self-hosted, Front]`, subscription token instead of the API key) as "yours"; the 0.5.0 templates as the base; the 0.8.0 templates as "theirs". Command: `git merge-file -p <yours> <base> <theirs>`.
+Files: the five workflows of a project that uses Relevo, as they are in its working copy (text of the 0.5.0 templates, pin raised by hand to `0.7.0`, runner `[self-hosted, linux-build]`, its own credential line) as "yours"; the 0.5.0 templates as the base; the 0.8.0 templates as "theirs". Command: `git merge-file -p <yours> <base> <theirs>`.
 
 - **Raw, all five files conflict, on one line each:** `RELEVO_VERSION` is `0.7.0` in yours, `0.5.0` in the base and `0.8.0` in theirs. Nothing else conflicts.
 - **With the pin of yours set to the pin of the base first (`0.5.0`), all five merge cleanly** (exit 0, no markers), and then setting the pin to `0.8.0` gives the result.
-- The merged `relevo-go.yml` equals the 0.8.0 template plus exactly the project's own choices: `runs-on: [self-hosted, Front]` on both jobs, the token line active and the API key line commented out. It has the new text (`OPENSPEC_VERSION`, the cleanup step). `diff` against the 0.8.0 template shows only those four lines.
+- The merged `relevo-go.yml` equals the 0.8.0 template plus exactly the project's own choices: `runs-on: [self-hosted, linux-build]` on both jobs, the token line active and the API key line commented out. It has the new text (`OPENSPEC_VERSION`, the cleanup step). `diff` against the 0.8.0 template shows only those four lines.
 
 So the pin has to be set outside the merge, as the design says, and also normalised in "yours" before it. The same holds for the stamp line once templates carry it.
 

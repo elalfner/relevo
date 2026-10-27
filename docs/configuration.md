@@ -34,7 +34,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `limits.building_alert_hours` | hours without activity before an issue on `building` is reported as stuck ([Where `go` runs](execution.md)) | 3 |
 | `limits.run_max_cost` | **required** with `agent.build: claude` (the default), and refused with `antigravity`: US dollars per unattended run; choose your own | 5 |
 | `limits.run_max_tokens` | **required** with `agent.build: antigravity`, and refused with `claude`: tokens per unattended run, which Relevo's run guard enforces because Antigravity has no limit of its own | none |
-| `runner.labels` | runner of every Relevo workflow, as a list of labels (`[self-hosted, Front]`); `/relevo:init` writes it into the workflow files and `/relevo:doctor` checks that they agree. Relevo assumes any runner persists between jobs, so there is no setting for that ([Self-hosted runners](execution.md#self-hosted-runners)) | `[ubuntu-latest]` |
+| `runner.labels` | runner of every Relevo workflow, as a list of labels (`[self-hosted, linux-build]`); `/relevo:init` writes it into the workflow files and `/relevo:doctor` checks that they agree. Relevo assumes any runner persists between jobs, so there is no setting for that ([Self-hosted runners](execution.md#self-hosted-runners)) | `[ubuntu-latest]` |
 | `agent.build` | which agent builds in the cloud: `claude`, or `antigravity` (what each can and cannot enforce is in [Security](security.md)) | `claude` |
 | `qa.retries` | developer attempts after QA rejects | 1 |
 | `qa.rules_from` | project rules QA reads at every run: one file or a list | `CLAUDE.md` |

@@ -8,7 +8,7 @@
 
 ## 2. Templates that do not assume a new machine
 
-- [x] 2.1 Render `runs-on` from `runner.labels` in `scripts/lib/agent-workflow.mjs` and `scripts/lib/init.mjs` for all seven jobs; verify `tests/agent-workflow.test.mjs` and `tests/init.test.mjs` cover the default, `[self-hosted, Front]` and a regeneration that keeps the labels
+- [x] 2.1 Render `runs-on` from `runner.labels` in `scripts/lib/agent-workflow.mjs` and `scripts/lib/init.mjs` for all seven jobs; verify `tests/agent-workflow.test.mjs` and `tests/init.test.mjs` cover the default, `[self-hosted, linux-build]` and a regeneration that keeps the labels
 - [x] 2.2 Install OpenSpec per job under `$RUNNER_TEMP` at a pinned version in `relevo-go.yml` (and any other template that installs it), and add `OPENSPEC_VERSION` beside `RELEVO_VERSION`; verify `tests/workflow-go.test.mjs` no longer finds `npm install --global` and finds the pinned install
 - [x] 2.3 Move the Antigravity binary and settings file in `templates/agents/antigravity-step.yml` under `$RUNNER_TEMP` and point the agent at that settings file; verify `tests/agent-workflow.test.mjs` finds no `$HOME` path
 - [x] 2.4 Add the final `if: always()` step that removes `.relevo-plugin` and any other file a Relevo step added to the workspace, in each job that adds one; verify the template tests check the step exists, runs always and runs no `git clean`
@@ -30,6 +30,6 @@
 
 ## Workflow follow-up
 
-- Follow-up, not done in this change: run `relevo-go` once on the `Front` runner of `viali_panel_vue` (still pinned to 0.7.0, so with the old templates) and record in `docs/pilot-findings.md` what the job leaves outside the workspace (home folder, global npm prefix, `~/.claude`), whether the runner empties `$RUNNER_TEMP` between jobs, and whether `claude-code-action` stores a token or cache outside the workspace. If `$RUNNER_TEMP` is not emptied or a credential is left behind, `design.md` D3 and the final cleanup step must change. Until then the docs say this was not checked on a real runner.
-- Try `runner.labels: [self-hosted, Front]` in `viali_panel_vue` and run `/relevo:doctor` there.
+- Follow-up, not done in this change: run `relevo-go` once on a self-hosted runner of a project that uses Relevo (still pinned to 0.7.0, so with the old templates) and record in `docs/pilot-findings.md` what the job leaves outside the workspace (home folder, global npm prefix, `~/.claude`), whether the runner empties `$RUNNER_TEMP` between jobs, and whether `claude-code-action` stores a token or cache outside the workspace. If `$RUNNER_TEMP` is not emptied or a credential is left behind, `design.md` D3 and the final cleanup step must change. Until then the docs say this was not checked on a real runner.
+- Try `runner.labels: [self-hosted, linux-build]` in a project that uses a self-hosted runner and run `/relevo:doctor` there.
 - Archive the change after the review, and sync its specs into `openspec/specs/`.

@@ -2,7 +2,7 @@
 
 ## Why
 
-`/relevo:doctor` prints one line for every check, so the lines that ask for action are buried. On a real repository (`viali_panel_vue`) the report had 54 lines and 42 checks: 32 passed, 3 warned and 7 failed, and five of those seven failures were one cause (the runner of five workflows) repeated with the same fix. Three lines that are notices ("reminder: read the Anthropic terms", a reserved skill, the subscription token) are shown as `pass`. Nothing says that the workflows are judged on the default branch of GitHub, so "no CI workflow" reads as a mistake when the file exists only in the working copy.
+`/relevo:doctor` prints one line for every check, so the lines that ask for action are buried. On a real repository with a self-hosted runner the report had 54 lines and 42 checks: 32 passed, 3 warned and 7 failed, and five of those seven failures were one cause (the runner of five workflows) repeated with the same fix. Three lines that are notices ("reminder: read the Anthropic terms", a reserved skill, the subscription token) are shown as `pass`. Nothing says that the workflows are judged on the default branch of GitHub, so "no CI workflow" reads as a mistake when the file exists only in the working copy.
 
 ## What Changes
 

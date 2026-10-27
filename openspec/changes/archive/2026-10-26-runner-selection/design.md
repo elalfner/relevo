@@ -4,7 +4,7 @@
 
 - All six workflow templates in `templates/workflows/` use `runs-on: ubuntu-latest`. `relevo-go.yml` has two jobs (`decide`, `build`), so there are seven `runs-on` lines to keep in step.
 - GitHub evaluates `runs-on` before any step runs, so a workflow cannot read `relevo.yml` to choose its runner. Whatever `relevo.yml` says has to be written into the workflow file, or come from a repository variable.
-- `viali_panel_vue` already runs on `[self-hosted, Front]` by hand-editing the five workflows it has (it was on 0.7.0 and has no ship workflow yet). A version bump there was done with a `sed` on `RELEVO_VERSION`, which kept the edit; a regeneration by `init` would not.
+- A project that uses Relevo already runs on `[self-hosted, linux-build]` by hand-editing the five workflows it has (it was on 0.7.0 and has no ship workflow yet). A version bump there was done with a `sed` on `RELEVO_VERSION`, which kept the edit; a regeneration by `init` would not.
 - Today the jobs install OpenSpec with `npm install --global`, the Antigravity step writes `$HOME/.local/bin/agy` and `$HOME/.gemini/antigravity-cli/settings.json`, and the plugin is unpacked in `.relevo-plugin` inside the workspace. None of that is cleaned.
 - Not verified: where `claude-code-action` leaves files on a persistent runner (a token, a cache under `~/.claude`). Task 1 finds out before any claim about cleanliness is written.
 
@@ -24,7 +24,7 @@
 
 ### D1. A list of labels in `relevo.yml`, rendered into the workflows
 
-`runner.labels` is a list, because `runs-on` takes a list of labels (`[self-hosted, Front]`) and one string cannot express it. `init` writes the value into every `runs-on` when it generates a workflow, and `doctor` compares the files on the default branch with it.
+`runner.labels` is a list, because `runs-on` takes a list of labels (`[self-hosted, linux-build]`) and one string cannot express it. `init` writes the value into every `runs-on` when it generates a workflow, and `doctor` compares the files on the default branch with it.
 
 Alternative: a repository variable read in the workflow, `runs-on: ${{ fromJSON(vars.RELEVO_RUNNER || '"ubuntu-latest"') }}`. It survives regeneration without any rewrite and can change without a commit. Rejected as the primary mechanism because the value then lives outside the repository, `doctor` needs the variable API (and a permission) to see it, and the repository would no longer show where its builds run. It stays a possible follow-up.
 
@@ -67,7 +67,7 @@ It reuses the existing rule that the default branch is what runs. Comparison is 
 ## Migration Plan
 
 1. Release with `runner.labels` optional. Nothing changes for a repository without it.
-2. A repository like `viali_panel_vue` adds `runner.labels: [self-hosted, Front]`, runs `doctor` (passes, with the persistence note) and keeps its workflows. A new ship workflow is generated with the same labels.
+2. A repository on a self-hosted runner adds `runner.labels: [self-hosted, linux-build]`, runs `doctor` (passes, with the persistence note) and keeps its workflows. A new ship workflow is generated with the same labels.
 3. Rollback: remove the key and restore `ubuntu-latest` in the workflows.
 
 ## Open Questions

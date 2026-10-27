@@ -36,7 +36,7 @@ const V3 = tpl('0.9.0', { install: 'npm install --prefix "$T" openspec@2', extra
 const candidates = [{ version: '0.5.0', template: V1 }, { version: '0.7.0', template: V2 }];
 const current = { template: V3 };
 // The person's own choices: the token instead of the key, another runner, and the pin raised by hand.
-const own = (text, { pin = '0.7.0', labels = '[self-hosted, Front]' } = {}) => text
+const own = (text, { pin = '0.7.0', labels = '[self-hosted, linux-build]' } = {}) => text
   .replace('          anthropic_api_key: KEY\n          # token: TOKEN', '          # anthropic_api_key: KEY\n          token: TOKEN')
   .replace('runs-on: ubuntu-latest', `runs-on: ${labels}`)
   .replace(/RELEVO_VERSION: '[^']+'/, `RELEVO_VERSION: '${pin}'`);
@@ -47,7 +47,7 @@ test('Scenario: A clean merge - the 0.5.0 text with the person\'s choices become
   assert.equal(r.from, '0.5.0');
   assert.equal(r.to, '0.9.0');
   assert.match(r.text, /^ {10}token: TOKEN$/m, 'the credential choice is kept');
-  assert.match(r.text, /runs-on: \[self-hosted, Front\]/);
+  assert.match(r.text, /runs-on: \[self-hosted, linux-build\]/);
   assert.match(r.text, /echo cleanup/, 'the new text is there');
   assert.match(r.text, /openspec@2/);
 });
@@ -64,10 +64,10 @@ test('Scenario: The pin was raised by hand - the base is the text, the pin and t
 });
 
 test('Scenario: The settings of the repository - the runner of relevo.yml is the same on both sides and raises nothing', () => {
-  const labels = ['self-hosted', 'Front'];
+  const labels = ['self-hosted', 'linux-build'];
   const r = upgradeWorkflow({ ours: own(V1), current, candidates, render: render(labels) });
   assert.equal(r.status, 'update');
-  assert.equal((r.text.match(/runs-on: \[self-hosted, Front\]/g) ?? []).length, 1);
+  assert.equal((r.text.match(/runs-on: \[self-hosted, linux-build\]/g) ?? []).length, 1);
 });
 
 test('Scenario: A conflict - a line both sides changed writes nothing and shows both versions', () => {
@@ -129,10 +129,10 @@ test('the real go template: the text of 0.5.0 with a token, a runner and a pin o
     .replace(/^# relevo-template: .*\n/, '').replace(/RELEVO_VERSION: '[^']+'/, "RELEVO_VERSION: '0.5.0'").replace(/\n  # The version of OpenSpec that the job installs for itself\.\n  OPENSPEC_VERSION: '[^']+'/, '');
   const ours = old.replace('          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}', '          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}')
     .replace('          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}', '          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}')
-    .replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]').replace("RELEVO_VERSION: '0.5.0'", "RELEVO_VERSION: '0.7.0'");
-  const r = upgradeWorkflow({ ours, current: { template: now }, candidates: [{ version: '0.5.0', template: old }], render: render(['self-hosted', 'Front']) });
+    .replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]').replace("RELEVO_VERSION: '0.5.0'", "RELEVO_VERSION: '0.7.0'");
+  const r = upgradeWorkflow({ ours, current: { template: now }, candidates: [{ version: '0.5.0', template: old }], render: render(['self-hosted', 'linux-build']) });
   assert.equal(r.status, 'update', JSON.stringify(r.conflicts));
-  const expected = runnerLine(now, ['self-hosted', 'Front'])
+  const expected = runnerLine(now, ['self-hosted', 'linux-build'])
     .replace('          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}', '          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}')
     .replace('          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}', '          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}');
   assert.equal(r.text, expected, 'the current text plus the person\'s three choices, and nothing else');

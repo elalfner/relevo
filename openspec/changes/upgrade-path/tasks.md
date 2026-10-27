@@ -4,7 +4,7 @@
 
 - [ ] 1.1 In a sandbox repository, run the Claude build once with `--plugin-dir ${{ runner.temp }}/relevo` in `claude_args` and no `plugin_marketplaces`; verify in the log that the plugin loads from that folder, and record the result and the workflow used in `docs/pilot-findings.md`. If the action does not forward the option, update `design.md` D1 to the fallback (the `#vX.Y.Z` marketplace pinned by tag) and the specs of group 3 before continuing
 - [x] 1.2 Locally, run `claude --plugin-dir <an unpacked @elalfner/relevo package> -p "/relevo:doctor"`; verify the skill resolves under the name `/relevo:` and record it in `docs/pilot-findings.md`
-- [x] 1.3 Run `git merge-file -p` with the real case: the file `relevo-go.yml` of `viali_panel_vue` as "yours", the 0.5.0 template (from `npm pack @elalfner/relevo@0.5.0`) as the base and the 0.8.0 template as "theirs"; verify the result is clean and keeps its credential line, and record the three paths and the outcome in `docs/pilot-findings.md`
+- [x] 1.3 Run `git merge-file -p` with the real case: the file `relevo-go.yml` of a project that uses Relevo as "yours", the 0.5.0 template (from `npm pack @elalfner/relevo@0.5.0`) as the base and the 0.8.0 template as "theirs"; verify the result is clean and keeps its credential line, and record the three paths and the outcome in `docs/pilot-findings.md`
 - [x] 1.4 Repeat 1.3 with a line that both sides changed; verify `git merge-file` reports a conflict (non-zero exit) and write the command in `docs/pilot-findings.md`; if either 1.3 or 1.4 does not behave, update `design.md` D2 before continuing
 
 ## 2. The version of the text
@@ -22,7 +22,7 @@
 
 ## 4. Init updates a workflow
 
-- [x] 4.1 Write the merge in a new module under `scripts/lib/`: choose the base among the published templates by fewest differing lines (fetched with `npm pack` into a temporary folder), render the current template with `runner.labels` and `agent.build`, run `git merge-file -p`, set the pin and the stamp, and check the structure of the result; verify unit tests with fixtures for a clean merge (the `viali_panel_vue` case from 1.3), a conflict, a pin raised by hand, no close base and a file that is already current
+- [x] 4.1 Write the merge in a new module under `scripts/lib/`: choose the base among the published templates by fewest differing lines (fetched with `npm pack` into a temporary folder), render the current template with `runner.labels` and `agent.build`, run `git merge-file -p`, set the pin and the stamp, and check the structure of the result; verify unit tests with fixtures for a clean merge (the a real project case from 1.3), a conflict, a pin raised by hand, no close base and a file that is already current
 - [x] 4.2 Add the item to `planInit` and `applyPlan` in `scripts/lib/init.mjs`: a workflow that differs becomes "can be updated from A to B" with its difference when the merge is clean, and stays `differs` with the conflicting lines otherwise; verify `tests/init.test.mjs` covers the scenarios of the three requirements and that nothing outside `.github/workflows/` is written
 - [x] 4.3 Add `--from <version>` to `scripts/init.mjs` (`relevo init` sets up the plugin of each tool, not the workflows, so it takes no `--from`); verify a test where the base cannot be chosen and `--from 0.5.0` makes the merge possible
 - [x] 4.4 Update `skills/init/SKILL.md` (the rule that a workflow that differs is only reported becomes: reported, unless the merge is clean and the person agrees), and `docs/commands.md` and `docs/commands.es.md` for `/relevo:init`; verify the skill test and the parity test pass
@@ -42,5 +42,5 @@
 
 ## Workflow follow-up
 
-- Update `viali_panel_vue` with the new `init`, as the first real use, and check that `/relevo:doctor` there reports consistent versions.
+- Update a real project with the new `init`, as the first real use, and check that `/relevo:doctor` there reports consistent versions.
 - Archive the change after review and sync its specs into `openspec/specs/`.

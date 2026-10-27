@@ -28,5 +28,5 @@
 
 ## Workflow follow-up
 
-- Run `/relevo:doctor` on `viali_panel_vue` and compare its report with the sample in proposal.md.
+- Run `/relevo:doctor` on a real repository with a self-hosted runner and compare its report with the sample in proposal.md.
 - Archive the change after review and sync its specs into `openspec/specs/`.

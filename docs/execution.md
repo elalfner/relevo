@@ -43,7 +43,7 @@ The Relevo workflows run on `ubuntu-latest` unless `relevo.yml` names another ru
 
 ```yaml
 runner:
-  labels: [self-hosted, Front]
+  labels: [self-hosted, linux-build]
 ```
 
 `/relevo:init` asks whether you use a self-hosted runner and writes the labels into `relevo.yml` and into every `runs-on` of the workflows it adds. `runs-on` is read before any step runs, so a workflow cannot read `relevo.yml` itself: the file and the workflows have to agree, and `/relevo:doctor` fails and names the file when they do not (for example after you edited a workflow by hand, or when the ship workflow comes from a newer template). To change the runner later, change `runner.labels` and each `runs-on`.

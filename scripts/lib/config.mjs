@@ -85,7 +85,7 @@ function checkType(setting, value, errors) {
       break;
     case 'label-list':
       if (!Array.isArray(value)) {
-        errors.push({ path, message: `${path} must be a list of runner labels, for example [self-hosted, Front] (got ${JSON.stringify(value)})` });
+        errors.push({ path, message: `${path} must be a list of runner labels, for example [self-hosted, linux-build] (got ${JSON.stringify(value)})` });
       } else if (value.length === 0) {
         errors.push({ path, message: `${path} needs at least one label; leave the setting out to use ubuntu-latest` });
       } else if (value.some((v) => typeof v !== 'string' || v.trim() === '')) {

@@ -4,7 +4,7 @@
 
 A project that stays on an old version of Relevo has no way to move up that is written down or checked. Three things carry a version and each is updated somewhere else: the plugin on each person's machine, the pin `RELEVO_VERSION` in the workflows, and the plugin that the cloud agent loads. Today the third is not tied to the project: the workflows add the marketplace `elalfner/relevo` and install `relevo@relevo`, whose entry names the npm package with no version, so a cloud run takes the latest published plugin (Claude Code fetches `latest` when an npm source has no version) while its scripts come from the pinned package. A project that pins 0.5.0 runs 0.5.0 scripts with a newer plugin.
 
-The text of the workflows has no way to move either. `/relevo:init` never overwrites a workflow that differs and only says `differs`, and the pin is a number that a person can change with `sed` without touching the text. `viali_panel_vue` is an example: its workflows are the 0.5.0 text (4 lines differ, all its own credential choice) with the pin raised to 0.7.0 by hand. And `doctor` reports one version, that of the plugin that runs it, so it cannot say that the machine and the project are on different ones.
+The text of the workflows has no way to move either. `/relevo:init` never overwrites a workflow that differs and only says `differs`, and the pin is a number that a person can change with `sed` without touching the text. A real project is an example: its workflows are the 0.5.0 text (4 lines differ, all its own credential choice) with the pin raised to 0.7.0 by hand. And `doctor` reports one version, that of the plugin that runs it, so it cannot say that the machine and the project are on different ones.
 
 ## What Changes
 
@@ -33,5 +33,5 @@ None.
 - Code: `templates/workflows/relevo-go.yml` and its Claude agent block, the other five templates (the stamp), `scripts/lib/init.mjs` and a new module for the merge, `scripts/lib/doctor.mjs`, `scripts/init.mjs`, `scripts/cli.mjs`.
 - Docs: a new `upgrading` page, `install`, `execution`, `security`, `commands` and `get-started` in both languages, `docs/action-parameters.md` (English only), `RELEASING.md`, `skills/init/SKILL.md`, `CHANGELOG.md`.
 - Tests: the workflow template tests, `tests/init.test.mjs`, `tests/doctor.test.mjs` and `tests/docs-claims.test.mjs` (the new page joins its list).
-- **Checks before building**, made first because the design depends on them: that `claude-code-action` forwards `--plugin-dir` and that the skills keep the name `/relevo:go`; and that `git merge-file` merges the real case (`viali_panel_vue`) cleanly and reports a conflict as one.
+- **Checks before building**, made first because the design depends on them: that `claude-code-action` forwards `--plugin-dir` and that the skills keep the name `/relevo:go`; and that `git merge-file` merges the real case (a project that uses Relevo) cleanly and reports a conflict as one.
 - Release: a minor version. A project keeps working untouched: its old workflows still use the marketplace until `init` updates them.
