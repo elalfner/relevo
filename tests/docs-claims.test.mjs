@@ -13,7 +13,7 @@ const root = new URL('../', import.meta.url).pathname;
 const read = (p) => readFileSync(`${root}${p}`, 'utf8');
 
 // Pages with a Spanish twin. The pilot findings and the action parameters are English-only logs and are not checked here.
-const PAGES = ['get-started', 'install', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format'];
+const PAGES = ['get-started', 'install', 'upgrading', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format'];
 const FILES = ['README.md', 'README.es.md', 'docs/README.md', 'docs/README.es.md', ...PAGES.flatMap((n) => [`docs/${n}.md`, `docs/${n}.es.md`])];
 const exists = (f) => existsSync(`${root}${f}`);
 
@@ -207,10 +207,12 @@ test('the example issue of the page passes the check Relevo applies', () => {
 test('the output the page quotes is output the code produces', () => {
   const messages = read('scripts/lib/messages.mjs');
   const initSource = ['scripts/init.mjs', 'scripts/lib/init.mjs'].map((f) => read(f)).join('\n');
-  const doctor = renderReport([{ status: 'pass', message: 'a' }, { status: 'fail', message: 'b', fix: 'c' }]);
+  const sample = [{ status: 'pass', message: 'a' }, { status: 'fail', message: 'b', fix: 'c' }, { status: 'warn', message: 'd', fix: 'e' }, { status: 'note', message: 'f' }];
+  // The default report shows what needs action; the passes are listed only with --all, and the page says so.
+  const doctor = `${renderReport(sample)}\n${renderReport(sample, { all: true })}`;
   [['docs/get-started.md', ['is built', 'Your next step']], ['docs/get-started.es.md', ['está construida', 'Tu siguiente paso']]].filter(([f]) => exists(f)).forEach(([f, quoted]) => {
     const page = read(f);
-    [...quoted.map((q) => [q, messages]), ['[pass]', doctor], ['[FAIL]', doctor], ['fix:', doctor], ['[will do]', initSource], ['[by hand]', initSource]].forEach(([phrase, source]) => {
+    [...quoted.map((q) => [q, messages]), ['[pass]', doctor], ['[FAIL]', doctor], ['[warn]', doctor], ['[note]', doctor], ['fix:', doctor], ['FAILURES', doctor], ['WARNINGS', doctor], ['NOTES', doctor], ['--all', doctor], ['[will do]', initSource], ['[by hand]', initSource]].forEach(([phrase, source]) => {
       assert.ok(page.includes(phrase), `${f} does not quote "${phrase}"`);
       const needle = source === initSource ? phrase.slice(1, -1) : phrase; // init writes the tag between brackets
       assert.ok(source.includes(needle), `the code never produces "${phrase}"`);
@@ -279,4 +281,14 @@ test('the rare cases of the setup step live in the table of problems, not in the
     assert.match(table, /openspec init/, `${file} table says what to do without an OpenSpec root`);
     assert.match(table, /gh auth login/, file);
   });
+});
+
+test('Scenario: The plugin token - no page tells a new project to store RELEVO_PLUGIN_TOKEN, because the cloud agent loads the plugin from the pinned package', () => {
+  FILES.filter(exists).forEach((f) => {
+    const lines = read(f).split('\n').filter((l) => /RELEVO_PLUGIN_TOKEN/.test(l));
+    lines.forEach((l) => assert.match(l, /needs no|no necesita|sin |without/i, `${f} mentions the plugin token other than to say it is not needed: ${l.slice(0, 80)}`));
+  });
+  assert.match(read('docs/execution.md'), /needs no `RELEVO_PLUGIN_TOKEN`/);
+  assert.match(read('docs/execution.es.md'), /no necesita `RELEVO_PLUGIN_TOKEN`/);
+  assert.match(read('docs/install.md'), /no token is needed to read it/);
 });

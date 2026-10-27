@@ -8,7 +8,7 @@
 - **THEN** validation passes and the runner is `ubuntu-latest`
 
 #### Scenario: Self-hosted runner with labels
-- **WHEN** `runner.labels` is `[self-hosted, Front]`
+- **WHEN** `runner.labels` is `[self-hosted, linux-build]`
 - **THEN** validation passes and the workflows run on a runner that has both labels
 
 #### Scenario: Empty list

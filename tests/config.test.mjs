@@ -301,9 +301,9 @@ test('Scenario: Default runner - without a runner key the workflows run on ubunt
 });
 
 test('Scenario: Self-hosted runner with labels - a list of labels is accepted as written', () => {
-  const { ok, config } = loadConfig(`${MINIMAL}runner:\n  labels: [self-hosted, Front]\n`);
+  const { ok, config } = loadConfig(`${MINIMAL}runner:\n  labels: [self-hosted, linux-build]\n`);
   assert.equal(ok, true);
-  assert.deepEqual(config.runner.labels, ['self-hosted', 'Front']);
+  assert.deepEqual(config.runner.labels, ['self-hosted', 'linux-build']);
 });
 
 test('Scenario: Empty list - validation fails and says the list needs at least one label', () => {

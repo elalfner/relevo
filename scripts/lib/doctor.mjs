@@ -48,6 +48,8 @@ const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const pass = (id, message) => ({ id, status: 'pass', message });
 const fail = (id, message, fix) => ({ id, status: 'fail', message, fix });
 const warn = (id, message, fix) => ({ id, status: 'warn', message, fix });
+// Information that asks for nothing: neither a failure nor a warning, and it never changes the exit status.
+const note = (id, message) => ({ id, status: 'note', message });
 
 /** True when `version` (like "22.1.0") is at least `min` (like "20.19"). */
 export function versionAtLeast(version, min) {
@@ -183,6 +185,12 @@ export function gatherFacts(p) {
   const installedRoot = p.pluginRoot ?? PLUGIN_ROOT;
   f.pluginFolders = ['scripts', 'skills', 'agents', 'stacks', 'templates'].filter((d) => tryRun(() => readdirSync(resolve(installedRoot, d)).length > 0, false) !== true);
   f.pluginVersion = tryRun(() => JSON.parse(readFileSync(resolve(installedRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null, null);
+  // The installations Claude Code knows of: the user scope, and the project or local scope of this repository. null when
+  // `claude` cannot list them. Only the command is read, never Claude Code's own files.
+  const repoTop = tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null);
+  f.installedPlugins = tryRun(() => JSON.parse(String(p.tool('claude', ['plugin', 'list', '--json'])))
+    .filter((e) => String(e.id).startsWith('relevo@') && (e.scope === 'user' || e.projectPath === repoTop))
+    .map((e) => ({ scope: e.scope, version: e.version ?? null })), null);
 
   f.configText = p.exists('relevo.yml') ? p.read('relevo.yml') : null;
   const loaded = f.configText === null ? null : loadConfig(f.configText, profileLookups({ pluginRoot: p.pluginRoot ?? PLUGIN_ROOT, read: readerFor(p, tryRun) }));
@@ -305,6 +313,11 @@ export function gatherFacts(p) {
     f.pluginPins = {};
     WORKFLOW_FILES.forEach((file) => {
       if (typeof texts[file] === 'string') f.pluginPins[file] = (/^\s*RELEVO_VERSION:\s*['"]?([\w.+-]+)['"]?\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
+    });
+    // The version of the text each workflow was copied from (null when it has no stamp).
+    f.pluginStamps = {};
+    WORKFLOW_FILES.forEach((file) => {
+      if (typeof texts[file] === 'string') f.pluginStamps[file] = (/^# relevo-template: (\d+\.\d+\.\d+)\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
     });
     f.hasCi = names.some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-'));
   }
@@ -478,11 +491,11 @@ function executionChecks(f) {
 
   if (mode === 'both') r.push(warn('execution.credential', `both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN exist${used ? `; the workflow uses the ${used === 'api_key' ? 'API key' : 'subscription token'}` : ''}`, 'keep only the secret the workflow uses, so that it is clear which account pays'));
   else if (mode === 'api_key') r.push(pass('execution.credential', 'the cloud builds with an API key: run_max_cost is a real ceiling on spending'));
-  else if (mode === 'subscription') r.push(pass('execution.credential', 'the cloud builds with a subscription token: run_max_cost is only a notional ceiling, and the quota is shared with the use of the account that owns the token'));
+  else if (mode === 'subscription') r.push(note('execution.credential', 'the cloud builds with a subscription token: run_max_cost is only a notional ceiling, and the quota is shared with the use of the account that owns the token'));
   else r.push(pass('execution.credential', installed ? 'no model credential: the cloud cannot build (see the warning about the secret)' : 'no model credential and no go workflow: go builds on machines only'));
 
   if (mode === 'subscription' || (mode === 'both' && used === 'subscription')) {
-    r.push(pass('execution.policy', 'reminder: read the current Anthropic terms on automated use of a subscription token (and the README of claude-code-action) before relying on it for a team'));
+    r.push(note('execution.policy', 'reminder: read the current Anthropic terms on automated use of a subscription token (and the README of claude-code-action) before relying on it for a team'));
     if ((f.config?.limits?.concurrent_agents ?? 1) > 1) {
       r.push(warn('execution.concurrency', `limits.concurrent_agents is ${f.config.limits.concurrent_agents} with a subscription, whose quota is shared by every run and by the interactive use of the account`, 'set limits.concurrent_agents to 1'));
     }
@@ -564,7 +577,7 @@ function platformChecks(f) {
     e.targetTools.forEach(({ target, tool, ok }) => {
       const id = `tools.target.${e.name}.${target}`;
       if (tool === '') r.push(pass(id, `target ${target} of ${e.name} needs no extra tool`));
-      else if (tool === 'xcrun' && !f.macos) r.push(pass(id, `target ${target} of ${e.name}: iOS can only be built and reviewed on macOS (a notice, not a problem)`));
+      else if (tool === 'xcrun' && !f.macos) r.push(note(id, `target ${target} of ${e.name}: iOS can only be built and reviewed on macOS`));
       else if (ok) r.push(pass(id, `target ${target} of ${e.name}: ${tool} is installed`));
       else r.push(warn(id, `target ${target} of ${e.name}: ${tool} is not installed; \`review\` needs it for this target`, TOOL_INSTALL[tool] ?? `install ${tool}`));
     });
@@ -622,7 +635,7 @@ export function runChecks(f) {
   // skills that think invokes
   REQUIRED_SKILLS.forEach((name) => {
     const manual = (f.manualOnlySkills ?? []).includes(name);
-    r.push(f.skills[name] ? pass(`skills.${name}`, manual ? `skill ${name} is installed; it is reserved for you, so run /${name} by hand when \`think\` asks (a notice, not a problem)` : `skill ${name} is installed`) : fail(`skills.${name}`, `skill ${name} is not installed; \`think\` needs it`, SKILL_INSTALL[name]));
+    r.push(f.skills[name] ? (manual ? note(`skills.${name}`, `skill ${name} is installed; it is reserved for you, so run /${name} by hand when \`think\` asks`) : pass(`skills.${name}`, `skill ${name} is installed`)) : fail(`skills.${name}`, `skill ${name} is not installed; \`think\` needs it`, SKILL_INSTALL[name]));
   });
 
   // configuration
@@ -688,14 +701,27 @@ export function runChecks(f) {
   } else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) r.push(pass('automation.secret', 'a model credential secret exists'));
   else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
 
+  // One result per cause: the workflows in the same state, with the same status and the same fix, are one result that names them.
+  const groups = new Map();
+  const put = (kind, status, file, what, fix) => {
+    const key = `${kind}|${status}`;
+    const g = groups.get(key) ?? { kind, status, files: [], what, fix };
+    g.files.push(file);
+    groups.set(key, g);
+  };
   Object.entries(f.workflows).forEach(([file, w]) => {
-    const required = REQUIRED_WORKFLOWS.has(file);
-    const bad = (m, fix) => r.push(required ? fail(`automation.workflow.${file}`, m, fix) : warn(`automation.workflow.${file}`, m, fix));
-    if (!w.present && w.local && w.remote === false) bad(`${file} is only in your working copy, not on the default branch, and a workflow only runs from there`, 'commit it and push it to the default branch (through a pull request if the branch is protected)');
-    else if (!w.present) bad(`${file} is not installed`, 'run /relevo:init to copy it into .github/workflows/');
-    else if (w.enabled === false) bad(`${file} is disabled`, 'enable it in the Actions tab');
-    else if (w.enabled === null) r.push(warn(`automation.workflow.${file}`, `${file} is on the default branch but GitHub does not list it yet`, 'check the Actions tab, or run doctor again in a minute'));
-    else r.push(pass(`automation.workflow.${file}`, `${file} is installed and enabled`));
+    const level = REQUIRED_WORKFLOWS.has(file) ? 'fail' : 'warn';
+    if (!w.present && w.local && w.remote === false) put('local-only', level, file, 'only in your working copy, not on the default branch, and a workflow only runs from there', 'commit it and push it to the default branch (through a pull request if the branch is protected)');
+    else if (!w.present) put('missing', level, file, 'not installed', 'run /relevo:init to copy it into .github/workflows/');
+    else if (w.enabled === false) put('disabled', level, file, 'disabled', 'enable it in the Actions tab');
+    else if (w.enabled === null) put('unlisted', 'warn', file, 'on the default branch but GitHub does not list it yet', 'check the Actions tab, or run doctor again in a minute');
+    else put('installed', 'pass', file, 'installed and enabled');
+  });
+  groups.forEach(({ kind, status, files, what, fix }) => {
+    // The same state can be a failure for a required workflow and a warning for an optional one: two results, two ids.
+    const id = files.length === 1 ? `automation.workflow.${files[0]}` : `automation.workflow.${kind}${status === 'warn' && kind !== 'unlisted' ? '-optional' : ''}`;
+    const message = files.length === 1 ? `${files[0]} is ${what}` : `${files.join(', ')} are ${what}`;
+    r.push({ id, status, message, ...(fix ? { fix } : {}) });
   });
   r.push(f.hasCi ? pass('automation.ci', 'an objective CI check exists') : fail('automation.ci', 'no CI workflow other than Relevo\'s was found; QA needs an objective check', 'add a workflow that runs the project\'s analysis and tests on pull requests'));
 
@@ -708,7 +734,10 @@ export function runChecks(f) {
   r.push(...linkChecks(f));
   r.push(...executionChecks(f));
   r.push(...shipChecks(f));
-  if (f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
+  // The token is for reading the plugin repository, which only a workflow that still loads the plugin through a marketplace
+  // (or clones it, the older layout) does; one that loads it from the pinned package needs none.
+  const readsPluginRepository = Boolean(f.pluginMarketplace) || (f.pluginCheckouts ?? []).length > 0;
+  if (readsPluginRepository && f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
     if (f.secrets.includes('RELEVO_PLUGIN_TOKEN')) r.push(pass('automation.plugin-secret', 'the RELEVO_PLUGIN_TOKEN secret exists for the private plugin repository'));
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));
   }
@@ -759,7 +788,7 @@ function toolchainChecks(f) {
 
 const HOSTED_RUNNER = ['ubuntu-latest'];
 
-/** The labels written in a `runs-on` line: `[self-hosted, Front]` or `ubuntu-latest`; null for an expression we cannot judge. */
+/** The labels written in a `runs-on` line: `[self-hosted, linux-build]` or `ubuntu-latest`; null for an expression we cannot judge. */
 function parseRunsOn(value) {
   if (value.includes('${{')) return null;
   const inner = value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1) : value;
@@ -776,12 +805,21 @@ function runnerChecks(f) {
   const same = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
   const r = [];
   let judged = 0;
+  // One result per cause: the files that run on the same other runner are one failure that names all of them.
+  const differing = new Map();
   Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
     if (!w.present || typeof w.text !== 'string') return;
     judged += 1;
     const found = [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => parseRunsOn(m[1])).filter((l) => l !== null);
     const other = found.find((labels) => !same(labels, wanted));
-    if (other) r.push(fail(`automation.runner.${file}`, `${file} runs on [${other.join(', ')}] and relevo.yml says [${wanted.join(', ')}]`, same(wanted, HOSTED_RUNNER) ? `set runner.labels: [${other.join(', ')}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${file}` : `change runs-on in ${file} to [${wanted.join(', ')}], or change runner.labels in relevo.yml`));
+    if (!other) return;
+    const key = other.join(', ');
+    differing.set(key, [...(differing.get(key) ?? []), file]);
+  });
+  [...differing.entries()].forEach(([labels, files]) => {
+    const names = files.join(', ');
+    const id = differing.size === 1 ? 'automation.runner' : `automation.runner.${labels}`;
+    r.push(fail(id, `${names} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says [${wanted.join(', ')}]`, same(wanted, HOSTED_RUNNER) ? `set runner.labels: [${labels}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${names}` : `change runs-on in ${names} to [${wanted.join(', ')}], or change runner.labels in relevo.yml`));
   });
   if (r.length > 0) return r;
   if (judged > 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
@@ -825,7 +863,50 @@ function pluginInstallChecks(f) {
   const unpinned = Object.entries(pins).filter(([file, v]) => v === null && !cloners.includes(file)).map(([file]) => file);
   if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
-  if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'to move them, change RELEVO_VERSION to the installed version after reading the changelog'));
+  if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog (that moves the scripts, not the text)'));
+  r.push(...versionChecks(f), ...workflowTextChecks(f));
+  return r;
+}
+
+const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
+
+/**
+ * Which version each part is on, from what can be read here: the plugin in use, each installation `claude` lists and the
+ * pins of the workflows. It is a note, always visible; a warning only when the user and the project scope disagree, with
+ * the command that moves the lagging one. It asks the npm registry nothing.
+ */
+function versionChecks(f) {
+  if (f.installedPlugins === undefined) return [];
+  if (f.installedPlugins === null) return [warn('plugin.versions', 'the installed versions of the plugin could not be read: `claude plugin list --json` failed', 'check that Claude Code is installed (claude --version) and run claude plugin list')];
+  const r = [];
+  const scopes = f.installedPlugins.filter((e) => e.version);
+  const pins = [...new Set(Object.values(f.pluginPins ?? {}).filter(Boolean))].sort(byVersion);
+  const parts = [
+    `plugin in use ${f.pluginVersion ?? 'unknown'}`,
+    scopes.length > 0 ? `installed ${scopes.map((e) => `${e.scope} ${e.version}`).join(', ')}` : 'not installed through Claude Code',
+    pins.length > 0 ? `workflows pin ${pins.join(', ')}` : null,
+  ].filter(Boolean);
+  r.push(note('plugin.versions', `versions: ${parts.join('; ')}`));
+  const distinct = [...new Set(scopes.map((e) => e.version))].sort(byVersion);
+  if (distinct.length > 1) {
+    const newest = distinct.at(-1);
+    const lagging = scopes.filter((e) => e.version !== newest).map((e) => e.scope);
+    r.push(warn('plugin.scopes', `the plugin is on different versions: ${scopes.map((e) => `${e.scope} ${e.version}`).join(', ')}`, `update the lagging scope: ${lagging.map((s) => `claude plugin update relevo@relevo --scope ${s}`).join('; ')}`));
+  }
+  return r;
+}
+
+/** Is the text of each workflow as current as the scripts it runs? The stamp is the version of the text; the pin is the scripts'. */
+function workflowTextChecks(f) {
+  const stamps = f.pluginStamps;
+  if (!stamps) return [];
+  const pins = f.pluginPins ?? {};
+  const unknown = Object.keys(stamps).filter((file) => stamps[file] === null && f.workflows?.[file]?.present);
+  const older = Object.keys(stamps).filter((file) => stamps[file] !== null && pins[file] && byVersion(stamps[file], pins[file]) < 0);
+  const r = [];
+  if (older.length > 0) r.push(warn('automation.workflow-text', `${older.map((file) => `${file} (text ${stamps[file]}, scripts ${pins[file]})`).join(', ')}: the text of the workflow is older than the scripts it runs`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes'));
+  if (unknown.length > 0) r.push(warn('automation.workflow-text-unknown', `${unknown.join(', ')} have no # relevo-template: line, so the age of their text is unknown`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes'));
+  if (older.length === 0 && unknown.length === 0 && Object.keys(stamps).length > 0) r.push(pass('automation.workflow-text', 'the text of the workflows is as current as the scripts they run'));
   return r;
 }
 
@@ -846,14 +927,41 @@ function adapterChecks(f) {
   });
 }
 
-/** Text report. */
-export function renderReport(results) {
-  const tag = { pass: 'pass', fail: 'FAIL', warn: 'warn' };
-  const lines = results.flatMap((x) => [`[${tag[x.status]}] ${x.message}`, ...(x.fix && x.status !== 'pass' ? [`       fix: ${x.fix}`] : [])]);
-  const failed = results.filter((x) => x.status === 'fail').length;
-  const warned = results.filter((x) => x.status === 'warn').length;
+/** The exit status of `doctor`: 1 when a check failed, 0 otherwise. Warnings and notes never fail it. */
+export function exitCode(results) {
+  return results.some((x) => x.status === 'fail') ? 1 : 0;
+}
+
+const TAG = { pass: 'pass', fail: 'FAIL', warn: 'warn', note: 'note' };
+const lineOf = (x) => [`[${TAG[x.status]}] ${x.message}`, ...(x.fix && (x.status === 'fail' || x.status === 'warn') ? [`       fix: ${x.fix}`] : [])];
+
+/** The first line of the report: what was judged, and where the workflows were read from. */
+export function reportHeader(facts) {
+  if (!facts?.repo || !facts.ghAuth) return 'Relevo doctor: only the local checks ran (no GitHub repository, or not signed in to GitHub)';
+  return `Relevo doctor: ${facts.repo}, workflows read from the ${facts.workflowSource ?? 'working copy'}`;
+}
+
+/**
+ * Text report. By default what needs action comes first (failures, warnings, notes, each with its count) and the checks
+ * that passed are only counted; `all` lists every check in the order it was evaluated. The closing line counts results.
+ */
+export function renderReport(results, { header = null, all = false } = {}) {
+  const by = (status) => results.filter((x) => x.status === status);
+  const failed = by('fail').length;
+  const warned = by('warn').length;
+  const passed = by('pass').length;
+  const lines = header ? [header, ''] : [];
+  if (all) lines.push(...results.flatMap(lineOf));
+  else {
+    [['FAILURES', 'fail'], ['WARNINGS', 'warn'], ['NOTES', 'note']].forEach(([title, status]) => {
+      const group = by(status);
+      if (group.length === 0) return;
+      lines.push(`${title} (${group.length})`, ...group.flatMap(lineOf), '');
+    });
+    if (passed > 0) lines.push(`${passed} check(s) passed; run with --all to list them.`);
+  }
   lines.push('', failed === 0 ? (warned === 0 ? 'All green.' : `No failures, ${warned} warning(s).`) : `${failed} check(s) failed${warned ? `, ${warned} warning(s)` : ''}.`);
-  return lines.join('\n');
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /** Wrap a `gh` client so that it can only read: `doctor` must never change anything. */

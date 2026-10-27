@@ -45,9 +45,36 @@ test('the guard runs before the script it protects, in the same job', () => {
   });
 });
 
-test('the model action still installs the plugin from the marketplace entry, and the guard has no token to hold', () => {
+test('Scenario: Reading the template - the plugin for the model action comes from the pinned package, not from a marketplace', () => {
   const go = read('templates/workflows/relevo-go.yml');
-  assert.match(go, /plugin_marketplaces: https:\/\/github\.com\/elalfner\/relevo\.git/);
-  assert.match(go, /plugins: relevo@relevo/);
-  files.forEach((f) => assert.doesNotMatch(read(`templates/workflows/${f}`).split('plugin_marketplaces')[0], /RELEVO_PLUGIN_TOKEN \|\| github\.token/, f));
+  assert.match(go, /--plugin-dir \$\{\{ runner\.temp \}\}\/relevo/);
+  files.forEach((f) => {
+    const active = read(`templates/workflows/${f}`).replace(/^\s*#.*$/gm, '');
+    assert.doesNotMatch(active, /plugin_marketplaces|^\s+plugins:/m, `${f} adds no marketplace and installs no plugin from one`);
+    assert.doesNotMatch(active, /RELEVO_PLUGIN_TOKEN/, f);
+  });
+});
+
+test('Scenario: A release - every template starts with the stamp of the version of the package', () => {
+  files.forEach((f) => {
+    const first = read(`templates/workflows/${f}`).split('\n')[0];
+    const m = /^# relevo-template: (\d+\.\d+\.\d+)$/.exec(first);
+    assert.ok(m, `${f} starts with "# relevo-template: X.Y.Z"`);
+    assert.equal(m[1], pkg.version, `${f} is stamped ${m[1]} but the package is ${pkg.version}`);
+  });
+});
+
+test('Scenario: A pin raised by hand - the stamp is a line of its own, apart from the pin', () => {
+  files.forEach((f) => {
+    const text = read(`templates/workflows/${f}`);
+    assert.equal((text.match(/relevo-template:/g) ?? []).length, 1, `${f} has one stamp`);
+    assert.notEqual(text.indexOf('# relevo-template:'), text.indexOf('RELEVO_VERSION:'), f);
+  });
+});
+
+test('RELEASING.md tells the maintainer to move the stamp with the pin, and gives the right reason for publishing first', () => {
+  const releasing = read('RELEASING.md');
+  assert.match(releasing, /`# relevo-template:`/);
+  assert.match(releasing, /templates on `main` never pin a package version that does not exist/);
+  assert.doesNotMatch(releasing, /marketplace on `main` never names/);
 });

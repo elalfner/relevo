@@ -35,7 +35,7 @@ In Claude Code, in your project:
 /relevo:doctor
 ```
 
-- **You should see**: a list. A line starting `[pass]` is something that works; a line starting `[FAIL]` is followed by `fix:` and the command that solves it; a `[warn]` line is worth reading but does not stop you. A new repository has several failures, which is normal.
+- **You should see**: a short report. First what failed (`FAILURES`): each `[FAIL]` line is followed by `fix:` and the command that solves it. Then what is worth reading (`WARNINGS`, `[warn]`), which does not stop you, and any `NOTES` (`[note]`), which ask nothing of you. At the end it counts the checks that passed; run `/relevo:doctor --all` to list them too, each starting `[pass]`. A new repository has several failures, which is normal.
 - **If not**: run the fix that each line gives and run `/relevo:doctor` again. Step 3 also offers to install what is missing.
 
 ## 3. Set the repository up

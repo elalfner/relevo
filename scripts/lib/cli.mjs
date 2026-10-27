@@ -13,7 +13,7 @@ export const USAGE = [
   '            relevo init [--tools claude,antigravity] [--scope project|machine] [--yes] [--force]',
   '  install   add the marketplace and install the plugin; asks where in a terminal (project by default)',
   '  update    update the marketplace and the plugin (without --scope, the installation of this project), and render again the plugins that init made; --force overwrites files edited by hand',
-  '  doctor    check this repository (the same as /relevo:doctor)',
+  '  doctor    check this repository (the same as /relevo:doctor); --all lists the checks that passed too',
   '  version   print the version of this package',
   '',
   'user: every project of this machine. project: this repository, shared through .claude/settings.json. local: this repository, only you.'
@@ -26,14 +26,16 @@ export function parseArgs(argv) {
   if (!['install', 'update', 'doctor', 'version'].includes(command)) return { error: `unknown command "${command}"` };
   let scope = null;
   let force = false;
+  let all = false;
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
     if (arg === '--force' && command === 'update') force = true;
+    else if (arg === '--all' && command === 'doctor') all = true;
     else if (arg === '--scope') { scope = rest[i + 1]; i += 1; } else if (arg.startsWith('--scope=')) scope = arg.slice(8);
     else return { error: `unknown option "${arg}"` };
   }
   if (scope !== null && !SCOPES.includes(scope)) return { error: `the scope must be one of ${SCOPES.join(', ')}` };
-  return force ? { command, scope, force } : { command, scope };
+  return { command, scope, ...(force ? { force } : {}), ...(all ? { all } : {}) };
 }
 
 /** Whether the folder is inside a git work tree; `run` is the injected runner. A missing git counts as no. */
@@ -85,11 +87,11 @@ export function steps(command, scope) {
  * Runs a command. Returns { code, lines }: the lines to print and the exit code. Stops at the first failing step
  * and says which one, so the person knows what was already done.
  */
-export function execute({ command, scope }, { run, has, version, doctorScript, cwd = process.cwd() }) {
+export function execute({ command, scope, all = false }, { run, has, version, doctorScript, cwd = process.cwd() }) {
   const lines = [];
   if (command === 'version') return { code: 0, lines: [version] };
   if (command === 'doctor') {
-    const r = run(process.execPath, [doctorScript]);
+    const r = run(process.execPath, all ? [doctorScript, '--all'] : [doctorScript]);
     return { code: r.code, lines: [r.output.trimEnd()] };
   }
   if (!has('claude')) {

@@ -35,7 +35,7 @@ Un repositorio con el workflow de `go` pero sin `ANTHROPIC_API_KEY` ni `CLAUDE_C
 
 ## Qué instala el build
 
-El job de build del workflow `go` instala el toolchain del stack de la plataforma del issue, para que el agente y QA puedan ejecutar las comprobaciones de tu proyecto: Flutter con `subosito/flutter-action` y PHP con Composer para Laravel con `shivammathur/setup-php`. Cada paso está protegido por el stack, así que solo corre el del issue. Vue solo necesita Node, que el job ya tiene. Cambia las versiones y la caché en `relevo-go.yml` según tu proyecto. Instalar las dependencias lo añades tú (`npm ci --ignore-scripts`, `composer install --no-scripts`), porque el gestor de paquetes y el lockfile varían. `/relevo:doctor` falla cuando una plataforma Flutter o Laravel no tiene un paso activo, porque cada build en la nube fallaría en QA después de gastar la ejecución. Como segunda guarda, el job de build comprueba, justo antes de que empiece el agente, que cada herramienta que lista el perfil de la plataforma (`flutter`; `php` y `composer`) esté en el path del runner. Si falta alguna, no se gasta ningún turno del modelo: el issue pasa a `relevo:qa-failed` con un comentario que nombra las herramientas que faltan y dice que actives el paso del toolchain y vuelvas a poner `ready` después de quitar `qa-failed`.
+El agente del build carga el plugin de Relevo del paquete que el job desempaca en la versión que fija `RELEVO_VERSION` (`--plugin-dir` en `claude_args`), no de un marketplace: una sola versión fijada decide los scripts y las skills, no se clona nada del repositorio del plugin, y un repositorio de plugin privado no necesita `RELEVO_PLUGIN_TOKEN`. Un workflow copiado de una versión anterior todavía añade el marketplace; `/relevo:init` lo actualiza. El job de build del workflow `go` instala el toolchain del stack de la plataforma del issue, para que el agente y QA puedan ejecutar las comprobaciones de tu proyecto: Flutter con `subosito/flutter-action` y PHP con Composer para Laravel con `shivammathur/setup-php`. Cada paso está protegido por el stack, así que solo corre el del issue. Vue solo necesita Node, que el job ya tiene. Cambia las versiones y la caché en `relevo-go.yml` según tu proyecto. Instalar las dependencias lo añades tú (`npm ci --ignore-scripts`, `composer install --no-scripts`), porque el gestor de paquetes y el lockfile varían. `/relevo:doctor` falla cuando una plataforma Flutter o Laravel no tiene un paso activo, porque cada build en la nube fallaría en QA después de gastar la ejecución. Como segunda guarda, el job de build comprueba, justo antes de que empiece el agente, que cada herramienta que lista el perfil de la plataforma (`flutter`; `php` y `composer`) esté en el path del runner. Si falta alguna, no se gasta ningún turno del modelo: el issue pasa a `relevo:qa-failed` con un comentario que nombra las herramientas que faltan y dice que actives el paso del toolchain y vuelvas a poner `ready` después de quitar `qa-failed`.
 
 ## Runners self-hosted
 
@@ -43,7 +43,7 @@ Los workflows de Relevo corren en `ubuntu-latest` salvo que `relevo.yml` nombre 
 
 ```yaml
 runner:
-  labels: [self-hosted, Front]
+  labels: [self-hosted, linux-build]
 ```
 
 `/relevo:init` pregunta si usas un runner self-hosted y escribe las etiquetas en `relevo.yml` y en cada `runs-on` de los workflows que agrega. `runs-on` se lee antes de que corra cualquier paso, así que un workflow no puede leer `relevo.yml` por sí mismo: el archivo y los workflows tienen que coincidir, y `/relevo:doctor` falla y nombra el archivo cuando no lo hacen (por ejemplo después de editar un workflow a mano, o cuando el workflow de ship viene de una plantilla más nueva). Para cambiar el runner después, cambia `runner.labels` y cada `runs-on`.
@@ -57,7 +57,7 @@ Lo que Relevo asume del runner:
 
 Un runner con `limits.concurrent_agents: 1` es la misma máquina que corre los checks de tus pull requests, así que un build de hasta 60 minutos los retrasa. Agrega runners con las mismas etiquetas en lugar de subir el límite.
 
-El código del agente corre con los permisos del usuario del runner, que en tu propia máquina puede llegar a tu red. La barrera es un runner efímero o un contenedor; mira [Seguridad](security.es.md#qué-no-protege). Todavía no comprobado en un runner self-hosted real: qué deja `claude-code-action` fuera del workspace.
+El código del agente corre con los permisos del usuario del runner, que en tu propia máquina puede llegar a tu red. La barrera es un runner efímero o un contenedor; mira [Seguridad](security.es.md#qué-no-protege). Comprobado en un runner self-hosted: `$RUNNER_TEMP` se vacía entre jobs, pero `claude-code-action` guarda su estado en el home del usuario del runner (ajustes, cachés y las transcripciones de sus sesiones en `~/.claude/projects`), y Relevo no lo borra; límpialo tú si las transcripciones, que contienen lo que el agente leyó y escribió, no deben quedarse.
 
 ## Qué reporta una ejecución en la nube
 

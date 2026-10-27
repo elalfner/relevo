@@ -538,30 +538,30 @@ test('Scenario: Default - without a runner the workflows run on ubuntu-latest an
 });
 
 test('Scenario: Self-hosted - the labels go into relevo.yml and into every runs-on of every generated workflow', () => {
-  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] }, templates, current: empty(), admin: true });
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['self-hosted', 'linux-build'] }, templates, current: empty(), admin: true });
   const config = loadConfig(get(items, 'config').content);
   assert.ok(config.ok);
-  assert.deepEqual(config.config.runner.labels, ['self-hosted', 'Front']);
+  assert.deepEqual(config.config.runner.labels, ['self-hosted', 'linux-build']);
   WORKFLOW_FILES.forEach((f) => {
     const text = get(items, `workflow.${f}`).content;
-    assert.ok(/runs-on: \[self-hosted, Front\]/.test(text), f);
+    assert.ok(/runs-on: \[self-hosted, linux-build\]/.test(text), f);
     assert.ok(!/runs-on: ubuntu-latest/.test(text), f);
     assert.equal((text.match(/runs-on:/g) ?? []).length, (workflows[f].match(/runs-on:/g) ?? []).length, `${f} keeps every job`);
   });
 });
 
 test('Scenario: Regenerating a workflow - a repository that sets runner.labels gets them in a workflow it adds', () => {
-  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] })).config;
+  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'linux-build'] })).config;
   const current = empty();
   current.workflows['relevo-ship.yml'] = null;
   const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
-  assert.match(get(items, 'workflow.relevo-ship.yml').content, /runs-on: \[self-hosted, Front\]/);
+  assert.match(get(items, 'workflow.relevo-ship.yml').content, /runs-on: \[self-hosted, linux-build\]/);
 });
 
 test('a workflow already written for the runner of the repository is reported as up to date', () => {
-  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] })).config;
+  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'linux-build'] })).config;
   const current = empty();
-  current.workflows['relevo-sla.yml'] = workflows['relevo-sla.yml'].replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]');
+  current.workflows['relevo-sla.yml'] = workflows['relevo-sla.yml'].replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]');
   const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
   assert.equal(get(items, 'workflow.relevo-sla.yml').status, 'ok');
 });
@@ -570,4 +570,79 @@ test('a runner with one label is written as that label, and an invalid list is r
   const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['my-runner'] }, templates, current: empty(), admin: true });
   assert.match(get(items, 'workflow.relevo-sla.yml').content, /runs-on: my-runner\n/);
   assert.throws(() => renderConfig(template, { ...ANSWERS, runnerLabels: [] }), /needs at least one label|runner example/);
+});
+
+// ---------- updating a workflow that differs
+
+const withOneFile = (file, text) => { const c = empty(); c.workflows[file] = text; return c; };
+const planUpgradeWith = (upgrades, file = 'relevo-sla.yml', text = 'name: an old workflow\n') => planInit({ facts: bare(), answers: ANSWERS, templates, current: withOneFile(file, text), admin: true, upgrades });
+
+test('Scenario: A clean merge - the plan offers to update the workflow, shows the difference and writes the merged text on confirmation', () => {
+  const state = { status: 'update', from: '0.5.0', to: '0.8.0', text: 'name: merged\n', diff: '-old\n+new' };
+  const item = get(planUpgradeWith({ 'relevo-sla.yml': state }), 'workflow.relevo-sla.yml');
+  assert.equal(item.status, 'todo');
+  assert.match(item.description, /Update \.github\/workflows\/relevo-sla\.yml from 0\.5\.0 to 0\.8\.0, keeping your own changes/);
+  assert.equal(item.content, 'name: merged\n');
+  assert.match(renderPlan([item]), /\[will do\] Update .*\n {10}-old\n {10}\+new/, 'the plan shows the difference');
+  const written = {};
+  const results = applyPlan([item], { repo: 'o/r', io: { write: (p, t) => { written[p] = t; }, gh: () => '' } });
+  assert.ok(results[0].ok);
+  assert.deepEqual(written, { '.github/workflows/relevo-sla.yml': 'name: merged\n' });
+});
+
+test('Scenario: Confirmation - an update the person does not confirm is not written', () => {
+  const item = get(planUpgradeWith({ 'relevo-sla.yml': { status: 'update', from: '0.5.0', to: '0.8.0', text: 'x\n' } }), 'workflow.relevo-sla.yml');
+  const written = [];
+  const results = applyPlan(skipItems([item], ['workflow.relevo-sla.yml']), { repo: 'o/r', io: { write: (p) => written.push(p), gh: () => '' } });
+  assert.deepEqual(written, []);
+  assert.deepEqual(results.filter((r) => r.ok && r.id === 'workflow.relevo-sla.yml'), []);
+});
+
+test('Scenario: A conflict - the file stays as it is, the plan names it and shows both versions', () => {
+  const state = { status: 'conflict', from: '0.5.0', conflicts: [{ yours: 'run: mine', theirs: 'run: theirs' }] };
+  const item = get(planUpgradeWith({ 'relevo-sla.yml': state }), 'workflow.relevo-sla.yml');
+  assert.equal(item.status, 'differs');
+  assert.match(item.description, /cannot be updated without a conflict \(1 place\(s\) changed by you and by the new template\); it is left as it is/);
+  const text = renderPlan([item]);
+  assert.match(text, /yours:\n {10}run: mine\n {10}the new template:\n {10}run: theirs/);
+  assert.equal(item.content, undefined, 'there is nothing to write');
+});
+
+test('a merge that is not safe says why, and a missing base asks for --from', () => {
+  const unsafe = get(planUpgradeWith({ 'relevo-sla.yml': { status: 'conflict', from: '0.5.0', conflicts: [], message: 'the merge is not safe: it does not have exactly one RELEVO_VERSION' } }), 'workflow.relevo-sla.yml');
+  assert.match(unsafe.description, /not safe/);
+  const nobase = get(planUpgradeWith({ 'relevo-sla.yml': { status: 'nobase' } }), 'workflow.relevo-sla.yml');
+  assert.equal(nobase.status, 'differs');
+  assert.match(nobase.description, /no published version is close to it.*--from <version>/);
+  const failed = get(planUpgradeWith({ 'relevo-sla.yml': { status: 'error', message: 'npm failed' } }), 'workflow.relevo-sla.yml');
+  assert.match(failed.description, /could not be checked for an update \(npm failed\); it is left as it is/);
+});
+
+test('Scenario: A file that is current - the plan reports the workflow as up to date', () => {
+  const item = get(planUpgradeWith({ 'relevo-sla.yml': { status: 'current' } }), 'workflow.relevo-sla.yml');
+  assert.equal(item.status, 'ok');
+  assert.match(item.description, /is up to date \(with your own changes\)/);
+});
+
+test('the state of the update is asked for only for a workflow that exists and differs', () => {
+  const asked = [];
+  const upgrades = (file) => { asked.push(file); return { status: 'current' }; };
+  planInit({ facts: bare(), answers: ANSWERS, templates, current: withOneFile('relevo-sla.yml', 'name: old\n'), admin: true, upgrades });
+  assert.deepEqual(asked, ['relevo-sla.yml'], 'not for the files that are missing, nor for one that already equals the template');
+  const same = [];
+  planInit({ facts: bare(), answers: ANSWERS, templates, current: withOneFile('relevo-sla.yml', workflows['relevo-sla.yml']), admin: true, upgrades: (f) => { same.push(f); return { status: 'current' }; } });
+  assert.deepEqual(same, [], 'a workflow that equals what init writes needs no check');
+});
+
+test('without a state a workflow that differs is reported as before and left alone', () => {
+  const item = get(planUpgradeWith({}), 'workflow.relevo-sla.yml');
+  assert.equal(item.status, 'differs');
+  assert.match(item.description, /exists and differs from the template; it is left as it is/);
+});
+
+test('Scenario: Anywhere else - init writes a workflow only under .github/workflows/', () => {
+  const bad = { id: 'workflow.evil.yml', status: 'todo', description: 'x', path: '../outside.yml', content: 'x' };
+  const results = applyPlan([bad], { repo: 'o/r', io: { write: () => assert.fail('must not write'), gh: () => '' } });
+  assert.equal(results[0].ok, false);
+  assert.match(results[0].message, /refusing to write \.\.\/outside\.yml/);
 });

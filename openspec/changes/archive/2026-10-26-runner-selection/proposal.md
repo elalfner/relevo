@@ -2,7 +2,7 @@
 
 ## Why
 
-Every Relevo workflow template has `runs-on: ubuntu-latest` hard-coded, and nothing in `relevo.yml`, `init`, `doctor` or the docs mentions another runner. A project that runs its Actions on a self-hosted runner has to edit each workflow by hand (`viali_panel_vue` does: `runs-on: [self-hosted, Front]` in five files). That edit is invisible to Relevo, so a regenerated or newly added workflow (the ship workflow, for instance) goes back to `ubuntu-latest`, and `doctor` cannot tell whether the runner is the one the team meant.
+Every Relevo workflow template has `runs-on: ubuntu-latest` hard-coded, and nothing in `relevo.yml`, `init`, `doctor` or the docs mentions another runner. A project that runs its Actions on a self-hosted runner has to edit each workflow by hand (a real project does: `runs-on: [self-hosted, linux-build]` in five files). That edit is invisible to Relevo, so a regenerated or newly added workflow (the ship workflow, for instance) goes back to `ubuntu-latest`, and `doctor` cannot tell whether the runner is the one the team meant.
 
 A self-hosted runner is also usually persistent: the same machine and home folder serve every job. The templates assume a disposable GitHub-hosted VM. They install OpenSpec globally with no version, and the Antigravity step writes `~/.local/bin/agy` and a user-level settings file, so a persistent runner accumulates state and drifts between runs.
 

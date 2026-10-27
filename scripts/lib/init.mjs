@@ -210,10 +210,13 @@ const item = (id, status, description, extra = {}) => ({ id, status, description
  *   templates  { config: text, workflows: { file: text } }
  *   current    { workflows: { file: text|null }, gitignore: text|null, keepFiles: { path: boolean } }
  *   admin      true when the person has administrator permission on the repository
+ *   upgrades   { file: state } or a function file -> state (asked only for a workflow that exists and differs), from
+ *              `planUpgrades`: a clean merge becomes an
+ *              update to confirm, a conflict or a missing base stays `differs` and says why
  * Items have status: ok (nothing to do), todo (init will do it), differs (exists but differs: reported, never
  * overwritten), manual (the person must do it).
  */
-export function planInit({ facts, answers, templates, current, admin }) {
+export function planInit({ facts, answers, templates, current, admin, upgrades = {} }) {
   const items = [];
   const base = facts.config?.branches?.base ?? answers.base ?? 'dev';
   const release = facts.config?.branches?.release ?? answers.release ?? 'main';
@@ -314,9 +317,22 @@ export function planInit({ facts, answers, templates, current, admin }) {
     const shared = file === 'relevo-go.yml' ? credentialLine(templates.workflows[file], credential) : templates.workflows[file];
     const wanted = runnerLine(agentWorkflow(shared, build, templates.agentBlocks), runnerLabels);
     const have = current.workflows[file] ?? null;
+    // The state of the update is asked for only when the file exists and differs: it may need the network.
+    const upgrade = () => (typeof upgrades === 'function' ? upgrades(file) : upgrades[file]);
+    const up = have !== null && have !== wanted ? upgrade() : undefined;
     if (have === null) items.push(item(`workflow.${file}`, 'todo', `Add .github/workflows/${file}`, { path: `.github/workflows/${file}`, content: wanted }));
     else if (have === wanted) items.push(item(`workflow.${file}`, 'ok', `.github/workflows/${file} is up to date`));
-    else {
+    else if (up?.status === 'update') {
+      items.push(item(`workflow.${file}`, 'todo', `Update .github/workflows/${file} from ${up.from} to ${up.to}, keeping your own changes`, { path: `.github/workflows/${file}`, content: up.text, diff: up.diff }));
+    } else if (up?.status === 'current') items.push(item(`workflow.${file}`, 'ok', `.github/workflows/${file} is up to date (with your own changes)`));
+    else if (up?.status === 'conflict') {
+      const where = up.conflicts.length > 0 ? `${up.conflicts.length} place(s) changed by you and by the new template` : up.message;
+      items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} differs from the template and cannot be updated without a conflict (${where}); it is left as it is`, { conflicts: up.conflicts }));
+    } else if (up?.status === 'nobase') {
+      items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} differs from the template and no published version is close to it; it is left as it is (name the version it came from with --from <version>)`));
+    } else if (up?.status === 'error') {
+      items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} differs from the template and could not be checked for an update (${up.message}); it is left as it is`));
+    } else {
       // The cloud build only passes QA when the build job installs the toolchain of the stack, which the template does.
       const toolchain = file === 'relevo-go.yml' ? '; check that its build job installs the toolchain of your stacks, as the template does for Flutter and Laravel' : '';
       items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} exists and differs from the template; it is left as it is (compare it by hand${toolchain})`));
@@ -358,7 +374,12 @@ export function planInit({ facts, answers, templates, current, admin }) {
 export function renderPlan(items) {
   const tag = { ok: 'ok     ', todo: 'will do', differs: 'differs', manual: 'by hand' };
   const todo = items.filter((i) => i.status === 'todo').length;
-  const lines = items.map((i) => `[${tag[i.status]}] ${i.description}${i.install ? ` (${i.command})` : ''}`);
+  const indent = (text) => text.split('\n').map((l) => `          ${l}`);
+  const lines = items.flatMap((i) => [
+    `[${tag[i.status]}] ${i.description}${i.install ? ` (${i.command})` : ''}`,
+    ...(i.diff ? indent(i.diff.trimEnd()) : []),
+    ...(i.conflicts ?? []).flatMap((c) => [indent('yours:'), indent(c.yours), indent('the new template:'), indent(c.theirs)].flat()),
+  ]);
   lines.push('', todo === 0 ? 'Nothing to do.' : `${todo} change(s) to make.`);
   return lines.join('\n');
 }
@@ -411,6 +432,8 @@ export function applyPlan(items, { repo, io }) {
           it.paths.forEach((p) => io.write(p, ''));
           break;
         default:
+          // A workflow is written only under .github/workflows/, whatever the item says.
+          if (it.id.startsWith('workflow.') && !/^\.github\/workflows\/[\w.-]+\.yml$/.test(it.path)) throw new Error(`refusing to write ${it.path}: a workflow goes under .github/workflows/`);
           if (it.id.startsWith('workflow.') || it.id.startsWith('stack-profile.')) io.write(it.path, it.content);
           else throw new Error(`no way to apply "${it.id}"`);
       }

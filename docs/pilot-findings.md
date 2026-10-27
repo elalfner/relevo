@@ -407,3 +407,49 @@ Date: 2026-10-21. Antigravity CLI `agy` 1.4.4, macOS arm64, using the cached log
 - **A subagent's result reaches the run via Reactive Wakeup.** The main agent states that it is waiting for the report and ends its turn without tool calls; the result arrives as a system message and the main agent is reactivated. Polling with `manage_subagents` must be forbidden in the skill prompt, as telling the agent "never end your turn" causes busy-wait loops.
 - **`command_status` is not in Antigravity's tool registry.** Mapping Claude's `Bash` tool to `['run_command', 'command_status']` breaks subagent executor creation (`failed to construct executor: unknown component: tool "command_status" not found`). It must map to `run_command` only.
 - **Not yet checked:** a keyless login on a runner, a real key on a runner.
+
+## Checks before the upgrade path (2026-10-26)
+
+Local checks of the change `upgrade-path` (tasks 1.2 to 1.4), made with the published packages 0.5.0 and 0.8.0 from `npm pack @elalfner/relevo@<version>` unpacked into a temporary folder. Claude Code and `git` as installed on the maintainer's machine. Task 1.1 (that `claude-code-action` forwards `--plugin-dir`) needs a run on GitHub and is not done.
+
+### `--plugin-dir` keeps the names of the commands (task 1.2)
+
+- `claude plugin validate <unpacked 0.8.0 package>` printed `Validation passed`.
+- `claude --plugin-dir <unpacked 0.8.0 package> -p x --output-format stream-json --verbose`, reading only the first event (`system`, `init`) and stopping the process, so no model turn is spent. The event lists the plugin as `relevo` with source `relevo@inline` and version `0.8.0`, the nine commands `relevo:doctor`, `relevo:fix`, `relevo:go`, `relevo:init`, `relevo:issue`, `relevo:review`, `relevo:ship`, `relevo:status` and `relevo:think`, and the agents `relevo:dev` and `relevo:qa`. The names are the ones the marketplace route gives (`relevo@relevo`), so `/relevo:go <n>` and the agents the skill launches resolve the same way.
+- Not checked: that the action passes the option on (task 1.1).
+
+### `git merge-file` on the real case (task 1.3)
+
+Files: the five workflows of a project that uses Relevo, as they are in its working copy (text of the 0.5.0 templates, pin raised by hand to `0.7.0`, runner `[self-hosted, linux-build]`, its own credential line) as "yours"; the 0.5.0 templates as the base; the 0.8.0 templates as "theirs". Command: `git merge-file -p <yours> <base> <theirs>`.
+
+- **Raw, all five files conflict, on one line each:** `RELEVO_VERSION` is `0.7.0` in yours, `0.5.0` in the base and `0.8.0` in theirs. Nothing else conflicts.
+- **With the pin of yours set to the pin of the base first (`0.5.0`), all five merge cleanly** (exit 0, no markers), and then setting the pin to `0.8.0` gives the result.
+- The merged `relevo-go.yml` equals the 0.8.0 template plus exactly the project's own choices: `runs-on: [self-hosted, linux-build]` on both jobs, the token line active and the API key line commented out. It has the new text (`OPENSPEC_VERSION`, the cleanup step). `diff` against the 0.8.0 template shows only those four lines.
+
+So the pin has to be set outside the merge, as the design says, and also normalised in "yours" before it. The same holds for the stamp line once templates carry it.
+
+### A conflict is reported as one (task 1.4)
+
+Same files, with a line of `relevo-go.yml` that both sides changed (`npm install --global @fission-ai/openspec`, which 0.8.0 replaced, edited in yours too).
+
+- `git merge-file -p` exits with `1`, the number of conflicts, and the output holds one block between `<<<<<<<` and `>>>>>>>` with both versions. The file given as "yours" is not touched, because `-p` writes to the standard output.
+- A usage error (a missing file) exits with `255`. A caller must therefore read an exit status from 1 to 127 as "that many conflicts" and anything else as an error, and write nothing in either case.
+
+### `--plugin-dir` through `claude-code-action` (task 1.1)
+
+Made on 2026-10-27 in a private project that uses Relevo, on its self-hosted Linux runner (user `ubuntu`), with a temporary workflow on a temporary branch, which was deleted afterwards. The step unpacks `@elalfner/relevo@0.8.0` into `$RUNNER_TEMP/relevo` as the go workflow does, and runs the action with `claude_code_oauth_token`, `--max-turns 3` and `--plugin-dir ${{ runner.temp }}/relevo` in `claude_args`, with no `plugin_marketplaces` and no `plugins`. A later step reads the first event (`system`, `init`) of the action's `execution_file`, which is a list of events, so what is reported is what was loaded and not what the model said.
+
+- **The action forwards the option.** Two runs, the same result: the plugin `relevo`, source `relevo@inline`, version `0.8.0`, path `<runner>/_work/_temp/relevo`; the nine commands `relevo:doctor`, `relevo:fix`, `relevo:go`, `relevo:init`, `relevo:issue`, `relevo:review`, `relevo:ship`, `relevo:status`, `relevo:think`; the agents `relevo:dev` and `relevo:qa`. Design D1 of `upgrade-path` holds, and the fallback (the marketplace pinned by tag) is not needed.
+- **The action refuses the `push` event** (`Unsupported event type: push`), so a check that has to live on a branch runs from a pull request. It accepted `pull_request`.
+- **Even with no `plugins` input the action installed its own default plugin**, `code-review@claude-code-plugins` 1.0.0, into `~/.claude/plugins/cache` of the runner's user.
+
+### What a Claude build leaves on a persistent runner (the follow-up of `runner-selection`)
+
+Same runs. Names of files only, never contents.
+
+- **`$RUNNER_TEMP` is emptied between jobs.** At the start of the second run, a minute after the first, it held only that job's own files; the tarball, the unpacked package, the marker, `claude-execution-output.js` and `claude-prompts/` of the first run were gone. The assumption of design D3 of `runner-selection` holds on this runner.
+- **The action leaves a lot in the home of the runner's user, and nothing removes it:** under `~/.claude`, `settings.json`, `backups/`, `policy-limits*.json`, `remote-settings*.json`, `sessions/`, `projects/` (28 MB of session transcripts in this runner, across the runs it has done), `plugins/` (the default plugin and the built-in store) and `downloads/`; plus `~/.claude.json`, `~/.local/state/claude/locks`, the npm cache and logs in `~/.npm`, and the logs of the runner in `_diag`.
+- **The marketplace route leaves more, and it accumulates.** The runner still had `~/.claude/plugins/marketplaces/relevo/`, a full clone of the Relevo repository with its tests, and `~/.claude/plugins/cache/relevo/relevo/0.6.0`, from earlier cloud runs of that project. A pinned `--plugin-dir` leaves nothing of the plugin: it lives in `$RUNNER_TEMP`.
+- **No token was written in the files of the action.** A search for `sk-ant` in `~/.claude` and `~/.claude.json` found it only in the Relevo source and test fixtures of the marketplace clone and of the 0.6.0 cache (the patterns of the secret scanner and fake keys), and in none of the files of the action's own state. The token reached the action as an environment variable. Only that string was searched, and only in those places.
+- **The tools the workflows assume are there:** `git`, `gh` and `jq` in `/usr/bin`; `node` and `npm` from the tool cache of the runner (`_work/_tool`), which persists.
+- **What this means for a persistent runner:** the session transcripts stay on disk for as long as someone does not clean them, and they hold what the agent read and wrote (issue text, code). Relevo does not remove them.

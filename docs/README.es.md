@@ -8,6 +8,7 @@
 
 - [Primeros pasos](get-started.es.md): de cero a tu primer pull request fusionado, paso a paso.
 - [Instalación](install.es.md): qué necesitas y los primeros pasos.
+- [Actualizar](upgrading.es.md): qué lleva una versión, el orden para subir un proyecto y cómo `init` actualiza un workflow.
 - [Cómo funciona](how-it-works.es.md): la idea, y una corrida real de la idea al pull request mergeado.
 - [Comandos](commands.es.md): los nueve comandos, y las skills que usa `think`.
 - [Configuración](configuration.es.md): el archivo `relevo.yml`.
