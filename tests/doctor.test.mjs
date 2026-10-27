@@ -204,6 +204,24 @@ test('missing labels, a missing base branch, an untracked OpenSpec root and a mi
   assert.match(byId(results, 'repo.labels').message, new RegExp(allLabels[0]));
 });
 
+test('Scenario: Repository set up earlier - doctor fails the labels check naming relevo:urgent and says init creates it', () => {
+  const results = runChecks(healthy({ labels: allLabels.filter((n) => n !== 'relevo:urgent') }));
+  assert.deepEqual(failing(results), ['repo.labels']);
+  const labels = byId(results, 'repo.labels');
+  assert.match(labels.message, /relevo:urgent/);
+  assert.doesNotMatch(labels.message, /relevo:ready|relevo:ship/);
+  assert.match(labels.fix, /\/relevo:init/);
+});
+
+test('Scenario: Renamed label - doctor checks for the name given in labels.urgent', () => {
+  const text = `${CONFIG_TEXT}labels:\n  urgent: prio:now\n`;
+  const renamed = loadConfig(text).config;
+  const missing = runChecks(healthy({ configText: text, config: renamed, labels: allLabels }));
+  assert.match(byId(missing, 'repo.labels').message, /prio:now/);
+  const present = runChecks(healthy({ configText: text, config: renamed, labels: [...allLabels.filter((n) => n !== 'relevo:urgent'), 'prio:now'] }));
+  assert.equal(byId(present, 'repo.labels').status, 'pass');
+});
+
 test('without a repository or a sign-in, the GitHub checks are skipped with a warning', () => {
   const results = runChecks(healthy({ repo: null }));
   assert.equal(byId(results, 'repo.checks').status, 'warn');

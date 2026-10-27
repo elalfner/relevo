@@ -22,6 +22,7 @@ An issue is always in one state, shown by a label, and each state has one next s
 | `changes-requested` | `/relevo:fix <n>` | the author |
 | `needs-reviewer` | none: assign a reviewer, or ask someone to take it | the spec writer |
 | `ship` | none: the ship workflow is merging it; if it stops, its comment says why and the label is removed | nobody |
+| `urgent` | none: it travels next to the state above and asks for an early start (see below) | nobody |
 
 Before an issue has a state, `/relevo:think` explores the idea and `/relevo:issue` writes the issue. `/relevo:status` shows who is waiting on what.
 
@@ -46,6 +47,12 @@ A cloud run that stops at a usage limit or an empty credit says so in the last c
 ### I do not know the correct behaviour
 
 Do not guess in a fix. Run `/relevo:think` to explore it (or `/relevo:think #<n>` for an issue that came back with a question), then `/relevo:issue <n>` to write the answer into the issue. An issue with a question left open does not pass the check and is not built.
+
+### An issue cannot wait
+
+Apply `relevo:urgent` to the issue, next to its state, when it must not wait in the queue behind others or behind the assignee's unreviewed work. An urgent issue is looked at before the rest and it is not held back because the assignee already has `limits.built_unreviewed_per_person` built issues waiting. It still needs everything else: a complete specification, merged dependencies (an urgent issue that depends on an open issue is `blocked` and the notice says so) and a free agent slot (`limits.concurrent_agents`). When it starts over the limit, the hand-off message tells the assignee how many built issues are now waiting.
+
+The label counts only when the person who applied it could mark the issue `ready`: write access, or maintainer access when `trust` is `public`. Otherwise the label is removed and a comment says why. Applying it to a `queued` issue starts the queue evaluation at once.
 
 ### The issue went back to needs-spec
 

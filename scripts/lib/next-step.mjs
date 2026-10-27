@@ -110,6 +110,12 @@ const TABLE = {
     who: 'nobody',
     hint: { en: 'the ship workflow is merging it', es: 'el workflow de ship lo está fusionando' },
   },
+  // A request next to the state, not a state: the state it travels with decides the next step.
+  urgent: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'it starts before the others; the state it is in decides the next step', es: 'empieza antes que las demás; el estado en que está decide el siguiente paso' },
+  },
 };
 
 const WHO = {
