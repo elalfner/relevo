@@ -1103,19 +1103,19 @@ test('gatherFacts reads the hook and the remote session', () => {
 });
 
 const HOSTED_GO = GO_TEMPLATE;
-const FRONT_GO = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]');
-const FRONT_CONFIG = loadConfig(`${CONFIG_TEXT}runner:\n  labels: [self-hosted, Front]\n`).config;
+const BUILD_GO = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]');
+const BUILD_CONFIG = loadConfig(`${CONFIG_TEXT}runner:\n  labels: [self-hosted, linux-build]\n`).config;
 const runner = (over) => runChecks(over).filter((r) => r.id.startsWith('automation.runner'));
 
 test('Scenario: A workflow edited by hand - doctor fails, names the file and says to set runner.labels or restore ubuntu-latest', () => {
-  const [r] = runner(withGo(FRONT_GO)).filter((x) => x.status === 'fail');
+  const [r] = runner(withGo(BUILD_GO)).filter((x) => x.status === 'fail');
   assert.equal(r.id, 'automation.runner');
-  assert.match(r.message, /relevo-go\.yml runs on \[self-hosted, Front\] and relevo\.yml says \[ubuntu-latest\]/);
-  assert.match(r.fix, /set runner\.labels: \[self-hosted, Front\] in relevo\.yml .* restore runs-on: ubuntu-latest in relevo-go\.yml/);
+  assert.match(r.message, /relevo-go\.yml runs on \[self-hosted, linux-build\] and relevo\.yml says \[ubuntu-latest\]/);
+  assert.match(r.fix, /set runner\.labels: \[self-hosted, linux-build\] in relevo\.yml .* restore runs-on: ubuntu-latest in relevo-go\.yml/);
 });
 
 test('Scenario: Workflows and setting agree - the runner check passes and one warning explains the persistence assumption', () => {
-  const res = runner({ ...withGo(FRONT_GO), config: FRONT_CONFIG });
+  const res = runner({ ...withGo(BUILD_GO), config: BUILD_CONFIG });
   assert.deepEqual(res.map((r) => [r.id, r.status]), [['automation.runner', 'pass'], ['automation.runner.persistence', 'warn']]);
   assert.match(res[1].message, /assumes it keeps its files between jobs/);
   assert.match(res[1].message, /permissions of the runner's user/);
@@ -1129,14 +1129,14 @@ test('Scenario: Hosted runner - the runner check passes and no persistence warni
 });
 
 test('the setting says self-hosted and a workflow still runs on ubuntu-latest - the file is named', () => {
-  const [r] = runner({ ...withGo(HOSTED_GO), config: FRONT_CONFIG }).filter((x) => x.status === 'fail');
-  assert.match(r.message, /runs on \[ubuntu-latest\] and relevo\.yml says \[self-hosted, Front\]/);
-  assert.match(r.fix, /change runs-on in relevo-go\.yml to \[self-hosted, Front\]/);
+  const [r] = runner({ ...withGo(HOSTED_GO), config: BUILD_CONFIG }).filter((x) => x.status === 'fail');
+  assert.match(r.message, /runs on \[ubuntu-latest\] and relevo\.yml says \[self-hosted, linux-build\]/);
+  assert.match(r.fix, /change runs-on in relevo-go\.yml to \[self-hosted, linux-build\]/);
 });
 
 test('the order of the labels does not matter, and an expression in runs-on is not judged', () => {
-  const swapped = FRONT_GO.replaceAll('[self-hosted, Front]', '[Front, self-hosted]');
-  assert.deepEqual(runner({ ...withGo(swapped), config: FRONT_CONFIG }).filter((x) => x.status === 'fail'), []);
+  const swapped = BUILD_GO.replaceAll('[self-hosted, linux-build]', '[linux-build, self-hosted]');
+  assert.deepEqual(runner({ ...withGo(swapped), config: BUILD_CONFIG }).filter((x) => x.status === 'fail'), []);
   const expr = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: ${{ vars.RUNNER }}');
   assert.deepEqual(runner(withGo(expr)).filter((x) => x.status === 'fail'), []);
 });
@@ -1175,19 +1175,19 @@ test('the script lists every check as JSON with one of the four levels, and exit
 });
 
 test('Scenario: Several workflows differ - one failed result names the five files, with one fix', () => {
-  const on = (file) => ({ present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]'), file });
+  const on = (file) => ({ present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]'), file });
   const workflows = { ...healthy().workflows };
   ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'].forEach((f) => { workflows[f] = on(f); });
   const bad = runner(healthy({ workflows })).filter((x) => x.status === 'fail');
   assert.equal(bad.length, 1, 'one result for one cause');
-  assert.match(bad[0].message, /^relevo-go\.yml, relevo-queue\.yml, relevo-review\.yml, relevo-sla\.yml, relevo-digest\.yml run on \[self-hosted, Front\] and relevo\.yml says \[ubuntu-latest\]$/);
+  assert.match(bad[0].message, /^relevo-go\.yml, relevo-queue\.yml, relevo-review\.yml, relevo-sla\.yml, relevo-digest\.yml run on \[self-hosted, linux-build\] and relevo\.yml says \[ubuntu-latest\]$/);
   assert.match(bad[0].fix, /restore runs-on: ubuntu-latest in relevo-go\.yml, relevo-queue\.yml/);
 });
 
 test('two different runners are two causes, one result each', () => {
   const workflows = { ...healthy().workflows };
-  workflows['relevo-go.yml'] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]') };
-  workflows['relevo-sla.yml'] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Back]') };
+  workflows['relevo-go.yml'] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]') };
+  workflows['relevo-sla.yml'] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-test]') };
   assert.equal(runner(healthy({ workflows })).filter((x) => x.status === 'fail').length, 2);
 });
 
@@ -1219,7 +1219,7 @@ test('workflows that are installed and enabled are one pass that names them, not
 
 test('Scenario: Two causes - five workflows on another runner and two missing labels are two failures', () => {
   const workflows = { ...healthy().workflows };
-  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'].forEach((f) => { workflows[f] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]') }; });
+  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'].forEach((f) => { workflows[f] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]') }; });
   const results = runChecks(healthy({ workflows, labels: allLabels.slice(0, -2) }));
   assert.equal(failing(results).length, 2, 'the runner is one cause and the labels the other');
   assert.match(renderReport(results), /\n2 check\(s\) failed/);

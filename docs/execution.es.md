@@ -43,7 +43,7 @@ Los workflows de Relevo corren en `ubuntu-latest` salvo que `relevo.yml` nombre 
 
 ```yaml
 runner:
-  labels: [self-hosted, Front]
+  labels: [self-hosted, linux-build]
 ```
 
 `/relevo:init` pregunta si usas un runner self-hosted y escribe las etiquetas en `relevo.yml` y en cada `runs-on` de los workflows que agrega. `runs-on` se lee antes de que corra cualquier paso, así que un workflow no puede leer `relevo.yml` por sí mismo: el archivo y los workflows tienen que coincidir, y `/relevo:doctor` falla y nombra el archivo cuando no lo hacen (por ejemplo después de editar un workflow a mano, o cuando el workflow de ship viene de una plantilla más nueva). Para cambiar el runner después, cambia `runner.labels` y cada `runs-on`.

@@ -785,7 +785,7 @@ function toolchainChecks(f) {
 
 const HOSTED_RUNNER = ['ubuntu-latest'];
 
-/** The labels written in a `runs-on` line: `[self-hosted, Front]` or `ubuntu-latest`; null for an expression we cannot judge. */
+/** The labels written in a `runs-on` line: `[self-hosted, linux-build]` or `ubuntu-latest`; null for an expression we cannot judge. */
 function parseRunsOn(value) {
   if (value.includes('${{')) return null;
   const inner = value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1) : value;

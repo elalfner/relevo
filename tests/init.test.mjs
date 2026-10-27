@@ -538,30 +538,30 @@ test('Scenario: Default - without a runner the workflows run on ubuntu-latest an
 });
 
 test('Scenario: Self-hosted - the labels go into relevo.yml and into every runs-on of every generated workflow', () => {
-  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] }, templates, current: empty(), admin: true });
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['self-hosted', 'linux-build'] }, templates, current: empty(), admin: true });
   const config = loadConfig(get(items, 'config').content);
   assert.ok(config.ok);
-  assert.deepEqual(config.config.runner.labels, ['self-hosted', 'Front']);
+  assert.deepEqual(config.config.runner.labels, ['self-hosted', 'linux-build']);
   WORKFLOW_FILES.forEach((f) => {
     const text = get(items, `workflow.${f}`).content;
-    assert.ok(/runs-on: \[self-hosted, Front\]/.test(text), f);
+    assert.ok(/runs-on: \[self-hosted, linux-build\]/.test(text), f);
     assert.ok(!/runs-on: ubuntu-latest/.test(text), f);
     assert.equal((text.match(/runs-on:/g) ?? []).length, (workflows[f].match(/runs-on:/g) ?? []).length, `${f} keeps every job`);
   });
 });
 
 test('Scenario: Regenerating a workflow - a repository that sets runner.labels gets them in a workflow it adds', () => {
-  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] })).config;
+  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'linux-build'] })).config;
   const current = empty();
   current.workflows['relevo-ship.yml'] = null;
   const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
-  assert.match(get(items, 'workflow.relevo-ship.yml').content, /runs-on: \[self-hosted, Front\]/);
+  assert.match(get(items, 'workflow.relevo-ship.yml').content, /runs-on: \[self-hosted, linux-build\]/);
 });
 
 test('a workflow already written for the runner of the repository is reported as up to date', () => {
-  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] })).config;
+  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'linux-build'] })).config;
   const current = empty();
-  current.workflows['relevo-sla.yml'] = workflows['relevo-sla.yml'].replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]');
+  current.workflows['relevo-sla.yml'] = workflows['relevo-sla.yml'].replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]');
   const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
   assert.equal(get(items, 'workflow.relevo-sla.yml').status, 'ok');
 });
