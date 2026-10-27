@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, isVueWeb, playwrightFacts, pluginDeclaration, readOnlyGh, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, isVueWeb, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -1039,4 +1039,47 @@ test('isVueWeb: a Vue platform with no targets or with web, and nothing else', (
   assert.equal(isVueWeb({ stack: 'vue', targets: ['web'] }), true);
   assert.equal(isVueWeb({ stack: 'vue', targets: ['desktop'] }), false);
   assert.equal(isVueWeb({ stack: 'flutter', targets: ['web'] }), false);
+});
+
+// ---- OpenSpec in web sessions
+
+const hookSettings = (...commands) => JSON.stringify({ hooks: { SessionStart: commands.map((command) => ({ hooks: [{ type: 'command', command }] })) } });
+const settingsProbe = (text) => ({ exists: (p) => p === '.claude/settings.json' && text !== null, read: () => text });
+
+test('the fact web hook: present, missing file, other hooks only, written by hand, invalid JSON', () => {
+  assert.deepEqual(webHookDeclaration(settingsProbe(hookSettings(WEB_HOOK_COMMAND))), { declared: true });
+  assert.deepEqual(webHookDeclaration(settingsProbe(hookSettings('npm install --global @fission-ai/openspec'))), { declared: true }, 'a hook written by hand counts');
+  assert.deepEqual(webHookDeclaration(settingsProbe(null)), { declared: false });
+  assert.deepEqual(webHookDeclaration(settingsProbe(hookSettings('echo hi'))), { declared: false });
+  assert.deepEqual(webHookDeclaration(settingsProbe('{}')), { declared: false });
+  assert.deepEqual(webHookDeclaration(settingsProbe('{ not json')), { unreadable: true });
+});
+
+test('Scenario: A remote session without the hook - a warning that names the hook and says to run init; not a failure', () => {
+  const r = runChecks(healthy({ remoteSession: true, webHook: { declared: false } }));
+  const check = byId(r, 'web.openspec-hook');
+  assert.equal(check.status, 'warn');
+  assert.match(check.message, /no SessionStart hook that installs OpenSpec/);
+  assert.match(check.fix, /\/relevo:init/);
+  assert.ok(!failing(r).includes('web.openspec-hook'));
+});
+
+test('Scenario: A remote session with the hook - a passed check', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webHook: { declared: true } })), 'web.openspec-hook').status, 'pass');
+});
+
+test('Scenario: A terminal - no check about the hook, with or without it', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: false, webHook: { declared: false } })), 'web.openspec-hook'), undefined);
+  assert.equal(byId(runChecks(healthy({ remoteSession: false, webHook: { declared: true } })), 'web.openspec-hook'), undefined);
+  assert.equal(byId(runChecks(healthy({ remoteSession: true })), 'web.openspec-hook'), undefined, 'no fact, no check');
+});
+
+test('a remote session with an unreadable settings file warns that it cannot be checked', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webHook: { unreadable: true } })), 'web.openspec-hook').status, 'warn');
+});
+
+test('gatherFacts reads the hook and the remote session', () => {
+  const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), exists: (p) => p === '.claude/settings.json', read: () => hookSettings(WEB_HOOK_COMMAND) });
+  assert.deepEqual(f.webHook, { declared: true });
+  assert.equal(f.remoteSession, process.env.CLAUDE_CODE_REMOTE === 'true');
 });

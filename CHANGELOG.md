@@ -15,6 +15,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Changed
 
+- **OpenSpec in the sessions of Claude Code on the web.** `/relevo:init` offers, with a yes to it alone, a `SessionStart` hook in `.claude/settings.json` that installs OpenSpec when it is missing, only in a remote session (`scripts/web-hook.mjs` adds it and keeps the rest of the file). `/relevo:doctor` warns in a web session when the repository has no such hook. When OpenSpec does not run, the preflight of `go` now says to stop, gives the install command and forbids writing the change files by hand, so the agent no longer goes on from memory.
 - **A browser review no longer installs Playwright with `--no-save`.** That install was removed by the next `npm install`, so every review asked for it again. Playwright now belongs in the project's development dependencies: when it is missing, the review stops and points to `/relevo:init`. For a project set up before this release, run `/relevo:init` once and commit `package.json` and the lock file. Doctor's Playwright check now resolves it from the folder of the platform and names `/relevo:init` as the fix.
 - **The checks of the approved head count for the archive commit** when it changes only `openspec/` and has no checks of its own, in `/relevo:ship` too, so a push that started no workflow no longer reads as "no CI".
 

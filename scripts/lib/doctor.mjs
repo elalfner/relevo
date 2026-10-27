@@ -197,6 +197,8 @@ export function gatherFacts(p) {
   f.openspecRootTracked = tryRun(() => String(p.tool('git', ['ls-files', 'openspec'])).trim().length > 0, false);
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
   f.pluginDeclared = pluginDeclaration(p);
+  f.webHook = webHookDeclaration(p);
+  f.remoteSession = process.env.CLAUDE_CODE_REMOTE === 'true';
 
   // Workflows: what runs on GitHub is what is on the default branch, not what is in the working copy, so once the
   // repository is known they are read from there. `present` says whether the file is where it has to be; `local`
@@ -319,6 +321,28 @@ export function pluginDeclaration(p) {
   try {
     const settings = JSON.parse(p.read(path));
     return { declared: Boolean(settings?.extraKnownMarketplaces?.relevo) && settings?.enabledPlugins?.['relevo@relevo'] === true };
+  } catch {
+    return { unreadable: true };
+  }
+}
+
+// The one-line `SessionStart` hook that installs OpenSpec in a session of Claude Code on the web. It does nothing
+// outside a remote session, and nothing when `openspec` already runs; `|| true` keeps a failed install from failing the hook.
+export const WEB_HOOK_COMMAND = '[ "$CLAUDE_CODE_REMOTE" = "true" ] && ! command -v openspec >/dev/null 2>&1 && OPENSPEC_TELEMETRY=0 npm install --global @fission-ai/openspec || true';
+
+/** Does a `SessionStart` entry install OpenSpec? The package name is what is matched, so a hook written by hand counts. */
+const installsOpenspec = (entry) => (entry?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('@fission-ai/openspec'));
+
+/**
+ * Whether the committed settings file has a `SessionStart` hook that installs OpenSpec: { declared } or, when the file
+ * is not valid JSON, { unreadable: true }. A missing file is { declared: false }.
+ */
+export function webHookDeclaration(p) {
+  const path = '.claude/settings.json';
+  if (!p.exists(path)) return { declared: false };
+  try {
+    const settings = JSON.parse(p.read(path));
+    return { declared: Array.isArray(settings?.hooks?.SessionStart) && settings.hooks.SessionStart.some(installsOpenspec) };
   } catch {
     return { unreadable: true };
   }
@@ -614,6 +638,7 @@ export function runChecks(f) {
   else r.push(fail('openspec.root', 'the OpenSpec root is missing or not tracked by git, so a clean checkout (and the runner) has no `openspec/`', 'run /relevo:init, then commit openspec/config.yaml and the .gitkeep files'));
   r.push(f.evidenceIgnored ? pass('evidence.ignored', 'evidence/ is ignored by git') : fail('evidence.ignored', 'evidence/ is not in .gitignore; `review` would put screenshots in git', 'add the line `evidence/` to .gitignore (or run /relevo:init)'));
   r.push(...pluginDeclaredChecks(f));
+  r.push(...webHookChecks(f));
 
   // GitHub side
   if (!f.repo || !f.ghAuth) {
@@ -738,6 +763,18 @@ function pluginDeclaredChecks(f) {
   else if (f.pluginDeclared?.declared) r.push(pass('plugin.declared', 'the repository declares the Relevo plugin in .claude/settings.json, so a teammate who opens it is offered it'));
   else if (f.pluginDeclared) r.push(warn('plugin.declared', 'the repository does not declare the Relevo plugin in .claude/settings.json: a teammate who clones it is not offered the plugin and finds no /relevo: commands', 'run /relevo:init, or claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin and claude plugin install relevo@relevo --scope project, and commit .claude/settings.json'));
   return r;
+}
+
+/**
+ * Does the repository install OpenSpec in the sessions of Claude Code on the web? The hook has no use on a terminal,
+ * where OpenSpec stays installed, so it is judged only when doctor itself runs in a remote session. It warns: the
+ * project can run without it, but every new session starts without OpenSpec.
+ */
+function webHookChecks(f) {
+  if (!f.remoteSession || !f.webHook) return [];
+  if (f.webHook.unreadable) return [warn('web.openspec-hook', '.claude/settings.json is not valid JSON, so it cannot be checked whether it installs OpenSpec in web sessions', 'fix the file; /relevo:init then offers the hook')];
+  if (f.webHook.declared) return [pass('web.openspec-hook', 'the repository installs OpenSpec at the start of a web session (SessionStart hook in .claude/settings.json)')];
+  return [warn('web.openspec-hook', 'this is a web session and the repository has no SessionStart hook that installs OpenSpec, so every new session starts without it and go cannot run', `run /relevo:init to add the hook, commit .claude/settings.json, or install it now: ${OPENSPEC_INSTALL}`)];
 }
 
 /**
