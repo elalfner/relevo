@@ -4,6 +4,21 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-27
+
+### Added
+
+- **`RELEASING.md` explains the Trusted Publisher.** The one-time setting on npmjs.com (organization or user, repository, workflow filename `release.yml`, no environment, and Allow `npm publish` ticked), the secret to delete and the token to revoke, what a mismatch looks like, how to re-run after fixing it, and the hardening that npm recommends once it works.
+
+### Changed
+
+- **The release workflow publishes without a token.** It uses npm Trusted Publishing: the package is published with the identity of the workflow run, on Node 24, and the secret `NPM_TOKEN` is no longer read or checked. A step before the publish prints the versions of Node and npm, and a failed login fails the Publish step with npm's own message. This is for the maintainer: nothing that runs in a project changes, and the package has the same contents as 0.9.0 apart from the version number.
+
+### Known limits
+
+- This is the first version published with the identity of the run. Until it has run, it is not verified that the trusted publisher on npmjs.com matches the user, the repository and the file name; a mismatch fails the Publish step and publishes nothing.
+- The trusted publisher allows `npm publish`. npm recommends allowing only staged publishing (`npm stage publish`, which a maintainer approves with two-factor authentication), a stronger gate; it is left for a later change because npm's documentation does not say whether that command takes `--provenance` and `--access public`.
+
 ## [0.9.0] - 2026-10-27
 
 ### Added
