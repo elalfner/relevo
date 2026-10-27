@@ -73,12 +73,47 @@ test('the files list names only things that exist', () => {
   assert.ok(total < 2 * 1024 * 1024, `the package would be ${total} bytes; keep it lean`);
 });
 
-test('a tag publishes the package only when the tag is its version, the tests pass and the token exists', () => {
+test('Scenario: Reading the workflow - a tag publishes only when the tag is the version and the tests pass, with the identity of the run and no token', () => {
   const text = read('.github/workflows/release.yml');
+  const active = text.replace(/^\s*#.*$/gm, '');
   assert.match(text, /tags: \['v\*'\]/);
   assert.match(text, /"\$TAG" != "v\$version"/);
-  assert.ok(text.indexOf('npm test') < text.indexOf('npm publish'), 'tests run before publishing');
   assert.match(text, /npm publish --provenance --access public/);
-  assert.match(text, /secrets\.NPM_TOKEN/);
+  // No publish token anywhere: no secret, no NODE_AUTH_TOKEN, no guard on a secret, no literal token.
+  assert.doesNotMatch(active, /NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./, 'the workflow holds no reference to a publish token');
   assert.doesNotMatch(text, /npm_[A-Za-z0-9]{20,}/, 'no token in the file');
+  // The identity of the run, and a Node whose npm supports it.
+  assert.match(text, /^permissions:\n {2}contents: read\n {2}id-token: write$/m);
+  assert.match(text, /node-version: 24\b/);
+  assert.match(text, /registry-url: https:\/\/registry\.npmjs\.org/);
+});
+
+test('the release workflow runs the tag check, the tests, the version line and the publish, in that order', () => {
+  const text = read('.github/workflows/release.yml');
+  const at = (s) => text.indexOf(s);
+  const order = ['The tag is the version of the package', 'run: npm test', 'node --version', 'npm --version', 'run: npm publish'].map(at);
+  assert.ok(order.every((n) => n !== -1), 'every step is there');
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'in the order of the release');
+  assert.match(text, /- name: Versions of Node and npm\n\s+run: \|\n\s+node --version\n\s+npm --version/);
+});
+
+test('a failed login is not hidden: the publish step has no environment and no guard on the secret', () => {
+  const text = read('.github/workflows/release.yml');
+  const publish = text.slice(text.indexOf('- name: Publish'));
+  assert.doesNotMatch(publish.replace(/^\s*#.*$/gm, ''), /env:|\bif\b|\[ -z/);
+  assert.match(text, /release\.yml/, 'the header names the file the trusted publisher is bound to');
+});
+
+test('RELEASING.md explains the Trusted Publisher: the exact fields, the secret to delete, a mismatch and the re-run', () => {
+  const text = read('RELEASING.md');
+  assert.match(text, /Trusted Publisher/);
+  assert.match(text, /organization or user `elalfner`, repository `relevo`, workflow filename `release\.yml`, and leave the environment empty/);
+  assert.match(text, /delete the repository secret `NPM_TOKEN`/);
+  assert.match(text, /revoke the token on npmjs\.com/);
+  assert.match(text, /Under Allowed actions tick Allow `npm publish`/, 'the box that lets the workflow publish directly');
+  assert.match(text, /fields cannot be changed later/);
+  assert.match(text, /Require two-factor authentication and disallow tokens/, 'the hardening npm recommends, after the first release that works');
+  assert.match(text, /Re-run failed jobs/);
+  assert.match(text, /Do not rename `release\.yml`/);
+  assert.doesNotMatch(text, /stored as the repository secret `NPM_TOKEN`/, 'the old setup is gone');
 });
