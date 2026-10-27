@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-26
+
 ### Added
 
 - **Choose where the Relevo workflows run.** The new setting `runner.labels` in `relevo.yml` (default `[ubuntu-latest]`) names the runner of every workflow, for example `[self-hosted, Front]`. `/relevo:init` writes it into the workflows it adds, and `/relevo:doctor` fails when the `runs-on` of a workflow on the default branch is not the one in `relevo.yml`. There is no setting for whether the runner is ephemeral: Relevo cannot check it, so a runner other than GitHub's is assumed to keep its files between jobs, and `doctor` says so.
@@ -22,6 +24,12 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **OpenSpec in the sessions of Claude Code on the web.** `/relevo:init` offers, with a yes to it alone, a `SessionStart` hook in `.claude/settings.json` that installs OpenSpec when it is missing, only in a remote session (`scripts/web-hook.mjs` adds it and keeps the rest of the file). `/relevo:doctor` warns in a web session when the repository has no such hook. When OpenSpec does not run, the preflight of `go` now says to stop, gives the install command and forbids writing the change files by hand, so the agent no longer goes on from memory.
 - **A browser review no longer installs Playwright with `--no-save`.** That install was removed by the next `npm install`, so every review asked for it again. Playwright now belongs in the project's development dependencies: when it is missing, the review stops and points to `/relevo:init`. For a project set up before this release, run `/relevo:init` once and commit `package.json` and the lock file. Doctor's Playwright check now resolves it from the folder of the platform and names `/relevo:init` as the fix.
 - **The checks of the approved head count for the archive commit** when it changes only `openspec/` and has no checks of its own, in `/relevo:ship` too, so a push that started no workflow no longer reads as "no CI".
+
+### Known limits
+
+- `runner.labels` and the per-job cleanup have not run on a real self-hosted runner. Two things are assumed and not checked: that the runner empties `$RUNNER_TEMP` between jobs, and that `claude-code-action` leaves no token or cache outside the workspace. Run `relevo-go` once on such a runner and look at what it leaves before relying on either.
+- With `agent.build: antigravity`, the job now uses a home folder of its own (`HOME` under `$RUNNER_TEMP`); that path is tested on the text of the workflow and with a fake agent, not on a real runner.
+- `/relevo:doctor` cannot see an SDK installed on the machine: with the Flutter or PHP step of `relevo-go.yml` commented out because the runner already has the SDK, it still reports that the go workflow installs no toolchain, and that failure can be ignored.
 
 ## [0.7.0] - 2026-10-23
 

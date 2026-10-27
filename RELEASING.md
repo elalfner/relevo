@@ -10,7 +10,7 @@ For the maintainer. A release publishes the npm package `@elalfner/relevo` and t
 
 ## Each release
 
-1. On `dev`: bump `version` in `package.json` and in `.claude-plugin/plugin.json`, set the same version in `RELEVO_VERSION` of the five templates in `templates/workflows/`, and move the `[Unreleased]` entries of `CHANGELOG.md` under the new version. `npm test` checks that they agree.
+1. On `dev`: bump `version` in `package.json` and in `.claude-plugin/plugin.json`, set the same version in `RELEVO_VERSION` of the six templates in `templates/workflows/`, and move the `[Unreleased]` entries of `CHANGELOG.md` under the new version. `npm test` checks that they agree.
 2. Push `dev` and wait for the CI to pass.
 3. Tag the commit that will be promoted and push the tag: `git tag -a vX.Y.Z -m "Relevo X.Y.Z" && git push origin vX.Y.Z`. The `release` workflow checks that the tag is the version, runs the tests and publishes the package.
 4. When the workflow is green, check the package: `npm view @elalfner/relevo version`.
