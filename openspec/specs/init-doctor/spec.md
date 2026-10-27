@@ -6,20 +6,24 @@ TBD - created by archiving change check-plugin-token-secret. Update Purpose afte
 ## Requirements
 
 ### Requirement: Doctor checks the plugin credential secret
-When the plugin repository is private, `doctor` SHALL check that the repository has a secret named `RELEVO_PLUGIN_TOKEN` and SHALL report a failure, with the fix next to it, when it does not. The check SHALL read secret names only, never values. It SHALL NOT report anything when the plugin repository is public, when its visibility could not be determined, or when the repository secrets could not be listed.
+When a Relevo workflow on the default branch still loads the plugin through a marketplace and the plugin repository is private, `doctor` SHALL check that the repository has a secret named `RELEVO_PLUGIN_TOKEN` and SHALL report a failure, with the fix next to it, when it does not. The check SHALL read secret names only, never values. It SHALL NOT report anything when no workflow uses a marketplace, when the plugin repository is public, when its visibility could not be determined, or when the repository secrets could not be listed.
 
 #### Scenario: Private plugin repository and no secret
-- **WHEN** the plugin repository is private and the repository secrets do not include `RELEVO_PLUGIN_TOKEN`
+- **WHEN** a workflow uses a marketplace, the plugin repository is private and the repository secrets do not include `RELEVO_PLUGIN_TOKEN`
 - **THEN** `doctor` reports a failed check `automation.plugin-secret`
 - **AND** its fix says to store a read-only token under that name and that a secret defined at organization level is not visible to this check
 
 #### Scenario: Private plugin repository and the secret exists
-- **WHEN** the plugin repository is private and the repository secrets include `RELEVO_PLUGIN_TOKEN`
+- **WHEN** a workflow uses a marketplace, the plugin repository is private and the repository secrets include `RELEVO_PLUGIN_TOKEN`
 - **THEN** `doctor` reports a passed check `automation.plugin-secret`
 
 #### Scenario: Public plugin repository
 - **WHEN** the plugin repository is public
 - **THEN** `doctor` reports no `automation.plugin-secret` check, whether or not the secret exists
+
+#### Scenario: Workflows that load the plugin from the package
+- **WHEN** no Relevo workflow on the default branch names a marketplace
+- **THEN** `doctor` reports no `automation.plugin-secret` check, even if the plugin repository is private
 
 #### Scenario: Visibility or secrets cannot be read
 - **WHEN** the plugin repository's visibility is unknown, or the repository secrets could not be listed
@@ -89,11 +93,19 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **THEN** the exact settings are listed for an administrator
 
 ### Requirement: Doctor reports every check
-`doctor` SHALL report each check as pass or fail with a fix next to each failure. A check on something optional, or on something the platform may not offer, SHALL be reported as a warning with its fix and SHALL NOT make `doctor` fail.
+`doctor` SHALL run every check and give each result one level: pass, fail, warn or note. A failure SHALL come with a fix. A check on something optional, or on something the platform may not offer, SHALL be a warning with its fix and SHALL NOT make `doctor` fail. Information that asks for no action SHALL be a note, which is neither a failure nor a warning.
 
 #### Scenario: A failing check
 - **WHEN** a check fails
 - **THEN** the report shows the check as failed with the fix next to it
+
+#### Scenario: An optional check
+- **WHEN** a check on something optional does not hold
+- **THEN** the report shows a warning with its fix, and the exit status stays 0
+
+#### Scenario: Information with no action
+- **WHEN** `doctor` has something to tell that asks the person for nothing, such as a reminder to read the terms of a subscription token
+- **THEN** the report shows it as a note, and it counts neither as a failure nor as a warning
 
 ### Requirement: Doctor checks tools and configuration
 `doctor` SHALL check the required tools, including the OpenSpec command-line tool at a supported version, a valid `relevo.yml`, the labels and the base branch.
@@ -446,22 +458,26 @@ When `doctor` runs inside a remote session and the repository's `.claude/setting
 - **THEN** the workflows run on `ubuntu-latest` and `relevo.yml` has no `runner` key
 
 #### Scenario: Self-hosted
-- **WHEN** the person says the repository uses a self-hosted runner with the labels `self-hosted` and `Front`
-- **THEN** `relevo.yml` gets `runner.labels: [self-hosted, Front]` and every generated workflow runs on `[self-hosted, Front]`
+- **WHEN** the person says the repository uses a self-hosted runner with the labels `self-hosted` and `linux-build`
+- **THEN** `relevo.yml` gets `runner.labels: [self-hosted, linux-build]` and every generated workflow runs on `[self-hosted, linux-build]`
 
 #### Scenario: Regenerating a workflow
 - **WHEN** `init` rewrites or adds a workflow in a repository that sets `runner.labels`
 - **THEN** the workflow runs on those labels and not on `ubuntu-latest`
 
 ### Requirement: Doctor checks the runner of the workflows
-`doctor` SHALL compare the `runs-on` of each Relevo workflow on the default branch with `runner.labels` and SHALL fail on a difference, naming the file and the fix. When the runner is not `ubuntu-latest`, it SHALL warn once that Relevo assumes the runner persists between jobs, that the code the agent writes runs with the permissions of the runner's user, and that an ephemeral runner or a container is the real barrier. It SHALL NOT claim to know whether the runner is ephemeral.
+`doctor` SHALL compare the `runs-on` of each Relevo workflow on the default branch with `runner.labels` and SHALL fail on a difference, with one result that names every file that differs and the fix. When the runner is not `ubuntu-latest`, it SHALL warn once that Relevo assumes the runner persists between jobs, that the code the agent writes runs with the permissions of the runner's user, and that an ephemeral runner or a container is the real barrier. It SHALL NOT claim to know whether the runner is ephemeral.
 
 #### Scenario: A workflow edited by hand
-- **WHEN** `relevo.yml` has no `runner` key and `relevo-go.yml` on the default branch runs on `[self-hosted, Front]`
+- **WHEN** `relevo.yml` has no `runner` key and `relevo-go.yml` on the default branch runs on `[self-hosted, linux-build]`
 - **THEN** `doctor` fails, names `relevo-go.yml` and says to set `runner.labels` or restore `ubuntu-latest`
 
+#### Scenario: Several workflows differ
+- **WHEN** five Relevo workflows run on `[self-hosted, linux-build]` and `runner.labels` is absent
+- **THEN** `doctor` reports one failed result that names the five files, with one fix
+
 #### Scenario: Workflows and setting agree
-- **WHEN** every Relevo workflow runs on `[self-hosted, Front]` and `runner.labels` is `[self-hosted, Front]`
+- **WHEN** every Relevo workflow runs on `[self-hosted, linux-build]` and `runner.labels` is `[self-hosted, linux-build]`
 - **THEN** the runner check passes and one warning explains that the runner is assumed to persist
 
 #### Scenario: Hosted runner
@@ -482,3 +498,111 @@ When `doctor` runs inside a remote session and the repository's `.claude/setting
 #### Scenario: Renamed label
 - **WHEN** `labels.urgent` is `prio:now`
 - **THEN** `init` creates `prio:now` and `doctor` checks for `prio:now`
+
+### Requirement: The report puts what needs action first
+The text report SHALL list the failures, then the warnings, then the notes, each section with its count, and SHALL show the checks that passed only as a count. With `--all` it SHALL list every check in the order it was evaluated. The exit status and the output of `--json` SHALL NOT depend on the layout.
+
+#### Scenario: A report with problems
+- **WHEN** `doctor` finds 3 failures, 2 warnings, 1 note and 30 passes
+- **THEN** the report lists the 3 failures, then the 2 warnings, then the note, and ends with a line that says 30 checks passed
+
+#### Scenario: The full list
+- **WHEN** `doctor --all` runs
+- **THEN** every check appears, passes included, in the order it was evaluated
+
+#### Scenario: All green
+- **WHEN** no check failed or warned
+- **THEN** the report says so, gives the count of checks that passed and lists any notes
+
+#### Scenario: The machine-readable output
+- **WHEN** `doctor --json` runs, with or without `--all`
+- **THEN** it lists every check with its level, notes included, and the exit status is 1 only when a check failed
+
+### Requirement: The report says what it judged
+The report SHALL start with a line that names the repository and says where the workflows were read from: the default branch, named, or the working copy when the branch could not be read.
+
+#### Scenario: Workflows read from the default branch
+- **WHEN** `doctor` reads the workflows from the default branch `main` of `owner/repo`
+- **THEN** the first line names `owner/repo` and the branch `main`
+
+#### Scenario: The branch cannot be read
+- **WHEN** the default branch cannot be read and `doctor` falls back to the working copy
+- **THEN** the first line says that the workflows were read from the working copy
+
+### Requirement: One result per cause
+When several files fail or warn for the same reason with the same fix, `doctor` SHALL report them as one result that names every file. The summary SHALL count results, not files.
+
+#### Scenario: Two causes
+- **WHEN** five workflows fail the runner check and two labels are missing
+- **THEN** the report lists two failures and the summary says 2 checks failed
+
+#### Scenario: Workflows that are not installed
+- **WHEN** two Relevo workflows are not installed
+- **THEN** the report shows one warning that names both files and gives one fix
+
+### Requirement: Init updates a workflow by a three-way merge
+When a Relevo workflow exists and differs from the template, `init` SHALL merge three texts: the published template closest to the file as the base, the file as it is, and the current template. It SHALL write only under `.github/workflows/`.
+
+#### Scenario: A clean merge
+- **WHEN** `relevo-go.yml` is the 0.5.0 text with the person's own credential line and the current template is 0.8.0
+- **THEN** the plan offers to update it from 0.5.0 to 0.8.0 and keeps the credential line
+
+#### Scenario: No base is close enough
+- **WHEN** no published template is close to the file
+- **THEN** `init` leaves it as it is, says so, and accepts the version of the base with `--from`
+
+#### Scenario: A file that is current
+- **WHEN** the merge gives the file as it is
+- **THEN** the plan reports the workflow as up to date
+
+### Requirement: A merged workflow is written only when clean and confirmed
+A clean merge SHALL appear in the plan with its difference and SHALL be written only on the person's confirmation. A conflict SHALL write nothing to that file and SHALL show the lines in conflict, because a workflow with conflict markers is not valid YAML.
+
+#### Scenario: Confirmation
+- **WHEN** the plan shows a clean merge and the person does not confirm
+- **THEN** the file is not written
+
+#### Scenario: A conflict
+- **WHEN** the person edited a line that the new template also changed
+- **THEN** `init` writes nothing to that file, names it and shows the conflicting lines
+
+### Requirement: The pin and the stamp are set, not merged
+After a merge, `init` SHALL set the pin and the stamp of the workflow to the current version, and SHALL render the current template with `runner.labels` and `agent.build` before merging, so that the person's runner and agent blocks are not reported as changes.
+
+#### Scenario: The pin was raised by hand
+- **WHEN** the file's pin is 0.7.0 but its text is the 0.5.0 template
+- **THEN** the base is the 0.5.0 template, the pin and the stamp read the current version after the merge, and no conflict is raised for them
+
+#### Scenario: The settings of the repository
+- **WHEN** `relevo.yml` sets `runner.labels` or `agent.build: antigravity`
+- **THEN** the current template is rendered with them before the merge
+
+### Requirement: Doctor reports the versions it can read locally
+`doctor` SHALL report the version of the plugin in use, of each installed scope listed by `claude plugin list --json`, and of the pin of the Relevo workflows on the default branch, and SHALL warn when they differ, with the command that moves the lagging one. It SHALL NOT ask the npm registry. When `claude` cannot list the plugins it SHALL say so as a warning and run the other checks.
+
+#### Scenario: The scopes differ
+- **WHEN** the plugin installed for the user is 0.7.0 and the one for the project is 0.8.0
+- **THEN** `doctor` warns, names both, and gives `claude plugin update relevo@relevo` for the lagging scope
+
+#### Scenario: Workflows behind the plugin
+- **WHEN** the workflows on the default branch pin 0.5.0 and the plugin in use is 0.8.0
+- **THEN** `doctor` warns, names the files, and says that `/relevo:init` updates them
+
+#### Scenario: Claude cannot list plugins
+- **WHEN** `claude plugin list --json` fails
+- **THEN** `doctor` warns that the installed versions could not be read and the other checks still run
+
+### Requirement: Doctor compares the text of a workflow with its pin
+`doctor` SHALL read the stamp of each Relevo workflow on the default branch and SHALL warn when the stamp is older than the pin or is missing, because the text of the workflow is then older than the scripts it runs.
+
+#### Scenario: Text older than the pin
+- **WHEN** a workflow pins 0.7.0 and its stamp reads 0.5.0
+- **THEN** `doctor` warns that the text is from 0.5.0 and the scripts from 0.7.0, and names `/relevo:init`
+
+#### Scenario: A workflow with no stamp
+- **WHEN** a workflow has no `# relevo-template:` line
+- **THEN** `doctor` warns that the age of its text is unknown and names `/relevo:init`
+
+#### Scenario: Text and pin agree
+- **WHEN** the stamp and the pin are the same version
+- **THEN** the check passes

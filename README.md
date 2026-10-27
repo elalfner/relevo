@@ -74,6 +74,7 @@ Plus `/relevo:status` (who is waiting on what) and `/relevo:doctor` (checks your
 
 - [Get started](docs/get-started.md): from nothing to your first merged pull request, step by step.
 - [Install](docs/install.md): what you need and the first steps.
+- [Upgrading](docs/upgrading.md): moving a project to a new version, in the right order.
 - [How it works](docs/how-it-works.md): the idea, and a real run from idea to merged pull request.
 - [Commands](docs/commands.md): the nine commands, and the skills that `think` uses.
 - [Configuration](docs/configuration.md): the `relevo.yml` file.

@@ -8,6 +8,7 @@ New here? Read [Get started](get-started.md), then [How it works](how-it-works.m
 
 - [Get started](get-started.md): from nothing to your first merged pull request, step by step.
 - [Install](install.md): what you need and the first steps.
+- [Upgrading](upgrading.md): what carries a version, the order to move a project up and how `init` updates a workflow.
 - [How it works](how-it-works.md): the idea, and a real run from idea to merged pull request.
 - [Commands](commands.md): the nine commands, and the skills that `think` uses.
 - [Configuration](configuration.md): the `relevo.yml` file.

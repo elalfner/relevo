@@ -51,8 +51,8 @@ test('runnerLine writes the labels of the repository into every runs-on and leav
   const go = templates['relevo-go.yml'];
   assert.equal(runnerLine(go, undefined), go);
   assert.equal(runnerLine(go, ['ubuntu-latest']), go);
-  const hosted = runnerLine(go, ['self-hosted', 'Front']);
-  assert.equal((hosted.match(/runs-on: \[self-hosted, Front\]/g) ?? []).length, 2, 'decide and build');
+  const hosted = runnerLine(go, ['self-hosted', 'linux-build']);
+  assert.equal((hosted.match(/runs-on: \[self-hosted, linux-build\]/g) ?? []).length, 2, 'decide and build');
   assert.doesNotMatch(hosted, /ubuntu-latest/);
   assert.match(runnerLine(go, ['my-runner']), /runs-on: my-runner\n/);
   assert.throws(() => runnerLine('jobs: {}', ['self-hosted']), /no runs-on line/);

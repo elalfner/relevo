@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Plans and applies the repository setup. Usage:
-//   node scripts/init.mjs plan  [--answers answers.json] [--repo owner/name] [--json]
-//   node scripts/init.mjs apply [--answers answers.json] [--repo owner/name] [--skip id,id] [--json]
+//   node scripts/init.mjs plan  [--answers answers.json] [--repo owner/name] [--from version] [--json]
+//   node scripts/init.mjs apply [--answers answers.json] [--repo owner/name] [--from version] [--skip id,id] [--json]
+//   --from names the published version a workflow that differs came from, when none is close enough to tell
 // `plan` changes nothing. `apply` carries out the planned changes except installs (the skill asks first).
 // answers.json: { "members": ["a","b"], "specWriter": "a", "reviewMode": "peer", "language": "en", "platforms": { "app": { "stack": "flutter", "path": ".", "targets": ["android"] } }, "stackProfiles": [] }
 // It never reads or writes the model API key.
@@ -13,6 +14,7 @@ import { dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { gatherFacts, readOnlyGh, vueWebFacts, WORKFLOW_FILES } from './lib/doctor.mjs';
 import { applyPlan, planInit, renderPlan, skipItems } from './lib/init.mjs';
+import { planUpgrades, publishedTemplates, unifiedDiff } from './lib/workflow-upgrade.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -72,9 +74,26 @@ const current = {
   stackProfiles: Object.fromEntries((answers.stackProfiles ?? []).map((s) => [s, existsSync(`.relevo/stacks/${s}.md`)])),
 };
 
+// A workflow that exists and differs may be updated by a merge with the published templates (asked for lazily: it uses npm).
+const published = publishedTemplates({ exec: (cmd, args) => run(cmd, args) });
+process.on('exit', () => published.cleanup());
+let versions;
+const source = { versions: () => (versions ??= published.versions()), read: published.read };
+const upgrades = (file) => {
+  try {
+    const state = planUpgrades({
+      files: [file], ours: current.workflows, templates: templates.workflows, agentBlocks: templates.agentBlocks,
+      labels: facts.config?.runner?.labels ?? answers.runnerLabels, build: answers.agentBuild ?? 'claude', from: arg('from') ?? null, source,
+    })[file];
+    return state.status === 'update' ? { ...state, diff: unifiedDiff(current.workflows[file], state.text) } : state;
+  } catch (err) {
+    return { status: 'error', message: String(err.message ?? err).split('\n')[0] };
+  }
+};
+
 let items;
 try {
-  items = planInit({ facts, answers, templates, current, admin });
+  items = planInit({ facts, answers, templates, current, admin, upgrades });
 } catch (err) {
   fail(err.message);
 }
