@@ -14,7 +14,7 @@ name: relevo-review
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.7.0'
+  RELEVO_VERSION: '0.8.0'
 
 on:
   pull_request_review:
