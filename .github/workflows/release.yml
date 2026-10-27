@@ -1,7 +1,7 @@
 # Publishes the npm package @elalfner/relevo when a tag vX.Y.Z is pushed. The order of a release is: publish (this
-# workflow, from the tag), then promote dev to main, so the marketplace on main never names a package that is not
-# published. Needs the repository secret NPM_TOKEN (an npm automation token for the @elalfner scope), created by the
-# maintainer; nothing in this repository ever holds its value.
+# workflow, from the tag), then promote dev to main, so the templates on main never pin a package that is not
+# published. It publishes with the identity of this run (npm Trusted Publishing): no token is stored anywhere, and the
+# package settings on npmjs.com must trust this repository and this file name, release.yml (see RELEASING.md).
 name: release
 
 on:
@@ -19,9 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 24 ships an npm that supports Trusted Publishing; registry-url points npm publish at the registry.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: The tag is the version of the package
@@ -37,12 +38,13 @@ jobs:
       - name: Tests
         run: npm test
 
-      - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # A failed publish is read against these versions: an npm that does not support Trusted Publishing fails there.
+      - name: Versions of Node and npm
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::The secret NPM_TOKEN does not exist, so nothing was published"
-            exit 1
-          fi
-          npm publish --provenance --access public
+          node --version
+          npm --version
+
+      # No NODE_AUTH_TOKEN: the CLI uses the identity of the run. A login that npm refuses fails here with npm's own
+      # message, which names the likely cause (the trusted publisher on npmjs.com does not match).
+      - name: Publish
+        run: npm publish --provenance --access public
