@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, isVueWeb, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WORKFLOW_FILES, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveProfile } from '../scripts/lib/stack-profile.mjs';
@@ -106,7 +106,7 @@ test('the toolchain of a stack is a failure with its install hint', () => {
 
 test('Scenario: iOS on Linux - a notice that iOS needs macOS, not a failure; on macOS the tool is checked', () => {
   const ios = (macos, available) => byId(runChecks(healthy({ macos, platformFacts: [flutterPlatform({ targets: { ios: 'xcrun' }, available })] })), 'tools.target.app.ios');
-  assert.equal(ios(false, {}).status, 'pass');
+  assert.equal(ios(false, {}).status, 'note');
   assert.match(ios(false, {}).message, /only be built and reviewed on macOS/);
   assert.equal(ios(true, {}).status, 'warn');
   assert.equal(ios(true, { xcrun: true }).status, 'pass');
@@ -473,7 +473,7 @@ test('Scenario: Skill reserved for the person - doctor passes the check with a n
   assert.deepEqual(f.manualOnlySkills, ['grill-with-docs']);
   const results = runChecks({ ...healthy(), skills: f.skills, manualOnlySkills: f.manualOnlySkills });
   const r = byId(results, 'skills.grill-with-docs');
-  assert.equal(r.status, 'pass');
+  assert.equal(r.status, 'note');
   assert.match(r.message, /reserved for you, so run \/grill-with-docs by hand/);
   assert.equal(byId(results, 'skills.grilling').message, 'skill grilling is installed');
   assert.deepEqual(failing(results), []);
@@ -487,7 +487,7 @@ test('only the frontmatter counts, an unreadable file counts as invocable, and a
   assert.deepEqual(only.manualOnlySkills, [], 'a line in the body is not the frontmatter');
   const results = runChecks({ ...healthy(), skills: { ...healthy().skills, 'domain-modeling': false }, manualOnlySkills: ['grill-with-docs'] });
   assert.equal(byId(results, 'skills.domain-modeling').status, 'fail');
-  assert.equal(byId(results, 'skills.grill-with-docs').status, 'pass');
+  assert.equal(byId(results, 'skills.grill-with-docs').status, 'note');
 });
 
 test('a skill found in the second folder is read from that folder', () => {
@@ -1109,7 +1109,7 @@ const runner = (over) => runChecks(over).filter((r) => r.id.startsWith('automati
 
 test('Scenario: A workflow edited by hand - doctor fails, names the file and says to set runner.labels or restore ubuntu-latest', () => {
   const [r] = runner(withGo(FRONT_GO)).filter((x) => x.status === 'fail');
-  assert.equal(r.id, 'automation.runner.relevo-go.yml');
+  assert.equal(r.id, 'automation.runner');
   assert.match(r.message, /relevo-go\.yml runs on \[self-hosted, Front\] and relevo\.yml says \[ubuntu-latest\]/);
   assert.match(r.fix, /set runner\.labels: \[self-hosted, Front\] in relevo\.yml .* restore runs-on: ubuntu-latest in relevo-go\.yml/);
 });
@@ -1143,4 +1143,158 @@ test('the order of the labels does not matter, and an expression in runs-on is n
 
 test('a repository with no workflow text read and the default runner gets no runner result at all', () => {
   assert.deepEqual(runner(healthy()), []);
+});
+
+// ---------- the note level
+
+test('Scenario: Information with no action - a note is neither a failure nor a warning, and never changes the exit status', () => {
+  const one = { ...config, limits: { ...config.limits, concurrent_agents: 1 } };
+  const results = runChecks(healthy({ secrets: ['CLAUDE_CODE_OAUTH_TOKEN'], config: one }));
+  const notes = results.filter((r) => r.status === 'note').map((r) => r.id);
+  assert.ok(notes.includes('execution.policy'), 'the reminder about the terms of a subscription token');
+  assert.ok(notes.includes('execution.credential'), 'the subscription token explanation');
+  assert.deepEqual(failing(results), []);
+  assert.deepEqual(results.filter((r) => r.status === 'warn'), []);
+  assert.equal(exitCode(results), 0);
+  assert.ok(results.filter((r) => r.status === 'note').every((r) => r.fix === undefined), 'a note has no fix: nothing is asked of the person');
+});
+
+test('the exit status is 1 only when a check failed, whatever else is in the report', () => {
+  assert.equal(exitCode([{ id: 'a', status: 'pass' }, { id: 'b', status: 'warn' }, { id: 'c', status: 'note' }]), 0);
+  assert.equal(exitCode([{ id: 'a', status: 'pass' }, { id: 'b', status: 'fail' }]), 1);
+  assert.equal(exitCode([]), 0);
+});
+
+test('the script lists every check as JSON with one of the four levels, and exits 1 only if one failed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-doctor-'));
+  const r = spawnSync(process.execPath, [new URL('../scripts/doctor.mjs', import.meta.url).pathname, '--json'], { cwd: dir, encoding: 'utf8', env: { ...process.env, GITHUB_REPOSITORY: '' } });
+  const results = JSON.parse(r.stdout);
+  assert.ok(results.length > 0);
+  results.forEach((x) => assert.ok(['pass', 'warn', 'fail', 'note'].includes(x.status), `${x.id}: ${x.status}`));
+  assert.equal(r.status, results.some((x) => x.status === 'fail') ? 1 : 0);
+});
+
+test('Scenario: Several workflows differ - one failed result names the five files, with one fix', () => {
+  const on = (file) => ({ present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]'), file });
+  const workflows = { ...healthy().workflows };
+  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'].forEach((f) => { workflows[f] = on(f); });
+  const bad = runner(healthy({ workflows })).filter((x) => x.status === 'fail');
+  assert.equal(bad.length, 1, 'one result for one cause');
+  assert.match(bad[0].message, /^relevo-go\.yml, relevo-queue\.yml, relevo-review\.yml, relevo-sla\.yml, relevo-digest\.yml run on \[self-hosted, Front\] and relevo\.yml says \[ubuntu-latest\]$/);
+  assert.match(bad[0].fix, /restore runs-on: ubuntu-latest in relevo-go\.yml, relevo-queue\.yml/);
+});
+
+test('two different runners are two causes, one result each', () => {
+  const workflows = { ...healthy().workflows };
+  workflows['relevo-go.yml'] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]') };
+  workflows['relevo-sla.yml'] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Back]') };
+  assert.equal(runner(healthy({ workflows })).filter((x) => x.status === 'fail').length, 2);
+});
+
+// ---------- one result per cause
+
+test('Scenario: Workflows that are not installed - two optional files are one warning that names both, with one fix', () => {
+  const wf = { ...healthy().workflows, 'relevo-sla.yml': { present: false }, 'relevo-digest.yml': { present: false } };
+  const res = runChecks(healthy({ workflows: wf })).filter((r) => r.id.startsWith('automation.workflow.'));
+  const missing = res.filter((r) => r.status === 'warn');
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0].message, 'relevo-sla.yml, relevo-digest.yml are not installed');
+  assert.equal(missing[0].fix, 'run /relevo:init to copy it into .github/workflows/');
+});
+
+test('a required file and an optional one that are both missing are two results, because their status differs', () => {
+  const wf = { ...healthy().workflows, 'relevo-go.yml': { present: false }, 'relevo-queue.yml': { present: false }, 'relevo-sla.yml': { present: false }, 'relevo-digest.yml': { present: false } };
+  const res = runChecks(healthy({ workflows: wf })).filter((r) => r.id.startsWith('automation.workflow.') && r.status !== 'pass');
+  assert.deepEqual(res.map((r) => r.status).sort(), ['fail', 'warn']);
+  assert.equal(new Set(res.map((r) => r.id)).size, 2, 'the two results have two ids');
+});
+
+test('workflows that are installed and enabled are one pass that names them, not one pass per file', () => {
+  const res = runChecks(healthy()).filter((r) => r.id.startsWith('automation.workflow.'));
+  assert.equal(res.length, 1);
+  assert.equal(res[0].status, 'pass');
+  assert.match(res[0].message, /^relevo-go\.yml, .* are installed and enabled$/);
+  WORKFLOW_FILES.forEach((f) => assert.ok(res[0].message.includes(f), f));
+});
+
+test('Scenario: Two causes - five workflows on another runner and two missing labels are two failures', () => {
+  const workflows = { ...healthy().workflows };
+  ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml'].forEach((f) => { workflows[f] = { present: true, enabled: true, text: GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]') }; });
+  const results = runChecks(healthy({ workflows, labels: allLabels.slice(0, -2) }));
+  assert.equal(failing(results).length, 2, 'the runner is one cause and the labels the other');
+  assert.match(renderReport(results), /\n2 check\(s\) failed/);
+});
+
+// ---------- the text report
+
+const SAMPLE = [
+  ...Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, status: 'pass', message: `works ${i}` })),
+  { id: 'f1', status: 'fail', message: 'broken one', fix: 'fix one' },
+  { id: 'f2', status: 'fail', message: 'broken two', fix: 'fix two' },
+  { id: 'f3', status: 'fail', message: 'broken three', fix: 'fix three' },
+  { id: 'w1', status: 'warn', message: 'careful one', fix: 'look one' },
+  { id: 'w2', status: 'warn', message: 'careful two', fix: 'look two' },
+  { id: 'n1', status: 'note', message: 'good to know' },
+];
+
+test('Scenario: A report with problems - failures, then warnings, then notes, and the passes only as a count', () => {
+  const text = renderReport(SAMPLE);
+  const at = (s) => text.indexOf(s);
+  assert.ok(at('FAILURES (3)') !== -1 && at('FAILURES (3)') < at('WARNINGS (2)') && at('WARNINGS (2)') < at('NOTES (1)'));
+  assert.match(text, /\[FAIL\] broken one\n {7}fix: fix one/);
+  assert.match(text, /\[warn\] careful two\n {7}fix: look two/);
+  assert.match(text, /\[note\] good to know\n/);
+  assert.doesNotMatch(text, /\[pass\]/, 'a check that passed is not listed');
+  assert.match(text, /30 check\(s\) passed; run with --all to list them\./);
+  assert.match(text, /3 check\(s\) failed, 2 warning\(s\)\.$/);
+});
+
+test('a section with nothing in it is left out', () => {
+  const text = renderReport([{ id: 'a', status: 'pass', message: 'ok' }, { id: 'w', status: 'warn', message: 'hm', fix: 'f' }]);
+  assert.doesNotMatch(text, /FAILURES|NOTES/);
+  assert.match(text, /WARNINGS \(1\)/);
+});
+
+test('Scenario: The full list - --all lists every check in the order it was evaluated', () => {
+  const text = renderReport(SAMPLE, { all: true });
+  assert.doesNotMatch(text, /FAILURES|WARNINGS|NOTES|run with --all/);
+  const tags = text.split('\n').filter((l) => l.startsWith('[')).map((l) => l.match(/^\[(\w+)\]/)[1]);
+  assert.equal(tags.length, SAMPLE.length);
+  assert.deepEqual(tags, SAMPLE.map((x) => ({ pass: 'pass', fail: 'FAIL', warn: 'warn', note: 'note' }[x.status])));
+});
+
+test('Scenario: All green - it says so, counts the passes and lists any note', () => {
+  const text = renderReport([{ id: 'a', status: 'pass', message: 'ok' }, { id: 'b', status: 'pass', message: 'ok too' }, { id: 'n', status: 'note', message: 'remember' }]);
+  assert.match(text, /NOTES \(1\)\n\[note\] remember/);
+  assert.match(text, /2 check\(s\) passed/);
+  assert.match(text, /All green\.$/);
+  assert.match(renderReport([{ id: 'a', status: 'pass', message: 'ok' }]), /All green\./);
+});
+
+test('Scenario: Workflows read from the default branch - the header names the repository and the branch', () => {
+  const text = renderReport(SAMPLE, { header: reportHeader({ repo: 'owner/repo', ghAuth: true, workflowSource: 'default branch (main)' }) });
+  assert.equal(text.split('\n')[0], 'Relevo doctor: owner/repo, workflows read from the default branch (main)');
+  assert.equal(text.split('\n')[1], '');
+});
+
+test('Scenario: The branch cannot be read - the header says the working copy was read', () => {
+  assert.equal(reportHeader({ repo: 'owner/repo', ghAuth: true, workflowSource: 'working copy' }), 'Relevo doctor: owner/repo, workflows read from the working copy');
+});
+
+test('without a repository or a GitHub sign-in the header says that only the local checks ran', () => {
+  assert.match(reportHeader({ repo: null, ghAuth: false }), /only the local checks ran/);
+  assert.match(reportHeader({ repo: 'o/r', ghAuth: false }), /only the local checks ran/);
+});
+
+test('Scenario: The machine-readable output - --json lists every check with its level whatever --all says', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-doctor-all-'));
+  const run = (args) => spawnSync(process.execPath, [new URL('../scripts/doctor.mjs', import.meta.url).pathname, ...args], { cwd: dir, encoding: 'utf8', env: { ...process.env, GITHUB_REPOSITORY: '' } });
+  const plain = JSON.parse(run(['--json']).stdout);
+  const withAll = JSON.parse(run(['--json', '--all']).stdout);
+  assert.deepEqual(withAll.map((x) => x.id), plain.map((x) => x.id));
+  assert.ok(plain.some((x) => x.status === 'pass'), 'passes are in the JSON');
+  const text = run(['--all']);
+  assert.match(text.stdout, /^Relevo doctor: /);
+  assert.match(text.stdout, /\[pass\]/);
+  assert.doesNotMatch(run([]).stdout, /\[pass\]/);
 });

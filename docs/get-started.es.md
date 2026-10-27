@@ -35,7 +35,7 @@ En Claude Code, en tu proyecto:
 /relevo:doctor
 ```
 
-- **Deberías ver**: una lista. Una línea que empieza con `[pass]` es algo que funciona; una que empieza con `[FAIL]` va seguida de `fix:` y el comando que lo resuelve; una línea `[warn]` conviene leerla pero no te detiene. Un repositorio nuevo tiene varios fallos, y es normal.
+- **Deberías ver**: un informe corto. Primero lo que falló (`FAILURES`): cada línea `[FAIL]` va seguida de `fix:` y el comando que lo resuelve. Después lo que conviene leer (`WARNINGS`, `[warn]`), que no te detiene, y las `NOTES` (`[note]`), que no te piden nada. Al final cuenta las comprobaciones que pasaron; ejecuta `/relevo:doctor --all` para verlas también, cada una empieza con `[pass]`. Un repositorio nuevo tiene varios fallos, y es normal.
 - **Si no**: ejecuta el arreglo que da cada línea y vuelve a ejecutar `/relevo:doctor`. El paso 3 también ofrece instalar lo que falte.
 
 ## 3. Prepara el repositorio

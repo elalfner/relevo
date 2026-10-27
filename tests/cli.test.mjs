@@ -166,3 +166,15 @@ test('Scenario: No terminal - the real command uses the project inside a git rep
   assert.match(outside.stdout, /so the machine scope is used\./);
   assert.match(readFileSync(join(dir, 'log'), 'utf8'), /claude plugin install relevo@relevo --scope user/);
 });
+
+test('Scenario: The full list - `relevo doctor --all` passes the flag to the doctor script, and only for doctor', () => {
+  assert.equal(parseArgs(['doctor', '--all']).all, true);
+  assert.equal(parseArgs(['doctor']).all, undefined);
+  assert.match(parseArgs(['install', '--all']).error, /unknown option/);
+  const { calls, deps } = fakeClaude();
+  execute(parseArgs(['doctor', '--all']), deps);
+  assert.match(calls.at(-1), /doctor\.mjs --all$/);
+  const plain = fakeClaude();
+  execute(parseArgs(['doctor']), plain.deps);
+  assert.match(plain.calls.at(-1), /doctor\.mjs$/);
+});

@@ -88,10 +88,12 @@ Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cual
 
 ### `/relevo:doctor`
 
-Sin argumentos. Comprueba las herramientas, las skills, `relevo.yml`, los workflows y los ajustes del repositorio, y dice cómo arreglar cada problema. También comprueba el plugin instalado (sus carpetas y su versión), que cada workflow fije una versión del paquete (`RELEVO_VERSION`) y que el workflow `go` instale el toolchain del stack de cada plataforma Flutter o Laravel. Avisa cuando el repositorio no declara el plugin en `.claude/settings.json`, porque un compañero que lo clone no lo recibiría. En una sesión web avisa también cuando el repositorio no tiene un hook que instale OpenSpec al empezar la sesión; en una terminal no dice nada al respecto.
+Un argumento opcional, `--all`. Comprueba las herramientas, las skills, `relevo.yml`, los workflows y los ajustes del repositorio, y dice cómo arreglar cada problema. También comprueba el plugin instalado (sus carpetas y su versión), que cada workflow fije una versión del paquete (`RELEVO_VERSION`) y que el workflow `go` instale el toolchain del stack de cada plataforma Flutter o Laravel. Avisa cuando el repositorio no declara el plugin en `.claude/settings.json`, porque un compañero que lo clone no lo recibiría. En una sesión web avisa también cuando el repositorio no tiene un hook que instale OpenSpec al empezar la sesión; en una terminal no dice nada al respecto.
+
+El informe empieza con una línea que dice qué juzgó: el repositorio, y si los workflows se leyeron de la rama por defecto (que es lo que GitHub ejecuta) o de la copia de trabajo. Después lista, en este orden, los `FAILURES` (cada línea `[FAIL]` con su `fix:`), los `WARNINGS` (`[warn]`, que no te detienen) y las `NOTES` (`[note]`, información que no te pide nada). Las comprobaciones que pasaron solo se cuentan: `--all` las lista también, cada una como `[pass]`. Los archivos que fallan por la misma razón son una sola línea que los nombra a todos, y la línea final cuenta esas líneas. El código de salida es 1 solo cuando una comprobación falló; `relevo doctor --json` lista siempre todas, con su nivel.
 
 ```text
-/relevo:doctor
+/relevo:doctor [--all]
 ```
 
 ## El formato del issue

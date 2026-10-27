@@ -165,3 +165,11 @@ test('Scenario: Init asks for the runner labels only for a self-hosted runner, a
   assert.match(init, /`runnerLabels` \(a list of runner labels, only for a self-hosted runner\)/);
   assert.match(init, /do not ask whether the runner is ephemeral/);
 });
+
+test('Scenario: Information with no action - the doctor skill says a note asks for nothing, and where --all lists the passes', () => {
+  const { meta, body } = load('doctor');
+  assert.equal(meta['argument-hint'], '[--all]');
+  assert.match(body, /`\[note\]` asks for nothing/);
+  assert.match(body, /`FAILURES`, the `WARNINGS` and the `NOTES`/);
+  assert.match(body, /`--all` lists them as `\[pass\]`/);
+});

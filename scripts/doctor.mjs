@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Checks that the machine, the repository and GitHub are ready for Relevo. Read-only: it changes nothing.
-//   node scripts/doctor.mjs [--repo owner/name] [--json]
+//   node scripts/doctor.mjs [--repo owner/name] [--all] [--json]
+//   --all lists the checks that passed too; --json always lists every check
 // exit 0: no check failed (warnings allowed)   exit 1: at least one check failed
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { adapterFacts } from './lib/adapters/install.mjs';
-import { gatherFacts, readOnlyGh, renderReport, runChecks } from './lib/doctor.mjs';
+import { exitCode, gatherFacts, readOnlyGh, renderReport, reportHeader, runChecks } from './lib/doctor.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -53,5 +54,5 @@ const facts = gatherFacts({
   repo,
 });
 const results = runChecks(facts);
-console.log(process.argv.includes('--json') ? JSON.stringify(results, null, 2) : renderReport(results));
-process.exit(results.some((x) => x.status === 'fail') ? 1 : 0);
+console.log(process.argv.includes('--json') ? JSON.stringify(results, null, 2) : renderReport(results, { header: reportHeader(facts), all: process.argv.includes('--all') }));
+process.exit(exitCode(results));
