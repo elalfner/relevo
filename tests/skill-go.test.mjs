@@ -240,3 +240,9 @@ test('the section is copied word for word and every bullet gets a scenario that 
   assert.match(body, /`#### Scenario: Matches the reference <name>` with `WHEN the screen is shown` and `THEN it matches <the reference> in <what the bullet says must match>`/);
   assert.match(body, /lines of the review checklist that the person confirms by looking at their screen/);
 });
+
+test('Scenario: The agent is tempted to continue - the skill forbids going on without OpenSpec and writing the change by hand', () => {
+  assert.match(body, /failed check is `openspec`[\s\S]*stop there/);
+  assert.match(body, /do not go on from memory/);
+  assert.match(body, /never write anything under `openspec\/changes\/` by hand/);
+});

@@ -9,7 +9,7 @@ import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow } from './agent-workflow.mjs';
-import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WORKFLOW_FILES } from './doctor.mjs';
+import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -27,6 +27,23 @@ const TOKEN_LINE = '          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE
 // The two official commands that install the plugin at the project scope; the person confirms this exact line.
 export const PLUGIN_PROJECT_COMMAND = 'claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project';
 const PLUGIN_PROJECT_DETAIL = 'It writes the marketplace and the enabled plugin into .claude/settings.json of this repository. It works even if the plugin is already installed for your machine, and nothing is committed for you.';
+
+const WEB_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it installs OpenSpec when it is missing (npm install --global @fission-ai/openspec); on a terminal it does nothing. The file is left for you to commit.';
+
+/**
+ * `.claude/settings.json` with the hook that installs OpenSpec added to `SessionStart`, every other key and hook kept.
+ * Idempotent: text that already installs OpenSpec is returned as it is. Throws on text that is not a JSON object, so a
+ * broken file is never rewritten. `text` is null when the file does not exist.
+ */
+export function mergeWebHook(text) {
+  const settings = text === null ? {} : JSON.parse(text);
+  if (settings === null || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('.claude/settings.json is not a JSON object');
+  const current = settings.hooks?.SessionStart;
+  if (current !== undefined && !Array.isArray(current)) throw new Error('hooks.SessionStart in .claude/settings.json is not a list');
+  if ((current ?? []).some((e) => (e?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('@fission-ai/openspec')))) return text;
+  const hooks = { ...(settings.hooks ?? {}), SessionStart: [...(current ?? []), { hooks: [{ type: 'command', command: WEB_HOOK_COMMAND }] }] };
+  return `${JSON.stringify({ ...settings, hooks }, null, 2)}\n`;
+}
 
 export function credentialLine(workflow, credential) {
   if (credential !== 'subscription') return workflow;
@@ -220,6 +237,11 @@ export function planInit({ facts, answers, templates, current, admin }) {
   if (facts.pluginDeclared?.declared) items.push(item('install.plugin-project', 'ok', 'The repository declares the Relevo plugin (.claude/settings.json)'));
   else if (facts.pluginDeclared?.unreadable) items.push(item('install.plugin-project', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to declare the Relevo plugin in the project'));
   else if (facts.pluginDeclared) items.push(item('install.plugin-project', 'todo', 'Declare the Relevo plugin in the project, so that a teammate who clones the repository is offered it (the new .claude/settings.json is left for you to commit)', { install: true, command: PLUGIN_PROJECT_COMMAND, detail: PLUGIN_PROJECT_DETAIL }));
+
+  // OpenSpec in the sessions of Claude Code on the web, where every new container starts without it
+  if (facts.webHook?.declared) items.push(item('install.web-hook', 'ok', 'The repository installs OpenSpec at the start of a web session (.claude/settings.json)'));
+  else if (facts.webHook?.unreadable) items.push(item('install.web-hook', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the hook that installs OpenSpec in web sessions'));
+  else if (facts.webHook) items.push(item('install.web-hook', 'todo', 'Add a hook that installs OpenSpec at the start of a web session of Claude Code, where it is missing (the changed .claude/settings.json is left for you to commit)', { install: true, command: `node \${CLAUDE_PLUGIN_ROOT}/scripts/web-hook.mjs`, hook: WEB_HOOK_COMMAND, detail: WEB_HOOK_DETAIL }));
 
   // relevo.yml
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));

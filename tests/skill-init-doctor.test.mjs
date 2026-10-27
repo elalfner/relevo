@@ -145,3 +145,16 @@ test('Scenario: Vue platform without the browser library / Declined - init insta
   assert.match(step4, /a browser review of that platform stops until it is installed/);
   assert.match(step4, /leave the file as it is/);
 });
+
+test('init offers the OpenSpec hook for web sessions on a yes, through the script, and leaves the file to commit', () => {
+  const { body } = load('init');
+  assert.match(body, /`install\.web-hook`/);
+  assert.match(body, /scripts\/web-hook\.mjs/);
+  assert.match(body, /ask for a yes to it alone/);
+  assert.match(body, /`\.claude\/settings\.json` is left for the person to commit/);
+  assert.ok(existsSync(new URL('../scripts/web-hook.mjs', import.meta.url)), 'the script the skill runs exists');
+});
+
+test('doctor says it checks the OpenSpec hook in a web session', () => {
+  assert.match(load('doctor').meta.description, /in a web session whether the repository installs OpenSpec/);
+});
