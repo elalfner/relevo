@@ -407,3 +407,30 @@ Date: 2026-10-21. Antigravity CLI `agy` 1.4.4, macOS arm64, using the cached log
 - **A subagent's result reaches the run via Reactive Wakeup.** The main agent states that it is waiting for the report and ends its turn without tool calls; the result arrives as a system message and the main agent is reactivated. Polling with `manage_subagents` must be forbidden in the skill prompt, as telling the agent "never end your turn" causes busy-wait loops.
 - **`command_status` is not in Antigravity's tool registry.** Mapping Claude's `Bash` tool to `['run_command', 'command_status']` breaks subagent executor creation (`failed to construct executor: unknown component: tool "command_status" not found`). It must map to `run_command` only.
 - **Not yet checked:** a keyless login on a runner, a real key on a runner.
+
+## Checks before the upgrade path (2026-10-26)
+
+Local checks of the change `upgrade-path` (tasks 1.2 to 1.4), made with the published packages 0.5.0 and 0.8.0 from `npm pack @elalfner/relevo@<version>` unpacked into a temporary folder. Claude Code and `git` as installed on the maintainer's machine. Task 1.1 (that `claude-code-action` forwards `--plugin-dir`) needs a run on GitHub and is not done.
+
+### `--plugin-dir` keeps the names of the commands (task 1.2)
+
+- `claude plugin validate <unpacked 0.8.0 package>` printed `Validation passed`.
+- `claude --plugin-dir <unpacked 0.8.0 package> -p x --output-format stream-json --verbose`, reading only the first event (`system`, `init`) and stopping the process, so no model turn is spent. The event lists the plugin as `relevo` with source `relevo@inline` and version `0.8.0`, the nine commands `relevo:doctor`, `relevo:fix`, `relevo:go`, `relevo:init`, `relevo:issue`, `relevo:review`, `relevo:ship`, `relevo:status` and `relevo:think`, and the agents `relevo:dev` and `relevo:qa`. The names are the ones the marketplace route gives (`relevo@relevo`), so `/relevo:go <n>` and the agents the skill launches resolve the same way.
+- Not checked: that the action passes the option on (task 1.1).
+
+### `git merge-file` on the real case (task 1.3)
+
+Files: the five workflows of `viali_panel_vue` as they are in its working copy (text of the 0.5.0 templates, pin raised by hand to `0.7.0`, runner `[self-hosted, Front]`, subscription token instead of the API key) as "yours"; the 0.5.0 templates as the base; the 0.8.0 templates as "theirs". Command: `git merge-file -p <yours> <base> <theirs>`.
+
+- **Raw, all five files conflict, on one line each:** `RELEVO_VERSION` is `0.7.0` in yours, `0.5.0` in the base and `0.8.0` in theirs. Nothing else conflicts.
+- **With the pin of yours set to the pin of the base first (`0.5.0`), all five merge cleanly** (exit 0, no markers), and then setting the pin to `0.8.0` gives the result.
+- The merged `relevo-go.yml` equals the 0.8.0 template plus exactly the project's own choices: `runs-on: [self-hosted, Front]` on both jobs, the token line active and the API key line commented out. It has the new text (`OPENSPEC_VERSION`, the cleanup step). `diff` against the 0.8.0 template shows only those four lines.
+
+So the pin has to be set outside the merge, as the design says, and also normalised in "yours" before it. The same holds for the stamp line once templates carry it.
+
+### A conflict is reported as one (task 1.4)
+
+Same files, with a line of `relevo-go.yml` that both sides changed (`npm install --global @fission-ai/openspec`, which 0.8.0 replaced, edited in yours too).
+
+- `git merge-file -p` exits with `1`, the number of conflicts, and the output holds one block between `<<<<<<<` and `>>>>>>>` with both versions. The file given as "yours" is not touched, because `-p` writes to the standard output.
+- A usage error (a missing file) exits with `255`. A caller must therefore read an exit status from 1 to 127 as "that many conflicts" and anything else as an error, and write nothing in either case.

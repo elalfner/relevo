@@ -1298,3 +1298,94 @@ test('Scenario: The machine-readable output - --json lists every check with its 
   assert.match(text.stdout, /\[pass\]/);
   assert.doesNotMatch(run([]).stdout, /\[pass\]/);
 });
+
+// ---------- the versions
+
+const versionsOf = (over) => runChecks(healthy(over)).filter((r) => r.id.startsWith('plugin.versions') || r.id === 'plugin.scopes');
+
+test('Scenario: The scopes differ - a note lists every version, a warning names the lagging scope and the command that updates it', () => {
+  const res = versionsOf({ pluginVersion: '0.8.0', installedPlugins: [{ scope: 'user', version: '0.7.0' }, { scope: 'project', version: '0.8.0' }], pluginPins: { 'relevo-go.yml': '0.8.0' } });
+  assert.equal(res[0].status, 'note');
+  assert.equal(res[0].message, 'versions: plugin in use 0.8.0; installed user 0.7.0, project 0.8.0; workflows pin 0.8.0');
+  const warning = res.find((r) => r.id === 'plugin.scopes');
+  assert.equal(warning.status, 'warn');
+  assert.match(warning.message, /user 0\.7\.0, project 0\.8\.0/);
+  assert.equal(warning.fix, 'update the lagging scope: claude plugin update relevo@relevo --scope user');
+});
+
+test('the scopes agree - only the note, no warning', () => {
+  const res = versionsOf({ pluginVersion: '0.8.0', installedPlugins: [{ scope: 'user', version: '0.8.0' }, { scope: 'project', version: '0.8.0' }], pluginPins: {} });
+  assert.deepEqual(res.map((r) => r.id), ['plugin.versions']);
+  assert.doesNotMatch(res[0].message, /workflows pin/, 'no pin to report');
+});
+
+test('Scenario: Claude cannot list plugins - a warning, and the other checks still run', () => {
+  const results = runChecks(healthy({ installedPlugins: null }));
+  const w = byId(results, 'plugin.versions');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /could not be read/);
+  assert.ok(results.length > 20, 'the rest of the checks ran');
+});
+
+test('without that fact nothing is reported, so the existing checks are unchanged', () => {
+  assert.deepEqual(versionsOf({}), []);
+});
+
+test('Scenario: Workflows behind the plugin - the warning names the files and says that init updates them', () => {
+  const w = byId(runChecks(healthy({ pluginVersion: '0.8.0', pluginPins: { 'relevo-go.yml': '0.5.0', 'relevo-sla.yml': '0.5.0' } })), 'automation.plugin-version');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /relevo-go\.yml \(0\.5\.0\), relevo-sla\.yml \(0\.5\.0\) pin a different version than the installed plugin \(0\.8\.0\)/);
+  assert.match(w.fix, /run \/relevo:init: it updates a workflow by merging it with the new template and keeps your own changes/);
+});
+
+const textOf = (over) => byId(runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true } }, ...over })), 'automation.workflow-text');
+
+test('Scenario: Text older than the pin - the warning says the text is from 0.5.0 and the scripts from 0.7.0', () => {
+  const w = textOf({ pluginPins: { 'relevo-go.yml': '0.7.0' }, pluginStamps: { 'relevo-go.yml': '0.5.0' } });
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /relevo-go\.yml \(text 0\.5\.0, scripts 0\.7\.0\): the text of the workflow is older than the scripts it runs/);
+  assert.match(w.fix, /\/relevo:init/);
+});
+
+test('Scenario: A workflow with no stamp - the warning says the age of its text is unknown', () => {
+  const res = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true } }, pluginPins: { 'relevo-go.yml': '0.7.0' }, pluginStamps: { 'relevo-go.yml': null } }));
+  const w = byId(res, 'automation.workflow-text-unknown');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /relevo-go\.yml have no # relevo-template: line, so the age of their text is unknown/);
+  assert.equal(byId(res, 'automation.workflow-text'), undefined);
+});
+
+test('Scenario: Text and pin agree - the check passes', () => {
+  const w = textOf({ pluginPins: { 'relevo-go.yml': '0.8.0' }, pluginStamps: { 'relevo-go.yml': '0.8.0' } });
+  assert.equal(w.status, 'pass');
+});
+
+test('a stamp ahead of the pin is not a problem, and several files with the same fault are one result', () => {
+  assert.equal(textOf({ pluginPins: { 'relevo-go.yml': '0.7.0' }, pluginStamps: { 'relevo-go.yml': '0.8.0' } }).status, 'pass');
+  const wf = { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true }, 'relevo-sla.yml': { present: true, enabled: true } };
+  const res = runChecks(healthy({ workflows: wf, pluginPins: { 'relevo-go.yml': '0.7.0', 'relevo-sla.yml': '0.7.0' }, pluginStamps: { 'relevo-go.yml': '0.5.0', 'relevo-sla.yml': '0.5.0' } }));
+  assert.equal(res.filter((r) => r.id === 'automation.workflow-text').length, 1);
+});
+
+test('the facts are read from `claude plugin list --json`: the user scope and the scope of this repository, not the others', () => {
+  const list = JSON.stringify([
+    { id: 'relevo@relevo', version: '0.7.0', scope: 'user' },
+    { id: 'relevo@relevo', version: '0.8.0', scope: 'project', projectPath: '/work/this' },
+    { id: 'relevo@relevo', version: '0.5.0', scope: 'project', projectPath: '/work/other' },
+    { id: 'another@market', version: '1.0.0', scope: 'user' },
+  ]);
+  const p = probes({ localFiles: {}, remote: null });
+  p.tool = (name, args) => {
+    if (name === 'claude') return list;
+    if (name === 'git' && args[0] === 'rev-parse') return '/work/this\n';
+    return 'ok';
+  };
+  assert.deepEqual(gatherFacts(p).installedPlugins, [{ scope: 'user', version: '0.7.0' }, { scope: 'project', version: '0.8.0' }]);
+  p.tool = (name) => { if (name === 'claude') throw new Error('claude: command not found'); return 'ok'; };
+  assert.equal(gatherFacts(p).installedPlugins, null);
+});
+
+test('the stamp of each workflow is read from the default branch', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': "# relevo-template: 0.8.0\nenv:\n  RELEVO_VERSION: '0.8.0'\n", 'relevo-sla.yml': "env:\n  RELEVO_VERSION: '0.5.0'\n" } }));
+  assert.deepEqual(f.pluginStamps, { 'relevo-go.yml': '0.8.0', 'relevo-sla.yml': null });
+});

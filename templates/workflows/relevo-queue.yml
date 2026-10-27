@@ -1,3 +1,4 @@
+# relevo-template: 0.8.0
 # Relevo: re-evaluates the queue and starts the issues that are now eligible.
 # Copy to .github/workflows/relevo-queue.yml next to relevo-go.yml (it starts builds through that workflow).
 #

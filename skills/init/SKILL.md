@@ -15,7 +15,8 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 
 - Never read, write, print or ask for the model API key or any token. Tell the person to add it to the repository secrets themselves.
 - Never apply a change before the person says yes to the plan, and never install anything before they confirm that exact command.
-- Never overwrite a workflow or `relevo.yml` that already exists and differs; report it. A `relevo.yml` with the older `platform: flutter-android` line stays as it is.
+- Never overwrite `relevo.yml` that already exists and differs; report it. A `relevo.yml` with the older `platform: flutter-android` line stays as it is.
+- A workflow that already exists and differs is reported, unless the plan offers to update it: that line (`Update .github/workflows/<file> from A to B, keeping your own changes`) means a three-way merge with the published templates came out clean, and it is written only with the person's yes to the plan. A workflow whose merge conflicts or has no close published version is left as it is; never edit it to resolve the conflict yourself.
 - Never create files under `openspec/` by hand. If there is no OpenSpec root, tell the person to run `openspec init`.
 - Never commit or push. The new files are left for the person to commit.
 - Never put credentials in `relevo.yml` or in the answers file.
@@ -49,7 +50,7 @@ Write the answers as JSON to a temporary file **outside the repository**, with t
 node ${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs plan --answers <answers file>
 ```
 
-Show it as it is. Each line says whether it is already `ok`, will be done, `differs` (exists, left alone) or must be done `by hand`. Then ask one direct yes/no question: apply the changes marked "will do"? Wait for the answer.
+Show it as it is. Each line says whether it is already `ok`, will be done, `differs` (exists, left alone) or must be done `by hand`. A workflow update shows its difference under the line, and a conflict shows both versions. When a line says that no published version is close to a workflow, ask which version of Relevo it was copied from and run the plan again with `--from <version>`. Then ask one direct yes/no question: apply the changes marked "will do"? Wait for the answer.
 
 ### 4. Offer the installs, one at a time
 

@@ -1,3 +1,4 @@
+# relevo-template: 0.8.0
 # Relevo: reminds the reviewer when a pull request waits longer than limits.review_sla_hours, and escalates
 # to the spec writer (adding the needs-reviewer label) after the same time again.
 # Copy to .github/workflows/relevo-sla.yml. Needs a relevo.yml at the repository root.

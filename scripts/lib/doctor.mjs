@@ -185,6 +185,12 @@ export function gatherFacts(p) {
   const installedRoot = p.pluginRoot ?? PLUGIN_ROOT;
   f.pluginFolders = ['scripts', 'skills', 'agents', 'stacks', 'templates'].filter((d) => tryRun(() => readdirSync(resolve(installedRoot, d)).length > 0, false) !== true);
   f.pluginVersion = tryRun(() => JSON.parse(readFileSync(resolve(installedRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null, null);
+  // The installations Claude Code knows of: the user scope, and the project or local scope of this repository. null when
+  // `claude` cannot list them. Only the command is read, never Claude Code's own files.
+  const repoTop = tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null);
+  f.installedPlugins = tryRun(() => JSON.parse(String(p.tool('claude', ['plugin', 'list', '--json'])))
+    .filter((e) => String(e.id).startsWith('relevo@') && (e.scope === 'user' || e.projectPath === repoTop))
+    .map((e) => ({ scope: e.scope, version: e.version ?? null })), null);
 
   f.configText = p.exists('relevo.yml') ? p.read('relevo.yml') : null;
   const loaded = f.configText === null ? null : loadConfig(f.configText, profileLookups({ pluginRoot: p.pluginRoot ?? PLUGIN_ROOT, read: readerFor(p, tryRun) }));
@@ -307,6 +313,11 @@ export function gatherFacts(p) {
     f.pluginPins = {};
     WORKFLOW_FILES.forEach((file) => {
       if (typeof texts[file] === 'string') f.pluginPins[file] = (/^\s*RELEVO_VERSION:\s*['"]?([\w.+-]+)['"]?\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
+    });
+    // The version of the text each workflow was copied from (null when it has no stamp).
+    f.pluginStamps = {};
+    WORKFLOW_FILES.forEach((file) => {
+      if (typeof texts[file] === 'string') f.pluginStamps[file] = (/^# relevo-template: (\d+\.\d+\.\d+)\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
     });
     f.hasCi = names.some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-'));
   }
@@ -849,7 +860,50 @@ function pluginInstallChecks(f) {
   const unpinned = Object.entries(pins).filter(([file, v]) => v === null && !cloners.includes(file)).map(([file]) => file);
   if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
-  if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'to move them, change RELEVO_VERSION to the installed version after reading the changelog'));
+  if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog (that moves the scripts, not the text)'));
+  r.push(...versionChecks(f), ...workflowTextChecks(f));
+  return r;
+}
+
+const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
+
+/**
+ * Which version each part is on, from what can be read here: the plugin in use, each installation `claude` lists and the
+ * pins of the workflows. It is a note, always visible; a warning only when the user and the project scope disagree, with
+ * the command that moves the lagging one. It asks the npm registry nothing.
+ */
+function versionChecks(f) {
+  if (f.installedPlugins === undefined) return [];
+  if (f.installedPlugins === null) return [warn('plugin.versions', 'the installed versions of the plugin could not be read: `claude plugin list --json` failed', 'check that Claude Code is installed (claude --version) and run claude plugin list')];
+  const r = [];
+  const scopes = f.installedPlugins.filter((e) => e.version);
+  const pins = [...new Set(Object.values(f.pluginPins ?? {}).filter(Boolean))].sort(byVersion);
+  const parts = [
+    `plugin in use ${f.pluginVersion ?? 'unknown'}`,
+    scopes.length > 0 ? `installed ${scopes.map((e) => `${e.scope} ${e.version}`).join(', ')}` : 'not installed through Claude Code',
+    pins.length > 0 ? `workflows pin ${pins.join(', ')}` : null,
+  ].filter(Boolean);
+  r.push(note('plugin.versions', `versions: ${parts.join('; ')}`));
+  const distinct = [...new Set(scopes.map((e) => e.version))].sort(byVersion);
+  if (distinct.length > 1) {
+    const newest = distinct.at(-1);
+    const lagging = scopes.filter((e) => e.version !== newest).map((e) => e.scope);
+    r.push(warn('plugin.scopes', `the plugin is on different versions: ${scopes.map((e) => `${e.scope} ${e.version}`).join(', ')}`, `update the lagging scope: ${lagging.map((s) => `claude plugin update relevo@relevo --scope ${s}`).join('; ')}`));
+  }
+  return r;
+}
+
+/** Is the text of each workflow as current as the scripts it runs? The stamp is the version of the text; the pin is the scripts'. */
+function workflowTextChecks(f) {
+  const stamps = f.pluginStamps;
+  if (!stamps) return [];
+  const pins = f.pluginPins ?? {};
+  const unknown = Object.keys(stamps).filter((file) => stamps[file] === null && f.workflows?.[file]?.present);
+  const older = Object.keys(stamps).filter((file) => stamps[file] !== null && pins[file] && byVersion(stamps[file], pins[file]) < 0);
+  const r = [];
+  if (older.length > 0) r.push(warn('automation.workflow-text', `${older.map((file) => `${file} (text ${stamps[file]}, scripts ${pins[file]})`).join(', ')}: the text of the workflow is older than the scripts it runs`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes'));
+  if (unknown.length > 0) r.push(warn('automation.workflow-text-unknown', `${unknown.join(', ')} have no # relevo-template: line, so the age of their text is unknown`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes'));
+  if (older.length === 0 && unknown.length === 0 && Object.keys(stamps).length > 0) r.push(pass('automation.workflow-text', 'the text of the workflows is as current as the scripts they run'));
   return r;
 }
 
