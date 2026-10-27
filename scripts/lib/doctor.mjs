@@ -734,7 +734,10 @@ export function runChecks(f) {
   r.push(...linkChecks(f));
   r.push(...executionChecks(f));
   r.push(...shipChecks(f));
-  if (f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
+  // The token is for reading the plugin repository, which only a workflow that still loads the plugin through a marketplace
+  // (or clones it, the older layout) does; one that loads it from the pinned package needs none.
+  const readsPluginRepository = Boolean(f.pluginMarketplace) || (f.pluginCheckouts ?? []).length > 0;
+  if (readsPluginRepository && f.pluginRepoPrivate === true && Array.isArray(f.secrets)) {
     if (f.secrets.includes('RELEVO_PLUGIN_TOKEN')) r.push(pass('automation.plugin-secret', 'the RELEVO_PLUGIN_TOKEN secret exists for the private plugin repository'));
     else r.push(fail('automation.plugin-secret', 'the plugin repository is private and the repository has no RELEVO_PLUGIN_TOKEN secret, so the workflows fall back to the default token and fail at checkout', 'store a read-only fine-grained token that can read the plugin repository as the repository secret RELEVO_PLUGIN_TOKEN; a secret defined at organization level is not visible to this check'));
   }

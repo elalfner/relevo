@@ -2,7 +2,7 @@
 
 ## 1. Checks before building
 
-- [ ] 1.1 In a sandbox repository, run the Claude build once with `--plugin-dir ${{ runner.temp }}/relevo` in `claude_args` and no `plugin_marketplaces`; verify in the log that the plugin loads from that folder, and record the result and the workflow used in `docs/pilot-findings.md`. If the action does not forward the option, update `design.md` D1 to the fallback (the `#vX.Y.Z` marketplace pinned by tag) and the specs of group 3 before continuing
+- [x] 1.1 In a sandbox repository, run the Claude build once with `--plugin-dir ${{ runner.temp }}/relevo` in `claude_args` and no `plugin_marketplaces`; verify in the log that the plugin loads from that folder, and record the result and the workflow used in `docs/pilot-findings.md`. If the action does not forward the option, update `design.md` D1 to the fallback (the `#vX.Y.Z` marketplace pinned by tag) and the specs of group 3 before continuing
 - [x] 1.2 Locally, run `claude --plugin-dir <an unpacked @elalfner/relevo package> -p "/relevo:doctor"`; verify the skill resolves under the name `/relevo:` and record it in `docs/pilot-findings.md`
 - [x] 1.3 Run `git merge-file -p` with the real case: the file `relevo-go.yml` of a project that uses Relevo as "yours", the 0.5.0 template (from `npm pack @elalfner/relevo@0.5.0`) as the base and the 0.8.0 template as "theirs"; verify the result is clean and keeps its credential line, and record the three paths and the outcome in `docs/pilot-findings.md`
 - [x] 1.4 Repeat 1.3 with a line that both sides changed; verify `git merge-file` reports a conflict (non-zero exit) and write the command in `docs/pilot-findings.md`; if either 1.3 or 1.4 does not behave, update `design.md` D2 before continuing
@@ -15,10 +15,10 @@
 
 ## 3. The cloud agent loads the pinned package
 
-- [ ] 3.1 In `templates/workflows/relevo-go.yml`, replace `plugin_marketplaces` and `plugins` with the plugin directory in `claude_args` (D1), keeping the turn, cost and tool limits; verify `tests/workflow-go.test.mjs` finds no `plugin_marketplaces`, no `plugins:`, no `RELEVO_PLUGIN_TOKEN` and the new argument, and that the Antigravity block is unchanged
-- [ ] 3.2 Make the unpack step stop with the missing path when `.claude-plugin/plugin.json` is not in the package, next to the checks it already makes; verify the scenario "The package has no manifest" in the workflow tests
-- [ ] 3.3 Make `automation.plugin-secret` and `automation.plugin-clone` in `scripts/lib/doctor.mjs` apply only when a workflow on the default branch still names a marketplace; verify the five scenarios of "Doctor checks the plugin credential secret" in `tests/doctor.test.mjs`
-- [ ] 3.4 Update `docs/action-parameters.md` (English only), `docs/execution.md` and `docs/execution.es.md` (what the build installs, the private plugin repository and the token), `docs/security.md` and `docs/security.es.md` (the plugin comes from the pinned package) and `skills/init/SKILL.md`; verify the pages no longer tell the person to store `RELEVO_PLUGIN_TOKEN` for a new project and the docs tests pass
+- [x] 3.1 In `templates/workflows/relevo-go.yml`, replace `plugin_marketplaces` and `plugins` with the plugin directory in `claude_args` (D1), keeping the turn, cost and tool limits; verify `tests/workflow-go.test.mjs` finds no `plugin_marketplaces`, no `plugins:`, no `RELEVO_PLUGIN_TOKEN` and the new argument, and that the Antigravity block is unchanged
+- [x] 3.2 Make the unpack step stop with the missing path when `.claude-plugin/plugin.json` is not in the package, next to the checks it already makes; verify the scenario "The package has no manifest" in the workflow tests
+- [x] 3.3 Make `automation.plugin-secret` and `automation.plugin-clone` in `scripts/lib/doctor.mjs` apply only when a workflow on the default branch still names a marketplace; verify the five scenarios of "Doctor checks the plugin credential secret" in `tests/doctor.test.mjs`
+- [x] 3.4 Update `docs/action-parameters.md` (English only), `docs/execution.md` and `docs/execution.es.md` (what the build installs, the private plugin repository and the token), `docs/security.md` and `docs/security.es.md` (the plugin comes from the pinned package) and `skills/init/SKILL.md`; verify the pages no longer tell the person to store `RELEVO_PLUGIN_TOKEN` for a new project and the docs tests pass
 
 ## 4. Init updates a workflow
 
@@ -35,10 +35,10 @@
 
 ## 6. The upgrade page and release notes
 
-- [ ] 6.1 Write `docs/upgrading.md` and `docs/upgrading.es.md` with the three things that carry a version, the order of D6, how to read the versions in `doctor`, and how `init` updates a workflow; verify both have the same sections in the same order
-- [ ] 6.2 Add `upgrading` to the list of pages in `tests/docs-claims.test.mjs` and link it from `docs/install.md`, `docs/install.es.md`, `README.md` and `README.es.md`; verify the parity, links and README sync tests pass
-- [ ] 6.3 Add an entry to `CHANGELOG.md` that says the cloud agent now loads the plugin from the pinned package, that `init` can update a workflow, what `doctor` reports and that a project that does nothing keeps working; verify `tests/changelog.test.mjs` passes
-- [ ] 6.4 Run the whole test suite and `openspec validate upgrade-path --strict`; verify both pass
+- [x] 6.1 Write `docs/upgrading.md` and `docs/upgrading.es.md` with the three things that carry a version, the order of D6, how to read the versions in `doctor`, and how `init` updates a workflow; verify both have the same sections in the same order
+- [x] 6.2 Add `upgrading` to the list of pages in `tests/docs-claims.test.mjs` and link it from `docs/install.md`, `docs/install.es.md`, `README.md` and `README.es.md`; verify the parity, links and README sync tests pass
+- [x] 6.3 Add an entry to `CHANGELOG.md` that says the cloud agent now loads the plugin from the pinned package, that `init` can update a workflow, what `doctor` reports and that a project that does nothing keeps working; verify `tests/changelog.test.mjs` passes
+- [x] 6.4 Run the whole test suite and `openspec validate upgrade-path --strict`; verify both pass
 
 ## Workflow follow-up
 

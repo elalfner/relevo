@@ -434,3 +434,22 @@ Same files, with a line of `relevo-go.yml` that both sides changed (`npm install
 
 - `git merge-file -p` exits with `1`, the number of conflicts, and the output holds one block between `<<<<<<<` and `>>>>>>>` with both versions. The file given as "yours" is not touched, because `-p` writes to the standard output.
 - A usage error (a missing file) exits with `255`. A caller must therefore read an exit status from 1 to 127 as "that many conflicts" and anything else as an error, and write nothing in either case.
+
+### `--plugin-dir` through `claude-code-action` (task 1.1)
+
+Made on 2026-10-27 in a private project that uses Relevo, on its self-hosted Linux runner (user `ubuntu`), with a temporary workflow on a temporary branch, which was deleted afterwards. The step unpacks `@elalfner/relevo@0.8.0` into `$RUNNER_TEMP/relevo` as the go workflow does, and runs the action with `claude_code_oauth_token`, `--max-turns 3` and `--plugin-dir ${{ runner.temp }}/relevo` in `claude_args`, with no `plugin_marketplaces` and no `plugins`. A later step reads the first event (`system`, `init`) of the action's `execution_file`, which is a list of events, so what is reported is what was loaded and not what the model said.
+
+- **The action forwards the option.** Two runs, the same result: the plugin `relevo`, source `relevo@inline`, version `0.8.0`, path `<runner>/_work/_temp/relevo`; the nine commands `relevo:doctor`, `relevo:fix`, `relevo:go`, `relevo:init`, `relevo:issue`, `relevo:review`, `relevo:ship`, `relevo:status`, `relevo:think`; the agents `relevo:dev` and `relevo:qa`. Design D1 of `upgrade-path` holds, and the fallback (the marketplace pinned by tag) is not needed.
+- **The action refuses the `push` event** (`Unsupported event type: push`), so a check that has to live on a branch runs from a pull request. It accepted `pull_request`.
+- **Even with no `plugins` input the action installed its own default plugin**, `code-review@claude-code-plugins` 1.0.0, into `~/.claude/plugins/cache` of the runner's user.
+
+### What a Claude build leaves on a persistent runner (the follow-up of `runner-selection`)
+
+Same runs. Names of files only, never contents.
+
+- **`$RUNNER_TEMP` is emptied between jobs.** At the start of the second run, a minute after the first, it held only that job's own files; the tarball, the unpacked package, the marker, `claude-execution-output.js` and `claude-prompts/` of the first run were gone. The assumption of design D3 of `runner-selection` holds on this runner.
+- **The action leaves a lot in the home of the runner's user, and nothing removes it:** under `~/.claude`, `settings.json`, `backups/`, `policy-limits*.json`, `remote-settings*.json`, `sessions/`, `projects/` (28 MB of session transcripts in this runner, across the runs it has done), `plugins/` (the default plugin and the built-in store) and `downloads/`; plus `~/.claude.json`, `~/.local/state/claude/locks`, the npm cache and logs in `~/.npm`, and the logs of the runner in `_diag`.
+- **The marketplace route leaves more, and it accumulates.** The runner still had `~/.claude/plugins/marketplaces/relevo/`, a full clone of the Relevo repository with its tests, and `~/.claude/plugins/cache/relevo/relevo/0.6.0`, from earlier cloud runs of that project. A pinned `--plugin-dir` leaves nothing of the plugin: it lives in `$RUNNER_TEMP`.
+- **No token was written in the files of the action.** A search for `sk-ant` in `~/.claude` and `~/.claude.json` found it only in the Relevo source and test fixtures of the marketplace clone and of the 0.6.0 cache (the patterns of the secret scanner and fake keys), and in none of the files of the action's own state. The token reached the action as an environment variable. Only that string was searched, and only in those places.
+- **The tools the workflows assume are there:** `git`, `gh` and `jq` in `/usr/bin`; `node` and `npm` from the tool cache of the runner (`_work/_tool`), which persists.
+- **What this means for a persistent runner:** the session transcripts stay on disk for as long as someone does not clean them, and they hold what the agent read and wrote (issue text, code). Relevo does not remove them.

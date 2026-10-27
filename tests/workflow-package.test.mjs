@@ -45,11 +45,14 @@ test('the guard runs before the script it protects, in the same job', () => {
   });
 });
 
-test('the model action still installs the plugin from the marketplace entry, and the guard has no token to hold', () => {
+test('Scenario: Reading the template - the plugin for the model action comes from the pinned package, not from a marketplace', () => {
   const go = read('templates/workflows/relevo-go.yml');
-  assert.match(go, /plugin_marketplaces: https:\/\/github\.com\/elalfner\/relevo\.git/);
-  assert.match(go, /plugins: relevo@relevo/);
-  files.forEach((f) => assert.doesNotMatch(read(`templates/workflows/${f}`).split('plugin_marketplaces')[0], /RELEVO_PLUGIN_TOKEN \|\| github\.token/, f));
+  assert.match(go, /--plugin-dir \$\{\{ runner\.temp \}\}\/relevo/);
+  files.forEach((f) => {
+    const active = read(`templates/workflows/${f}`).replace(/^\s*#.*$/gm, '');
+    assert.doesNotMatch(active, /plugin_marketplaces|^\s+plugins:/m, `${f} adds no marketplace and installs no plugin from one`);
+    assert.doesNotMatch(active, /RELEVO_PLUGIN_TOKEN/, f);
+  });
 });
 
 test('Scenario: A release - every template starts with the stamp of the version of the package', () => {

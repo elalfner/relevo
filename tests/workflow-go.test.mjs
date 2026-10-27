@@ -80,13 +80,11 @@ test('the final step uses the default labels of the template', () => {
   for (const key of ['ready', 'building', 'qa-failed']) assert.ok(workflow.includes(names[key]), `${names[key]} must appear`);
 });
 
-test('Scenario: Private plugin repository or subscription - the template shows both as ready-to-use alternatives', () => {
+test('Scenario: Subscription - the template shows the token as a ready-to-use alternative to the API key', () => {
   assert.match(workflow, /# claude_code_oauth_token: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}/);
   assert.match(workflow, /tr -d '\[:space:\]'/);
-  assert.match(workflow, /# plugin_marketplaces: https:\/\/x-access-token:\$\{\{ secrets\.RELEVO_PLUGIN_TOKEN \}\}@github\.com\//);
-  // The defaults stay active and the alternatives stay commented out.
+  // The default stays active and the alternative stays commented out.
   assert.match(workflow, /^ {10}anthropic_api_key: /m);
-  assert.match(workflow, /^ {10}plugin_marketplaces: https:\/\/github\.com\/[^@\n]+$/m);
   assert.doesNotMatch(workflow, /^ {10}claude_code_oauth_token:/m);
   assert.doesNotMatch(workflow, /sk-ant-|ghp_|github_pat_/);
 });
@@ -264,7 +262,30 @@ test('Scenario: A runner without the toolchain - the check stops the job before 
 
 test('the toolchain check names the guard of the scripts it runs, and runs nothing for a pass', () => {
   const text = workflow.slice(workflow.indexOf('name: Check the toolchain'), workflow.indexOf('# relevo:agent-step begin'));
-  assert.match(text, /for f in scripts\/toolchain-check\.mjs scripts\/render-message\.mjs; do/);
+  assert.match(text, /for f in scripts\/toolchain-check\.mjs scripts\/render-message\.mjs \.claude-plugin\/plugin\.json; do/);
   assert.match(text, /lacks \$f/);
   assert.match(text, /if result=\$\(node [^\n]*\); then\n\s+exit 0\n\s+fi/, 'a complete toolchain passes silently');
+});
+
+test('Scenario: No marketplace in the workflow - the Claude step loads the unpacked package and names no marketplace, plugin or plugin token', () => {
+  const step = workflow.slice(workflow.indexOf('# relevo:agent-step begin'), workflow.indexOf('# relevo:agent-step end'));
+  const active = step.replace(/^\s*#.*$/gm, '');
+  assert.doesNotMatch(active, /plugin_marketplaces|^\s+plugins:/m);
+  assert.doesNotMatch(workflow, /RELEVO_PLUGIN_TOKEN/, 'nothing is cloned from the plugin repository, so no token is needed');
+  assert.match(active, /claude_args: >-\n(?:\s+--[^\n]*\n)*\s+--plugin-dir \$\{\{ runner\.temp \}\}\/relevo\n/);
+  // The folder is the one the toolchain step unpacks the pinned package into.
+  assert.match(workflow, /tar -xzf "\$RUNNER_TEMP"\/elalfner-relevo-\*\.tgz --strip-components=1 -C "\$RUNNER_TEMP\/relevo"/);
+});
+
+test('Scenario: The limits stay - adding the plugin directory changes none of the turn, cost or tool limits', () => {
+  const args = /claude_args: >-\n((?:\s+--[^\n]*\n)+)/.exec(workflow)[1].split('\n').map((l) => l.trim()).filter(Boolean);
+  assert.deepEqual(args, ['--max-turns 100', '--max-budget-usd 5', '--plugin-dir ${{ runner.temp }}/relevo', '--allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"', '--disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)"']);
+});
+
+test('Scenario: The package has no manifest - the run stops before the agent and names the missing path', () => {
+  const guard = workflow.slice(workflow.indexOf('name: Check the toolchain'), workflow.indexOf('# relevo:agent-step begin'));
+  const loop = /for f in ([^;]+); do\n\s+\[ -f "\$RUNNER_TEMP\/relevo\/\$f" \] \|\| \{ echo "::error::The Relevo package \$RELEVO_VERSION lacks \$f"; exit 1; \}/.exec(guard);
+  assert.ok(loop, 'a guard that names the missing file');
+  assert.ok(loop[1].split(/\s+/).includes('.claude-plugin/plugin.json'));
+  assert.ok(workflow.indexOf('name: Check the toolchain') < workflow.indexOf('# relevo:agent-step begin'), 'the guard is before the agent');
 });
