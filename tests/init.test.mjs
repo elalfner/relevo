@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { REQUIRED_SKILLS, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
-import { applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
+import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
+import { mergeWebHook, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -373,6 +373,55 @@ test('Scenario: A settings file that cannot be read - a manual step, and nothing
 
 test('without the fact there is no plugin line, so older callers keep their plan', () => {
   assert.equal(get(plan(bare()), 'install.plugin-project'), undefined);
+});
+
+// ---- OpenSpec in web sessions
+
+test('Scenario: A repository without the hook - an install line that shows the hook, never applied by the script', () => {
+  const it = get(plan(bare({ webHook: { declared: false } })), 'install.web-hook');
+  assert.equal(it.status, 'todo');
+  assert.equal(it.install, true);
+  assert.equal(it.hook, WEB_HOOK_COMMAND);
+  assert.match(renderPlan([it]), /\[will do\] Add a hook that installs OpenSpec at the start of a web session/);
+  const calls = [];
+  applyPlan([it], { repo: 'o/r', io: { gh: (a) => calls.push(a), write: (p) => calls.push(p), append: (p) => calls.push(p) } });
+  assert.deepEqual(calls, []);
+});
+
+test('Scenario: A repository that already has the hook - the line is reported as in place', () => {
+  assert.equal(get(plan(bare({ webHook: { declared: true } })), 'install.web-hook').status, 'ok');
+});
+
+test('Scenario: A settings file that cannot be read - a manual step', () => {
+  const it = get(plan(bare({ webHook: { unreadable: true } })), 'install.web-hook');
+  assert.equal(it.status, 'manual');
+  assert.match(it.description, /not valid JSON/);
+});
+
+test('without the fact there is no hook line, so older callers keep their plan', () => {
+  assert.equal(get(plan(bare()), 'install.web-hook'), undefined);
+});
+
+test('Scenario: A settings file with other settings - the hook is added next to them and none changes', () => {
+  const before = JSON.stringify({ attribution: { commit: '' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo bye' }] }], SessionStart: [{ hooks: [{ type: 'command', command: 'echo hi' }] }] } });
+  const after = JSON.parse(mergeWebHook(before));
+  assert.deepEqual(after.attribution, { commit: '' });
+  assert.deepEqual(after.hooks.Stop, JSON.parse(before).hooks.Stop);
+  assert.equal(after.hooks.SessionStart.length, 2);
+  assert.deepEqual(after.hooks.SessionStart[0], JSON.parse(before).hooks.SessionStart[0]);
+  assert.equal(after.hooks.SessionStart[1].hooks[0].command, WEB_HOOK_COMMAND);
+});
+
+test('a missing settings file is created with only the hook, and merging twice adds nothing twice', () => {
+  const once = mergeWebHook(null);
+  assert.equal(JSON.parse(once).hooks.SessionStart.length, 1);
+  assert.equal(mergeWebHook(once), once);
+});
+
+test('a settings file that is not a JSON object is never rewritten', () => {
+  assert.throws(() => mergeWebHook('{ not json'));
+  assert.throws(() => mergeWebHook('[]'), /not a JSON object/);
+  assert.throws(() => mergeWebHook('{"hooks":{"SessionStart":{}}}'), /not a list/);
 });
 
 // ---- the agent that builds in the cloud
