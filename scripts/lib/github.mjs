@@ -45,15 +45,19 @@ function normalizeIssue(raw) {
     milestone: raw.milestone ? { number: raw.milestone.number, due_on: raw.milestone.due_on ?? null } : null,
     ready_at: null,
     ready_by: null,
+    urgent_by: null,
   };
 }
 
-/** When and by whom the ready label was last applied, from the issue timeline. */
-export function readyEvent(timeline, readyName) {
-  const events = timeline.filter((e) => e.event === 'labeled' && e.label?.name === readyName);
+/** When and by whom a label was last applied, from the issue timeline. */
+export function labelEvent(timeline, labelName) {
+  const events = timeline.filter((e) => e.event === 'labeled' && e.label?.name === labelName);
   const last = events[events.length - 1];
   return last ? { at: last.created_at, by: last.actor?.login ?? null } : { at: null, by: null };
 }
+
+/** When and by whom the ready label was last applied. */
+export const readyEvent = labelEvent;
 
 /**
  * Collect everything `planGo` needs. Returns { issues, completed, completedExternal, unreadable, running, permissions }.
@@ -74,9 +78,11 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [] }) {
   const candidates = issues.filter((i) => [names.ready, names.queued, names.blocked].some((n) => i.labels.includes(n)));
   candidates.forEach((issue) => {
     const timeline = apiJson(gh, `repos/${repo}/issues/${issue.number}/timeline?per_page=100`, { paginate: true });
-    const { at, by } = readyEvent(timeline, names.ready);
+    const { at, by } = labelEvent(timeline, names.ready);
     issue.ready_at = at;
     issue.ready_by = by;
+    // The same timeline answers for the urgent label: who asked for the early start.
+    if (issue.labels.includes(names.urgent)) issue.urgent_by = labelEvent(timeline, names.urgent).by;
   });
 
   const wanted = new Set();
@@ -109,7 +115,7 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [] }) {
   });
 
   const permissions = {};
-  new Set(candidates.map((i) => i.ready_by).filter(Boolean)).forEach((login) => {
+  new Set(candidates.flatMap((i) => [i.ready_by, i.urgent_by]).filter(Boolean)).forEach((login) => {
     try {
       permissions[login] = apiJson(gh, `repos/${repo}/collaborators/${login}/permission`).permission ?? 'none';
     } catch {
@@ -130,6 +136,10 @@ export function commandsFor(decision, { repo, config }) {
   if (edit.length > 5) commands.push(edit);
   if (decision.comment) {
     const body = renderMessage(decision.comment.kind, decision.comment.data, config.language);
+    commands.push(['issue', 'comment', String(decision.issue), '--repo', repo, '--body', body]);
+  }
+  if (decision.notice) {
+    const body = renderMessage(decision.notice.kind, decision.notice.data, config.language);
     commands.push(['issue', 'comment', String(decision.issue), '--repo', repo, '--body', body]);
   }
   return commands;

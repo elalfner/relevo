@@ -19,6 +19,8 @@ export const LABELS = [
   { key: 'needs-reviewer', name: 'relevo:needs-reviewer', color: 'fef2c0', kind: 'overlay', description: 'No reviewer available or the review is overdue' },
   // A request, not a state: the ship workflow merges the pull request and always removes it.
   { key: 'ship', name: 'relevo:ship', color: '2ea44f', kind: 'overlay', description: 'Ship it: merge the approved pull request on GitHub' },
+  // A request, not a state: start it before the others and without waiting for the assignee's review capacity.
+  { key: 'urgent', name: 'relevo:urgent', color: 'ff7b00', kind: 'overlay', description: 'Start it first, even if the assignee has built issues waiting for review' },
 ];
 
 export const LABEL_KEYS = LABELS.map((l) => l.key);
