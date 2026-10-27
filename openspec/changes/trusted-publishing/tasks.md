@@ -2,13 +2,13 @@
 
 ## 1. The workflow
 
-- [ ] 1.1 `.github/workflows/release.yml`: Node 24, no `NODE_AUTH_TOKEN`, no guard on the secret, a step that prints the Node and npm versions before the publish; keep `id-token: write`, the tag check, the tests and `--provenance --access public`
-- [ ] 1.2 Update the test of the release workflow: no reference to a publish token, the identity permission, the version line, the order (tag check, tests, publish)
+- [x] 1.1 `.github/workflows/release.yml`: Node 24, no `NODE_AUTH_TOKEN`, no guard on the secret, a step that prints the Node and npm versions before the publish; keep `id-token: write`, the tag check, the tests and `--provenance --access public`
+- [x] 1.2 Update the test of the release workflow: no reference to a publish token, the identity permission, the version line, the order (tag check, tests, publish)
 
 ## 2. Documentation
 
-- [ ] 2.1 `RELEASING.md`: the one-time setup on npmjs.com (Trusted Publisher, GitHub Actions, `elalfner/relevo`, `release.yml`, no environment), deleting the secret and revoking the token, what a mismatch looks like, and how to re-run
-- [ ] 2.2 Changelog under Unreleased
+- [x] 2.1 `RELEASING.md`: the one-time setup on npmjs.com (Trusted Publisher, GitHub Actions, `elalfner/relevo`, `release.yml`, no environment), deleting the secret and revoking the token, what a mismatch looks like, and how to re-run
+- [x] 2.2 Changelog under Unreleased
 
 ## 3. Check
 

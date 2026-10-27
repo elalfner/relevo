@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **The release workflow publishes without a token.** It uses npm Trusted Publishing: the package is published with the identity of the workflow run, on Node 24, and the secret `NPM_TOKEN` is no longer read or checked. A failed login now fails the Publish step with npm's own message, and a step before it prints the versions of Node and npm. `RELEASING.md` has the one-time setting on npmjs.com (organization or user, repository, workflow filename `release.yml`, no environment), says to delete the secret and revoke the token, and how to re-run after fixing a mismatch. This is for the maintainer: nothing that runs in a project changes. Until the Trusted Publisher is set, a tag does not publish.
+
 ## [0.9.0] - 2026-10-27
 
 ### Added
