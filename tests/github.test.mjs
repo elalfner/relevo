@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { applyDecisions, commandsFor, gather, readyEvent, realGhLinks } from '../scripts/lib/github.mjs';
+import { applyDecisions, commandsFor, gather, labelEvent, readyEvent, realGhLinks } from '../scripts/lib/github.mjs';
 import { planGo } from '../scripts/lib/plan.mjs';
 
 const BODY = '## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c\n';
@@ -52,6 +52,49 @@ test('readyEvent takes the last time the ready label was applied, and who applie
   ];
   assert.deepEqual(readyEvent(timeline, 'relevo:ready'), { at: '2026-10-14T09:00:00Z', by: 'persona-c' });
   assert.deepEqual(readyEvent([], 'relevo:ready'), { at: null, by: null });
+});
+
+test('Scenario: Applied again after a denial - labelEvent takes the last of several labeled events of any label', () => {
+  const timeline = [
+    labeled('relevo:urgent', 'stranger', '2026-10-14T08:00:00Z'),
+    labeled('relevo:urgent', 'persona-a', '2026-10-14T09:00:00Z'),
+    labeled('relevo:ready', 'persona-c', '2026-10-14T10:00:00Z'),
+  ];
+  assert.deepEqual(labelEvent(timeline, 'relevo:urgent'), { at: '2026-10-14T09:00:00Z', by: 'persona-a' });
+  assert.deepEqual(labelEvent(timeline, 'relevo:ship'), { at: null, by: null }, 'an issue without the label');
+  assert.deepEqual(readyEvent(timeline, 'relevo:ready'), { at: '2026-10-14T10:00:00Z', by: 'persona-c' }, 'ready works as before');
+});
+
+test('gather reads who applied the urgent label, looks up their permission, and leaves it empty without the label', () => {
+  const world = {
+    issuesByLabel: {
+      'relevo:queued': [rawIssue(1, ['relevo:queued', 'relevo:urgent']), rawIssue(2, ['relevo:queued'])],
+    },
+    timeline: {
+      1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z'), labeled('relevo:urgent', 'persona-d', '2026-10-14T09:00:00Z')],
+      2: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z')],
+    },
+    permissions: { 'persona-a': 'write', 'persona-d': 'maintain' },
+    issueDetails: {},
+  };
+  const state = gather({ gh: fakeGh(world), repo: REPO, config });
+  assert.equal(state.issues.find((i) => i.number === 1).urgent_by, 'persona-d');
+  assert.equal(state.issues.find((i) => i.number === 2).urgent_by, null);
+  assert.deepEqual(state.permissions, { 'persona-a': 'write', 'persona-d': 'maintain' });
+});
+
+test('the timeline of an issue with both labels is read once, and one person is looked up once', () => {
+  const world = {
+    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready', 'relevo:urgent'])] },
+    timeline: { 1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z'), labeled('relevo:urgent', 'persona-a', '2026-10-14T08:01:00Z')] },
+    permissions: { 'persona-a': 'write' },
+    issueDetails: {},
+  };
+  const gh = fakeGh(world);
+  gather({ gh, repo: REPO, config });
+  const text = gh.calls.map((c) => c.join(' '));
+  assert.equal(text.filter((c) => c.includes('/issues/1/timeline')).length, 1);
+  assert.equal(text.filter((c) => c.includes('/collaborators/persona-a/permission')).length, 1);
 });
 
 test('gather reads issues, ready time and author, permissions and merged dependencies', () => {
@@ -113,6 +156,20 @@ test('commandsFor builds one label/assignee edit and one comment', () => {
   assert.deepEqual(edit, ['issue', 'edit', '31', '--repo', REPO, '--add-label', 'relevo:needs-spec', '--remove-label', 'relevo:ready', '--add-assignee', 'persona-a']);
   assert.deepEqual(comment.slice(0, 5), ['issue', 'comment', '31', '--repo', REPO]);
   assert.match(comment[6], /^@persona-a #31 "T" is back with you/);
+});
+
+test('Scenario: Applied without permission - commandsFor removes the urgent label and posts the notice after the decision comment', () => {
+  const decision = {
+    issue: 9, action: 'queue', reason: 'x', labels: { add: ['relevo:queued'], remove: ['relevo:ready', 'relevo:urgent'] }, assign: null,
+    comment: { kind: 'queued_agents', data: { issue: 9, title: 'T' } },
+    notice: { kind: 'urgent_denied', data: { issue: 9, actor: 'stranger' } },
+  };
+  const commands = commandsFor(decision, { repo: REPO, config });
+  assert.equal(commands.length, 3);
+  assert.ok(commands[0].includes('--remove-label') && commands[0].includes('relevo:urgent'));
+  assert.match(commands[1][commands[1].indexOf('--body') + 1], /is queued/);
+  assert.match(commands[2][commands[2].indexOf('--body') + 1], /the urgent label was removed/);
+  assert.equal(commandsFor({ ...decision, notice: undefined }, { repo: REPO, config }).length, 2, 'no notice, no second comment');
 });
 
 test('commandsFor sends nothing when a decision changes nothing', () => {

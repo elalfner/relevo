@@ -27,7 +27,7 @@ function checkConfig({ readConfig }) {
 
 function checkOpenspec({ run }) {
   const r = run('openspec', ['--version']);
-  return r.status === 0 ? pass('openspec') : fail('openspec', 'the OpenSpec command line does not run', 'run /relevo:doctor');
+  return r.status === 0 ? pass('openspec') : fail('openspec', 'the OpenSpec command line does not run. Stop here: do not go on from memory and do not write anything under openspec/changes/ by hand', 'install it with `npm install --global @fission-ai/openspec` (Node.js 20.19 or newer), or run /relevo:doctor');
 }
 
 function checkOpenspecRoot({ run }) {

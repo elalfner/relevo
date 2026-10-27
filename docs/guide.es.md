@@ -16,11 +16,13 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | `blocked` | ninguno: empieza cuando se fusionan los issues de los que depende | nadie |
 | `built` | `/relevo:review <n>` | la persona asignada |
 | `in-review` | `/relevo:review <n>` para continuar; si algo falla, `/relevo:fix <n>` | la persona asignada |
-| `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub | quien aprueba |
+| `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub; o pon `relevo:ship` al issue | quien aprueba |
 | `needs-spec` | `/relevo:issue <n>`; si la pregunta necesita explorarse, antes `/relevo:think #<n>` | quien escribe la spec |
 | `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready` | la persona asignada |
 | `changes-requested` | `/relevo:fix <n>` | el autor |
 | `needs-reviewer` | ninguno: asigna un revisor, o pide a alguien que lo tome | quien escribe la spec |
+| `ship` | ninguno: el workflow de ship lo está fusionando; si se detiene, su comentario dice por qué y se quita la etiqueta | nadie |
+| `urgent` | ninguno: acompaña al estado de arriba y pide un inicio anticipado (ver abajo) | nadie |
 
 Antes de que un issue tenga estado, `/relevo:think` explora la idea y `/relevo:issue` escribe el issue. `/relevo:status` muestra quién espera a quién.
 
@@ -45,6 +47,12 @@ Una ejecución en la nube que se detiene por un límite de uso o un crédito vac
 ### No sé cuál es el comportamiento correcto
 
 No adivines en una corrección. Ejecuta `/relevo:think` para explorarlo (o `/relevo:think #<n>` para un issue que volvió con una pregunta), y después `/relevo:issue <n>` para escribir la respuesta en el issue. Un issue con una pregunta abierta no pasa la comprobación y no se construye.
+
+### Un issue no puede esperar
+
+Pon `relevo:urgent` al issue, junto a su estado, cuando no deba esperar en la cola detrás de otros ni detrás del trabajo sin revisar de la persona asignada. Un issue urgente se mira antes que el resto y no lo frena que la persona asignada ya tenga `limits.built_unreviewed_per_person` issues construidos esperando. Sigue necesitando todo lo demás: una especificación completa, dependencias fusionadas (un urgente que depende de un issue abierto queda `blocked` y el aviso lo dice) y un hueco libre de agente (`limits.concurrent_agents`). Cuando empieza por encima del límite, el mensaje de traspaso le dice a la persona asignada cuántos issues construidos esperan ahora.
+
+La etiqueta solo cuenta si quien la puso podía marcar el issue como `ready`: acceso de escritura, o de mantenedor cuando `trust` es `public`. Si no, se quita la etiqueta y un comentario dice por qué. Ponerla a un issue `queued` inicia la evaluación de la cola de inmediato.
 
 ### El issue volvió a needs-spec
 

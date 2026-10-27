@@ -28,6 +28,7 @@ review:
   merger: approver     # author | approver: who runs /relevo:ship
   autopilot: off       # off | precheck | verify: how much of the on-device review the agent may drive (the person always closes it)
   allowed_origins: []  # web origins a driven review may visit besides localhost, e.g. https://staging.example.com
+  ship_without_ci: false  # true: the relevo:ship label may merge when no check ran (/relevo:ship asks instead)
 
 limits:
   built_unreviewed_per_person: 2   # built issues one person may have waiting
@@ -36,6 +37,9 @@ limits:
   run_max_turns: 100               # per unattended run
   building_alert_hours: 3          # hours without activity before an issue on `building` is reported as stuck
   run_max_cost: 5                  # REQUIRED: US dollars per unattended run; choose your own
+
+# runner:                            # where the Relevo workflows run; leave it out for GitHub-hosted (ubuntu-latest)
+#   labels: [self-hosted, Front]     # a self-hosted runner is assumed to persist between jobs (docs/execution.md)
 
 qa:
   retries: 1                       # developer attempts after QA rejects

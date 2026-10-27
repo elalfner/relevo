@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Checks that the tools which the profile of a platform lists are on the path of this machine. Usage:
 //   node scripts/toolchain-check.mjs --platform <name> [--config relevo.yml] [--plugin-root <dir>]
-// It prints { platform, stack, tools, missing } as JSON. A tool is there when `<tool> --version` starts. The cloud build
+// It prints { platform, stack, tools, missing } as JSON; `missing` also covers git, gh, jq and node, which every job needs. A tool is there when `<tool> --version` starts. The cloud build
 // runs it before the agent, so that a runner without the SDK stops in seconds and not after a full run.
 //   exit 0: every tool is there (or the profile lists none)   exit 1: a tool is missing, or the profile cannot be resolved
 //   exit 2: bad usage or an invalid relevo.yml
@@ -12,7 +12,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
-import { missingTools } from './lib/toolchain-check.mjs';
+import { missingTools, RUNNER_TOOLS } from './lib/toolchain-check.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -44,6 +44,6 @@ const resolved = resolveProfile({ platform, pluginRoot, read });
 if (!resolved.ok) fail(resolved.errors.join('\n'), 1);
 
 const probe = (tool) => spawnSync(tool, ['--version'], { stdio: 'ignore' }).error === undefined;
-const missing = missingTools(resolved.profile.tools, probe);
+const missing = missingTools([...RUNNER_TOOLS, ...(resolved.profile.tools ?? [])], probe);
 console.log(JSON.stringify({ platform: name, stack: resolved.profile.stack, tools: resolved.profile.tools, missing }));
 process.exit(missing.length > 0 ? 1 : 0);

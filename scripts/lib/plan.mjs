@@ -6,7 +6,8 @@
 //   issues     [{ number, title, body, state, labels: [names], assignees: [logins],
 //                 milestone: { number, due_on } | null,
 //                 ready_at: ISO | null,   // when the ready label was last applied
-//                 ready_by: login | null  // who applied it }]
+//                 ready_by: login | null, // who applied it
+//                 urgent_by: login | null // who applied the urgent label, when the issue carries it }]
 //   completed  issue numbers closed as completed (their pull request merged)
 //   running    issue numbers with an agent run in progress
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
@@ -61,6 +62,12 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   const linked = (config.links ?? []);
   const own = repo ? repo.toLowerCase() : null;
 
+  // The urgent label is a request that only the people who may start work can make. A label from anyone else is not
+  // valid: it is removed (with a notice) and the issue is evaluated as a normal one.
+  const mayTrigger = config.trust === 'public' ? MAY_TRIGGER_PUBLIC : MAY_TRIGGER;
+  const hasUrgentLabel = (issue) => has(issue, 'urgent');
+  const isUrgent = (issue) => hasUrgentLabel(issue) && Boolean(issue.urgent_by) && mayTrigger.has(permissions[issue.urgent_by]);
+
   const runningSet = new Set(running);
   open.filter((i) => has(i, 'building')).forEach((i) => runningSet.add(i.number));
   let freeSlots = Math.max(0, config.limits.concurrent_agents - runningSet.size);
@@ -71,14 +78,16 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
     if (owner) builtBy.set(owner, (builtBy.get(owner) ?? 0) + 1);
   });
 
+  // Valid urgent issues are considered first, so they take the free agent slots before the others; inside each group
+  // the order is the time `ready` was applied.
   const candidates = open
     .filter((i) => has(i, 'ready') || has(i, 'queued') || has(i, 'blocked'))
-    .sort(byReadyAt);
+    .sort((a, b) => Number(isUrgent(b)) - Number(isUrgent(a)) || byReadyAt(a, b));
 
   const decisions = [];
 
   function decision(issue, action, reason, extra = {}) {
-    const labels = extra.labels ?? { add: [], remove: [] };
+    let labels = extra.labels ?? { add: [], remove: [] };
     const out = {
       issue: issue.number,
       action,
@@ -87,6 +96,16 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       comment: extra.comment ?? null,
       assign: extra.assign ?? null,
     };
+    // An urgent label that is not valid is removed in the decision of the issue, with its own notice. An issue whose
+    // run is in progress is left alone.
+    if (action !== 'skip' && hasUrgentLabel(issue) && !isUrgent(issue)) {
+      labels = { add: labels.add, remove: [...labels.remove, names.urgent] };
+      out.labels = labels;
+      out.notice = {
+        kind: config.trust === 'public' ? 'urgent_denied_maintainer' : 'urgent_denied',
+        data: { issue: issue.number, ...(issue.urgent_by ? { actor: issue.urgent_by } : {}) },
+      };
+    }
     if (action === 'start') Object.assign(out, extra.start);
     decisions.push(out);
   }
@@ -189,15 +208,17 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       decision(issue, 'block', `waiting for ${blockers.join(', ')}`, {
         labels: moveTo(issue, 'blocked'),
         comment: entering
-          ? { kind: 'blocked_notice', data: { issue: issue.number, title: issue.title, blockers: blockers.join(', ') } }
+          ? { kind: 'blocked_notice', data: { issue: issue.number, title: issue.title, blockers: blockers.join(', '), ...(isUrgent(issue) ? { urgent: true } : {}) } }
           : null,
       });
       return;
     }
 
-    // Gate 3: capacity of the assignee.
+    // Gate 3: capacity of the assignee. A valid urgent label skips this gate and no other.
     const built = assignee ? builtBy.get(assignee) ?? 0 : 0;
-    if (assignee && built >= config.limits.built_unreviewed_per_person) {
+    const overCapacity = Boolean(assignee) && built >= config.limits.built_unreviewed_per_person;
+    const urgent = isUrgent(issue);
+    if (overCapacity && !urgent) {
       decision(issue, 'queue', `${assignee} already has ${built} built issues waiting for review`, {
         labels: moveTo(issue, 'queued'),
         comment: has(issue, 'queued')
@@ -244,6 +265,8 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         stack: platform.entry.stack,
         path: platform.entry.path,
         targets: platform.entry.targets,
+        // Only when the urgent label let the issue start over the assignee's capacity: the hand-off message says so.
+        ...(overCapacity && urgent ? { urgent: true, built_waiting: built + 1 } : {}),
       },
     });
   });

@@ -1,7 +1,7 @@
 # What `relevo-go.yml` and `relevo-queue.yml` run when `agent.build` in relevo.yml is `antigravity`. This file is not a
 # workflow: each block below replaces, in the shared workflow, the lines between the markers with the same name, and
 # nothing else of the workflow changes (a test checks it). Edit the shared workflow for anything that is not about the
-# agent. Written for ubuntu-latest (x86-64).
+# agent. Written for an x86-64 Linux runner (the binary below is linux-x64).
 #
 # What Antigravity CLI cannot do on its own, and what stands in for it (docs/security.md):
 #   turn and token limits  the run guard (scripts/agent-guard.mjs) reads the event stream and stops the agent; the numbers
@@ -32,10 +32,13 @@
           curl -fsSL -o "$RUNNER_TEMP/agy.tar.gz" "$AGY_URL"
           echo "$AGY_SHA512  $RUNNER_TEMP/agy.tar.gz" | sha512sum --check --strict -
           tar -xzf "$RUNNER_TEMP/agy.tar.gz" -C "$RUNNER_TEMP" antigravity
-          mkdir -p "$HOME/.local/bin"
-          install -m 0755 "$RUNNER_TEMP/antigravity" "$HOME/.local/bin/agy"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          [ "$("$HOME/.local/bin/agy" --version)" = "$AGY_VERSION" ] || { echo "::error::agy is not version $AGY_VERSION"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/home"
+          install -m 0755 "$RUNNER_TEMP/antigravity" "$RUNNER_TEMP/bin/agy"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          # The CLI, the plugin of the machine and the settings of the run live in a home folder of this job, so a runner
+          # that persists keeps none of them. Every later step of the job sees this HOME.
+          echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          [ "$("$RUNNER_TEMP/bin/agy" --version)" = "$AGY_VERSION" ] || { echo "::error::agy is not version $AGY_VERSION"; exit 1; }
 
       # The Relevo plugin is rendered from the package unpacked in the step "Check the toolchain" and installed for the
       # machine, so nothing is added to the working tree (the agent needs it clean). The settings of the run go to the

@@ -22,7 +22,7 @@ In Antigravity IDE, `/relevo:go` is adapted through `scripts/lib/adapters/antigr
 
 ### Decision 1: Use `TypeName: "self"` with `Role: "relevo-builder"` for Interactive Isolation
 
-- **Decision**: In `WHERE_RUNS_FOR_ANTIGRAVITY` ([antigravity.mjs](file:///Users/urbanconnections/Proyectos/relevo/scripts/lib/adapters/antigravity.mjs)), instruct the chat orchestrator to invoke the builder via `invoke_subagent` with `TypeName: "self"`, `Role: "relevo-builder"`, and `Workspace: 'share'`.
+- **Decision**: In `WHERE_RUNS_FOR_ANTIGRAVITY` ([antigravity.mjs](../../../../scripts/lib/adapters/antigravity.mjs)), instruct the chat orchestrator to invoke the builder via `invoke_subagent` with `TypeName: "self"`, `Role: "relevo-builder"`, and `Workspace: 'share'`.
 - **Rationale**: `TypeName: "self"` inherits all registered tools of the active workspace without requiring a separate pre-registered agent manifest. The explicit specification prevents the LLM from attempting to call unregistered names like `TypeName: "relevo-builder"` or `TypeName: "builder"`.
 - **Alternative considered**: Creating a dedicated `agents/relevo-builder.md` manifest. Rejected because `relevo-builder` requires full write, read, and command tools, which `self` already provides natively without extra packaging overhead.
 

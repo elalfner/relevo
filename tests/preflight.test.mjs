@@ -44,6 +44,13 @@ test('a missing relevo.yml says to run /relevo:init', () => {
   assert.match(formatPreflight(r), /\/relevo:init/);
 });
 
+test('Scenario: OpenSpec is missing - the run stops, gives the install command and forbids writing the change by hand', () => {
+  const out = formatPreflight(check({ 'openspec --version': { status: 127, stdout: '', stderr: '' } }, ['openspec']));
+  assert.match(out, /Stop here: do not go on from memory/);
+  assert.match(out, /nothing under openspec\/changes\/ by hand|anything under openspec\/changes\/ by hand/);
+  assert.match(out, /npm install --global @fission-ai\/openspec/);
+});
+
 test('OpenSpec that does not run is reported with /relevo:doctor', () => {
   const r = check({ 'openspec --version': { status: 127, stdout: '', stderr: '' } }, ['openspec']);
   assert.equal(r.ok, false);

@@ -104,6 +104,18 @@ const TABLE = {
     who: 'spec_writer',
     hint: { en: 'assign a reviewer or ask someone to take it', es: 'asigna a alguien que revise o pide que alguien lo tome' },
   },
+  // The ship workflow is merging it; when it stops, its comment says why and the issue is back on pr-open.
+  ship: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'the ship workflow is merging it', es: 'el workflow de ship lo está fusionando' },
+  },
+  // A request next to the state, not a state: the state it travels with decides the next step.
+  urgent: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'it starts before the others; the state it is in decides the next step', es: 'empieza antes que las demás; el estado en que está decide el siguiente paso' },
+  },
 };
 
 const WHO = {

@@ -28,11 +28,19 @@ Relevo SHALL read its behaviour from a `relevo.yml` file at the repository root.
 - **THEN** the default is the legacy `platform: flutter-android`
 
 ### Requirement: Review and limit settings
-`relevo.yml` SHALL support `review.mode` (`none`, `peer`, `roles`), `review.merger` (`author`, `approver`), `limits.built_unreviewed_per_person`, `limits.concurrent_agents`, `limits.review_sla_hours`, `limits.run_max_turns` and `limits.run_max_cost`.
+`relevo.yml` SHALL support `review.mode` (`none`, `peer`, `roles`), `review.merger` (`author`, `approver`), `review.ship_without_ci` (`true`, `false`), `limits.built_unreviewed_per_person`, `limits.concurrent_agents`, `limits.review_sla_hours`, `limits.run_max_turns` and `limits.run_max_cost`.
 
 #### Scenario: Review mode set
 - **WHEN** `review.mode` is `peer` and `review.merger` is `approver`
 - **THEN** validation passes and `ship` applies the peer rules
+
+#### Scenario: Unattended ships without CI
+- **WHEN** `review.ship_without_ci` is absent
+- **THEN** it is `false`, and an unattended ship stops when there are no checks
+
+#### Scenario: Invalid ship setting
+- **WHEN** `review.ship_without_ci` is `yes`
+- **THEN** validation fails and names the setting and the allowed values `true` and `false`
 
 ### Requirement: Quality and presentation settings
 `relevo.yml` SHALL support `qa.retries`, `qa.rules_from`, `evidence.policy` (`attach_to_pr`, `local_only`), `labels`, `language` and `trust` (`private-team`, `public`).
@@ -151,3 +159,29 @@ When `qa.rules_from` names a file, or a list of files, the QA agent SHALL read e
 #### Scenario: Invalid value
 - **WHEN** `design.images` is `sometimes`
 - **THEN** validation fails and names the setting
+
+### Requirement: Runner setting
+`relevo.yml` SHALL support `runner.labels`, a non-empty list of strings naming the runner that every Relevo workflow runs on. When it is absent the runner SHALL be `ubuntu-latest`. Validation SHALL reject an empty list, an entry that is not a non-empty string, and a value that is not a list.
+
+#### Scenario: Default runner
+- **WHEN** `relevo.yml` has no `runner` key
+- **THEN** validation passes and the runner is `ubuntu-latest`
+
+#### Scenario: Self-hosted runner with labels
+- **WHEN** `runner.labels` is `[self-hosted, Front]`
+- **THEN** validation passes and the workflows run on a runner that has both labels
+
+#### Scenario: Empty list
+- **WHEN** `runner.labels` is `[]`
+- **THEN** validation fails and says the list needs at least one label
+
+#### Scenario: A single string
+- **WHEN** `runner.labels` is `self-hosted`
+- **THEN** validation fails and says it must be a list of labels
+
+### Requirement: The runner setting holds no persistence flag
+`relevo.yml` SHALL NOT define a setting that declares a runner ephemeral or persistent. Relevo SHALL treat every runner as one that may persist between jobs.
+
+#### Scenario: A persistence key
+- **WHEN** `relevo.yml` sets `runner.ephemeral`
+- **THEN** validation fails and says that the key does not exist and that Relevo assumes a runner persists

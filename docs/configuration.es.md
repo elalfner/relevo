@@ -24,15 +24,17 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `review.mode` | `none` (en solitario), `peer` o `roles` | `peer` |
 | `review.merger` | quién ejecuta `/relevo:ship`: `author` o `approver` | `approver` |
 | `review.autopilot` | cuánto de la revisión puede conducir el agente: `off` (la persona lo hace todo), `precheck` (el agente recorre las líneas y anota su resultado; la persona confirma cada línea) o `verify` (el agente también puede marcar las líneas que probó con una aserción, un finder semántico, el log o el código de salida de un comando del proyecto; la persona confirma el resto y da el acuerdo). Un destino web necesita `precheck` o `verify`, y la revisión recomienda `verify`; haz commit del ajuste en la rama base | `off` |
+| `review.ship_without_ci` | `true` deja que la etiqueta `relevo:ship` fusione un pull request sobre el que no corrió ningún check; `/relevo:ship` se lo pregunta a la persona | `false` |
 | `review.allowed_origins` | orígenes web que una revisión conducida puede visitar además de `localhost`, por ejemplo `https://staging.example.com` | `[]` |
 | `skills.allow_scripts` | nombres de las skills extra que tienen scripts y pueden usarse; una skill con scripts que no está en la lista se deja fuera, y `/relevo:doctor` lo dice | vacío |
-| `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando | 2 |
+| `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando; un issue con una etiqueta `relevo:urgent` válida empieza igualmente | 2 |
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |
 | `limits.run_max_turns` | turnos por ejecución sin supervisión | 100 |
 | `limits.building_alert_hours` | horas sin actividad antes de reportar como atascado un issue en `building` ([Dónde corre `go`](execution.es.md)) | 3 |
 | `limits.run_max_cost` | **obligatorio** con `agent.build: claude` (el valor por defecto), y se rechaza con `antigravity`: dólares por ejecución sin supervisión; elige el tuyo | 5 |
 | `limits.run_max_tokens` | **obligatorio** con `agent.build: antigravity`, y se rechaza con `claude`: tokens por ejecución sin supervisión, que la guardia de ejecución de Relevo hace cumplir porque Antigravity no tiene un límite propio | ninguno |
+| `runner.labels` | runner de todos los workflows de Relevo, como lista de etiquetas (`[self-hosted, Front]`); `/relevo:init` la escribe en los archivos de workflow y `/relevo:doctor` comprueba que coincidan. Relevo asume que cualquier runner persiste entre jobs, así que no hay un ajuste para eso ([Runners self-hosted](execution.es.md#runners-self-hosted)) | `[ubuntu-latest]` |
 | `agent.build` | qué agente construye en la nube: `claude`, o `antigravity` (lo que cada uno puede y no puede hacer cumplir está en [Seguridad](security.es.md)) | `claude` |
 | `qa.retries` | intentos del desarrollador después de que QA rechaza | 1 |
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |

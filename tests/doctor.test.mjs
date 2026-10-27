@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, pluginDeclaration, readOnlyGh, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WORKFLOW_FILES, gatherFacts, isVueWeb, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { resolveProfile } from '../scripts/lib/stack-profile.mjs';
 
 const PLUGIN_ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
@@ -201,6 +204,24 @@ test('missing labels, a missing base branch, an untracked OpenSpec root and a mi
   assert.match(byId(results, 'repo.labels').message, new RegExp(allLabels[0]));
 });
 
+test('Scenario: Repository set up earlier - doctor fails the labels check naming relevo:urgent and says init creates it', () => {
+  const results = runChecks(healthy({ labels: allLabels.filter((n) => n !== 'relevo:urgent') }));
+  assert.deepEqual(failing(results), ['repo.labels']);
+  const labels = byId(results, 'repo.labels');
+  assert.match(labels.message, /relevo:urgent/);
+  assert.doesNotMatch(labels.message, /relevo:ready|relevo:ship/);
+  assert.match(labels.fix, /\/relevo:init/);
+});
+
+test('Scenario: Renamed label - doctor checks for the name given in labels.urgent', () => {
+  const text = `${CONFIG_TEXT}labels:\n  urgent: prio:now\n`;
+  const renamed = loadConfig(text).config;
+  const missing = runChecks(healthy({ configText: text, config: renamed, labels: allLabels }));
+  assert.match(byId(missing, 'repo.labels').message, /prio:now/);
+  const present = runChecks(healthy({ configText: text, config: renamed, labels: [...allLabels.filter((n) => n !== 'relevo:urgent'), 'prio:now'] }));
+  assert.equal(byId(present, 'repo.labels').status, 'pass');
+});
+
 test('without a repository or a sign-in, the GitHub checks are skipped with a warning', () => {
   const results = runChecks(healthy({ repo: null }));
   assert.equal(byId(results, 'repo.checks').status, 'warn');
@@ -221,7 +242,7 @@ test('protection comes from active rulesets and from classic branch protection',
     rules: [{ type: 'pull_request', parameters: { required_approving_review_count: 2, dismiss_stale_reviews_on_push: true } }, { type: 'deletion' }, { type: 'non_fast_forward' }],
   };
   const a = summarizeProtection({ rulesets: [ruleset], branch: 'dev', defaultBranch: 'main' });
-  assert.deepEqual(a, { protected: true, pullRequestRequired: true, approvals: 2, dismissStale: true, blocksDeletion: true, blocksForcePush: true });
+  assert.deepEqual(a, { protected: true, pullRequestRequired: true, approvals: 2, dismissStale: true, lastPushApproval: false, requiredChecks: false, blocksDeletion: true, blocksForcePush: true });
   assert.equal(summarizeProtection({ rulesets: [ruleset], branch: 'main', defaultBranch: 'main' }).protected, false);
   assert.equal(summarizeProtection({ rulesets: [{ ...ruleset, enforcement: 'disabled' }], branch: 'dev', defaultBranch: 'main' }).protected, false);
   const classic = summarizeProtection({ classic: { required_pull_request_reviews: { required_approving_review_count: 1, dismiss_stale_reviews: false } }, branch: 'dev', defaultBranch: 'main' });
@@ -680,11 +701,12 @@ test('the entry point is looked for inside the folder of the platform', () => {
   assert.deepEqual(autopilotChecks(f).map((r) => r.status), ['pass', 'pass']);
 });
 
-test('Scenario: Vue without Playwright - doctor warns and gives the install command', () => {
+test('Scenario: Vue without Playwright - doctor warns, names /relevo:init and gives the install command of the platform folder', () => {
   const results = autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_VUE, playwright: false }));
   assert.equal(results.length, 1);
   assert.equal(results[0].status, 'warn');
-  assert.match(results[0].fix, /npm install -D playwright/);
+  assert.match(results[0].fix, /run \/relevo:init/);
+  assert.match(results[0].fix, /`cd apps\/site && npm install -D playwright && npx playwright install chromium`/);
   assert.equal(autopilotChecks(autopilotFacts({ mode: 'verify', platforms: AP_VUE, playwright: true }))[0].status, 'pass');
 });
 
@@ -965,4 +987,160 @@ test('gatherFacts asks git whether the repository layer is tracked', () => {
   assert.equal(gather({ tracked: false }).repositoryLayerTracked, false);
   assert.equal(gather({ tracked: false, repo: false }).repositoryLayerTracked, null);
   assert.equal(gather({ git: false }).repositoryLayerTracked, null);
+});
+
+test('Scenario: Approval of the last push required - doctor fails, naming the archive commit', () => {
+  const r = byId(runChecks(healthy({ protection: { base: { ...PROTECTED, lastPushApproval: true }, release: PROTECTED } })), 'repo.last-push.base');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /archive commit pushed by `ship` would need a new approval/);
+  assert.match(r.fix, /require approval of the most recent reviewable push/);
+});
+
+test('last-push approval and required checks are read from rulesets and from classic protection', () => {
+  const ruleset = {
+    target: 'branch', enforcement: 'active', conditions: { ref_name: { include: ['refs/heads/dev'], exclude: [] } },
+    rules: [{ type: 'pull_request', parameters: { required_approving_review_count: 1, require_last_push_approval: true } }, { type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'test' }] } }],
+  };
+  const a = summarizeProtection({ rulesets: [ruleset], branch: 'dev', defaultBranch: 'main' });
+  assert.equal(a.lastPushApproval, true);
+  assert.equal(a.requiredChecks, true);
+  const classic = summarizeProtection({ classic: { required_pull_request_reviews: { require_last_push_approval: true }, required_status_checks: { contexts: ['test'] } }, branch: 'dev', defaultBranch: 'main' });
+  assert.equal(classic.lastPushApproval, true);
+  assert.equal(classic.requiredChecks, true);
+});
+
+test('Scenario: No required checks - the ship workflow needs no App and the checks carry over', () => {
+  const r = byId(runChecks(healthy()), 'ship.app');
+  assert.equal(r.status, 'pass');
+  assert.match(r.message, /checks of the approved head carry over/);
+});
+
+test('Scenario: Required checks without the App - doctor fails and names the secrets', () => {
+  const required = { ...PROTECTED, requiredChecks: true };
+  const r = byId(runChecks(healthy({ protection: { base: required, release: PROTECTED } })), 'ship.app');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /cannot ship here/);
+  assert.match(r.fix, /RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY/);
+  const withApp = byId(runChecks(healthy({ protection: { base: required, release: PROTECTED }, secrets: ['ANTHROPIC_API_KEY', 'RELEVO_SHIP_APP_ID', 'RELEVO_SHIP_APP_KEY'] })), 'ship.app');
+  assert.equal(withApp.status, 'pass');
+});
+
+test('Scenario: Ship paused - doctor warns that the label is paused', () => {
+  const r = byId(runChecks(healthy({ shipVariable: 'off' })), 'ship.paused');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /RELEVO_CLOUD_SHIP is off/);
+});
+
+test('the ship checks are skipped when the ship workflow is not installed', () => {
+  const workflows = { ...healthy().workflows, 'relevo-ship.yml': { present: false, local: false, remote: false } };
+  const results = runChecks(healthy({ workflows, shipVariable: 'off', protection: { base: { ...PROTECTED, requiredChecks: true }, release: PROTECTED } }));
+  assert.equal(byId(results, 'ship.app'), undefined);
+  assert.equal(byId(results, 'ship.paused'), undefined);
+});
+
+test('playwrightFacts resolves Playwright from the folder of the platform, not from where the command runs', () => {
+  const tool = (name, args) => execFileSync(name, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const repo = mkdtempSync(join(tmpdir(), 'relevo-pw-'));
+  const pkg = join(repo, 'apps/site/node_modules/playwright');
+  mkdirSync(pkg, { recursive: true });
+  const browser = join(repo, 'chromium');
+  writeFileSync(join(pkg, 'package.json'), '{"name":"playwright","main":"index.js"}');
+  writeFileSync(join(pkg, 'index.js'), `module.exports = { chromium: { executablePath: () => ${JSON.stringify(browser)} } };`);
+  const exists = (p) => p === browser;
+  assert.deepEqual(playwrightFacts(join(repo, 'apps/site'), { tool, exists }), { playwright: true, chromium: true });
+  assert.deepEqual(playwrightFacts(join(repo, 'apps/site'), { tool, exists: () => false }), { playwright: true, chromium: false });
+  assert.deepEqual(playwrightFacts(repo, { tool, exists }), { playwright: false, chromium: false });
+});
+
+test('isVueWeb: a Vue platform with no targets or with web, and nothing else', () => {
+  assert.equal(isVueWeb({ stack: 'vue' }), true);
+  assert.equal(isVueWeb({ stack: 'vue', targets: ['web'] }), true);
+  assert.equal(isVueWeb({ stack: 'vue', targets: ['desktop'] }), false);
+  assert.equal(isVueWeb({ stack: 'flutter', targets: ['web'] }), false);
+});
+
+// ---- OpenSpec in web sessions
+
+const hookSettings = (...commands) => JSON.stringify({ hooks: { SessionStart: commands.map((command) => ({ hooks: [{ type: 'command', command }] })) } });
+const settingsProbe = (text) => ({ exists: (p) => p === '.claude/settings.json' && text !== null, read: () => text });
+
+test('the fact web hook: present, missing file, other hooks only, written by hand, invalid JSON', () => {
+  assert.deepEqual(webHookDeclaration(settingsProbe(hookSettings(WEB_HOOK_COMMAND))), { declared: true });
+  assert.deepEqual(webHookDeclaration(settingsProbe(hookSettings('npm install --global @fission-ai/openspec'))), { declared: true }, 'a hook written by hand counts');
+  assert.deepEqual(webHookDeclaration(settingsProbe(null)), { declared: false });
+  assert.deepEqual(webHookDeclaration(settingsProbe(hookSettings('echo hi'))), { declared: false });
+  assert.deepEqual(webHookDeclaration(settingsProbe('{}')), { declared: false });
+  assert.deepEqual(webHookDeclaration(settingsProbe('{ not json')), { unreadable: true });
+});
+
+test('Scenario: A remote session without the hook - a warning that names the hook and says to run init; not a failure', () => {
+  const r = runChecks(healthy({ remoteSession: true, webHook: { declared: false } }));
+  const check = byId(r, 'web.openspec-hook');
+  assert.equal(check.status, 'warn');
+  assert.match(check.message, /no SessionStart hook that installs OpenSpec/);
+  assert.match(check.fix, /\/relevo:init/);
+  assert.ok(!failing(r).includes('web.openspec-hook'));
+});
+
+test('Scenario: A remote session with the hook - a passed check', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webHook: { declared: true } })), 'web.openspec-hook').status, 'pass');
+});
+
+test('Scenario: A terminal - no check about the hook, with or without it', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: false, webHook: { declared: false } })), 'web.openspec-hook'), undefined);
+  assert.equal(byId(runChecks(healthy({ remoteSession: false, webHook: { declared: true } })), 'web.openspec-hook'), undefined);
+  assert.equal(byId(runChecks(healthy({ remoteSession: true })), 'web.openspec-hook'), undefined, 'no fact, no check');
+});
+
+test('a remote session with an unreadable settings file warns that it cannot be checked', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webHook: { unreadable: true } })), 'web.openspec-hook').status, 'warn');
+});
+
+test('gatherFacts reads the hook and the remote session', () => {
+  const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), exists: (p) => p === '.claude/settings.json', read: () => hookSettings(WEB_HOOK_COMMAND) });
+  assert.deepEqual(f.webHook, { declared: true });
+  assert.equal(f.remoteSession, process.env.CLAUDE_CODE_REMOTE === 'true');
+});
+
+const HOSTED_GO = GO_TEMPLATE;
+const FRONT_GO = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]');
+const FRONT_CONFIG = loadConfig(`${CONFIG_TEXT}runner:\n  labels: [self-hosted, Front]\n`).config;
+const runner = (over) => runChecks(over).filter((r) => r.id.startsWith('automation.runner'));
+
+test('Scenario: A workflow edited by hand - doctor fails, names the file and says to set runner.labels or restore ubuntu-latest', () => {
+  const [r] = runner(withGo(FRONT_GO)).filter((x) => x.status === 'fail');
+  assert.equal(r.id, 'automation.runner.relevo-go.yml');
+  assert.match(r.message, /relevo-go\.yml runs on \[self-hosted, Front\] and relevo\.yml says \[ubuntu-latest\]/);
+  assert.match(r.fix, /set runner\.labels: \[self-hosted, Front\] in relevo\.yml .* restore runs-on: ubuntu-latest in relevo-go\.yml/);
+});
+
+test('Scenario: Workflows and setting agree - the runner check passes and one warning explains the persistence assumption', () => {
+  const res = runner({ ...withGo(FRONT_GO), config: FRONT_CONFIG });
+  assert.deepEqual(res.map((r) => [r.id, r.status]), [['automation.runner', 'pass'], ['automation.runner.persistence', 'warn']]);
+  assert.match(res[1].message, /assumes it keeps its files between jobs/);
+  assert.match(res[1].message, /permissions of the runner's user/);
+  assert.doesNotMatch(res[1].message, /ephemeral/, 'doctor does not claim to know whether the runner is ephemeral');
+  assert.match(res[1].fix, /ephemeral runner .* or a container is the real barrier/);
+});
+
+test('Scenario: Hosted runner - the runner check passes and no persistence warning appears', () => {
+  const res = runner(withGo(HOSTED_GO));
+  assert.deepEqual(res.map((r) => [r.id, r.status]), [['automation.runner', 'pass']]);
+});
+
+test('the setting says self-hosted and a workflow still runs on ubuntu-latest - the file is named', () => {
+  const [r] = runner({ ...withGo(HOSTED_GO), config: FRONT_CONFIG }).filter((x) => x.status === 'fail');
+  assert.match(r.message, /runs on \[ubuntu-latest\] and relevo\.yml says \[self-hosted, Front\]/);
+  assert.match(r.fix, /change runs-on in relevo-go\.yml to \[self-hosted, Front\]/);
+});
+
+test('the order of the labels does not matter, and an expression in runs-on is not judged', () => {
+  const swapped = FRONT_GO.replaceAll('[self-hosted, Front]', '[Front, self-hosted]');
+  assert.deepEqual(runner({ ...withGo(swapped), config: FRONT_CONFIG }).filter((x) => x.status === 'fail'), []);
+  const expr = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: ${{ vars.RUNNER }}');
+  assert.deepEqual(runner(withGo(expr)).filter((x) => x.status === 'fail'), []);
+});
+
+test('a repository with no workflow text read and the default runner gets no runner result at all', () => {
+  assert.deepEqual(runner(healthy()), []);
 });

@@ -9,8 +9,10 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 | Threat | Measure | Enforced by |
 |---|---|---|
 | The agent pushes to the base or release branch | a ruleset that lets the agent create only `feature/*` branches; `/relevo:init` creates it and `/relevo:doctor` warns when it is missing | the platform |
-| The agent or the automation approves or merges | approval and merge are explicit human acts: `/relevo:ship` asks for a written confirmation, and the author cannot approve their own pull request | the platform, and `ship` |
+| The agent or the automation approves or merges | approval and merge are explicit human acts: `/relevo:ship` asks for a written confirmation, the ship workflow merges only when a person applied `relevo:ship` (a label from a bot ships nothing), and the author cannot approve their own pull request | the platform, and `ship` |
+| A pull request makes its author eligible to ship it | the ship workflow reads `relevo.yml` from the base branch and its scripts from the published package, and runs nothing from the branch (git runs without hooks) | the runner, and a script |
 | Text in an issue, comment or log is taken as an instruction | text is treated as data, and the agent has a closed list of tools with no web access (`WebFetch`, `WebSearch`, `curl` and `wget` are refused) | the runner |
+| Someone without the right skips the review capacity of the team | `relevo:urgent` counts only when the person who applied it could mark the issue `ready` (maintainer when `trust` is `public`); any other label is removed with a comment, and it never skips the specification, the dependencies or `limits.concurrent_agents` | a script |
 | The issue is edited after someone labelled it `ready` | the text that was approved is hashed and `go` refuses to build a different one (`issue-hash.mjs`) | a script |
 | A run changes the files that control the workflow | workflows, `relevo.yml`, `.relevo/`, the folders of skills and the project rules file are protected paths; a commit that touches them is refused (`commit-change.mjs`) | a script |
 | A run adds a dependency that runs code when installed | dependency files are protected unless the issue lists them in `Allow-paths:`, dependencies are installed without package scripts, and QA rejects a dependency the design does not justify | a script, and QA |
@@ -24,11 +26,13 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 | A driven review shows a screenshot to the model, writes files, or runs without the person's say | the review script takes screenshots only through `capture(name, check)`, which saves them and gives nothing back; it cannot screenshot itself, pass a file path to the browser or print to the agent; the runner starts only with the person's confirmation of the data, before the agreement, and with the exact script `qa` passed | a script, and QA |
 | A driven review breaks the person's dev server | extra servers are started and stopped only by `extra-server.mjs`, which never touches a server it did not start, and the review does not switch branches under a server that runs from the working tree | a script |
 | The runner runs a different version of Relevo than the one you read | the workflows install the published package at a pinned version (`RELEVO_VERSION`), published from a tag with provenance, and stop if a script is missing | the runner |
+| A job leaves tools, settings or files on a runner that keeps them between jobs | each job installs its tools under its own temporary folder at a pinned version, the Antigravity run uses a home folder of the job, and a last step removes what the job added to the workspace; `/relevo:doctor` states that a self-hosted runner is assumed to persist | the workflow; whether the machine is a sandbox is the runner's |
 
 ## What it does not protect
 
 - **Prompt injection has no complete defence.** A hidden instruction in a README, a comment or a package can still steer the agent. Relevo shrinks what a steered agent can do (no web, a closed tool list, protected paths, limits), not whether it can be steered.
 - **Code the agent writes runs in the runner.** The tests and the build run with the runner's network and permissions. The closed list restricts the agent's tools, not the operating system, so malicious code that the agent was led to write would run there until QA and the review stop it.
+- **A self-hosted runner is not a sandbox.** Relevo assumes it keeps its files between jobs, cleans what its own steps add, and cannot tell whether the machine is ephemeral. The agent's code runs with the permissions of the runner's user and the network of the machine, which on your own hardware can reach internal services and the credentials of other jobs. An ephemeral runner (created for one job) or a container is the real barrier; keep the repository private, and do not share the runner with projects you do not control. `runner.labels` in `relevo.yml` only chooses where the workflows run ([Where `go` runs](execution.md#self-hosted-runners)).
 - **Local mode runs with your credentials.** `/relevo:go <n> --local` and the review run on your machine, with your tools and your accounts. Read what you are asked to run.
 - **Branch protection may be unavailable.** On a private repository of a free GitHub plan the platform refuses the rules above; then approval and merge are enforced only by the written confirmation of `ship`.
 - **The review script of a driven review is not a sandbox.** The runner refuses a script that reaches the file system or the process, but that is a tripwire; `qa` reads the script first and you should read one that touches anything sensitive.
@@ -65,6 +69,6 @@ What the table does not say, for Antigravity:
 
 ## Secrets
 
-- Secrets live only in the secret store of the repository: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (or `GEMINI_API_KEY` with `agent.build: antigravity`) for the model, and `RELEVO_LINKS_TOKEN` for the repositories in `links`.
+- Secrets live only in the secret store of the repository: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (or `GEMINI_API_KEY` with `agent.build: antigravity`) for the model, `RELEVO_LINKS_TOKEN` for the repositories in `links`, and `RELEVO_SHIP_APP_ID` and `RELEVO_SHIP_APP_KEY` for the GitHub App of the ship workflow, when the base branch requires checks.
 - They never go in `relevo.yml`, in an issue or in a commit, and `/relevo:doctor` shows only whether a secret exists, never its value.
 - Workflows do not expose secrets to code that comes from forks.

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { REQUIRED_SKILLS, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
-import { applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
+import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
+import { mergeWebHook, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -49,7 +49,9 @@ test('Scenario: Plan before changes - it lists files, labels, branches, rulesets
 test('Scenario: Fresh repository - everything is planned and the API key is a manual step', () => {
   const items = plan(bare());
   assert.equal(get(items, 'config').status, 'todo');
-  assert.equal(get(items, 'labels').labels.length, 11);
+  assert.equal(get(items, 'labels').labels.length, 13);
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:ship'), 'the ship label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:urgent'), 'the urgent label is created');
   assert.equal(get(items, 'branch.base').status, 'todo');
   assert.equal(get(items, 'protection').status, 'todo');
   WORKFLOW_FILES.forEach((f) => assert.equal(get(items, `workflow.${f}`).status, 'todo'));
@@ -64,6 +66,21 @@ test('Scenario: Never touches the API key - no item writes or reads a secret', (
   const calls = [];
   applyPlan(items, { repo: 'o/r', io: { gh: (a, input) => { calls.push([a, input]); return JSON.stringify({ commit: { sha: 'abc' } }); }, write() {}, append() {} } });
   assert.ok(calls.every(([a]) => !a.join(' ').includes('secrets')));
+});
+
+test('Scenario: Repository set up earlier - init plans only the urgent label when every other label exists', () => {
+  const facts = bare({ configText: renderConfig(template, ANSWERS), config: loadConfig(renderConfig(template, ANSWERS)).config, labels: allLabels.filter((n) => n !== 'relevo:urgent') });
+  const item = get(plan(facts), 'labels');
+  assert.equal(item.status, 'todo');
+  assert.deepEqual(item.labels.map((l) => l.name), ['relevo:urgent']);
+});
+
+test('Scenario: Renamed label - init creates the name given in labels.urgent', () => {
+  const text = `${renderConfig(template, ANSWERS)}\nlabels:\n  urgent: prio:now\n`;
+  const loaded = loadConfig(text);
+  assert.ok(loaded.ok, JSON.stringify(loaded.errors));
+  const item = get(plan(bare({ configText: text, config: loaded.config, labels: allLabels })), 'labels');
+  assert.deepEqual(item.labels.map((l) => l.name), ['prio:now']);
 });
 
 test('Scenario: Second run - nothing to do for what is already correct', () => {
@@ -133,7 +150,7 @@ test('applying carries out labels, branch, ruleset, workflow permissions, files 
   };
   const results = applyPlan(plan(bare()), { repo: 'o/r', io });
   assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)));
-  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 11);
+  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 13);
   assert.ok(calls.some((c) => c.args.includes('-f') && c.args.includes('ref=refs/heads/dev') && c.args.includes('sha=abc123')));
   assert.ok(calls.some((c) => c.args.includes(`repos/o/r/rulesets`) && JSON.parse(c.input).name === 'relevo-protected-branches'));
   assert.ok(calls.some((c) => c.args.includes('repos/o/r/actions/permissions/workflow') && c.args.includes('can_approve_pull_request_reviews=false')));
@@ -309,6 +326,7 @@ test('Scenario: Local only - the go and queue workflows are not added and the pl
   assert.equal(wf(items, 'relevo-go.yml'), undefined);
   assert.equal(wf(items, 'relevo-queue.yml'), undefined);
   assert.equal(wf(items, 'relevo-review.yml').status, 'todo', 'the workflows that do not use the model are still added');
+  assert.equal(wf(items, 'relevo-ship.yml').status, 'todo', 'Scenario: Local-only setup keeps the ship workflow');
   assert.match(items.find((i) => i.id === 'execution').description, /Run \/relevo:go <n>, or node scripts\/go-local\.mjs <n>/);
   assert.equal(items.find((i) => i.id === 'manual.api-key').status, 'ok');
 });
@@ -355,6 +373,55 @@ test('Scenario: A settings file that cannot be read - a manual step, and nothing
 
 test('without the fact there is no plugin line, so older callers keep their plan', () => {
   assert.equal(get(plan(bare()), 'install.plugin-project'), undefined);
+});
+
+// ---- OpenSpec in web sessions
+
+test('Scenario: A repository without the hook - an install line that shows the hook, never applied by the script', () => {
+  const it = get(plan(bare({ webHook: { declared: false } })), 'install.web-hook');
+  assert.equal(it.status, 'todo');
+  assert.equal(it.install, true);
+  assert.equal(it.hook, WEB_HOOK_COMMAND);
+  assert.match(renderPlan([it]), /\[will do\] Add a hook that installs OpenSpec at the start of a web session/);
+  const calls = [];
+  applyPlan([it], { repo: 'o/r', io: { gh: (a) => calls.push(a), write: (p) => calls.push(p), append: (p) => calls.push(p) } });
+  assert.deepEqual(calls, []);
+});
+
+test('Scenario: A repository that already has the hook - the line is reported as in place', () => {
+  assert.equal(get(plan(bare({ webHook: { declared: true } })), 'install.web-hook').status, 'ok');
+});
+
+test('Scenario: A settings file that cannot be read - a manual step', () => {
+  const it = get(plan(bare({ webHook: { unreadable: true } })), 'install.web-hook');
+  assert.equal(it.status, 'manual');
+  assert.match(it.description, /not valid JSON/);
+});
+
+test('without the fact there is no hook line, so older callers keep their plan', () => {
+  assert.equal(get(plan(bare()), 'install.web-hook'), undefined);
+});
+
+test('Scenario: A settings file with other settings - the hook is added next to them and none changes', () => {
+  const before = JSON.stringify({ attribution: { commit: '' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo bye' }] }], SessionStart: [{ hooks: [{ type: 'command', command: 'echo hi' }] }] } });
+  const after = JSON.parse(mergeWebHook(before));
+  assert.deepEqual(after.attribution, { commit: '' });
+  assert.deepEqual(after.hooks.Stop, JSON.parse(before).hooks.Stop);
+  assert.equal(after.hooks.SessionStart.length, 2);
+  assert.deepEqual(after.hooks.SessionStart[0], JSON.parse(before).hooks.SessionStart[0]);
+  assert.equal(after.hooks.SessionStart[1].hooks[0].command, WEB_HOOK_COMMAND);
+});
+
+test('a missing settings file is created with only the hook, and merging twice adds nothing twice', () => {
+  const once = mergeWebHook(null);
+  assert.equal(JSON.parse(once).hooks.SessionStart.length, 1);
+  assert.equal(mergeWebHook(once), once);
+});
+
+test('a settings file that is not a JSON object is never rewritten', () => {
+  assert.throws(() => mergeWebHook('{ not json'));
+  assert.throws(() => mergeWebHook('[]'), /not a JSON object/);
+  assert.throws(() => mergeWebHook('{"hooks":{"SessionStart":{}}}'), /not a list/);
 });
 
 // ---- the agent that builds in the cloud
@@ -409,4 +476,98 @@ test('Scenario: Supabase platform in init - offers skills install and MCP guidan
   assert.match(get(items, 'install.skill.supabase-postgres-best-practices').command, /supabase-postgres-best-practices/);
   assert.equal(get(items, 'manual.supabase-mcp').status, 'manual');
   assert.match(get(items, 'manual.supabase-mcp').description, /Supabase MCP/);
+});
+
+// ---------- what a browser review of Vue needs
+
+const VUE = { site: { stack: 'vue', path: 'apps/site', targets: ['web'] } };
+const vuePlan = (vueWeb, platforms = VUE, over = {}) => planInit({ facts: bare({ vueWeb, ...over }), answers: { ...ANSWERS, platform: undefined, platforms }, templates, current: empty(), admin: true });
+
+test('Scenario: Vue platform without the browser library - init offers it as a dev dependency in the platform folder, then its Chromium', () => {
+  const items = vuePlan({ site: { playwright: false, chromium: false } });
+  const add = items.find((i) => i.id === 'install.playwright.site');
+  assert.deepEqual([add.status, add.install, add.command], ['todo', true, 'cd apps/site && npm install -D playwright']);
+  assert.match(add.description, /left for you to commit/);
+  const browser = items.find((i) => i.id === 'install.chromium.site');
+  assert.deepEqual([browser.status, browser.command], ['todo', 'cd apps/site && npx playwright install chromium']);
+  assert.ok(items.indexOf(add) < items.indexOf(browser), 'Playwright is added before its browser');
+  assert.match(renderPlan(items), /\(cd apps\/site && npm install -D playwright\)/);
+});
+
+test('Scenario: Browser not installed / Already set up - only what is missing is offered', () => {
+  const chromiumOnly = vuePlan({ site: { playwright: true, chromium: false } });
+  assert.equal(chromiumOnly.find((i) => i.id === 'install.playwright.site').status, 'ok');
+  assert.equal(chromiumOnly.find((i) => i.id === 'install.chromium.site').status, 'todo');
+  const ready = vuePlan({ site: { playwright: true, chromium: true } });
+  assert.deepEqual(ready.filter((i) => /^install\.(playwright|chromium)\./.test(i.id)).map((i) => i.status), ['ok', 'ok']);
+  const atRoot = vuePlan({ app: { playwright: false, chromium: false } }, { app: { stack: 'vue', path: '.' } });
+  assert.equal(atRoot.find((i) => i.id === 'install.playwright.app').command, 'npm install -D playwright');
+});
+
+test('init offers no Playwright for a platform that is not Vue on the web', () => {
+  const flutter = plan(bare({ vueWeb: {} }));
+  assert.equal(flutter.some((i) => /^install\.(playwright|chromium)\./.test(i.id)), false);
+  const desktop = vuePlan({}, { site: { stack: 'vue', path: 'apps/site', targets: ['desktop'] } });
+  assert.equal(desktop.some((i) => /^install\.(playwright|chromium)\./.test(i.id)), false);
+});
+
+test('Scenario: New configuration with a Vue web platform - relevo.yml has review.autopilot precheck', () => {
+  const config = loadConfig(vuePlan({ site: { playwright: true, chromium: true } }).find((i) => i.id === 'config').content).config;
+  assert.equal(config.review.autopilot, 'precheck');
+  const flutter = loadConfig(plan(bare()).find((i) => i.id === 'config').content).config;
+  assert.equal(flutter.review.autopilot, 'off');
+  assert.equal(loadConfig(renderConfig(template, { platforms: VUE, autopilot: 'verify' })).config.review.autopilot, 'verify');
+});
+
+test('Scenario: Existing configuration with the autopilot off - a manual step, and relevo.yml is not rewritten', () => {
+  const text = 'limits:\n  run_max_cost: 5\nreview:\n  autopilot: off\nplatforms:\n  site:\n    stack: vue\n    path: apps/site\n    targets: [web]\n';
+  const items = planInit({ facts: bare({ configText: text, config: loadConfig(text).config, vueWeb: { site: { playwright: true, chromium: true } } }), answers: ANSWERS, templates, current: empty(), admin: true });
+  assert.equal(items.find((i) => i.id === 'config').status, 'ok');
+  const manual = items.find((i) => i.id === 'review.autopilot');
+  assert.equal(manual.status, 'manual');
+  assert.match(manual.description, /set review\.autopilot to precheck \(or verify\)/);
+  const on = text.replace('autopilot: off', 'autopilot: precheck');
+  assert.equal(planInit({ facts: bare({ configText: on, config: loadConfig(on).config, vueWeb: {} }), answers: ANSWERS, templates, current: empty(), admin: true }).some((i) => i.id === 'review.autopilot'), false);
+});
+
+test('Scenario: Default - without a runner the workflows run on ubuntu-latest and relevo.yml has no runner key', () => {
+  const items = plan(bare());
+  WORKFLOW_FILES.forEach((f) => assert.equal(get(items, `workflow.${f}`).content, workflows[f]));
+  assert.ok(!/^runner:/m.test(get(items, 'config').content));
+  assert.ok(!/^\s*labels:/m.test(get(items, 'config').content), 'the example stays commented out');
+});
+
+test('Scenario: Self-hosted - the labels go into relevo.yml and into every runs-on of every generated workflow', () => {
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] }, templates, current: empty(), admin: true });
+  const config = loadConfig(get(items, 'config').content);
+  assert.ok(config.ok);
+  assert.deepEqual(config.config.runner.labels, ['self-hosted', 'Front']);
+  WORKFLOW_FILES.forEach((f) => {
+    const text = get(items, `workflow.${f}`).content;
+    assert.ok(/runs-on: \[self-hosted, Front\]/.test(text), f);
+    assert.ok(!/runs-on: ubuntu-latest/.test(text), f);
+    assert.equal((text.match(/runs-on:/g) ?? []).length, (workflows[f].match(/runs-on:/g) ?? []).length, `${f} keeps every job`);
+  });
+});
+
+test('Scenario: Regenerating a workflow - a repository that sets runner.labels gets them in a workflow it adds', () => {
+  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] })).config;
+  const current = empty();
+  current.workflows['relevo-ship.yml'] = null;
+  const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
+  assert.match(get(items, 'workflow.relevo-ship.yml').content, /runs-on: \[self-hosted, Front\]/);
+});
+
+test('a workflow already written for the runner of the repository is reported as up to date', () => {
+  const config = loadConfig(renderConfig(template, { ...ANSWERS, runnerLabels: ['self-hosted', 'Front'] })).config;
+  const current = empty();
+  current.workflows['relevo-sla.yml'] = workflows['relevo-sla.yml'].replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, Front]');
+  const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
+  assert.equal(get(items, 'workflow.relevo-sla.yml').status, 'ok');
+});
+
+test('a runner with one label is written as that label, and an invalid list is refused by renderConfig', () => {
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['my-runner'] }, templates, current: empty(), admin: true });
+  assert.match(get(items, 'workflow.relevo-sla.yml').content, /runs-on: my-runner\n/);
+  assert.throws(() => renderConfig(template, { ...ANSWERS, runnerLabels: [] }), /needs at least one label|runner example/);
 });
