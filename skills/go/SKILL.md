@@ -88,6 +88,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.mjs
 
 It checks the configuration, that OpenSpec runs and finds a root for this repository, and that the working tree is clean. If it exits non-zero, stop with a clear message and change nothing: show its output, which names each failed check and its fix.
 
+When the failed check is `openspec` (the command line does not run), stop there. Show the install command it gives and do not go on from memory or from reading the code: never write anything under `openspec/changes/` by hand, and never imitate what `openspec` would have produced.
+
 Find the repository name: `$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ### 1. Plan and claim

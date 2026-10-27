@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = \"true\" ] && ! command -v openspec >/dev/null 2>&1 && OPENSPEC_TELEMETRY=0 npm install --global @fission-ai/openspec || true"
           }
         ]
       }
