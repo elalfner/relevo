@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-27
+
 ### Added
 
 - **`/relevo:init` updates a workflow that differs, by a three-way merge.** It finds the published template closest to the file, fetches it with `npm`, and merges it with the file and the current template. A clean merge is offered in the plan with its difference and written on your agreement, keeping your own changes (your credential line, your runner); a conflict writes nothing and shows both versions; when no published version is close it asks which one the workflow came from. Only files under `.github/workflows/` are written.
@@ -17,6 +19,15 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **`/relevo:doctor` puts what needs action first.** The text report starts with a line that says what it judged (the repository, and whether the workflows were read from the default branch or the working copy), then lists the `FAILURES`, the `WARNINGS` and the `NOTES`, each with its count, and only counts the checks that passed. `/relevo:doctor --all` (and `relevo doctor --all`) lists every check as before. `--json` still lists every check and the exit status is the same: 1 only when a check failed. A person or a program that parsed the text layout should use `--json`.
 - **A new level, `note`,** for information that asks for nothing: the reminder about the terms of a subscription token, the subscription explanation, a skill reserved for you and iOS on a machine that is not macOS. A note is neither a failure nor a warning.
 - **One result per cause.** Workflows that run on another runner than `runner.labels` (the check of 0.8.0 printed one failure per file) are one failure that names them all, and so are workflows that are not installed, disabled or not yet listed. The closing line counts results, not files.
+
+### Known limits
+
+- The update of a workflow by a merge was checked on the five workflows of a real project through its plan (no conflict, its own runner and credential kept) and by tests with the published templates, but a written update, committed and run, has not been done yet.
+- The cloud agent loading the plugin from the pinned package was checked on one self-hosted Linux runner with a subscription token, in two runs. It was not checked on a GitHub-hosted runner or with an API key, which use the same option of the action.
+- `claude-code-action` keeps its own state in the home of the runner's user, and Relevo does not remove it: settings, caches and the transcripts of its sessions (28 MB after the runs of one runner), which hold what the agent read and wrote. It also installs its own default plugin there.
+- `/relevo:init` needs `npm` and a network connection to fetch the published templates it merges with. Without them it leaves the workflow as it is and says why.
+- A workflow of Antigravity from a very old version may conflict where it should not: the old template is rendered with its agent blocks only if that package carries them.
+- The versions that `/relevo:doctor` lists come from `claude plugin list --json`; if `claude` is not on the path it warns and the other checks run.
 
 ## [0.8.0] - 2026-10-26
 
