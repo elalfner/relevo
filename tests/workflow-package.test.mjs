@@ -51,3 +51,27 @@ test('the model action still installs the plugin from the marketplace entry, and
   assert.match(go, /plugins: relevo@relevo/);
   files.forEach((f) => assert.doesNotMatch(read(`templates/workflows/${f}`).split('plugin_marketplaces')[0], /RELEVO_PLUGIN_TOKEN \|\| github\.token/, f));
 });
+
+test('Scenario: A release - every template starts with the stamp of the version of the package', () => {
+  files.forEach((f) => {
+    const first = read(`templates/workflows/${f}`).split('\n')[0];
+    const m = /^# relevo-template: (\d+\.\d+\.\d+)$/.exec(first);
+    assert.ok(m, `${f} starts with "# relevo-template: X.Y.Z"`);
+    assert.equal(m[1], pkg.version, `${f} is stamped ${m[1]} but the package is ${pkg.version}`);
+  });
+});
+
+test('Scenario: A pin raised by hand - the stamp is a line of its own, apart from the pin', () => {
+  files.forEach((f) => {
+    const text = read(`templates/workflows/${f}`);
+    assert.equal((text.match(/relevo-template:/g) ?? []).length, 1, `${f} has one stamp`);
+    assert.notEqual(text.indexOf('# relevo-template:'), text.indexOf('RELEVO_VERSION:'), f);
+  });
+});
+
+test('RELEASING.md tells the maintainer to move the stamp with the pin, and gives the right reason for publishing first', () => {
+  const releasing = read('RELEASING.md');
+  assert.match(releasing, /`# relevo-template:`/);
+  assert.match(releasing, /templates on `main` never pin a package version that does not exist/);
+  assert.doesNotMatch(releasing, /marketplace on `main` never names/);
+});

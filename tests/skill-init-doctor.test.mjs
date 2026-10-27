@@ -40,10 +40,10 @@ test('Scenario: Plan before changes - init shows the plan and waits for a yes be
   assert.match(body, /one direct yes\/no question/);
 });
 
-test('Scenario: Second run - the skill relies on the idempotent plan and never overwrites what differs', () => {
+test('Scenario: Second run - the skill relies on the idempotent plan and never overwrites a relevo.yml that differs', () => {
   const { body } = load('init');
   assert.match(body, /makes? a second run harmless|second run harmless/);
-  assert.match(body, /Never overwrite a workflow or `relevo\.yml` that already exists and differs/);
+  assert.match(body, /Never overwrite `relevo\.yml` that already exists and differs/);
 });
 
 test('Scenario: Never touches the API key - init tells the person to add it themselves', () => {
@@ -172,4 +172,12 @@ test('Scenario: Information with no action - the doctor skill says a note asks f
   assert.match(body, /`\[note\]` asks for nothing/);
   assert.match(body, /`FAILURES`, the `WARNINGS` and the `NOTES`/);
   assert.match(body, /`--all` lists them as `\[pass\]`/);
+});
+
+test('Scenario: A workflow that differs - the init skill updates it only through a clean merge the person agrees to, and never edits a conflict', () => {
+  const { body } = load('init');
+  assert.match(body, /A workflow that already exists and differs is reported, unless the plan offers to update it/);
+  assert.match(body, /never edit it to resolve the conflict yourself/);
+  assert.match(body, /run the plan again with `--from <version>`/);
+  assert.doesNotMatch(body, /Never overwrite a workflow or `relevo\.yml`/, 'the old rule is gone');
 });

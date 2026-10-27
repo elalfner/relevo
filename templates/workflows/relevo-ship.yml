@@ -1,3 +1,4 @@
+# relevo-template: 0.8.0
 # Relevo: ships an issue when a person applies the `relevo:ship` label to it.
 # Copy to .github/workflows/relevo-ship.yml. If you renamed the ship label in relevo.yml, change it below too.
 #

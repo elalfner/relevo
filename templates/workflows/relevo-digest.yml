@@ -1,3 +1,4 @@
+# relevo-template: 0.8.0
 # Relevo: posts one digest per working day, as a comment on the issue named by digest.issue in relevo.yml.
 # It lists who is waiting on what and the alerts, and posts nothing when nothing is waiting.
 # Subscribe your chat tool to that issue to receive it. Copy to .github/workflows/relevo-digest.yml.

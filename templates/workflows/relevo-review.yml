@@ -1,3 +1,4 @@
+# relevo-template: 0.8.0
 # Relevo: keeps the issue label in step with its pull request.
 # A review that requests changes sets `relevo:changes-requested` and mentions the author; a new push returns the
 # issue to `relevo:pr-open`; an approval mentions the person who will run /relevo:ship.

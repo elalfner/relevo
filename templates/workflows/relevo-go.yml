@@ -1,3 +1,4 @@
+# relevo-template: 0.8.0
 # Relevo: builds an issue when someone with write access labels it `relevo:ready`.
 # Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
 #
