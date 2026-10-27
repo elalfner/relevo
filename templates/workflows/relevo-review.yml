@@ -5,6 +5,10 @@
 # Pull requests from forks are skipped explicitly (and would only get a read-only token anyway).
 # The scripts come from the published package @elalfner/relevo, at the version pinned in RELEVO_VERSION.
 
+# Runner: `runs-on` comes from `runner.labels` in relevo.yml (`/relevo:init` writes it into this file, `/relevo:doctor` checks it).
+# The runner needs git, gh and jq; Node and the tools of the job are installed per job. A self-hosted runner is assumed to
+# persist between jobs, so the job puts its tools under $RUNNER_TEMP and removes what it adds to the workspace.
+
 name: relevo-review
 
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
@@ -58,3 +62,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node .relevo-plugin/scripts/review-event.mjs --repo "$GITHUB_REPOSITORY"
+
+      # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
+      - name: Remove what this job added
+        if: always()
+        run: rm -rf .relevo-plugin

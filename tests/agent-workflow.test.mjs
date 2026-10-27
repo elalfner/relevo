@@ -62,7 +62,7 @@ test('the shell of the agent step uses the variables the env sets, and the binar
   assert.match(step, /AGY_VERSION: '\d+\.\d+\.\d+'/);
   assert.match(step, /AGY_SHA512: [0-9a-f]{128}/);
   assert.match(step, /AGY_URL: https:\/\/storage\.googleapis\.com\/antigravity-public\/antigravity-cli\/\d+\.\d+\.\d+-/);
-  assert.match(step, /\[ "\$\("\$HOME\/\.local\/bin\/agy" --version\)" = "\$AGY_VERSION" \]/);
+  assert.match(step, /\[ "\$\("\$RUNNER_TEMP\/bin\/agy" --version\)" = "\$AGY_VERSION" \]/);
   assert.match(step, /ISSUE: \$\{\{ github\.event\.issue\.number \|\| inputs\.issue \}\}/);
   assert.match(step, /--prompt "\/relevo:go \$ISSUE --decision \$DECISION"/);
 });
@@ -70,4 +70,11 @@ test('the shell of the agent step uses the variables the env sets, and the binar
 test('a marked block that the agent does not define, or an agent with no file, is an error', () => {
   assert.throws(() => agentWorkflow(go, 'antigravity', '# relevo:credential begin\nx\n# relevo:credential end\n'), /does not define the block "agent-step"/);
   assert.throws(() => agentWorkflow(go, 'antigravity', ''), /no file of blocks/);
+});
+
+test('Scenario: Antigravity settings - the CLI, the plugin and the settings live in a home folder of the job', () => {
+  const step = blocksOf(blocks)['agent-step'].join('\n');
+  assert.match(step, /echo "HOME=\$RUNNER_TEMP\/home" >> "\$GITHUB_ENV"/);
+  assert.match(step, /install -m 0755 "\$RUNNER_TEMP\/antigravity" "\$RUNNER_TEMP\/bin\/agy"/);
+  assert.doesNotMatch(step.replace(/^\s*#.*$/gm, ''), /\$HOME\/\.local/, 'nothing is installed in the home folder of the runner user');
 });

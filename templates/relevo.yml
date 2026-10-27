@@ -38,6 +38,9 @@ limits:
   building_alert_hours: 3          # hours without activity before an issue on `building` is reported as stuck
   run_max_cost: 5                  # REQUIRED: US dollars per unattended run; choose your own
 
+# runner:                            # where the Relevo workflows run; leave it out for GitHub-hosted (ubuntu-latest)
+#   labels: [self-hosted, Front]     # a self-hosted runner is assumed to persist between jobs (docs/execution.md)
+
 qa:
   retries: 1                       # developer attempts after QA rejects
   rules_from: CLAUDE.md            # project rules QA reads at every run

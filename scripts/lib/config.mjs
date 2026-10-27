@@ -31,6 +31,8 @@ export const SETTINGS = [
   { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true, default: null, requiredFor: 'claude', missing: 'unattended runs must always have a cost limit (amount in US dollars per run)', rejectedFor: 'antigravity', rejection: 'the agent has no cost limit; set limits.run_max_tokens instead, and note that the quota of the Google Cloud project that owns the key is the ceiling that really holds' },
   { path: 'limits.run_max_tokens', type: 'int', min: 1000, default: null, required: true, requiredFor: 'antigravity', missing: 'unattended runs must always have a limit, and for this agent it is a number of tokens per run', rejectedFor: 'claude', rejection: 'the run is limited by limits.run_max_cost' },
   { path: 'agent.build', type: 'enum', allowed: ['claude', 'antigravity'], default: 'claude' },
+  // The runner of every Relevo workflow: runs-on is read before any step, so init writes these labels into the files.
+  { path: 'runner.labels', type: 'label-list', default: ['ubuntu-latest'] },
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'path-list', default: [] },
   { path: 'skills.allow_scripts', type: 'string[]', default: [] },
@@ -78,6 +80,15 @@ function checkType(setting, value, errors) {
       break;
     case 'string[]':
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
+        errors.push({ path, message: `${path} must be a list of non-empty strings (got ${JSON.stringify(value)})` });
+      }
+      break;
+    case 'label-list':
+      if (!Array.isArray(value)) {
+        errors.push({ path, message: `${path} must be a list of runner labels, for example [self-hosted, Front] (got ${JSON.stringify(value)})` });
+      } else if (value.length === 0) {
+        errors.push({ path, message: `${path} needs at least one label; leave the setting out to use ubuntu-latest` });
+      } else if (value.some((v) => typeof v !== 'string' || v.trim() === '')) {
         errors.push({ path, message: `${path} must be a list of non-empty strings (got ${JSON.stringify(value)})` });
       }
       break;
@@ -163,7 +174,12 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
     }
     const known = new Set(SETTINGS.filter((s) => s.path.startsWith(`${group}.`)).map((s) => s.path.split('.')[1]));
     Object.keys(value).forEach((k) => {
-      if (!known.has(k)) errors.push({ path: `${group}.${k}`, message: `unknown setting "${group}.${k}"` });
+      if (known.has(k)) return;
+      // Relevo cannot verify what a runner is, so it offers no such key: a runner is assumed to persist.
+      const message = `${group}.${k}` === 'runner.ephemeral'
+        ? 'unknown setting "runner.ephemeral": Relevo does not ask whether a runner is ephemeral, it assumes every runner persists between jobs'
+        : `unknown setting "${group}.${k}"`;
+      errors.push({ path: `${group}.${k}`, message });
     });
   });
 

@@ -46,8 +46,15 @@ test('Scenario: Fork pull request - the key comes from the secret store and noth
 });
 
 test('OpenSpec is installed with telemetry off', () => {
-  assert.match(workflow, /npm install --global @fission-ai\/openspec/);
   assert.match(workflow, /OPENSPEC_TELEMETRY: '0'/);
+});
+
+test('Scenario: OpenSpec is installed per job - the pinned version goes under the temporary folder, never globally', () => {
+  const active = workflow.replace(/^\s*#.*$/gm, '');
+  assert.match(active, /npm install --prefix "\$RUNNER_TEMP\/openspec" "@fission-ai\/openspec@\$OPENSPEC_VERSION"/);
+  assert.match(active, /echo "\$RUNNER_TEMP\/openspec\/node_modules\/\.bin" >> "\$GITHUB_PATH"/);
+  assert.match(workflow, /^  OPENSPEC_VERSION: '\d+\.\d+\.\d+'$/m);
+  assert.doesNotMatch(active, /npm install --global|npm i -g/);
 });
 
 test('Scenario: Subagent in the background - the unattended run keeps subagents in the foreground', () => {

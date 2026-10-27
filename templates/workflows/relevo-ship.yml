@@ -17,12 +17,18 @@
 # The repository variable RELEVO_CLOUD_SHIP set to `off` pauses it: the label then does nothing.
 # This workflow runs from the default branch; it works only once it is there.
 
+# Runner: `runs-on` comes from `runner.labels` in relevo.yml (`/relevo:init` writes it into this file, `/relevo:doctor` checks it).
+# The runner needs git, gh and jq; Node and the tools of the job are installed per job. A self-hosted runner is assumed to
+# persist between jobs, so the job puts its tools under $RUNNER_TEMP and removes what it adds to the workspace.
+
 name: relevo-ship
 
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
   RELEVO_VERSION: '0.7.0'
+  # The version of OpenSpec that the job installs for itself.
+  OPENSPEC_VERSION: '1.14.3'
 
 on:
   issues:
@@ -83,7 +89,10 @@ jobs:
           done
 
       - name: Install OpenSpec
-        run: npm install --global @fission-ai/openspec
+        # Under the temporary folder of the job, at the pinned version: nothing global is left on a runner that persists.
+        run: |
+          npm install --prefix "$RUNNER_TEMP/openspec" "@fission-ai/openspec@$OPENSPEC_VERSION" --no-fund --no-audit
+          echo "$RUNNER_TEMP/openspec/node_modules/.bin" >> "$GITHUB_PATH"
         env:
           OPENSPEC_TELEMETRY: '0'
 
