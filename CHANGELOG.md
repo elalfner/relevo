@@ -4,8 +4,16 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`/relevo:init` updates a workflow that differs, by a three-way merge.** It finds the published template closest to the file, fetches it with `npm`, and merges it with the file and the current template. A clean merge is offered in the plan with its difference and written on your agreement, keeping your own changes (your credential line, your runner); a conflict writes nothing and shows both versions; when no published version is close it asks which one the workflow came from. Only files under `.github/workflows/` are written.
+- **Each workflow template starts with `# relevo-template: X.Y.Z`,** the version of its text, apart from the pin `RELEVO_VERSION` (the version of the scripts). Raising the pin by hand no longer hides that the text is old.
+- **`/relevo:doctor` reports the versions it can read without the network:** the plugin in use, each installation that Claude Code lists for your user and this repository, and the pins of the workflows. It warns when the scopes differ (with the command that updates the lagging one), when the text of a workflow is older than its pin and when a workflow has no stamp.
+- **An upgrade page,** `docs/upgrading.md`, with what carries a version, the order that does not break a project (older versions reject the settings a newer `relevo.yml` adds) and how `init` updates a workflow.
+
 ### Changed
 
+- **The cloud agent loads the plugin from the package the workflow pins** (`--plugin-dir` on the folder the job unpacks), not from a marketplace. One pin, `RELEVO_VERSION`, decides the scripts and the skills; before, the marketplace entry had no version and a cloud run took the latest plugin. Nothing is cloned from the plugin repository, so a private plugin repository no longer needs `RELEVO_PLUGIN_TOKEN`, and the build stops before the agent when the package lacks `.claude-plugin/plugin.json`. A workflow copied from an older version keeps the marketplace until `/relevo:init` updates it; a project that does nothing keeps working.
 - **`/relevo:doctor` puts what needs action first.** The text report starts with a line that says what it judged (the repository, and whether the workflows were read from the default branch or the working copy), then lists the `FAILURES`, the `WARNINGS` and the `NOTES`, each with its count, and only counts the checks that passed. `/relevo:doctor --all` (and `relevo doctor --all`) lists every check as before. `--json` still lists every check and the exit status is the same: 1 only when a check failed. A person or a program that parsed the text layout should use `--json`.
 - **A new level, `note`,** for information that asks for nothing: the reminder about the terms of a subscription token, the subscription explanation, a skill reserved for you and iOS on a machine that is not macOS. A note is neither a failure nor a warning.
 - **One result per cause.** Workflows that run on another runner than `runner.labels` (the check of 0.8.0 printed one failure per file) are one failure that names them all, and so are workflows that are not installed, disabled or not yet listed. The closing line counts results, not files.

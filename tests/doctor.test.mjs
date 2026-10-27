@@ -1389,3 +1389,30 @@ test('the stamp of each workflow is read from the default branch', () => {
   const f = gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': "# relevo-template: 0.8.0\nenv:\n  RELEVO_VERSION: '0.8.0'\n", 'relevo-sla.yml': "env:\n  RELEVO_VERSION: '0.5.0'\n" } }));
   assert.deepEqual(f.pluginStamps, { 'relevo-go.yml': '0.8.0', 'relevo-sla.yml': null });
 });
+
+// ---------- the plugin token follows the workflow
+
+test('Scenario: Workflows that load the plugin from the package - no plugin-secret check, even if the plugin repository is private', () => {
+  const none = runChecks(healthy({ pluginMarketplace: null, pluginRepoPrivate: true, secrets: ['ANTHROPIC_API_KEY'] }));
+  assert.equal(byId(none, 'automation.plugin-secret'), undefined);
+  assert.equal(byId(none, 'automation.plugin-clone'), undefined);
+  assert.deepEqual(failing(none), [], 'nothing fails for a missing token that nothing needs');
+});
+
+test('Scenario: Private plugin repository and no secret - a workflow that still uses a marketplace fails the check', () => {
+  const res = runChecks(healthy({ pluginMarketplace: 'https://github.com/o/relevo.git', pluginRepoPrivate: true, secrets: ['ANTHROPIC_API_KEY'] }));
+  assert.equal(byId(res, 'automation.plugin-secret').status, 'fail');
+  assert.match(byId(res, 'automation.plugin-secret').fix, /RELEVO_PLUGIN_TOKEN/);
+});
+
+test('a workflow of the older layout, which clones the plugin repository, still needs the token', () => {
+  const res = runChecks(healthy({ pluginMarketplace: null, pluginCheckouts: [{ file: 'relevo-queue.yml', repo: 'o/relevo', hasToken: false }], pluginRepoPrivate: true, secrets: ['ANTHROPIC_API_KEY'] }));
+  assert.equal(byId(res, 'automation.plugin-secret').status, 'fail');
+});
+
+test('the facts say no marketplace for the current go template and one for the old text', () => {
+  const current = readFileSync(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+  const old = `${current}\n          plugin_marketplaces: https://github.com/o/relevo.git\n`;
+  assert.equal(gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': current } })).pluginMarketplace, null);
+  assert.equal(gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': old } })).pluginMarketplace, 'https://github.com/o/relevo.git');
+});
