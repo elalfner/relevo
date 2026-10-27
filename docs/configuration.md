@@ -27,7 +27,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `review.ship_without_ci` | `true` lets the `relevo:ship` label merge a pull request on which no check ran; `/relevo:ship` asks the person instead | `false` |
 | `review.allowed_origins` | web origins a driven review may visit besides `localhost`, for example `https://staging.example.com` | `[]` |
 | `skills.allow_scripts` | names of the extra skills that have scripts and may be used; a skill with scripts that is not listed is left out, and `/relevo:doctor` says so | empty |
-| `limits.built_unreviewed_per_person` | built issues one person may have waiting | 2 |
+| `limits.built_unreviewed_per_person` | built issues one person may have waiting; an issue with a valid `relevo:urgent` label starts anyway | 2 |
 | `limits.concurrent_agents` | unattended runs at the same time | 3 |
 | `limits.review_sla_hours` | hours before a reminder, and the same time again before escalation | 8 |
 | `limits.run_max_turns` | turns per unattended run | 100 |

@@ -138,6 +138,136 @@ test('Scenario: Queue order - first in, first out by the time ready was applied'
   assert.deepEqual(plan([a, b, c]).decisions.map((d) => d.issue), [1, 2, 3]);
 });
 
+// The urgent label: valid only from someone with the permission that ready requires.
+const URGENT = 'relevo:urgent';
+const UPERMS = { ...PERMS, 'persona-d': 'maintain', 'persona-w': 'write' };
+const urgentIssue = (over = {}) => issue({ labels: ['relevo:queued', URGENT], urgent_by: 'persona-a', ...over });
+const builtBy = (assignee, n) => [1, 2, 3].slice(0, n).map((k) => issue({ number: 900 + k, labels: ['relevo:built'], assignees: [assignee] }));
+const planU = (issues, config) => plan(issues, { config, input: { permissions: UPERMS } });
+
+test('Scenario: Urgent issue jumps the line - it takes the only free slot before an older normal issue', () => {
+  const older = issue({ number: 1, labels: ['relevo:queued'], assignees: ['persona-c'], ready_at: '2026-10-14T08:00:00Z' });
+  const newer = urgentIssue({ number: 2, assignees: ['persona-d'], ready_at: '2026-10-14T11:00:00Z' });
+  const { decisions } = planU([older, newer], 'limits:\n  concurrent_agents: 1\n');
+  assert.deepEqual(decisions.map((d) => [d.issue, d.action]), [[2, 'start'], [1, 'queue']]);
+  assert.equal(decisions[1].comment, null, 'the older issue was already queued and posts nothing');
+});
+
+test('Scenario: Several urgent issues - the one whose ready is older starts', () => {
+  const a = urgentIssue({ number: 1, assignees: ['persona-c'], ready_at: '2026-10-14T10:00:00Z' });
+  const b = urgentIssue({ number: 2, assignees: ['persona-d'], ready_at: '2026-10-14T09:00:00Z' });
+  const { decisions } = planU([a, b], 'limits:\n  concurrent_agents: 1\n');
+  assert.deepEqual(decisions.map((d) => [d.issue, d.action]), [[2, 'start'], [1, 'queue']]);
+});
+
+test('Scenario: Urgent issue for an assignee at capacity - it starts and says how many are waiting', () => {
+  const u = urgentIssue({ number: 9 });
+  const { decisions } = planU([...builtBy('persona-b', 2), u]);
+  const d = decisions[0];
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:queued'] });
+  assert.equal(d.urgent, true);
+  assert.equal(d.built_waiting, 3);
+  assert.equal(d.notice, undefined);
+});
+
+test('a start under the limit has neither urgent nor built_waiting, even for an urgent issue', () => {
+  const d = planU([...builtBy('persona-b', 1), urgentIssue({ number: 9 })]).decisions[0];
+  assert.equal(d.action, 'start');
+  assert.ok(!('urgent' in d) && !('built_waiting' in d));
+  const normal = planU([issue({ number: 9 })]).decisions[0];
+  assert.ok(!('urgent' in normal) && !('built_waiting' in normal));
+});
+
+test('Scenario: Urgent issue and no free agent slot - it is queued with the agents reason, first in line', () => {
+  const running = issue({ number: 50, labels: ['relevo:building'] });
+  const ready = urgentIssue({ number: 9, labels: ['relevo:ready', URGENT] });
+  const d = planU([running, ready], 'limits:\n  concurrent_agents: 1\n').decisions[0];
+  assert.equal(d.action, 'queue');
+  assert.equal(d.comment.kind, 'queued_agents');
+  assert.ok(!('urgent' in d));
+});
+
+test('Scenario: Urgent issue is still blocked by a dependency - the notice says urgent does not skip it', () => {
+  const u = urgentIssue({ number: 9, labels: ['relevo:ready', URGENT], body: `${BODY}\nDepends-on: #7\n` });
+  const d = planU([u]).decisions[0];
+  assert.equal(d.action, 'block');
+  assert.equal(d.comment.kind, 'blocked_notice');
+  assert.equal(d.comment.data.urgent, true);
+  const normal = planU([issue({ number: 9, body: `${BODY}\nDepends-on: #7\n` })]).decisions[0];
+  assert.ok(!('urgent' in normal.comment.data));
+});
+
+test('Scenario: Urgent issue with an incomplete spec - needs-spec as for any other issue', () => {
+  const u = urgentIssue({ number: 9, labels: ['relevo:ready', URGENT], body: 'no scenarios' });
+  const d = planU([...builtBy('persona-b', 2), u]).decisions[0];
+  assert.equal(d.action, 'needs-spec');
+});
+
+test('Scenario: Applied by someone with write access - the label is valid and leaves no notice', () => {
+  const d = planU([...builtBy('persona-b', 2), urgentIssue({ number: 9, urgent_by: 'persona-w' })]).decisions[0];
+  assert.equal(d.action, 'start');
+  assert.equal(d.notice, undefined);
+  assert.ok(!d.labels.remove.includes(URGENT));
+});
+
+test('Scenario: Applied without permission - the label is removed with a notice and the issue stays queued in its place', () => {
+  const u = urgentIssue({ number: 9, urgent_by: 'stranger' });
+  const d = planU([...builtBy('persona-b', 2), u]).decisions[0];
+  assert.equal(d.action, 'queue');
+  assert.deepEqual(d.labels, { add: [], remove: [URGENT] });
+  assert.deepEqual(d.notice, { kind: 'urgent_denied', data: { issue: 9, actor: 'stranger' } });
+  assert.equal(d.comment, null, 'it was already queued, so the queued notice is not posted again');
+});
+
+test('an invalid label is ordered as a normal issue', () => {
+  const older = issue({ number: 1, labels: ['relevo:queued'], assignees: ['persona-c'], ready_at: '2026-10-14T08:00:00Z' });
+  const denied = urgentIssue({ number: 2, urgent_by: 'stranger', assignees: ['persona-d'], ready_at: '2026-10-14T11:00:00Z' });
+  const { decisions } = planU([denied, older], 'limits:\n  concurrent_agents: 1\n');
+  assert.deepEqual(decisions.map((d) => [d.issue, d.action]), [[1, 'start'], [2, 'queue']]);
+});
+
+test('Scenario: Public repository - write is not enough, the notice asks for a maintainer', () => {
+  const config = 'trust: public\n';
+  const writer = planU([...builtBy('persona-b', 2), urgentIssue({ number: 9, urgent_by: 'persona-w' })], config).decisions[0];
+  assert.equal(writer.action, 'queue');
+  assert.deepEqual(writer.labels.remove, [URGENT]);
+  assert.deepEqual(writer.notice, { kind: 'urgent_denied_maintainer', data: { issue: 9, actor: 'persona-w' } });
+  const maintainer = planU([...builtBy('persona-b', 2), urgentIssue({ number: 9, urgent_by: 'persona-d' })], config).decisions[0];
+  assert.equal(maintainer.action, 'start');
+});
+
+test('Scenario: Applied by a bot - a login with no permission is not valid', () => {
+  const d = planU([...builtBy('persona-b', 2), urgentIssue({ number: 9, urgent_by: 'github-actions[bot]' })]).decisions[0];
+  assert.equal(d.action, 'queue');
+  assert.deepEqual(d.labels.remove, [URGENT]);
+  assert.equal(d.notice.kind, 'urgent_denied');
+});
+
+test('a label with no known applier is not valid', () => {
+  const d = planU([urgentIssue({ number: 9, urgent_by: null })]).decisions[0];
+  assert.equal(d.action, 'start', 'it is evaluated as a normal issue');
+  assert.deepEqual(d.labels.remove, ['relevo:queued', URGENT]);
+  assert.deepEqual(d.notice.data, { issue: 9 });
+});
+
+test('an invalid label on an issue with a run in progress is left alone and posts nothing', () => {
+  const stranger = urgentIssue({ number: 5, labels: ['relevo:ready', URGENT], urgent_by: 'stranger' });
+  const skipped = plan([stranger], { input: { permissions: UPERMS, running: [5] } }).decisions[0];
+  assert.equal(skipped.action, 'skip');
+  assert.deepEqual(skipped.labels, { add: [], remove: [] });
+  assert.equal(skipped.notice, undefined);
+});
+
+test('a renamed urgent label is the one that counts', () => {
+  const config = 'labels:\n  urgent: prio:now\n';
+  const u = urgentIssue({ number: 9, labels: ['relevo:queued', 'prio:now'], urgent_by: 'persona-d' });
+  const d = planU([...builtBy('persona-b', 2), u], config).decisions[0];
+  assert.equal(d.action, 'start');
+  const denied = planU([...builtBy('persona-b', 2), { ...u, urgent_by: 'stranger' }], config).decisions[0];
+  assert.deepEqual(denied.labels.remove, ['prio:now']);
+});
+
 test('Scenario: Duplicate trigger - an issue with a run in progress is not started twice', () => {
   const running = issue({ number: 5, labels: ['relevo:ready'] });
   const d = one([running], { input: { running: [5] } });

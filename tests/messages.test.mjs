@@ -123,6 +123,37 @@ test('Scenario: Queued states its reason - for capacity and for the agent limit,
   assert.match(renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'es'), /agentes simult/);
 });
 
+test('Scenario: Applied without permission - urgent_denied names who applied it, in both languages and for a public repository', () => {
+  const en = renderMessage('urgent_denied', { issue: 9, actor: 'stranger' }, 'en');
+  assert.match(en, /^#9: the urgent label was removed because only people with write access/);
+  assert.match(en, /keeps its place in the queue/);
+  assert.match(en, /Applied by: @stranger/);
+  assert.match(renderMessage('urgent_denied', { issue: 9, actor: 'stranger' }, 'es'), /se quitó la etiqueta de urgente.*Aplicada por: @stranger/s);
+  assert.match(renderMessage('urgent_denied_maintainer', { issue: 9, actor: 'persona-w' }, 'en'), /this repository is public, so only maintainers/);
+  assert.match(renderMessage('urgent_denied_maintainer', { issue: 9, actor: 'persona-w' }, 'es'), /repositorio es público/);
+  const unknown = renderMessage('urgent_denied', { issue: 9 }, 'en');
+  assert.ok(!unknown.includes('@'), 'without a known applier nobody is mentioned');
+  assert.throws(() => renderMessage('urgent_denied', {}), /needs "issue"/);
+});
+
+test('Scenario: Built after an urgent start - the message says how many built issues wait for the assignee', () => {
+  const en = renderMessage('built', { ...BUILT, urgent: true, built_waiting: 3 }, 'en');
+  assert.match(en, /Started ahead of the queue \(urgent\): you now have 3 built issues waiting for your review\./);
+  assert.match(renderMessage('built', { ...BUILT, urgent: true, built_waiting: 3 }, 'es'), /Empezó antes que la cola \(urgente\): ahora tienes 3 issues construidos/);
+  assert.doesNotMatch(renderMessage('built', BUILT, 'en'), /ahead of the queue/, 'a normal build says nothing about it');
+});
+
+test('Scenario: Urgent and blocked - the notice says urgent does not skip dependencies, and nobody is mentioned', () => {
+  const data = { issue: 9, title: 'Summary', blockers: '#7' };
+  const urgent = renderMessage('blocked_notice', { ...data, urgent: true }, 'en');
+  assert.match(urgent, /The urgent label does not skip dependencies/);
+  assert.match(renderMessage('blocked_notice', { ...data, urgent: true }, 'es'), /no salta las dependencias/);
+  assert.doesNotMatch(renderMessage('blocked_notice', data, 'en'), /urgent/);
+  ['en', 'es'].forEach((lang) => {
+    assert.ok(!urgent.includes('@') && !renderMessage('blocked_notice', { ...data, urgent: true }, lang).includes('@'), 'a waiting state does not notify');
+  });
+});
+
 // ---------- Next step from one table, the recovery for an existing branch, the hash of the text it was built from
 
 const FAILED = { assignee: 'persona-b', issue: 31, title: 'Summary', finding: 'branch already exists', branch: 'feature/31-summary' };

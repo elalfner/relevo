@@ -29,6 +29,8 @@ const REQUIRED = {
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
   ready_denied_maintainer: ['issue'],
+  urgent_denied: ['issue'],
+  urgent_denied_maintainer: ['issue'],
   blocked_notice: ['issue', 'title', 'blockers'],
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
   queued_agents: ['issue', 'title'],
@@ -58,6 +60,7 @@ const CATALOG = {
       '',
       'What happened: {{tasks_done}} of {{tasks_total}} tasks done, QA passed.',
       'Branch: {{branch}}',
+      'Started ahead of the queue (urgent): you now have {{built_waiting}} built issues waiting for your review.',
       'Built from the issue text: {{issue_hash_short}}',
       'What to test: {{scenarios}} scenarios (checklist below)',
       'Riskiest area, check it first: {{risk}}',
@@ -141,10 +144,19 @@ const CATALOG = {
       '#{{issue}} was not started: this repository is public, so only maintainers can mark an issue ready, and the label was removed',
       'Applied by: @{{actor}}',
     ],
+    urgent_denied: [
+      '#{{issue}}: the urgent label was removed because only people with write access can ask for an early start. The issue keeps its place in the queue.',
+      'Applied by: @{{actor}}',
+    ],
+    urgent_denied_maintainer: [
+      '#{{issue}}: the urgent label was removed because this repository is public, so only maintainers can ask for an early start. The issue keeps its place in the queue.',
+      'Applied by: @{{actor}}',
+    ],
     blocked_notice: [
       '#{{issue}} "{{title}}" is blocked',
       '',
       'Waiting for {{blockers}} to be merged. It starts automatically when they are.',
+      '{{urgent_note}}',
     ],
     queued_capacity: [
       '#{{issue}} "{{title}}" is queued',
@@ -206,6 +218,7 @@ const CATALOG = {
       '',
       'Qué pasó: {{tasks_done}} de {{tasks_total}} tareas hechas, QA aprobado.',
       'Rama: {{branch}}',
+      'Empezó antes que la cola (urgente): ahora tienes {{built_waiting}} issues construidos esperando tu revisión.',
       'Construida con el texto del issue: {{issue_hash_short}}',
       'Qué probar: {{scenarios}} escenarios (checklist abajo)',
       'Zona más riesgosa, revísala primero: {{risk}}',
@@ -289,10 +302,19 @@ const CATALOG = {
       '#{{issue}} no se inició: este repositorio es público, así que solo quienes mantienen el proyecto pueden marcar un issue como ready, y se quitó la etiqueta',
       'Aplicada por: @{{actor}}',
     ],
+    urgent_denied: [
+      '#{{issue}}: se quitó la etiqueta de urgente porque solo quienes tienen acceso de escritura pueden pedir un inicio anticipado. El issue conserva su lugar en la cola.',
+      'Aplicada por: @{{actor}}',
+    ],
+    urgent_denied_maintainer: [
+      '#{{issue}}: se quitó la etiqueta de urgente porque este repositorio es público, así que solo quienes mantienen el proyecto pueden pedir un inicio anticipado. El issue conserva su lugar en la cola.',
+      'Aplicada por: @{{actor}}',
+    ],
     blocked_notice: [
       '#{{issue}} "{{title}}" está bloqueado',
       '',
       'Espera a que se fusionen {{blockers}}. Empieza solo cuando lo estén.',
+      '{{urgent_note}}',
     ],
     queued_capacity: [
       '#{{issue}} "{{title}}" está en cola',
@@ -381,6 +403,10 @@ export function renderMessage(kind, data = {}, language = 'en') {
     values.log_line = es ? `${who}${who ? 'lee' : 'Lee'} el log para ver por qué: ${values.run}` : `${who}${who ? 'read' : 'Read'} the log to see why: ${values.run}`;
   }
   if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
+  // Urgent does not skip dependencies: an urgent issue that is blocked says so.
+  if (kind === 'blocked_notice' && values.urgent === true) {
+    values.urgent_note = es ? 'La etiqueta de urgente no salta las dependencias: empieza primero en la cola cuando se fusionen.' : 'The urgent label does not skip dependencies: it goes first in the queue once they are merged.';
+  }
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {

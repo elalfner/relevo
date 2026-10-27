@@ -110,7 +110,7 @@ This reads the queue from GitHub, applies the gates and limits, carries out labe
 
 Read the decision for the issue in the JSON it prints:
 
-- `start`: continue. It gives you `branch`, `change_id`, `base`, `assignee`, `title`, `qa_retries`, `run_max_turns`, `run_max_cost`, `issue_hash` (the text of the issue when it was claimed), `allow_paths` (dependency files and folders the issue lets the change touch), and the platform the issue is for: `platform` (its name), `stack`, `path` (its folder) and `targets`.
+- `start`: continue. It gives you `branch`, `change_id`, `base`, `assignee`, `title`, `qa_retries`, `run_max_turns`, `run_max_cost`, `issue_hash` (the text of the issue when it was claimed), `allow_paths` (dependency files and folders the issue lets the change touch), and the platform the issue is for: `platform` (its name), `stack`, `path` (its folder) and `targets`. When a valid urgent label let the issue start over the assignee's capacity it also has `urgent` (true) and `built_waiting` (how many built issues the assignee will have waiting).
 - anything else (`needs-spec`, `block`, `queue`, `denied`, `no-milestone`, `no-assignee`, `skip`): that is a normal outcome, already applied. Report the decision and its reason in one line, and stop. Do not build.
 
 ### 2. Branch
@@ -245,7 +245,7 @@ Do not add links to this session or attribution lines to the message.
 
 1. `git push -u origin <branch>` (a normal push, never forced).
 2. Move the issue to `built`: `label-change.mjs --to built --current "..."`, applied with `gh issue edit`.
-3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (`progress.complete` and `progress.total` of `openspec instructions apply --change "<change_id>" --json`), `branch`, `issue_hash`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
+3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (`progress.complete` and `progress.total` of `openspec instructions apply --change "<change_id>" --json`), `branch`, `issue_hash`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, `urgent` and `built_waiting` copied from the decision when it has them (they add the line that says the issue started ahead of the queue; leave both out otherwise), and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
 
 The comment tells the assignee the next command (`/relevo:review <issue>`).
 

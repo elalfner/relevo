@@ -15,8 +15,10 @@ const REASON = {
   'changes-requested': 'a branch already exists and the text would no longer match what was built',
   'needs-reviewer': 'it is built and waiting for a reviewer',
   ship: 'its pull request is being merged',
+  // Not a state: it travels next to one, so the state decides whether the text may change.
+  urgent: 'the label asks for an early start and does not commit the issue to a build',
 };
-export const EDITABLE_LABELS = ['needs-spec'];
+export const EDITABLE_LABELS = ['needs-spec', 'urgent'];
 
 /**
  * @param {{state?: string, labels?: Array<string|{name: string}>}} issue  `gh issue view --json state,labels`

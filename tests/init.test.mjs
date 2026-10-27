@@ -49,8 +49,9 @@ test('Scenario: Plan before changes - it lists files, labels, branches, rulesets
 test('Scenario: Fresh repository - everything is planned and the API key is a manual step', () => {
   const items = plan(bare());
   assert.equal(get(items, 'config').status, 'todo');
-  assert.equal(get(items, 'labels').labels.length, 12);
+  assert.equal(get(items, 'labels').labels.length, 13);
   assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:ship'), 'the ship label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:urgent'), 'the urgent label is created');
   assert.equal(get(items, 'branch.base').status, 'todo');
   assert.equal(get(items, 'protection').status, 'todo');
   WORKFLOW_FILES.forEach((f) => assert.equal(get(items, `workflow.${f}`).status, 'todo'));
@@ -65,6 +66,21 @@ test('Scenario: Never touches the API key - no item writes or reads a secret', (
   const calls = [];
   applyPlan(items, { repo: 'o/r', io: { gh: (a, input) => { calls.push([a, input]); return JSON.stringify({ commit: { sha: 'abc' } }); }, write() {}, append() {} } });
   assert.ok(calls.every(([a]) => !a.join(' ').includes('secrets')));
+});
+
+test('Scenario: Repository set up earlier - init plans only the urgent label when every other label exists', () => {
+  const facts = bare({ configText: renderConfig(template, ANSWERS), config: loadConfig(renderConfig(template, ANSWERS)).config, labels: allLabels.filter((n) => n !== 'relevo:urgent') });
+  const item = get(plan(facts), 'labels');
+  assert.equal(item.status, 'todo');
+  assert.deepEqual(item.labels.map((l) => l.name), ['relevo:urgent']);
+});
+
+test('Scenario: Renamed label - init creates the name given in labels.urgent', () => {
+  const text = `${renderConfig(template, ANSWERS)}\nlabels:\n  urgent: prio:now\n`;
+  const loaded = loadConfig(text);
+  assert.ok(loaded.ok, JSON.stringify(loaded.errors));
+  const item = get(plan(bare({ configText: text, config: loaded.config, labels: allLabels })), 'labels');
+  assert.deepEqual(item.labels.map((l) => l.name), ['prio:now']);
 });
 
 test('Scenario: Second run - nothing to do for what is already correct', () => {
@@ -134,7 +150,7 @@ test('applying carries out labels, branch, ruleset, workflow permissions, files 
   };
   const results = applyPlan(plan(bare()), { repo: 'o/r', io });
   assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)));
-  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 12);
+  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 13);
   assert.ok(calls.some((c) => c.args.includes('-f') && c.args.includes('ref=refs/heads/dev') && c.args.includes('sha=abc123')));
   assert.ok(calls.some((c) => c.args.includes(`repos/o/r/rulesets`) && JSON.parse(c.input).name === 'relevo-protected-branches'));
   assert.ok(calls.some((c) => c.args.includes('repos/o/r/actions/permissions/workflow') && c.args.includes('can_approve_pull_request_reviews=false')));
