@@ -41,6 +41,8 @@ const REQUIRED = {
   ship_needs_app: ['actor', 'issue', 'base'],
   ship_done: ['issue', 'pr', 'base'],
   ship_failed: ['issue', 'run'],
+  run_progress: ['phase', 'minutes'],
+  run_progress_closed: [],
 };
 
 // The lifecycle state whose next step each message shows (see next-step.mjs, the only place that knows the commands).
@@ -205,6 +207,17 @@ const CATALOG = {
       '{{checks_note}}',
       'The issue is closed and its labels removed. Promoting {{base}} to the release branch is a separate pull request.',
     ],
+    run_progress: [
+      'Relevo build in progress: {{phase_label}}{{attempt_suffix}}',
+      'Tasks: {{tasks_done}} of {{tasks_total}}',
+      'Running for {{minutes}} min',
+      '',
+      'This comment is updated while the run lasts and is closed when it ends.',
+    ],
+    run_progress_closed: [
+      '{{summary_line}}',
+      'Run: {{run_url}}',
+    ],
     ship_failed: [
       '#{{issue}} was not shipped: the run ended without an outcome',
       '',
@@ -363,6 +376,17 @@ const CATALOG = {
       '{{checks_note}}',
       'El issue está cerrado y sin etiquetas. Promover {{base}} a la rama de release es un pull request aparte.',
     ],
+    run_progress: [
+      'Construcción de Relevo en curso: {{phase_label}}{{attempt_suffix}}',
+      'Tareas: {{tasks_done}} de {{tasks_total}}',
+      'Lleva {{minutes}} min',
+      '',
+      'Este comentario se actualiza mientras dura la ejecución y se cierra al terminar.',
+    ],
+    run_progress_closed: [
+      '{{summary_line}}',
+      'Ejecución: {{run_url}}',
+    ],
     ship_failed: [
       '#{{issue}} no se fusionó: la ejecución terminó sin resultado',
       '',
@@ -401,6 +425,21 @@ export function renderMessage(kind, data = {}, language = 'en') {
   if (kind === 'ship_failed') {
     const who = present(values.actor) ? `@${values.actor} ` : '';
     values.log_line = es ? `${who}${who ? 'lee' : 'Lee'} el log para ver por qué: ${values.run}` : `${who}${who ? 'read' : 'Read'} the log to see why: ${values.run}`;
+  }
+  if (kind === 'run_progress') {
+    const labels = es
+      ? { planning: 'planificación', specification: 'especificación', development: 'desarrollo', qa: 'QA', delivery: 'entrega' }
+      : { planning: 'planning', specification: 'specification', development: 'development', qa: 'QA', delivery: 'delivery' };
+    values.phase_label = labels[values.phase] ?? values.phase;
+    const of = present(values.of) ? ` ${es ? 'de' : 'of'} ${values.of}` : '';
+    values.attempt_suffix = present(values.attempt) ? ` (${es ? 'intento' : 'attempt'} ${values.attempt}${of})` : '';
+  }
+  if (kind === 'run_progress_closed') {
+    const after = present(values.minutes) ? (es ? ` tras ${values.minutes} min` : ` after ${values.minutes} min`) : '';
+    const none = values.outcome === 'none';
+    values.summary_line = es
+      ? `La construcción de Relevo terminó${none ? ' sin resultado' : ''}${after}. ${none ? 'El motivo está' : 'El resultado está'} en el último comentario de este issue.`
+      : `The Relevo build ended${none ? ' without an outcome' : ''}${after}. ${none ? 'The reason is' : 'The result is'} in the latest comment of this issue.`;
   }
   if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
   // Urgent does not skip dependencies: an urgent issue that is blocked says so.

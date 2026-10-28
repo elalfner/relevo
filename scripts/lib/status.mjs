@@ -6,6 +6,7 @@
 // me      login of the person asking (null for the team-level view)
 
 import { resolveLabelNames } from './labels.mjs';
+import { sumUsage, USAGE_DAYS } from './run-usage.mjs';
 
 /** Reviews one person can complete per working day; used only for the capacity warning. */
 export const REVIEWS_PER_PERSON_PER_DAY = 1;
@@ -28,7 +29,7 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], usage = [], me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
@@ -117,6 +118,8 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     me, view: isSpecWriter ? 'spec-writer' : 'person',
     onMe, toReview, toShip, readyForMe, waitingOnOthers, specWriter: specWriterView,
     milestones: summaries, alerts, waiting, unread,
+    // The runs of the last seven days added up, or null when none left a usage marker. Only the digest shows it.
+    usage: usage.length ? sumUsage(usage) : null,
     readOnly: true,
   };
 }
@@ -193,6 +196,22 @@ export function renderStatus(report, language = 'en') {
 }
 
 /** The daily digest: only who is waiting on what, and the alerts. Null when there is nothing to say. */
+// One line for the digest: the runs of the last seven days and what they used. A notional cost (a subscription is not
+// billed per run) is said to be notional, for all the runs that report a cost or for some of them.
+function digestUsageLine(usage, es) {
+  const n = (v) => v.toLocaleString(es ? 'es' : 'en-US');
+  const parts = [`${usage.runs} ${es ? (usage.runs === 1 ? 'ejecución' : 'ejecuciones') : (usage.runs === 1 ? 'run' : 'runs')}`];
+  if (usage.turns !== null) parts.push(`${n(usage.turns)} ${es ? 'turnos' : 'turns'}`);
+  if (usage.cost !== null) {
+    const notional = usage.notionalRuns === 0 ? ''
+      : usage.notionalRuns === usage.costRuns ? (es ? ' (nocional)' : ' (notional)')
+        : (es ? ` (nocional en ${usage.notionalRuns} de ${usage.costRuns} ejecuciones)` : ` (notional for ${usage.notionalRuns} of ${usage.costRuns} runs)`);
+    parts.push(`${es ? 'unos' : 'about'} $${usage.cost.toFixed(2)}${notional}`);
+  }
+  if (usage.tokens !== null) parts.push(`${n(usage.tokens)} tokens`);
+  return `${es ? `Uso, últimos ${USAGE_DAYS} días` : `Usage, last ${USAGE_DAYS} days`}: ${parts.join(', ')}.`;
+}
+
 export function renderDigest(report, language = 'en') {
   const es = String(language).startsWith('es');
   const people = Object.keys(report.waiting).sort();
@@ -210,5 +229,6 @@ export function renderDigest(report, language = 'en') {
         : `- #${a.issue} ${es ? 'rama atrasada por' : 'branch behind the base by'} ${a.behind}`);
     });
   }
+  if (report.usage) lines.push('', digestUsageLine(report.usage, es));
   return lines.join('\n');
 }
