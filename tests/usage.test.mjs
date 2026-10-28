@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { reachedUsageLimit, readUsage, usageLine } from '../scripts/lib/run-usage.mjs';
+import { parseUsageMarker, reachedUsageLimit, readUsage, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
 const write = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
@@ -74,4 +74,70 @@ test('tokens served from the prompt cache are reported apart, so a long run does
   assert.equal(readUsage(log).cached, 420000);
   assert.equal(usageLine(readUsage(log)), 'This run used 14 turns, about $0.43, 5,271 tokens (plus 420,000 from the cache).');
   assert.doesNotMatch(usageLine(readUsage(ARRAY)), /cache/, 'nothing about the cache when the log has none');
+});
+
+const figuresOf = (marker) => JSON.parse(/<!-- relevo:usage (\{.*\}) -->/.exec(marker)[1]);
+
+test('Scenario: Log with usage - the marker carries the figures of the sentence, and says whether the cost is notional', () => {
+  const usage = readUsage(ARRAY);
+  assert.deepEqual(figuresOf(usageMarker(usage)), { turns: 37, cost: 1.8234, tokens: 123000, notional: false });
+  assert.equal(figuresOf(usageMarker(usage, { subscription: true })).notional, true);
+  const cached = readUsage(JSON.stringify({ type: 'result', num_turns: 2, usage: { output_tokens: 5, cache_read_input_tokens: 90 } }));
+  assert.equal(figuresOf(usageMarker(cached)).cached, 90);
+});
+
+test('Scenario: Log with partial usage - what the log does not report is left out of the sentence and of the marker', () => {
+  const usage = readUsage(JSON.stringify({ type: 'result', num_turns: 4 }));
+  assert.equal(usageLine(usage), 'This run used 4 turns.');
+  assert.deepEqual(figuresOf(usageMarker(usage)), { turns: 4, notional: false });
+  assert.equal(usageMarker(null), '');
+});
+
+test('Scenario: Log without usage - no marker, and run-usage.mjs prints nothing', () => {
+  assert.equal(usageMarker(readUsage('not json')), '');
+  const none = spawnSync('node', [CLI('run-usage.mjs'), '--file', write('empty.json', JSON.stringify([{ type: 'assistant' }]))], { encoding: 'utf8' });
+  assert.deepEqual([none.status, none.stdout], [0, '']);
+});
+
+test('run-usage.mjs prints the sentence, a blank line and the marker, with notional true under a subscription', () => {
+  const run = (...flags) => spawnSync('node', [CLI('run-usage.mjs'), '--file', write('b.json', ARRAY), ...flags], { encoding: 'utf8' });
+  const [sentence, blank, marker, ...rest] = run().stdout.split('\n');
+  assert.match(sentence, /^This run used 37 turns/);
+  assert.equal(blank, '');
+  assert.deepEqual(figuresOf(marker), { turns: 37, cost: 1.8234, tokens: 123000, notional: false });
+  assert.deepEqual(rest, ['']);
+  assert.equal(figuresOf(run('--subscription').stdout).notional, true);
+});
+
+const comment = (body, extra = {}) => ({ user: { type: 'Bot' }, created_at: '2026-03-10T10:00:00Z', body, ...extra });
+const M = (o) => `This run used 1 turn.\n\n<!-- relevo:usage ${JSON.stringify(o)} -->`;
+
+test('Scenario: Digest with usage - the marker of a comment of a bot is read back with its date', () => {
+  assert.deepEqual(parseUsageMarker(comment(M({ turns: 3, cost: 0.5, tokens: 100, notional: true }))), { created_at: '2026-03-10T10:00:00Z', notional: true, turns: 3, cost: 0.5, tokens: 100 });
+  assert.equal(parseUsageMarker(comment(M({ turns: 0, cost: 0 }))).cost, 0, 'a zero is a figure');
+  assert.equal(parseUsageMarker(comment(usageMarker(readUsage(ARRAY)))).turns, 37, 'what the script writes is what the digest reads');
+});
+
+test('Scenario: Runs without a marker - a person, a malformed marker, two markers or a string for a number count for nothing', () => {
+  assert.equal(parseUsageMarker(comment(M({ turns: 3 }), { user: { type: 'User' } })), null, 'a person typed it');
+  assert.equal(parseUsageMarker({ body: M({ turns: 3 }) }), null, 'no author');
+  assert.equal(parseUsageMarker(comment('This run used 3 turns, about $0.50.')), null, 'the sentence alone is never read');
+  assert.equal(parseUsageMarker(comment('<!-- relevo:usage {"turns": -->')), null);
+  assert.equal(parseUsageMarker(comment('<!-- relevo:usage [1,2] -->')), null);
+  assert.equal(parseUsageMarker(comment(`${M({ turns: 3 })}\n${M({ turns: 4 })}`)), null);
+  assert.equal(parseUsageMarker(comment(M({ turns: '3' }))), null);
+  assert.equal(parseUsageMarker(comment(M({ notional: true }))), null, 'no figure at all');
+  assert.equal(parseUsageMarker(comment(null)), null);
+});
+
+test('sumUsage adds the figures over the runs that report each, and counts the notional costs', () => {
+  const runs = [
+    { turns: 10, cost: 1, tokens: 100, notional: true },
+    { turns: 20, cost: 2, notional: true },
+    { turns: 5, notional: false },
+  ];
+  assert.deepEqual(sumUsage(runs), { runs: 3, turns: 35, cost: 3, tokens: 100, costRuns: 2, notionalRuns: 2 });
+  assert.deepEqual(sumUsage([{ turns: 1, cost: 0.5, notional: false }, { turns: 1, cost: 0.5, notional: true }]).notionalRuns, 1);
+  assert.deepEqual(sumUsage([{ turns: 1, notional: false }]), { runs: 1, turns: 1, cost: null, tokens: null, costRuns: 0, notionalRuns: 0 });
+  assert.equal(sumUsage([]).runs, 0);
 });

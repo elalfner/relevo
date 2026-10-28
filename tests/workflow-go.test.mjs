@@ -239,6 +239,7 @@ test('Scenario: Log with usage / without usage - the consumption step runs after
   assert.ok(build.indexOf('name: Report what the run used') > build.indexOf('uses: anthropics/claude-code-action@v1'), 'after the agent');
   assert.match(step, /if: always\(\)\n\s+continue-on-error: true/);
   assert.match(step, /run-usage\.mjs --file "\$EXECUTION_FILE" \$flag/);
+  assert.match(step, /gh issue comment "\$ISSUE" --body "\$line"/, 'the whole output of the script is posted, so the hidden marker travels with the sentence');
   assert.match(step, /ONLY_SUBSCRIPTION: \$\{\{ secrets\.ANTHROPIC_API_KEY == '' && secrets\.CLAUDE_CODE_OAUTH_TOKEN != '' \}\}/);
   assert.match(step, /\[ -n "\$line" \] && gh issue comment/);
   assert.match(step, /exit 0/);
@@ -257,7 +258,8 @@ test('Scenario: A runner without the toolchain - the check stops the job before 
   const step = build.indexOf('name: Check the toolchain');
   assert.ok(step > build.indexOf('name: Install OpenSpec'), 'after the toolchain steps and OpenSpec');
   assert.ok(step < build.indexOf('uses: anthropics/claude-code-action@v1'), 'before the agent: no model turn is spent');
-  const text = build.slice(step, build.indexOf('# relevo:agent-step begin'));
+  // The check ends where the progress report starts: that step is not part of what this test says about the check.
+  const text = build.slice(step, build.indexOf('      # One comment on the issue shows'));
   assert.match(text, /npm pack "@elalfner\/relevo@\$RELEVO_VERSION"/);
   assert.match(text, /--strip-components=1 -C "\$RUNNER_TEMP\/relevo"/);
   assert.doesNotMatch(text.replace(/^\s*#.*$/gm, ''), /\.relevo-plugin/, 'nothing is written in the workspace: the agent needs a clean tree');
@@ -269,7 +271,7 @@ test('Scenario: A runner without the toolchain - the check stops the job before 
 });
 
 test('the toolchain check names the guard of the scripts it runs, and runs nothing for a pass', () => {
-  const text = workflow.slice(workflow.indexOf('name: Check the toolchain'), workflow.indexOf('# relevo:agent-step begin'));
+  const text = workflow.slice(workflow.indexOf('name: Check the toolchain'), workflow.indexOf('      # One comment on the issue shows'));
   assert.match(text, /for f in scripts\/toolchain-check\.mjs scripts\/render-message\.mjs \.claude-plugin\/plugin\.json; do/);
   assert.match(text, /lacks \$f/);
   assert.match(text, /if result=\$\(node [^\n]*\); then\n\s+exit 0\n\s+fi/, 'a complete toolchain passes silently');

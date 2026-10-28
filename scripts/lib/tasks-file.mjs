@@ -29,6 +29,12 @@ export function addCorrections(tasksText, titles) {
   return { text: `${base}\n${block}`, section, iteration: next, ids };
 }
 
+/** How many tasks are checked out of all of them: { done, total }. Every checkbox counts, the sections added by corrections too. */
+export function countTasks(tasksText) {
+  const boxes = [...String(tasksText ?? '').matchAll(/^\s*- \[([ xX])\]/gm)];
+  return { done: boxes.filter((m) => m[1] !== ' ').length, total: boxes.length };
+}
+
 /** Ids of the tasks that are still unchecked. */
 export function uncheckedTasks(tasksText) {
   return [...String(tasksText).matchAll(/^\s*- \[ \] (\d+\.\d+)\b/gm)].map((m) => m[1]);

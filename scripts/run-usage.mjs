@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Prints one line with what a cloud run used, read from the execution log of the agent runner. Usage:
+// Prints what a cloud run used, read from the execution log of the agent runner: one sentence, a blank line and a hidden
+// marker with the same figures, which the daily digest adds up. Usage:
 //   node scripts/run-usage.mjs --file <execution_file> [--subscription]
 // --subscription says that the cost is notional. Prints nothing when the log is missing or has no usage.
-// It never fails: exit 0 always, so a step that posts the line cannot fail a run.
+// It never fails: exit 0 always, so a step that posts the text cannot fail a run.
 
 import { readFileSync } from 'node:fs';
-import { readUsage, usageLine } from './lib/run-usage.mjs';
+import { readUsage, usageLine, usageMarker } from './lib/run-usage.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -18,5 +19,8 @@ try {
 } catch {
   text = '';
 }
-const line = usageLine(readUsage(text), { subscription: process.argv.includes('--subscription') });
-if (line) console.log(line);
+const usage = readUsage(text);
+const subscription = process.argv.includes('--subscription');
+const line = usageLine(usage, { subscription });
+const marker = usageMarker(usage, { subscription });
+if (line) console.log(marker ? `${line}\n\n${marker}` : line);
