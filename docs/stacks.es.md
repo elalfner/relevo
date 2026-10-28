@@ -56,6 +56,16 @@ Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` 
 - Los perfiles no exigen ninguna skill extra. Para darle al desarrollo o a QA una skill propia (una de buenas prácticas de Laravel, por ejemplo), lístala en `.relevo/stacks/<stack>.md` bajo `skills`.
 - Un perfil puede tener una sección `Questions for the issue writer`. `/relevo:issue` hace las preguntas que la idea deja abiertas (en un backend: quién está autorizado y cómo es un error); el desarrollo y QA nunca la reciben.
 
+### Usar el perfil `supabase` en un repositorio
+
+- **Estructura.** Los comandos del perfil corren desde la carpeta de la plataforma, y la CLI de Supabase busca `supabase/config.toml` dentro de ella. Una plataforma `backend` con `path: backend` contiene entonces `backend/supabase/` (`config.toml`, `migrations/`, `tests/`, `seed.sql` y `functions/` si usas funciones edge). Deja la app en su propia carpeta (por ejemplo `app/`, una plataforma Flutter con `path: app`): una plataforma cuya carpeta es `.` no tiene restricciones, así que un issue para ella podría cambiar la carpeta de la base de datos, mientras que con dos carpetas Relevo rechaza un cambio fuera de la plataforma del issue.
+- **Una sola línea de migraciones.** La CLI aplica `supabase/migrations/` en un único orden. Agrupa por módulo con el nombre del archivo (`<timestamp>_<modulo>_<cambio>.sql`) y por carpeta en `tests/` y en los archivos de semilla (`[db.seed] sql_paths` en `config.toml`), no con un conjunto de migraciones por módulo.
+- **Desde un proyecto remoto existente.** Ejecuta `supabase init` en la raíz de la plataforma, `supabase login`, `supabase link --project-ref <id>` y `supabase db pull`. El pull escribe `supabase/migrations/<timestamp>_remote_schema.sql` como migración base y la registra como aplicada en el proyecto enlazado. Lee ese archivo antes de commitearlo: puede traer sentencias inesperadas, como quitar una extensión que el stack local activa por defecto. Escribe `supabase/seed.sql` a mano en vez de volcar datos de producción.
+- **Un segundo proyecto (staging y producción).** El pull marca la migración base como aplicada solo en el proyecto que enlazaste. Antes de que `supabase db push` corra contra el otro proyecto, aplica allí la base o márcala como aplicada, o el push intentará crear lo que ya existe. `templates/deploy-supabase.yml` publica en staging desde la rama base y en producción desde la rama de release, y no hace nada hasta que cambia `supabase/migrations/`.
+- **El build en la nube.** La plantilla de `relevo-go.yml` instala la CLI de Supabase para una plataforma Supabase, y el runner de GitHub ya trae Docker. `/relevo:doctor` falla si el workflow no tiene un paso de Supabase activo. Copia `relevo-go.yml` otra vez si tu workflow es anterior.
+
+Esta sección sigue la documentación de Supabase (guías de flujo de desarrollo local y de la CLI) leída el 2026-10-27. Describe la CLI de Supabase, no el comportamiento de Relevo; revisa las guías si un comando difiere en tu versión.
+
 ## Agrega tus propias reglas
 
 | Capa | Dónde | Para qué sirve |
