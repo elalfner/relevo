@@ -476,3 +476,21 @@ Not seen: the planning phase (it was hidden by the wrong "delivery"), a QA rejec
 - **Both runs started the progress comment about 1 to 1.5 minutes after the label**, which is the time the light `decide` job and the toolchain check take before the agent starts; nothing is shown before that.
 
 Still not seen: a QA rejection with the second attempt of development, a cancelled job, the daily digest line (the `relevo.yml` of the sandbox has no `digest.issue`), and a run with Antigravity.
+
+## The stage times of the digest on the real events of the sandbox (task 5.1 of `stage-times-in-digest`)
+
+2026-10-28. `scripts/digest.mjs --dry-run` against the sandbox, with the code of the change and the real events of GitHub (nothing was posted). It printed:
+
+```text
+@elalfner: #45 (built), #40 (qa-failed)
+
+Usage, last 7 days: 3 runs, 35 turns, about $1.30 (notional), 14,803 tokens.
+Stages, last 7 days (median): gate 14 s (3), build 7 min (2).
+```
+
+- **The numbers were recomputed apart**, with a script that does not use the library, from the `labeled` events of #40, #41 and #45: the gates were 30 s (#40), 14 s (#41) and 14 s (#45), a median of 14 s with 3 samples; the builds were 8 min 38 s (#41) and 5 min 48 s (#45), a median of 7 min 13 s, shown as 7 min, with 2 samples.
+- **What stayed out is what the specification leaves out.** The two `building` that ended in `qa-failed` (#40 twice, #41 once) are not builds, and the attempts of 21 October ended before the week began. The usage line agreed too: 16, 6 and 13 turns make the 35 of the line.
+- **Stages with no sample are not in the line.** The sandbox has no review in this week, so waiting for the person, the device review and the peer review are left out, as designed.
+- **The `unlabeled` event is no use for the times.** In #34 the `labeled relevo:building` came a second before the `unlabeled relevo:ready`, which is why the stages are paired from the `labeled` events only.
+
+Not seen: a week with a review, so the last three stages have not been seen on real data; the reading of a stage that began before the week (covered by a test); and the cap of pages or of issues.

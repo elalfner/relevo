@@ -2,7 +2,7 @@
 // Posts the daily digest as a comment on the issue named by digest.issue (chat tools subscribe to GitHub events).
 // Posts nothing when nothing is waiting, and nothing on weekends.
 //   node scripts/digest.mjs --repo owner/name [--config relevo.yml] [--dry-run] [--now ISO]
-//   node scripts/digest.mjs --input state.json [--now ISO]     (never writes; the file may hold `usage`, the parsed runs)
+//   node scripts/digest.mjs --input state.json [--now ISO]     (never writes; the file may hold `usage`, the parsed runs, and `stages`, the samples of the stages)
 // Prints the digest text, or nothing.   exit 0: done   exit 2: invalid configuration or bad arguments
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -37,7 +37,7 @@ if (arg('input')) {
   data = JSON.parse(readFileSync(arg('input') === '-' ? 0 : arg('input'), 'utf8'));
 } else {
   if (!repo) fail('give --repo owner/name (or set GITHUB_REPOSITORY), or --input state.json');
-  data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config, withUsage: true, now });
+  data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config, withUsage: true, withStages: true, now });
 }
 
 const text = renderDigest(buildStatus({ config, ...data, me: null, now }), config.language);

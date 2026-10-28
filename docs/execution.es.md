@@ -65,6 +65,23 @@ Después de cada ejecución en la nube, un comentario da los turnos, el costo y 
 
 Ese mismo comentario lleva un marcador oculto con esas cifras, que el resumen diario suma: termina con una línea como `Uso, últimos 7 días: 3 ejecuciones, 35 turnos, unos $3.75, 1350 tokens.` y dice cuándo el costo es nocional (en todas las ejecuciones, o `nocional en 1 de 2 ejecuciones`). Solo cuentan las ejecuciones de los últimos siete días que dejaron marcador. Las hechas antes de que tu proyecto suba `RELEVO_VERSION` a la versión que escribe el marcador no lo tienen y no se cuentan, y las cifras nunca se deducen del texto del comentario, así que la línea se va llenando durante la primera semana. El resumen sigue sin publicarse cuando nadie espera nada, sea cual sea el uso.
 
+## Cuánto tarda cada etapa
+
+El resumen termina con una línea que dice adónde se va el tiempo de un issue: la mediana de cada etapa que terminó en los últimos siete días y, entre paréntesis, cuántas fueron. Las cinco etapas siguen las etiquetas del ciclo de vida:
+
+| Etapa en la línea | Desde | Hasta |
+|---|---|---|
+| puerta | `relevo:ready` (o `relevo:queued`) | `relevo:building` |
+| construcción | `relevo:building` | `relevo:built` |
+| esperando por ti | `relevo:built` | `relevo:in-review` |
+| revisión en dispositivo | `relevo:in-review` | `relevo:pr-open` |
+| revisión del compañero | `relevo:pr-open` | el issue cerrado como completado |
+
+- **Solo cuenta el camino normal.** Una construcción que QA rechaza, un issue devuelto a quien escribe la especificación, un bloqueo o una petición de cambios no son una etapa, y los días que pasan ahí no forman parte de ninguna. Un issue construido otra vez tras un fallo suma la construcción que funcionó.
+- **Una etapa sin muestras no sale en la línea.** En una revisión en solitario las etapas se saltan y no hay nada que mostrar; un resumen sin ninguna etapa no tiene esta línea, y sigue sin publicarse cuando nadie espera nada.
+- **Una etapa cuenta en la semana en que terminó**, por larga que fuera: una revisión que empezó hace nueve días y terminó hace dos cuenta con toda su duración.
+- **No se guarda nada.** Los tiempos se leen de los eventos que GitHub conserva de los issues, del más nuevo al más viejo y hasta el final de la semana, y después de los eventos de cada issue que terminó una etapa. Si la lectura falla, el resumen sale sin la línea. Un proyecto recibe la línea cuando sube `RELEVO_VERSION` en `relevo-digest.yml` a la versión que la trae.
+
 ## Seguir una ejecución en la nube
 
 Mientras una construcción en la nube corre, un comentario del issue muestra cuánto lleva. Se edita en el mismo sitio, nunca se le añade otro, y se ve así:
