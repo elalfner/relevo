@@ -35,7 +35,17 @@ export function loadPr(gh, repo, branch) {
   return open ? JSON.parse(gh(['pr', 'view', String(open.number), '--repo', repo, '--json', PR_FIELDS])) : null;
 }
 
-const notFound = (err) => /404|Not Found/i.test(String(err?.stderr ?? err?.message ?? err));
+const errorText = (err) => `${err?.stderr ?? ''}\n${err?.message ?? err}`;
+const notFound = (err) => /404|Not Found/i.test(errorText(err));
+
+/**
+ * True when GitHub refuses a branch-rules call because of the plan or the visibility of the repository (a private
+ * repository on the free plan has no rulesets and no protection), not because of the token or a fault of its own.
+ */
+export function planRefusal(err) {
+  const text = errorText(err);
+  return /HTTP 403/.test(text) && /Upgrade to GitHub|make this repository public/i.test(text);
+}
 
 /** True when every file that changed from `baseline` to `head` is under `openspec/`, and something changed. */
 export function changedOnlySpecs(gh, repo, baseline, head) {
@@ -62,16 +72,22 @@ export function baselineChecks(gh, repo, baseline, head) {
 
 /**
  * Whether merging into `branch` requires status checks, by a ruleset or by classic branch protection.
- * Returns { required: boolean, contexts: [names] }. A branch without protection requires none.
+ * Returns { required: boolean, contexts: [names] }. A branch without protection requires none, and neither does one
+ * whose rules the plan of the repository does not offer. Any other failure to read them is thrown: checks that exist
+ * must not be skipped because they could not be read.
  */
 export function requiredChecks(gh, repo, branch) {
   const contexts = new Set();
   let required = false;
-  const rules = JSON.parse(gh(['api', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}`]));
-  (Array.isArray(rules) ? rules : []).filter((r) => r.type === 'required_status_checks').forEach((r) => {
-    required = true;
-    (r.parameters?.required_status_checks ?? []).forEach((c) => contexts.add(c.context));
-  });
+  try {
+    const rules = JSON.parse(gh(['api', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}`]));
+    (Array.isArray(rules) ? rules : []).filter((r) => r.type === 'required_status_checks').forEach((r) => {
+      required = true;
+      (r.parameters?.required_status_checks ?? []).forEach((c) => contexts.add(c.context));
+    });
+  } catch (err) {
+    if (!planRefusal(err)) throw err;
+  }
   try {
     const protection = JSON.parse(gh(['api', `repos/${repo}/branches/${encodeURIComponent(branch)}/protection`]));
     const classic = protection.required_status_checks;
@@ -81,7 +97,7 @@ export function requiredChecks(gh, repo, branch) {
       (classic.checks ?? []).forEach((c) => contexts.add(c.context));
     }
   } catch (err) {
-    if (!notFound(err)) throw err;
+    if (!notFound(err) && !planRefusal(err)) throw err;
   }
   return { required, contexts: [...contexts] };
 }
