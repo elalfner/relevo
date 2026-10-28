@@ -6,6 +6,7 @@ import { LABELS, resolveLabelNames } from './labels.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
 import { cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { parseUsageMarker, USAGE_DAYS } from './run-usage.mjs';
+import { STAGE_DAYS, stagesOfIssue } from './stages.mjs';
 
 const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
@@ -32,7 +33,50 @@ export function gatherUsage({ gh, repo, now = new Date() }) {
   }
 }
 
-export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false, now = new Date() }) {
+/** The most pages of the stream of events that one digest reads, and the most issues whose events it then reads. */
+export const STREAM_PAGE_CAP = 30;
+export const STAGE_ISSUE_CAP = 100;
+
+/**
+ * The stages that finished in the last seven days, as [{ stage, ms }] (see stagesOfIssue). Two reads. First the events
+ * of the whole repository, newest first, until a page reaches back before the window: they say which issues can have
+ * ended a stage (a state label other than the first, or a close; pull requests are left out). Then the events of each of
+ * those issues, whole, because a stage that ended this week may have begun before it. A read that fails gives no
+ * samples, so the digest is posted without its line of stage times. Nothing is written.
+ */
+export function gatherStages({ gh, repo, config, now = new Date(), log = (m) => process.stderr.write(`${m}\n`) }) {
+  const from = new Date(now).getTime() - STAGE_DAYS * 24 * 3600 * 1000;
+  try {
+    const labels = resolveLabelNames(config.labels);
+    const ends = new Set(['building', 'built', 'in-review', 'pr-open'].map((k) => labels[k]));
+    const candidates = new Map(); // issue number -> the time of its latest event in the window
+    let reachedBack = false;
+    for (let page = 1; page <= STREAM_PAGE_CAP && !reachedBack; page += 1) {
+      const events = JSON.parse(gh(['api', `repos/${repo}/issues/events?per_page=100&page=${page}`]));
+      let oldest = Infinity;
+      events.forEach((e) => {
+        const at = Date.parse(e.created_at);
+        oldest = Math.min(oldest, at);
+        if (at < from || !e.issue || e.issue.pull_request) return;
+        if ((e.event === 'labeled' && ends.has(e.label?.name)) || e.event === 'closed') {
+          candidates.set(e.issue.number, Math.max(candidates.get(e.issue.number) ?? 0, at));
+        }
+      });
+      reachedBack = events.length < 100 || oldest < from;
+      if (!reachedBack && page === STREAM_PAGE_CAP) log(`stage times: the cap of ${STREAM_PAGE_CAP} pages of events was reached, so what was read is used`);
+    }
+    const numbers = [...candidates.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+    if (numbers.length > STAGE_ISSUE_CAP) log(`stage times: ${numbers.length} issues ended a stage, the ${STAGE_ISSUE_CAP} most recent are read`);
+    return numbers.slice(0, STAGE_ISSUE_CAP).flatMap((n) => stagesOfIssue(paged(gh, `repos/${repo}/issues/${n}/events?per_page=100`), labels)
+      .filter((st) => st.endedAt >= from)
+      .map(({ stage, ms }) => ({ stage, ms })));
+  } catch (err) {
+    log(`could not read the stage times: ${reasonOf(err)}`);
+    return [];
+  }
+}
+
+export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false, withStages = false, now = new Date() }) {
   // The reads that fail and are not an answer; the report lists them so that a partial report is not taken for a complete one.
   const unread = [];
   const names = resolveLabelNames(config.labels);
@@ -81,7 +125,7 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false
       approved: approvedBy.length > 0, behind_by: behind,
     });
   });
-  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }), cloudBuilds: readCloudBuilds({ gh, repo, unread }), unread, ...(withUsage ? { usage: gatherUsage({ gh, repo, now }) } : {}) };
+  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }), cloudBuilds: readCloudBuilds({ gh, repo, unread }), unread, ...(withUsage ? { usage: gatherUsage({ gh, repo, now }) } : {}), ...(withStages ? { stages: gatherStages({ gh, repo, config, now }) } : {}) };
 }
 
 /**
