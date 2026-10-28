@@ -872,6 +872,17 @@ test('Scenario: A project that builds on machines only - nothing is said about t
   assert.deepEqual(runChecks(healthy()).filter((r) => r.id.startsWith('automation.toolchain')), [], 'no text, no judgement');
 });
 
+test('Scenario: A Supabase platform whose workflow installs nothing - a failure that names the platform and the step; the template passes', () => {
+  const backend = { name: 'backend', stack: 'supabase', path: 'backend', targets: [], profile: null, errors: [], tools: [], targetTools: [] };
+  const facts = [backend];
+  assert.equal(toolchain(withGo(GO_TEMPLATE, facts), 'backend').status, 'pass');
+  const missing = toolchain(withGo('name: go\n', facts), 'backend');
+  assert.equal(missing.status, 'fail');
+  assert.match(missing.message, /platform backend \(supabase\).*every cloud build would fail QA/);
+  assert.match(missing.fix, /enable the Supabase step of the build job in relevo-go\.yml/);
+  assert.equal(toolchain(withGo('steps:\n  # - uses: supabase/setup-cli@v1\n', facts), 'backend').status, 'fail', 'a commented step counts as missing');
+});
+
 test('the Laravel step is judged, Vue and unknown stacks are not', () => {
   const laravel = { name: 'api', stack: 'laravel', path: 'api', targets: [], profile: null, errors: [], tools: [], targetTools: [] };
   const vue = { ...laravel, name: 'web', stack: 'vue', path: 'web' };

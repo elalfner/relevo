@@ -1,4 +1,4 @@
-# relevo-template: 0.9.2
+# relevo-template: 0.9.3
 # Relevo: builds an issue when someone with write access labels it `relevo:ready`.
 # Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
 #
@@ -20,7 +20,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.9.2'
+  RELEVO_VERSION: '0.9.3'
   # The version of OpenSpec that the job installs for itself.
   OPENSPEC_VERSION: '1.14.3'
 
@@ -143,8 +143,8 @@ jobs:
       # issue is installed here. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
       # (`needs.decide.outputs.path`), so an issue for the front does not install the back's tools: a step whose stack
       # is not the issue's is skipped and costs nothing. The names are the `stack` of relevo.yml. Change the versions
-      # and the caching to suit the project; `/relevo:doctor` fails when a Flutter or Laravel platform has no active
-      # step below, because every build would fail QA after spending the run.
+      # and the caching to suit the project; `/relevo:doctor` fails when a Flutter, Laravel or Supabase platform has no
+      # active step below, because every build would fail QA after spending the run.
       - if: needs.decide.outputs.stack == 'flutter'
         uses: subosito/flutter-action@v2
         with:
@@ -155,6 +155,11 @@ jobs:
         with:
           php-version: '8.3'
           tools: composer
+      # Supabase: the CLI runs the checks of the profile against containers on the runner, which already has Docker.
+      - if: needs.decide.outputs.stack == 'supabase'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
       # Vue needs only Node, which this job installed above; to cache the packages, uncomment:
       #   - if: needs.decide.outputs.stack == 'vue'
       #     uses: actions/setup-node@v4

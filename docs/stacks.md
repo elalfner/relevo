@@ -56,6 +56,16 @@ Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:g
 - The profiles require no extra skill. To give the developer or QA a skill of your own (a Laravel best-practices skill, say), list it in `.relevo/stacks/<stack>.md` under `skills`.
 - A profile can have a section `Questions for the issue writer`. `/relevo:issue` asks those the idea leaves open (for a backend: who is authorised and what an error looks like); the developer and QA never receive it.
 
+### Using the `supabase` profile in a repository
+
+- **Layout.** The commands of the profile run from the folder of the platform, and the Supabase CLI looks for `supabase/config.toml` inside it. A platform `backend` with `path: backend` therefore holds `backend/supabase/` (`config.toml`, `migrations/`, `tests/`, `seed.sql`, and `functions/` if you use edge functions). Keep the app in its own folder (for example `app/`, a Flutter platform with `path: app`): a platform whose folder is `.` is not restricted, so an issue for it could change the database folder, while two folders make Relevo refuse a change outside the platform of the issue.
+- **One timeline of migrations.** The CLI applies `supabase/migrations/` in a single order. Group by module with the file name (`<timestamp>_<module>_<change>.sql`) and by folder in `tests/` and in the seed files (`[db.seed] sql_paths` in `config.toml`), not with a set of migrations per module.
+- **From an existing remote project.** Run `supabase init` at the root of the platform, `supabase login`, `supabase link --project-ref <id>` and `supabase db pull`. The pull writes `supabase/migrations/<timestamp>_remote_schema.sql` as the baseline and records it as applied in the linked project. Read that file before you commit it: it can contain statements you did not expect, such as dropping an extension that the local stack enables by default. Write `supabase/seed.sql` by hand instead of dumping production data.
+- **A second project (staging and production).** The pull marks the baseline as applied only in the project you linked. Before `supabase db push` runs against the other project, apply the baseline there or mark it as applied, or the push will try to create what already exists. `templates/deploy-supabase.yml` pushes to staging from the base branch and to production from the release branch, and does nothing until `supabase/migrations/` changes.
+- **The cloud build.** The template of `relevo-go.yml` installs the Supabase CLI for a Supabase platform, and the hosted runner already has Docker. `/relevo:doctor` fails when the workflow has no active Supabase step. Copy `relevo-go.yml` again if your workflow predates it.
+
+This section follows the Supabase documentation (local development workflow and CLI guides) as read on 2026-10-27. It describes the Supabase CLI, not behaviour of Relevo; check the guides if a command differs in your version.
+
 ## Adding your own rules
 
 | Layer | Where | What it is for |

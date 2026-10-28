@@ -4,6 +4,26 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-10-27
+
+### Added
+
+- **The `go` workflow template installs the Supabase CLI** for a Supabase platform (`supabase/setup-cli`, guarded by the stack), and `/relevo:doctor` fails when the workflow has no active Supabase step, as it does for Flutter and Laravel. Copy `relevo-go.yml` again to get the step.
+- **`docs/stacks.md` explains how to use the `supabase` profile**: the folder layout the Supabase CLI expects inside the platform, one timeline of migrations, how to bring an existing remote project in (`supabase init`, `link`, `db pull`) and the case of a second project.
+
+### Fixed
+
+- **`/relevo:init` no longer says that `go` builds only a repository with one platform.** Since 0.2.0 `go` builds the platform each issue names with its `Platform:` line.
+
+### Known limits
+
+- The Supabase step has been checked against the text of the workflow and the Supabase documentation, not on a hosted runner with a real Supabase project; it installs the CLI with `version: latest`, so a newer CLI can change a command.
+- The layout and the `db pull` flow in `docs/stacks.md` follow the Supabase guides as read on 2026-10-27 and describe the Supabase CLI, not behaviour of Relevo.
+
+### Upgrading
+
+- Set `RELEVO_VERSION` to `0.9.3` in your workflows. If a Supabase platform builds in the cloud, copy `relevo-go.yml` again (`/relevo:init` offers the merge) to get the Supabase CLI step; `/relevo:doctor` fails when it is missing.
+
 ## [0.9.2] - 2026-10-27
 
 ### Fixed
