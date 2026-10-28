@@ -65,6 +65,23 @@ After each cloud run a comment gives the turns, the cost and the tokens that the
 
 The same comment holds a hidden marker with those figures, which the daily digest adds up: it ends with a line such as `Usage, last 7 days: 3 runs, 35 turns, about $3.75, 1,350 tokens.` and says when the cost is notional (for all the runs, or `notional for 1 of 2 runs`). Only the runs of the last seven days that left a marker are counted. Runs made before your project raised `RELEVO_VERSION` to the release that writes the marker have none and are not counted, and the figures are never guessed from the text of the comment, so the line fills in during the first week. The digest still posts nothing when nobody is waiting, whatever the usage.
 
+## Following a cloud run
+
+While a cloud build runs, one comment on the issue shows how far it is. It is edited in place, never added to, and looks like this:
+
+```text
+Relevo build in progress: QA (attempt 2 of 3)
+Tasks: 6 of 9
+Running for 7 min
+```
+
+- **The phase** is planning, specification, development, QA or delivery. The `go` skill announces it when it enters each step, with the attempt number out of the allowed retries (`qa_retries`) when QA rejects the work and development starts again. If it announces nothing, the phase is deduced from the working tree, which cannot tell QA from a new attempt of development.
+- **The tasks** are the checked boxes of `tasks.md` out of all of them. The workflow counts them itself every 30 seconds, so they do not depend on the agent.
+- **The minutes** are whole minutes since the run started. A run whose minutes keep growing while its tasks and phase stay the same is stuck, or in a long step: open the run to read its log. The comment is edited only when its text changes, about once a minute.
+- **When the run ends**, whatever the outcome, the comment is replaced by one line that points to the result (or, for a run that left none, says so) and links the run. The result itself is the comment that was always posted.
+
+It shows the phase and the attempt, not what a subagent is doing inside them. A local run (`go --local`) has no such comment: you are watching the session. To get it in a project that already has the workflow, take the new `relevo-go.yml` through `/relevo:init`, which merges it with your changes, and raise `RELEVO_VERSION`; until then the runs build as before without it. The report never fails a run: if GitHub refuses an edit, the build goes on.
+
 ## Building on your machine
 
 ```bash

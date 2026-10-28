@@ -25,6 +25,16 @@ When `trust` in `relevo.yml` is `public`, the issue may have been written by a s
 
 Launch `relevo:dev` and `relevo:qa` in the foreground and wait for each report before the next step. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
 
+## Progress on the issue
+
+In the cloud the workflow keeps one comment on the issue that shows how far the run is. The workflow reads the tasks itself; you announce the phase you enter, at the start of the step that names it below:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt <n> --of <m>]
+```
+
+This is best effort. It prints nothing and does nothing outside that workflow, and when it cannot write it still exits 0. Never wait for it, never retry it, never take the failure path because of it, and do not mention it in the report.
+
 ## Where it runs
 
 In the cloud the workflow starts this skill with the decision already made. A person can also start it on their machine: `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>` runs it in a separate git worktree, with the same limits and tool lists as the workflow, and removes the worktree when it ends cleanly.
@@ -94,6 +104,8 @@ Find the repository name: `$GITHUB_REPOSITORY`, or `gh repo view --json nameWith
 
 ### 1. Plan and claim
 
+Announce the phase: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase planning`.
+
 **When `$ARGUMENTS` has `--decision <base64>`**, the workflow already ran the gates and claimed the issue in an earlier job, so the issue is `building` now. Do not run `go-plan` (it only looks at issues that are not claimed yet and would find nothing). Decode the value, which is the `start` decision as JSON, and use it exactly as described below:
 
 ```bash
@@ -131,6 +143,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-state.mjs <base> <branch> <change_id>
 It prints `implementation`, `spec-only` or `empty`. The recovery is `fix` for `implementation` (the person runs `/relevo:fix <issue>`) and `delete-branch` for the others (the person deletes the remote branch and applies `ready` again).
 
 ### 3. Specification
+
+Announce the phase: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase specification`.
 
 First check that the issue is the one that was claimed:
 
@@ -191,6 +205,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "docs: specificat
 
 ### 4. Build
 
+Announce the phase: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase development`.
+
 First resolve the stack profile of the repository's platform and the extra skills of each role. The agents contain no knowledge of any stack; it comes from here:
 
 ```bash
@@ -213,6 +229,8 @@ Read its report. If its open questions are not "none", treat them as a spec defe
 
 ### 5. QA, with retries
 
+Announce the phase: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase qa --attempt 1 --of <qa_retries + 1>`.
+
 Make the new files of the developer visible to `git diff`, without staging them, using the files its report lists (created and modified):
 
 ```bash
@@ -227,11 +245,13 @@ git diff origin/<base> -- . ':(exclude)<pattern>' ...
 
 The first line of its answer is `QA PASSED` or `QA REJECTED`.
 
-On `QA REJECTED`, you may retry up to `qa_retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, runs `intent-to-add.mjs` on the files of its new report, then launches `relevo:qa` again with the previous report and those files, so it checks each earlier finding and reviews only what changed.
+On `QA REJECTED`, you may retry up to `qa_retries` times. Before each retry number `<k>` (1 for the first), announce `phase development --attempt <k> --of <qa_retries>`, and before the QA that follows it `phase qa --attempt <k + 1> --of <qa_retries + 1>`. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, runs `intent-to-add.mjs` on the files of its new report, then launches `relevo:qa` again with the previous report and those files, so it checks each earlier finding and reviews only what changed.
 
 If QA still rejects after the retries, take the failure path with the reason `QA rejected after the retries`, and the first finding of the last report.
 
 ### 6. Commit
+
+Announce the phase: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase delivery`.
 
 Commit exactly the files the developer reported (created and modified) plus `tasks.md`, through the script. Never use `git add .` or `-A`; the script refuses them.
 

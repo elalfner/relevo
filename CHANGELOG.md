@@ -7,15 +7,20 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 ### Added
 
 - **The daily digest adds up the usage of the cloud runs.** The comment that gives the turns, the cost and the tokens of a run now holds a hidden marker with the same figures (`<!-- relevo:usage {...} -->`), and the digest ends with one line for the runs of the last seven days: `Usage, last 7 days: 3 runs, 35 turns, about $3.75, 1,350 tokens.` A cost from a subscription is said to be notional, for all the runs or for some of them. Only comments of a bot with one valid marker count, so a person who types a marker changes nothing, and the figures are never guessed from the text of a comment. The digest still posts nothing when nobody is waiting. This makes the code match the "Cost control" requirement, and the `status` specification now says what the digest holds.
+- **A cloud build shows its progress on the issue.** One comment, edited in place and never added to, gives the phase (planning, specification, development, QA with its attempt out of the allowed retries, delivery), the tasks done out of the total and the minutes. A check that runs beside the agent refreshes it every 30 seconds and writes only when the text changed, so a run that stops advancing shows minutes that grow with the same tasks and phase. The `go` skill announces the phase through `scripts/progress.mjs`, into `$RELEVO_PROGRESS_DIR` under the runner's temporary folder (nothing reaches the working tree or the diff); with no announcement the phase is deduced from the tree. When the run ends the comment is replaced by one line that points to the result, and a closed comment is never written again. The new steps of `relevo-go.yml` never fail the job and sit outside the agent block, so Antigravity gets them too. See `docs/execution.md`.
 
 ### Known limits
 
+- The progress comment shows the phase and the attempt, not what a subagent is doing inside them, and it has no estimate of the time left.
+- It is for cloud builds only: a local run (`go --local`) has none.
+- Whether `RELEVO_PROGRESS_DIR` reaches the tools of the agent on a real runner is not checked yet; when it does not, the announcement does nothing and the phase is deduced from the tree.
 - Runs made before the marker have none and are not counted, so the line fills in during the first week.
 - `/relevo:status` does not show the usage; only the digest does.
 
 ### Upgrading
 
 - Set `RELEVO_VERSION` to this release in `.github/workflows/relevo-go.yml` (the runs then write the marker) and in `.github/workflows/relevo-digest.yml` (the digest then reads it). No other line of the workflows changes.
+- For the progress comment, take the new `relevo-go.yml` through `/relevo:init`, which merges it with your changes: it adds the step "Start the progress report" before the agent and the steps "Stop the progress report" and "Close the progress comment" at the end. Without them the runs build as before and show no progress.
 
 ## [0.9.3] - 2026-10-27
 

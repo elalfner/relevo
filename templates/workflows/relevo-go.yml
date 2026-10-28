@@ -218,6 +218,28 @@ jobs:
           echo "::error::The runner has no $missing, so nothing was built"
           exit 1
 
+      # One comment on the issue shows the phase, the tasks and the minutes of the run, and the Relevo scripts of this
+      # package edit it every 30 seconds from here, beside the agent, until the job ends. It lives outside the agent
+      # block on purpose: it serves any agent. Nothing is written in the workspace (the agent needs a clean tree): the
+      # state is under $RUNNER_TEMP, and RELEVO_PROGRESS_DIR tells the go skill where to announce its phase. The step
+      # never fails the job, and a package without the script simply shows no progress. --max-minutes is the
+      # timeout-minutes of this job plus a margin: the check ends by itself even if this job is cancelled.
+      - name: Start the progress report
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          DECISION: ${{ needs.decide.outputs.decision_b64 }}
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/progress.mjs"
+          [ -f "$script" ] || exit 0
+          dir="$RUNNER_TEMP/relevo-progress"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          echo "RELEVO_PROGRESS_DIR=$dir" >> "$GITHUB_ENV"
+          RELEVO_PROGRESS_DIR="$dir" nohup node "$script" watch --issue "$ISSUE" --decision "$DECISION" --max-minutes 65 > "$dir/watch.log" 2>&1 &
+          exit 0
+
       # relevo:agent-step begin
       - id: agent
         uses: anthropics/claude-code-action@v1
@@ -294,6 +316,7 @@ jobs:
       # ready or building after the agent step, no outcome was recorded, so say so on the issue.
       # If you renamed the labels in relevo.yml, change the names below too.
       - name: Report a run that ended without an outcome
+        id: no_outcome
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -319,6 +342,35 @@ jobs:
           else
             gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
           fi
+          echo "reported=true" >> "$GITHUB_OUTPUT"
+
+      # The progress report ends here, after every report above so that its last line is true: first the check is asked to
+      # stop and waited for (so that it cannot write over the closing), then the comment is replaced by one line. Neither
+      # step can fail the job, and neither does anything when the report never started.
+      - name: Stop the progress report
+        if: always()
+        continue-on-error: true
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/progress.mjs"
+          [ -f "$script" ] && [ -n "$RELEVO_PROGRESS_DIR" ] || exit 0
+          node "$script" stop --wait 20
+          exit 0
+
+      - name: Close the progress comment
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NO_OUTCOME: ${{ steps.no_outcome.outputs.reported }}
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/progress.mjs"
+          [ -f "$script" ] && [ -n "$RELEVO_PROGRESS_DIR" ] || exit 0
+          outcome=result
+          [ "$NO_OUTCOME" = "true" ] && outcome=none
+          node "$script" close --issue "$ISSUE" --outcome "$outcome" --run-url "$RUN_URL"
+          exit 0
 
       # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
       - name: Remove what this job added
