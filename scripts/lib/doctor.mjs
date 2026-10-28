@@ -670,7 +670,7 @@ export function runChecks(f) {
   if (f.protectionError) {
     r.push(warn('repo.protection', `could not read the branch rules (${f.protectionError}), so they were not checked`, 'run doctor again; if it keeps failing, check your access to the repository'));
   } else if (f.protectionUnavailable) {
-    r.push(warn('repo.protection', `branch protection is not available on this repository (${f.protectionUnavailable})`, 'make the repository public or upgrade the plan; until then approval and merge are only enforced by the written confirmation in `ship`'));
+    r.push(note('repo.protection', `no branch protection is available on this plan (${f.protectionUnavailable}): approval and merge are only enforced by the written confirmation in \`ship\`; making the repository public or upgrading the plan would add it`));
   } else {
     [['base', f.config?.branches?.base ?? 'base'], ['release', f.config?.branches?.release ?? 'release']].forEach(([key, name]) => {
       const p = f.protection?.[key];
