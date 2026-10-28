@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-28
+
 ### Added
 
 - **The daily digest adds up the usage of the cloud runs.** The comment that gives the turns, the cost and the tokens of a run now holds a hidden marker with the same figures (`<!-- relevo:usage {...} -->`), and the digest ends with one line for the runs of the last seven days: `Usage, last 7 days: 3 runs, 35 turns, about $3.75, 1,350 tokens.` A cost from a subscription is said to be notional, for all the runs or for some of them. Only comments of a bot with one valid marker count, so a person who types a marker changes nothing, and the figures are never guessed from the text of a comment. The digest still posts nothing when nobody is waiting. This makes the code match the "Cost control" requirement, and the `status` specification now says what the digest holds.
