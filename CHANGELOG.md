@@ -4,6 +4,17 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`/relevo:doctor` notes that a Flutter repository works better with the official Dart and Flutter skills**, for Claude Code (the plugin `dart-flutter`) and, when the repository has the Antigravity plugin of Relevo or builds with `agent.build: antigravity`, for Antigravity (`.agents/skills`). It is a note, never a warning or a failure, and it does not change the exit status. `/relevo:init` offers the installs as optional commands that you confirm one by one, and lists the steps it never does (the Antigravity IDE screen, the Dart MCP entry in `.agents/mcp_config.json`, copying the official rules to your rules file).
+- **`docs/stacks.md` and `docs/stacks.es.md` explain the two routes** and that the plugin of Claude Code does not reach the cloud runner while a skills folder committed to the repository does.
+
+### Known limits
+
+- The Antigravity IDE installs the integration from its settings and the installation cannot be seen, so `doctor` says the route exists and does not claim that it is missing.
+- It has not been tested whether the `dev` and `qa` agents of Relevo see the skills of a plugin. Relevo does not hand these skills to them.
+- The commands follow the Flutter documentation as read on 2026-10-28 (the repository was renamed from `flutter/skills` to `flutter/agent-plugins`); `npx skills add` also writes `skills-lock.json`.
+
 ## [0.10.0] - 2026-10-28
 
 ### Added
