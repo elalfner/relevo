@@ -84,6 +84,8 @@ No arguments. Who is waiting on what, the `ready` issues assigned to you and any
 
 The daily digest posted by the digest workflow has the same content for the team, plus one line with the usage of the cloud runs of the last seven days when they left a usage marker ([what it counts](execution.md#what-a-cloud-run-reports)). `/relevo:status` itself does not show it.
 
+The digest also ends with the time of each stage of an issue, as the median of the stages that finished in the last seven days and how many they were, for example `Stages, last 7 days (median): gate 13 s (4), build 6 min (3), waiting for you 3 h (3), device review 24 h (2)`. [What it counts](execution.md#how-long-each-stage-takes).
+
 ```text
 /relevo:status
 ```

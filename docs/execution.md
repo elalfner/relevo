@@ -65,6 +65,23 @@ After each cloud run a comment gives the turns, the cost and the tokens that the
 
 The same comment holds a hidden marker with those figures, which the daily digest adds up: it ends with a line such as `Usage, last 7 days: 3 runs, 35 turns, about $3.75, 1,350 tokens.` and says when the cost is notional (for all the runs, or `notional for 1 of 2 runs`). Only the runs of the last seven days that left a marker are counted. Runs made before your project raised `RELEVO_VERSION` to the release that writes the marker have none and are not counted, and the figures are never guessed from the text of the comment, so the line fills in during the first week. The digest still posts nothing when nobody is waiting, whatever the usage.
 
+## How long each stage takes
+
+The digest ends with one line that tells where the time of an issue goes: the median of each stage that finished in the last seven days, and in brackets how many finished. The five stages follow the labels of the lifecycle:
+
+| Stage in the line | From | To |
+|---|---|---|
+| gate | `relevo:ready` (or `relevo:queued`) | `relevo:building` |
+| build | `relevo:building` | `relevo:built` |
+| waiting for you | `relevo:built` | `relevo:in-review` |
+| device review | `relevo:in-review` | `relevo:pr-open` |
+| peer review | `relevo:pr-open` | the issue closed as completed |
+
+- **Only the normal path counts.** A build that QA rejects, an issue sent back to the spec writer, a block or a request for changes is not a stage, and the days spent there are not part of any of them. An issue built again after a failure adds the build that worked.
+- **A stage with no sample is not in the line.** In a solo review the stages are skipped and there is nothing to show; a digest with no stage at all has no such line, and it is still not posted when nobody is waiting.
+- **A stage counts in the week it finished**, however long it lasted: a review that began nine days ago and finished two days ago counts with its whole length.
+- **Nothing is stored for it.** The times are read from the events that GitHub keeps for the issues, newest first and until the end of the week, and then from the events of each issue that finished a stage. A read that fails leaves the digest without the line. A project gets the line when it raises `RELEVO_VERSION` in `relevo-digest.yml` to the release that has it.
+
 ## Following a cloud run
 
 While a cloud build runs, one comment on the issue shows how far it is. It is edited in place, never added to, and looks like this:

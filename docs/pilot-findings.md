@@ -466,3 +466,31 @@ Same runs. Names of files only, never contents.
 - **A wrong phase at the start, found and fixed.** The first text read "delivery" at 0 minutes. The job starts on the default branch, which in the sandbox is four commits ahead of the base branch, and the deduction took any commit above the base for a delivery. A commit now counts only when the checkout is on the branch of the issue.
 
 Not seen: the planning phase (it was hidden by the wrong "delivery"), a QA rejection with the second attempt of development, a cancelled job, the daily digest line (the `relevo.yml` of the sandbox has no `digest.issue`), and a run with Antigravity.
+
+## The published 0.10.0 in the sandbox (issues #40 and #45)
+
+2026-10-28. The sandbox workflows were the templates of 0.10.0, which fetch the package with `npm pack @elalfner/relevo@0.10.0` (no test copy), with the subscription token and the Flutter step of that repository.
+
+- **#40 stopped after 1 minute for a reason of the sandbox, not of the code.** The branch of an earlier attempt, with its specification and a `wip: rejected by QA` commit, still existed on the remote. `go` does not touch an existing branch, so it took the failure path with `branch already exists` and left the issue `relevo:qa-failed` with `/relevo:fix 40` as the next step. The progress comment worked through it: `planning` at 0 minutes (the wrong `delivery` of the first run is gone), then `specification`, then a closing line that points to the result. The usage comment carried its marker.
+- **#45 (a copy of #41 with another number) went from `ready` to `relevo:built` in 5 minutes, 13 turns, about $0.53 notional.** The progress comment showed `planning`, `development` with `Tasks: 0 of 2`, then `QA (attempt 1 of 2)` with `Tasks: 2 of 2` from minute 2, and was closed with "The Relevo build ended after 5 min. The result is in the latest comment of this issue." The issue got three comments from the run: the progress comment (closed), the hand-off and the usage comment, whose marker was `<!-- relevo:usage {"turns":13,"cost":0.53,"tokens":5925,"cached":627195,"notional":true} -->`. The `delivery` phase lasted seconds and fell between two reads of a script that looked every 12 to 14 seconds; the first run did show it.
+- **Both runs started the progress comment about 1 to 1.5 minutes after the label**, which is the time the light `decide` job and the toolchain check take before the agent starts; nothing is shown before that.
+
+Still not seen: a QA rejection with the second attempt of development, a cancelled job, the daily digest line (the `relevo.yml` of the sandbox has no `digest.issue`), and a run with Antigravity.
+
+## The stage times of the digest on the real events of the sandbox (task 5.1 of `stage-times-in-digest`)
+
+2026-10-28. `scripts/digest.mjs --dry-run` against the sandbox, with the code of the change and the real events of GitHub (nothing was posted). It printed:
+
+```text
+@elalfner: #45 (built), #40 (qa-failed)
+
+Usage, last 7 days: 3 runs, 35 turns, about $1.30 (notional), 14,803 tokens.
+Stages, last 7 days (median): gate 14 s (3), build 7 min (2).
+```
+
+- **The numbers were recomputed apart**, with a script that does not use the library, from the `labeled` events of #40, #41 and #45: the gates were 30 s (#40), 14 s (#41) and 14 s (#45), a median of 14 s with 3 samples; the builds were 8 min 38 s (#41) and 5 min 48 s (#45), a median of 7 min 13 s, shown as 7 min, with 2 samples.
+- **What stayed out is what the specification leaves out.** The two `building` that ended in `qa-failed` (#40 twice, #41 once) are not builds, and the attempts of 21 October ended before the week began. The usage line agreed too: 16, 6 and 13 turns make the 35 of the line.
+- **Stages with no sample are not in the line.** The sandbox has no review in this week, so waiting for the person, the device review and the peer review are left out, as designed.
+- **The `unlabeled` event is no use for the times.** In #34 the `labeled relevo:building` came a second before the `unlabeled relevo:ready`, which is why the stages are paired from the `labeled` events only.
+
+Not seen: a week with a review, so the last three stages have not been seen on real data; the reading of a stage that began before the week (covered by a test); and the cap of pages or of issues.

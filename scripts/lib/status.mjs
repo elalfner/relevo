@@ -7,6 +7,7 @@
 
 import { resolveLabelNames } from './labels.mjs';
 import { sumUsage, USAGE_DAYS } from './run-usage.mjs';
+import { STAGE_DAYS, formatDuration, summarizeStages } from './stages.mjs';
 
 /** Reviews one person can complete per working day; used only for the capacity warning. */
 export const REVIEWS_PER_PERSON_PER_DAY = 1;
@@ -29,7 +30,7 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], usage = [], me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], usage = [], stages = [], me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
@@ -120,6 +121,8 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     milestones: summaries, alerts, waiting, unread,
     // The runs of the last seven days added up, or null when none left a usage marker. Only the digest shows it.
     usage: usage.length ? sumUsage(usage) : null,
+    // The median time of each stage that finished in the last seven days, or null when none did. Only the digest shows it.
+    stages: stages.length ? summarizeStages(stages) : null,
     readOnly: true,
   };
 }
@@ -212,6 +215,19 @@ function digestUsageLine(usage, es) {
   return `${es ? `Uso, últimos ${USAGE_DAYS} días` : `Usage, last ${USAGE_DAYS} days`}: ${parts.join(', ')}.`;
 }
 
+const STAGE_NAMES = {
+  en: { gate: 'gate', build: 'build', wait: 'waiting for you', device: 'device review', peer: 'peer review' },
+  es: { gate: 'puerta', build: 'construcción', wait: 'esperando por ti', device: 'revisión en dispositivo', peer: 'revisión del compañero' },
+};
+
+// One line for the digest: the median of each stage that finished in the last seven days and how many were, in the order of
+// the lifecycle. A stage without a sample is not in it.
+function digestStagesLine(stages, es) {
+  const names = STAGE_NAMES[es ? 'es' : 'en'];
+  const parts = stages.map((s) => `${names[s.stage]} ${formatDuration(s.median)} (${s.count})`);
+  return `${es ? `Etapas, últimos ${STAGE_DAYS} días (mediana)` : `Stages, last ${STAGE_DAYS} days (median)`}: ${parts.join(', ')}.`;
+}
+
 export function renderDigest(report, language = 'en') {
   const es = String(language).startsWith('es');
   const people = Object.keys(report.waiting).sort();
@@ -230,5 +246,7 @@ export function renderDigest(report, language = 'en') {
     });
   }
   if (report.usage) lines.push('', digestUsageLine(report.usage, es));
+  // After the usage when there is one, so that the two lines read as one block.
+  if (report.stages?.length) lines.push(...(report.usage ? [] : ['']), digestStagesLine(report.stages, es));
   return lines.join('\n');
 }
