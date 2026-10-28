@@ -106,7 +106,7 @@ test('an existing workflow that differs from the template is reported and never 
 test('Scenario: An older go workflow - the item that says it is left alone also names the toolchain step; other workflows do not', () => {
   const current = { ...empty(), workflows: { ...empty().workflows, 'relevo-go.yml': 'name: custom\n', 'relevo-sla.yml': 'name: custom\n' } };
   const items = plan(bare(), current);
-  assert.match(get(items, 'workflow.relevo-go.yml').message ?? get(items, 'workflow.relevo-go.yml').label ?? JSON.stringify(get(items, 'workflow.relevo-go.yml')), /build job installs the toolchain of your stacks, as the template does for Flutter and Laravel/);
+  assert.match(get(items, 'workflow.relevo-go.yml').message ?? get(items, 'workflow.relevo-go.yml').label ?? JSON.stringify(get(items, 'workflow.relevo-go.yml')), /build job installs the toolchain of your stacks, as the template does for Flutter, Laravel and Supabase/);
   assert.doesNotMatch(JSON.stringify(get(items, 'workflow.relevo-sla.yml')), /toolchain/);
 });
 
