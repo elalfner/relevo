@@ -82,6 +82,8 @@ El número de un issue `pr-open` cuyo pull request aprobó alguien que no es el 
 
 Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cualquier construcción que dejó de reportar. Cuando falla una lectura de GitHub (por ejemplo un 403 en la variable del repositorio que pausa la nube), el informe dice cuál en "No se pudo leer" y que puede estar incompleto, y una respuesta vacía dice "Nada espera por ti. (con lo que se pudo leer)".
 
+El resumen diario que publica el workflow del resumen tiene el mismo contenido para el equipo, más una línea con el uso de las ejecuciones en la nube de los últimos siete días cuando dejaron un marcador de uso ([qué cuenta](execution.es.md#qué-reporta-una-ejecución-en-la-nube)). `/relevo:status` en sí no la muestra.
+
 ```text
 /relevo:status
 ```

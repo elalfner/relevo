@@ -4,6 +4,19 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **The daily digest adds up the usage of the cloud runs.** The comment that gives the turns, the cost and the tokens of a run now holds a hidden marker with the same figures (`<!-- relevo:usage {...} -->`), and the digest ends with one line for the runs of the last seven days: `Usage, last 7 days: 3 runs, 35 turns, about $3.75, 1,350 tokens.` A cost from a subscription is said to be notional, for all the runs or for some of them. Only comments of a bot with one valid marker count, so a person who types a marker changes nothing, and the figures are never guessed from the text of a comment. The digest still posts nothing when nobody is waiting. This makes the code match the "Cost control" requirement, and the `status` specification now says what the digest holds.
+
+### Known limits
+
+- Runs made before the marker have none and are not counted, so the line fills in during the first week.
+- `/relevo:status` does not show the usage; only the digest does.
+
+### Upgrading
+
+- Set `RELEVO_VERSION` to this release in `.github/workflows/relevo-go.yml` (the runs then write the marker) and in `.github/workflows/relevo-digest.yml` (the digest then reads it). No other line of the workflows changes.
+
 ## [0.9.3] - 2026-10-27
 
 ### Added

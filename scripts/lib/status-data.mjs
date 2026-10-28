@@ -5,6 +5,7 @@ import { issueFromBranch } from './branch.mjs';
 import { LABELS, resolveLabelNames } from './labels.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
 import { cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
+import { parseUsageMarker, USAGE_DAYS } from './run-usage.mjs';
 
 const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
@@ -12,7 +13,26 @@ const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path]
 const reasonOf = (err) => String(err?.stderr ?? err?.message ?? err).trim().split('\n')[0];
 const notFound = (err) => /404|Not Found/i.test(String(err?.stderr ?? err?.message ?? err));
 
-export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
+/**
+ * The usage of the cloud runs of the last seven days, as parsed markers (see parseUsageMarker). One paged read of the
+ * comments of the whole repository, closed issues included, however many issues there are. `since` filters by the time
+ * a comment was updated, so the date it was created is checked against the window too. A read that fails gives no
+ * runs: the digest is then posted without its line of usage.
+ */
+export function gatherUsage({ gh, repo, now = new Date() }) {
+  const from = new Date(now).getTime() - USAGE_DAYS * 24 * 3600 * 1000;
+  try {
+    return paged(gh, `repos/${repo}/issues/comments?since=${encodeURIComponent(new Date(from).toISOString())}&per_page=100`)
+      .filter((c) => Date.parse(c.created_at) >= from)
+      .map(parseUsageMarker)
+      .filter(Boolean);
+  } catch (err) {
+    process.stderr.write(`could not read the usage of the runs: ${reasonOf(err)}\n`);
+    return [];
+  }
+}
+
+export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false, now = new Date() }) {
   // The reads that fail and are not an answer; the report lists them so that a partial report is not taken for a complete one.
   const unread = [];
   const names = resolveLabelNames(config.labels);
@@ -61,7 +81,7 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config }) {
       approved: approvedBy.length > 0, behind_by: behind,
     });
   });
-  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }), cloudBuilds: readCloudBuilds({ gh, repo, unread }), unread };
+  return { issues: issues.map(({ body, ...rest }) => rest), prs, milestones, externalBlocks: readExternalBlocks({ ghLinks, issues, repo, config, names }), cloudBuilds: readCloudBuilds({ gh, repo, unread }), unread, ...(withUsage ? { usage: gatherUsage({ gh, repo, now }) } : {}) };
 }
 
 /**
