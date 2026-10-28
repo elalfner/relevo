@@ -137,8 +137,12 @@ When the person lacks administrator permission, `init` SHALL print the repositor
 - **THEN** `doctor` fails that check and says to store a read-only token and use the private-repository line of the workflow
 
 #### Scenario: Branch protection unavailable
-- **WHEN** the platform refuses to report branch protection (for example a private repository on a free plan)
-- **THEN** `doctor` warns that approval and merge are then enforced only by the written confirmation in `ship`
+- **WHEN** the platform refuses to report branch protection because of the plan (for example a private repository on a free plan)
+- **THEN** `doctor` reports a note, not a warning or a failure, that branch protection is not available on this plan and that approval and merge are then enforced only by the written confirmation in `ship`
+
+#### Scenario: Branch rules unreadable for another reason
+- **WHEN** the platform refuses to report branch protection for a reason other than the plan
+- **THEN** `doctor` warns that the rules were not checked and says to run it again or to check the access to the repository
 
 ### Requirement: Doctor judges the workflows that run
 `doctor` SHALL read the workflow files from the repository's default branch on GitHub, because that is what runs, and not from the working copy. A workflow that exists only in the working copy SHALL be reported as not on the default branch, with the fix of pushing it there (through a pull request when the branch is protected). When the default branch cannot be read, `doctor` SHALL fall back to the working copy.
