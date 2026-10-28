@@ -646,3 +646,71 @@ test('Scenario: Anywhere else - init writes a workflow only under .github/workfl
   assert.equal(results[0].ok, false);
   assert.match(results[0].message, /refusing to write \.\.\/outside\.yml/);
 });
+
+// ---------- recommended skills of Flutter (flutter-recommended-skills)
+
+const recItems = (recommendedSkills) => {
+  const facts = {
+    configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true },
+    skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: [], recommendedSkills,
+  };
+  const answers = { ...ANSWERS, platforms: { app: { stack: 'flutter', path: 'app', targets: ['android'] } } };
+  return planInit({ facts, answers, templates, current: empty(), admin: true });
+};
+const REC = (claude, antigravity = null) => ({ stack: 'flutter', claude, antigravity });
+const recIds = (items) => items.filter((i) => i.id.includes('recommended.')).map((i) => i.id);
+
+test('Scenario: Offered for Claude Code - two optional installs with their exact commands, nothing written', () => {
+  const items = recItems(REC('missing'));
+  const market = get(items, 'install.recommended.flutter.claude.marketplace');
+  const plugin = get(items, 'install.recommended.flutter.claude.plugin');
+  assert.deepEqual([market.command, plugin.command], ['claude plugin marketplace add flutter/agent-plugins', 'claude plugin install dart-flutter@dart-flutter']);
+  [market, plugin].forEach((i) => assert.deepEqual([i.status, i.install, i.optional], ['todo', true, true]));
+  assert.match(market.description, /^Optional:/);
+  assert.match(market.detail, /nothing else changes/);
+  assert.ok(items.indexOf(market) < items.indexOf(plugin), 'the marketplace comes first');
+});
+
+test('Scenario: Offered for the Antigravity CLI - one optional install, and the manual steps', () => {
+  const items = recItems(REC('present', 'missing'));
+  const cli = get(items, 'install.recommended.flutter.antigravity');
+  assert.equal(cli.command, "npx skills add flutter/agent-plugins --skill '*' --agent universal --yes");
+  assert.deepEqual([cli.status, cli.install, cli.optional], ['todo', true, true]);
+  assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
+  assert.match(get(items, 'manual.recommended.flutter.antigravity-ide').description, /Settings > Customizations > Build with Google Plugins/);
+  assert.match(get(items, 'manual.recommended.flutter.mcp').checklist[0], /"dart".*"mcp-server"/);
+  assert.match(get(items, 'manual.recommended.flutter.mcp').description, /\.agents\/mcp_config\.json/);
+  assert.equal(get(items, 'manual.recommended.flutter.rules').status, 'manual');
+});
+
+test('Scenario: Declined - skipping an optional install changes nothing else', () => {
+  const items = recItems(REC('missing'));
+  const skipped = skipItems(items, ['install.recommended.flutter.claude.marketplace', 'install.recommended.flutter.claude.plugin']);
+  assert.equal(get(skipped, 'install.recommended.flutter.claude.plugin').status, 'skipped');
+  assert.equal(get(skipped, 'config').status, get(items, 'config').status);
+});
+
+test('Scenario: Already installed - ok lines, no install and no manual steps', () => {
+  const items = recItems(REC('present', 'present'));
+  assert.deepEqual(recIds(items), ['install.recommended.flutter.claude', 'install.recommended.flutter.antigravity']);
+  items.filter((i) => i.id.includes('recommended.')).forEach((i) => assert.equal(i.status, 'ok'));
+});
+
+test('Scenario: Not applicable - no recommendation without facts, and the Antigravity steps only when it is in use', () => {
+  assert.deepEqual(recIds(recItems(null)), []);
+  assert.deepEqual(recIds(recItems(REC('missing', null))).sort(), ['install.recommended.flutter.claude.marketplace', 'install.recommended.flutter.claude.plugin', 'manual.recommended.flutter.rules']);
+});
+
+test('Scenario: Steps that are not commands - applyPlan runs none of them and writes no file for them', () => {
+  const items = recItems(REC('missing', 'missing'));
+  const written = [];
+  const io = { gh: () => '{}', write: (p) => written.push(p), append: (p) => written.push(p), mkdir: (p) => written.push(p) };
+  const results = applyPlan(items.filter((i) => i.id.includes('recommended.')), { repo: 'o/r', io });
+  assert.deepEqual(results, []);
+  assert.deepEqual(written, []);
+});
+
+test('a recommended install is shown in the plan with its command', () => {
+  const text = renderPlan(recItems(REC('missing')));
+  assert.match(text, /Optional: install the official Dart and Flutter plugin for Claude Code \(1 of 2\) \(claude plugin marketplace add flutter\/agent-plugins\)/);
+});

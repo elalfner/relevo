@@ -9,7 +9,7 @@ import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow } from './agent-workflow.mjs';
-import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES } from './doctor.mjs';
+import { isVueWeb, OPENSPEC_INSTALL, RECOMMENDED, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -203,6 +203,28 @@ export function pushScopeChecklist({ base, release }) {
 
 const item = (id, status, description, extra = {}) => ({ id, status, description, ...extra });
 
+const OPTIONAL = 'It is optional: if you decline, nothing else changes and /relevo:doctor keeps a note about it.';
+const MCP_ENTRY = '{ "mcpServers": { "dart": { "command": "dart", "args": ["mcp-server"] } } }';
+
+/** The optional installs and the manual steps for the recommended skills of a stack (see RECOMMENDED in doctor.mjs). */
+function recommendedSkillItems(rec) {
+  const route = RECOMMENDED[rec.stack];
+  const label = rec.stack === 'flutter' ? 'Dart and Flutter' : rec.stack;
+  const items = [];
+  if (rec.claude === 'present') items.push(item(`install.recommended.${rec.stack}.claude`, 'ok', `The official ${label} skills are available to Claude Code`));
+  else if (rec.claude === 'missing') {
+    route.claude.commands.forEach((command, i) => items.push(item(`install.recommended.${rec.stack}.claude.${i === 0 ? 'marketplace' : 'plugin'}`, 'todo', `Optional: install the official ${label} plugin for Claude Code (${i + 1} of ${route.claude.commands.length})`, { install: true, optional: true, command, detail: OPTIONAL })));
+  }
+  if (rec.antigravity === 'present') items.push(item(`install.recommended.${rec.stack}.antigravity`, 'ok', `The official ${label} skills are in .agents/skills`));
+  else if (rec.antigravity === 'missing') {
+    route.antigravity.commands.forEach((command) => items.push(item(`install.recommended.${rec.stack}.antigravity`, 'todo', `Optional: install the official ${label} skills for the Antigravity CLI (it also writes skills-lock.json: commit both)`, { install: true, optional: true, command, detail: OPTIONAL })));
+    items.push(item(`manual.recommended.${rec.stack}.antigravity-ide`, 'manual', `Optional, Antigravity IDE: install "${label}" from Settings > Customizations > Build with Google Plugins`));
+    items.push(item(`manual.recommended.${rec.stack}.mcp`, 'manual', `Optional, Antigravity CLI: add the ${label} MCP server to .agents/mcp_config.json (or ~/.gemini/config/mcp_config.json)`, { checklist: [MCP_ENTRY] }));
+  }
+  if (rec.claude === 'missing' || rec.antigravity === 'missing') items.push(item(`manual.recommended.${rec.stack}.rules`, 'manual', `Optional: plugins do not load the official ${label} rules; copy the ones you want from https://github.com/flutter/agent-plugins/tree/main/rules into the rules file of the project`));
+  return items;
+}
+
 /**
  * Plan every change. `ctx`:
  *   facts      from gatherFacts (doctor)
@@ -240,6 +262,10 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
       }
     });
   }
+
+  // Skills a stack works better with: optional installs (declining changes nothing), and the steps init never does itself.
+  const rec = facts.recommendedSkills;
+  if (rec) items.push(...recommendedSkillItems(rec));
 
   // What a browser review of each Vue platform needs: Playwright in its development dependencies, and its Chromium.
   Object.entries(configuredPlatforms).filter(([, p]) => isVueWeb(p)).forEach(([name, p]) => {
