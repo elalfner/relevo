@@ -24,7 +24,17 @@ export const SKILL_INSTALL = {
   supabase: 'run `npx skills add supabase/agent-skills --skill supabase`',
   'supabase-postgres-best-practices': 'run `npx skills add supabase/agent-skills --skill supabase-postgres-best-practices`',
 };
-export const OPENSPEC_INSTALL = 'npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
+// Skills that make a stack work better, offered and never required. Commands as the Flutter docs give them, checked
+// against flutter/agent-plugins on 2026-10-28 (the Antigravity command installs the Dart skills too).
+export const RECOMMENDED = {
+  flutter: {
+    prefix: 'flutter-',
+    claude: { plugin: 'dart-flutter@dart-flutter', commands: ['claude plugin marketplace add flutter/agent-plugins', 'claude plugin install dart-flutter@dart-flutter'] },
+    antigravity: { commands: ["npx skills add flutter/agent-plugins --skill '*' --agent universal --yes"] },
+  },
+};
+const ANTIGRAVITY_IDE = 'in the Antigravity IDE, install "Dart and Flutter" from Settings > Customizations > Build with Google Plugins (doctor cannot check this)';
+export const OPENSPEC_INSTALL ='npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'];
 // The repository variable that pauses the ship workflow, and the secrets of the GitHub App it pushes with.
 export const SHIP_VARIABLE = 'RELEVO_CLOUD_SHIP';
@@ -140,6 +150,32 @@ export function playwrightFacts(dir, { tool, exists }) {
 /** playwrightFacts of each Vue platform with a web target, by platform name. */
 export function vueWebFacts(platforms, deps) {
   return Object.fromEntries(Object.entries(platforms ?? {}).filter(([, p]) => isVueWeb(p)).map(([name, p]) => [name, playwrightFacts(p.path, deps)]));
+}
+
+/**
+ * Are the recommended skills of a stack there, for each coding agent the repository uses? 'present', 'missing', or null
+ * when it cannot be said (Claude Code cannot list its plugins) or the agent is not used. A skill folder counts for any
+ * agent, because it is what `npx skills add` writes and what both tools read. Deps: `tool`, `listDir`, `skillDirs`,
+ * `repoTop`, `adapters` (the Antigravity plugins of Relevo), `agentBuild`.
+ */
+export function recommendedSkillFacts({ stack, tool, listDir, skillDirs, repoTop = null, adapters = [], agentBuild = 'claude' }) {
+  const rec = RECOMMENDED[stack];
+  const safe = (fn, fallback) => {
+    try {
+      return fn();
+    } catch {
+      return fallback;
+    }
+  };
+  const hasFolder = (dirs) => dirs.some((d) => safe(() => listDir(d).some((n) => n.startsWith(rec.prefix)), false));
+  const plugins = safe(() => JSON.parse(String(tool('claude', ['plugin', 'list', '--json']))), null);
+  const folderForClaude = hasFolder(skillDirs);
+  let claude = null;
+  if (folderForClaude || (Array.isArray(plugins) && plugins.some((e) => e.id === rec.claude.plugin && (e.scope === 'user' || e.projectPath === repoTop)))) claude = 'present';
+  else if (Array.isArray(plugins)) claude = 'missing';
+  const usesAntigravity = adapters.length > 0 || agentBuild === 'antigravity';
+  const antigravity = !usesAntigravity ? null : hasFolder(['.agents/skills']) ? 'present' : 'missing';
+  return { stack, claude, antigravity };
 }
 
 // ---------- gather
@@ -425,6 +461,13 @@ function gatherPlatforms(f, p, tryRun) {
     f.platformFacts.push(entry);
   });
 
+  // The skills a stack works better with: only for a stack that has a recommendation, and only when a platform uses it.
+  f.recommendedSkills = null;
+  const recommendedStack = Object.keys(RECOMMENDED).find((stack) => f.platformFacts.some((e) => e.stack === stack));
+  if (recommendedStack && p.listDir) {
+    f.recommendedSkills = recommendedSkillFacts({ stack: recommendedStack, tool: p.tool, listDir: p.listDir, skillDirs: p.skillDirs ?? SKILL_DIRS, repoTop: tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null), adapters: f.adapters, agentBuild: f.config?.agent?.build });
+  }
+
   // What the Autopilot of `review` needs, only when the repository asks for it.
   const mode = f.config.review?.autopilot ?? 'off';
   if (mode !== 'off') {
@@ -630,6 +673,7 @@ export function runChecks(f) {
   r.push(f.gh ? pass('tools.gh', 'the GitHub CLI is installed') : fail('tools.gh', 'the GitHub CLI (gh) is not installed', 'install it from https://cli.github.com'));
   if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
   r.push(...platformChecks(f));
+  r.push(...recommendedSkillChecks(f));
   r.push(...adapterChecks(f));
 
   // skills that think invokes
@@ -907,6 +951,23 @@ function workflowTextChecks(f) {
   if (older.length > 0) r.push(warn('automation.workflow-text', `${older.map((file) => `${file} (text ${stamps[file]}, scripts ${pins[file]})`).join(', ')}: the text of the workflow is older than the scripts it runs`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes'));
   if (unknown.length > 0) r.push(warn('automation.workflow-text-unknown', `${unknown.join(', ')} have no # relevo-template: line, so the age of their text is unknown`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes'));
   if (older.length === 0 && unknown.length === 0 && Object.keys(stamps).length > 0) r.push(pass('automation.workflow-text', 'the text of the workflows is as current as the scripts they run'));
+  return r;
+}
+
+/**
+ * The skills a stack works better with. Never a warning or a failure: the stack works without them, so a missing one
+ * is a note with the commands, and the Antigravity IDE route, which cannot be checked, is said and not guessed.
+ */
+function recommendedSkillChecks(f) {
+  const rec = f.recommendedSkills;
+  if (!rec) return [];
+  const route = RECOMMENDED[rec.stack];
+  const label = rec.stack === 'flutter' ? 'Dart and Flutter' : rec.stack;
+  const r = [];
+  if (rec.claude === 'present') r.push(pass(`recommended.${rec.stack}.claude`, `the official ${label} skills are available to Claude Code`));
+  else if (rec.claude === 'missing') r.push(note(`recommended.${rec.stack}.claude`, `${rec.stack} works better with the official ${label} skills, which Claude Code does not have; they are optional. Install the plugin: ${route.claude.commands.join(', then ')}`));
+  if (rec.antigravity === 'present') r.push(pass(`recommended.${rec.stack}.antigravity`, `the official ${label} skills are in .agents/skills (Antigravity)`));
+  else if (rec.antigravity === 'missing') r.push(note(`recommended.${rec.stack}.antigravity`, `${rec.stack} works better with the official ${label} skills, which are not in .agents/skills; they are optional. For the Antigravity CLI run ${route.antigravity.commands.join(', then ')}; ${ANTIGRAVITY_IDE}`));
   return r;
 }
 

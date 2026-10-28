@@ -382,3 +382,49 @@ test('the digest script adds the usage of a state file, and posts nothing for us
   assert.match(waiting.stdout, /@ana: #1 \(built\)[\s\S]*Usage, last 7 days: 3 runs, 35 turns/);
   assert.equal(run({ issues: [], prs: [], milestones: [], usage: RUNS }).stdout, '');
 });
+
+// ---------- the stage times in the digest
+
+const SEC = 1000;
+const MIN = 60 * SEC;
+const HOUR = 60 * MIN;
+const sample = (stage, ...ms) => ms.map((m) => ({ stage, ms: m }));
+const STAGE_SAMPLES = [
+  ...sample('gate', 10 * SEC, 12 * SEC, 14 * SEC, 16 * SEC),
+  ...sample('build', 4 * MIN, 6 * MIN, 9 * MIN),
+  ...sample('wait', 3 * HOUR, 3 * HOUR, 3 * HOUR),
+  ...sample('device', 24 * HOUR, 24 * HOUR),
+];
+const digestStages = (stages, language = 'en', over = {}) => renderDigest(buildStatus({ config, now: NOW, issues: [issue(1, ['relevo:built'])], prs: [], stages, ...over }), language);
+
+test('Scenario: Digest with stage times - one line with the median and the count of each stage, in the order of the lifecycle', () => {
+  assert.match(digestStages(STAGE_SAMPLES), /\n\nStages, last 7 days \(median\): gate 13 s \(4\), build 6 min \(3\), waiting for you 3 h \(3\), device review 24 h \(2\)\.$/);
+  assert.match(digestStages(STAGE_SAMPLES, 'es'), /\n\nEtapas, últimos 7 días \(mediana\): puerta 13 s \(4\), construcción 6 min \(3\), esperando por ti 3 h \(3\), revisión en dispositivo 24 h \(2\)\.$/);
+});
+
+test('Scenario: A stage with no sample - the stages that were skipped are not in the line', () => {
+  const text = digestStages(sample('build', 6 * MIN));
+  assert.match(text, /: build 6 min \(1\)\.$/);
+  assert.doesNotMatch(text, /gate|device|peer|waiting for you/);
+});
+
+test('Scenario: No stage finished - the digest is the same as before, with and without usage', () => {
+  const plain = renderDigest(buildStatus({ config, now: NOW, issues: [issue(1, ['relevo:built'])], prs: [] }));
+  assert.equal(digestStages([]), plain);
+  assert.doesNotMatch(digestStages([]), /Stages/);
+  assert.equal(buildStatus({ config, now: NOW, issues: [] }).stages, null);
+  const withUsage = digestWith(RUNS);
+  assert.equal(digestStages([], 'en', { usage: RUNS }), withUsage);
+});
+
+test('Scenario: Nothing waiting but stage times exist - no digest is posted', () => {
+  assert.equal(digestStages(STAGE_SAMPLES, 'en', { issues: [] }), null);
+});
+
+test('the stage line comes right after the usage line, so that the two read as one block', () => {
+  const text = digestStages(STAGE_SAMPLES, 'en', { usage: RUNS });
+  assert.match(text, /Usage, last 7 days: 3 runs, 35 turns, about \$3\.75, 1,350 tokens\.\nStages, last 7 days \(median\): gate/);
+  const blocks = text.split('\n\n');
+  assert.equal(blocks.length, 3, 'the header, who waits, and one block');
+  assert.equal(blocks[2].split('\n').length, 2, 'the block holds the usage and the stages, with no blank line between');
+});

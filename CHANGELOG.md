@@ -4,6 +4,26 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-28
+
+### Added
+
+- **`/relevo:doctor` notes that a Flutter repository works better with the official Dart and Flutter skills**, for Claude Code (the plugin `dart-flutter`) and, when the repository has the Antigravity plugin of Relevo or builds with `agent.build: antigravity`, for Antigravity (`.agents/skills`). It is a note, never a warning or a failure, and it does not change the exit status. `/relevo:init` offers the installs as optional commands that you confirm one by one, and lists the steps it never does (the Antigravity IDE screen, the Dart MCP entry in `.agents/mcp_config.json`, copying the official rules to your rules file).
+- **`docs/stacks.md` and `docs/stacks.es.md` explain the two routes** and that the plugin of Claude Code does not reach the cloud runner while a skills folder committed to the repository does.
+- **The daily digest shows how long each stage of an issue takes.** It ends with one line, after the usage: the median of each stage that finished in the last seven days and how many they were, for example `Stages, last 7 days (median): gate 13 s (4), build 6 min (3), waiting for you 3 h (3), device review 24 h (2)`. The five stages are `relevo:ready` (or `queued`) to `building`, `building` to `built`, `built` to `in-review`, `in-review` to `pr-open`, and `pr-open` to the issue closed as completed. Only the normal path counts: a build rejected by QA, a block, a return to the spec writer or a request for changes is not a stage, and an issue built again adds the build that worked. A stage with no sample is left out, and a stage counts in the week it finished, however long it lasted. Nothing is stored: the times are read from the events that GitHub keeps, paired from the `labeled` events only because the `unlabeled` one of the old state may come a second before or after. The digest still posts nothing when nobody is waiting. See `docs/execution.md`.
+
+### Known limits
+
+- The Antigravity IDE installs the integration from its settings and the installation cannot be seen, so `doctor` says the route exists and does not claim that it is missing.
+- The `dev` agent was seen to list the skills of the plugin in a Claude Code session; `qa`, an agent invoking one of them and a cloud run were not tried. Relevo does not hand these skills to them.
+- The commands follow the Flutter documentation as read on 2026-10-28 (the repository was renamed from `flutter/skills` to `flutter/agent-plugins`); `npx skills add` also writes `skills-lock.json`.
+- The line of stages gives the median and the count, not the age of the stage an issue is in now; a build that stopped reporting is still an alert.
+- One digest reads at most 30 pages of events and the events of at most 100 issues, and says so on the log when it stops there. A read that fails leaves the digest without the line. The order of the events (newest first) is observed, not promised by GitHub, and `/relevo:status` does not show the stages.
+
+### Upgrading
+
+- Set `RELEVO_VERSION` to this release in `.github/workflows/relevo-digest.yml` (the digest then reads the events of the issues and shows the line of stages). No other line of the workflow changes.
+
 ## [0.10.0] - 2026-10-28
 
 ### Added
