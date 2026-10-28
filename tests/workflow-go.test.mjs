@@ -165,9 +165,17 @@ test('Scenario: Output for a start - the decide job exposes platform, stack and 
   // The setup examples of the toolchains are comments; every one is guarded by the stack it installs.
   const flat = workflow.replace(/\n\s*#\s*/g, '\n');
   const guards = [...flat.matchAll(/- if: needs\.decide\.outputs\.stack == '([a-z-]+)'/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(guards)].sort(), ['flutter', 'laravel', 'vue']);
+  assert.deepEqual([...new Set(guards)].sort(), ['flutter', 'laravel', 'supabase', 'vue']);
   assert.match(workflow, /working-directory: \$\{\{ needs\.decide\.outputs\.path \}\}/);
   assert.match(workflow, /npm ci --ignore-scripts/);
+});
+
+test('Scenario: Issue for a Supabase platform - the Supabase CLI step is active, guarded by the stack, and comes before the agent', () => {
+  const build = jobText('build');
+  const active = build.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.match(active, /- if: needs\.decide\.outputs\.stack == 'supabase'\n\s+uses: supabase\/setup-cli@v1/);
+  assert.ok(active.indexOf('supabase/setup-cli') < active.indexOf('name: Check the toolchain'), 'the CLI is installed before the toolchain check');
+  assert.ok(active.indexOf('supabase/setup-cli') < active.indexOf('anthropics/claude-code-action'));
 });
 
 test('Scenario: An issue for a Flutter platform - the Flutter and Laravel steps are active and guarded, Vue and the dependencies stay comments', () => {

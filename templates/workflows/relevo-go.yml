@@ -143,8 +143,8 @@ jobs:
       # issue is installed here. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
       # (`needs.decide.outputs.path`), so an issue for the front does not install the back's tools: a step whose stack
       # is not the issue's is skipped and costs nothing. The names are the `stack` of relevo.yml. Change the versions
-      # and the caching to suit the project; `/relevo:doctor` fails when a Flutter or Laravel platform has no active
-      # step below, because every build would fail QA after spending the run.
+      # and the caching to suit the project; `/relevo:doctor` fails when a Flutter, Laravel or Supabase platform has no
+      # active step below, because every build would fail QA after spending the run.
       - if: needs.decide.outputs.stack == 'flutter'
         uses: subosito/flutter-action@v2
         with:
@@ -155,6 +155,11 @@ jobs:
         with:
           php-version: '8.3'
           tools: composer
+      # Supabase: the CLI runs the checks of the profile against containers on the runner, which already has Docker.
+      - if: needs.decide.outputs.stack == 'supabase'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
       # Vue needs only Node, which this job installed above; to cache the packages, uncomment:
       #   - if: needs.decide.outputs.stack == 'vue'
       #     uses: actions/setup-node@v4

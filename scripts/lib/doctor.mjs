@@ -767,7 +767,7 @@ function shipChecks(f) {
 
 // The action that sets up the toolchain of a stack in the build job of the go workflow. Vue needs only Node, which the
 // job installs for Relevo itself, and a stack that is not listed here is not judged.
-const TOOLCHAIN_ACTIONS = { flutter: { action: 'subosito/flutter-action', step: 'the Flutter step' }, laravel: { action: 'shivammathur/setup-php', step: 'the Laravel step' } };
+const TOOLCHAIN_ACTIONS = { flutter: { action: 'subosito/flutter-action', step: 'the Flutter step' }, laravel: { action: 'shivammathur/setup-php', step: 'the Laravel step' }, supabase: { action: 'supabase/setup-cli', step: 'the Supabase step' } };
 
 /**
  * Does the go workflow install the toolchain of each configured platform? Without it every cloud build fails QA after

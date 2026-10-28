@@ -97,6 +97,8 @@ test('Scenario: Monorepo - init asks for the stack, the folder and the targets o
   assert.match(init, /`stackProfiles`/);
   assert.match(init, /`platform: flutter-android` line stays as it is/);
   assert.doesNotMatch(init, /today `flutter-android`/);
+  assert.doesNotMatch(init, /builds only a repository with one/, 'go builds the platform each issue names');
+  assert.match(init, /each issue names the platform it is for with a `Platform:` line/);
 });
 
 test('the doctor skill says it reads the profile of each platform and the skills of each role', () => {

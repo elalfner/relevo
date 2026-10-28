@@ -334,7 +334,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
       items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} differs from the template and could not be checked for an update (${up.message}); it is left as it is`));
     } else {
       // The cloud build only passes QA when the build job installs the toolchain of the stack, which the template does.
-      const toolchain = file === 'relevo-go.yml' ? '; check that its build job installs the toolchain of your stacks, as the template does for Flutter and Laravel' : '';
+      const toolchain = file === 'relevo-go.yml' ? '; check that its build job installs the toolchain of your stacks, as the template does for Flutter, Laravel and Supabase' : '';
       items.push(item(`workflow.${file}`, 'differs', `.github/workflows/${file} exists and differs from the template; it is left as it is (compare it by hand${toolchain})`));
     }
   });
