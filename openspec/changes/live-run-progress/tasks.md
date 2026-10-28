@@ -35,7 +35,7 @@
 
 ## 6. Real run
 
-- [ ] 6.1 Run one cloud build on the sandbox repository with the new workflow and verify that the comment shows the phase with the attempt, the tasks and the minutes, that it is closed at the end with one line, and that the issue has no extra comment; record in `docs/pilot-findings.md` whether `RELEVO_PROGRESS_DIR` reached the tools of the agent
+- [x] 6.1 Run one cloud build on the sandbox repository with the new workflow and verify that the comment shows the phase with the attempt, the tasks and the minutes, that it is closed at the end with one line, and that the issue has no extra comment; record in `docs/pilot-findings.md` whether `RELEVO_PROGRESS_DIR` reached the tools of the agent
 
 ## Workflow follow-up
 

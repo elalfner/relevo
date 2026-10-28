@@ -34,8 +34,8 @@ export function deducePhase(facts) {
   return facts.tasks.done < facts.tasks.total ? 'development' : 'qa';
 }
 
-/** What the working tree holds for the change, read with the injected `git(args) -> stdout`. Never throws. */
-export function readTreeFacts({ cwd, changeId, base, git }) {
+/** What the working tree holds for the change, read with the injected `git(args) -> stdout`. `branch` is the branch of the issue. Never throws. */
+export function readTreeFacts({ cwd, changeId, base, branch = null, git }) {
   const dir = changeId ? join(cwd, 'openspec', 'changes', changeId) : null;
   const hasChange = Boolean(dir) && existsSync(dir);
   let tasks = null;
@@ -44,9 +44,12 @@ export function readTreeFacts({ cwd, changeId, base, git }) {
   } catch {
     tasks = null;
   }
+  // Delivered means a commit on the branch of the issue. The job starts on the default branch, which may be ahead of the
+  // base branch, so commits above the base only count once the checkout is on the branch that `go` creates.
   let committed = false;
   try {
-    committed = base ? Number(String(git(['rev-list', '--count', `origin/${base}..HEAD`])).trim()) > 0 : false;
+    const onBranch = Boolean(branch) && String(git(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() === branch;
+    committed = onBranch && Boolean(base) && Number(String(git(['rev-list', '--count', `origin/${base}..HEAD`])).trim()) > 0;
   } catch {
     committed = false;
   }

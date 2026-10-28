@@ -53,14 +53,14 @@ function language() {
   return loaded.ok ? { language: loaded.config.language, config: loaded.config } : { language: 'en', config: null };
 }
 
-// The decision of the workflow is data: only the change id and the base branch are read, and only when they look like names.
+// The decision of the workflow is data: only the change id, the base branch and the branch of the issue are read, and only when they look like names.
 function decisionOf(b64) {
   try {
     const d = JSON.parse(Buffer.from(String(b64 ?? ''), 'base64').toString('utf8'));
     const name = (v) => (typeof v === 'string' && /^[A-Za-z0-9._/-]+$/.test(v) ? v : null);
-    return { changeId: name(d.change_id), base: name(d.base) };
+    return { changeId: name(d.change_id), base: name(d.base), branch: name(d.branch) };
   } catch {
-    return { changeId: null, base: null };
+    return { changeId: null, base: null, branch: null };
   }
 }
 
@@ -96,7 +96,7 @@ async function main(command) {
   const { language: lang, config } = language();
 
   if (command === 'watch') {
-    const { changeId, base } = decisionOf(arg('decision'));
+    const { changeId, base, branch } = decisionOf(arg('decision'));
     // A new watch is a new run: what an earlier run left in a folder that persists (its comment, its start, its stop file) is dropped.
     // The announcement is kept: the workflow clears the folder before the agent starts, and the agent announces after this.
     const state = {};
@@ -107,7 +107,7 @@ async function main(command) {
     const why = await watch({
       client, state, language: lang, maxMs: Number(arg('max-minutes') ?? 65) * 60 * 1000,
       intervalMs: arg('interval') ? Number(arg('interval')) * 1000 : INTERVAL_MS,
-      readFacts: () => readTreeFacts({ cwd: process.cwd(), changeId, base, git: (a) => execFileSync('git', a, { encoding: 'utf8' }) }),
+      readFacts: () => readTreeFacts({ cwd: process.cwd(), changeId, base, branch, git: (a) => execFileSync('git', a, { encoding: 'utf8' }) }),
       readAnnounced: () => readAnnouncement(dir),
       stopRequested: () => existsSync(join(dir, 'stop')),
       stillBuilding: () => JSON.parse(realGh(['api', `repos/${repo}/issues/${issue}`])).labels

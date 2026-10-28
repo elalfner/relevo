@@ -70,15 +70,31 @@ test('Scenario: No announcement - the phase is deduced from what the working tre
 
 test('the tree facts are read from the change folder and from git, and a failure of either reads as nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'progress-tree-'));
-  const git = (args) => { assert.deepEqual(args, ['rev-list', '--count', 'origin/dev..HEAD']); return '0\n'; };
-  assert.deepEqual(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', git }), { hasChange: false, tasks: null, committed: false });
+  // The checkout is on `feature/7-x` unless a test says otherwise; `ahead` is how many commits it holds above the base.
+  const gitOf = (ahead, current = 'feature/7-x') => (args) => {
+    if (args[0] === 'rev-parse') return `${current}\n`;
+    assert.deepEqual(args, ['rev-list', '--count', 'origin/dev..HEAD']);
+    return `${ahead}\n`;
+  };
+  const facts = (over = {}) => readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', branch: 'feature/7-x', git: gitOf(0), ...over });
+  assert.deepEqual(facts(), { hasChange: false, tasks: null, committed: false });
   mkdirSync(join(cwd, 'openspec', 'changes', 'add-x'), { recursive: true });
-  assert.deepEqual(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', git }), { hasChange: true, tasks: null, committed: false });
+  assert.deepEqual(facts(), { hasChange: true, tasks: null, committed: false });
   writeFileSync(join(cwd, 'openspec', 'changes', 'add-x', 'tasks.md'), TASKS);
-  assert.deepEqual(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', git: () => '3' }).tasks, { done: 2, total: 4 });
-  assert.equal(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', git: () => '3' }).committed, true);
-  assert.equal(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', git: () => { throw new Error('no git'); } }).committed, false);
-  assert.deepEqual(readTreeFacts({ cwd, changeId: null, base: null, git }), { hasChange: false, tasks: null, committed: false });
+  assert.deepEqual(facts({ git: gitOf(3) }).tasks, { done: 2, total: 4 });
+  assert.equal(facts({ git: gitOf(3) }).committed, true);
+  assert.equal(facts({ git: () => { throw new Error('no git'); } }).committed, false);
+  assert.deepEqual(readTreeFacts({ cwd, changeId: null, base: null, git: gitOf(0) }), { hasChange: false, tasks: null, committed: false });
+});
+
+test('a default branch that is ahead of the base is not a delivery: only commits on the branch of the issue count', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'progress-ahead-'));
+  const ahead = (current) => (args) => (args[0] === 'rev-parse' ? current : '4');
+  // The job starts on main, four commits above dev, before `go` has created the branch.
+  assert.equal(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', branch: 'feature/7-x', git: ahead('main') }).committed, false);
+  assert.equal(deducePhase(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', branch: 'feature/7-x', git: ahead('main') })), 'planning');
+  assert.equal(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', branch: 'feature/7-x', git: ahead('feature/7-x') }).committed, true);
+  assert.equal(readTreeFacts({ cwd, changeId: 'add-x', base: 'dev', branch: null, git: ahead('feature/7-x') }).committed, false, 'without the branch of the decision nothing is guessed');
 });
 
 test('Scenario: QA starts / Retry after a rejection - the announced phase and attempt win over the tree', () => {
