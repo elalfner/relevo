@@ -57,3 +57,9 @@ test('one ship per issue, and enough time to wait for the checks', () => {
   assert.match(active, /group: relevo-ship-\$\{\{ github\.event\.issue\.number \}\}\n\s+cancel-in-progress: false/);
   assert.match(active, /timeout-minutes: 45/);
 });
+
+test('Scenario: Private repository on a free plan - the token may read the checks of a commit', () => {
+  const permissions = active.match(/^permissions:\n((?:  .*\n)+)/m)?.[1] ?? '';
+  assert.match(permissions, /^  checks: read$/m);
+  assert.match(permissions, /^  statuses: read$/m);
+});

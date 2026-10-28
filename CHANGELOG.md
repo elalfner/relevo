@@ -13,6 +13,30 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - **`/relevo:init` no longer says that `go` builds only a repository with one platform.** Since 0.2.0 `go` builds the platform each issue names with its `Platform:` line.
 
+## [0.9.2] - 2026-10-27
+
+### Fixed
+
+- **The ship by label works on a private repository on the free plan.** GitHub offers no rulesets or branch protection there and answers 403 ("Upgrade to GitHub Pro or make this repository public"). The run died on it; now that answer means the base branch requires no checks, and the other checks before the merge (approved, not a draft, no conflicts, green checks of the head) stay as they were. Any other failure to read the rules (a 403 for the token's permissions, a 404, a server error) still stops the run before anything is archived. A repository with no CI at all still needs `review.ship_without_ci: true` to ship by label.
+
+### Added
+
+- **An unexpected error in the ship by label names its reason.** The run comments the message of GitHub on the issue and removes the label, instead of ending with a stack trace and the generic "ended without an outcome" comment.
+- **The ship workflow can read the checks of a commit.** `relevo-ship.yml` declares `checks: read` and `statuses: read`; without them the run stopped with "Resource not accessible by integration".
+
+### Changed
+
+- **`/relevo:doctor` reports a plan without branch protection as a note**, not a warning: the person can do nothing about it but make the repository public or upgrade the plan.
+
+### Known limits
+
+- The refusal for the plan is recognised by its text ("Upgrade to GitHub" or "make this repository public", with status 403). If GitHub words it differently, the ship stops with GitHub's message instead of merging.
+- A repository with no checks at all still needs `review.ship_without_ci: true` to ship by label.
+
+### Upgrading
+
+- Set `RELEVO_VERSION` to `0.9.2` in `.github/workflows/relevo-ship.yml` and add `checks: read` and `statuses: read` to its `permissions` (`/relevo:init` offers the merge). The workflow must be on the default branch: GitHub runs the workflows of an `issues` event only from there.
+
 ## [0.9.1] - 2026-10-27
 
 ### Added

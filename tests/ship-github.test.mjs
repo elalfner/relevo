@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { shipDecision } from '../scripts/lib/ship.mjs';
-import { baselineChecks, changedOnlySpecs, commitRollup, requiredChecks } from '../scripts/lib/ship-github.mjs';
+import { baselineChecks, changedOnlySpecs, commitRollup, planRefusal, requiredChecks } from '../scripts/lib/ship-github.mjs';
 
 const config = loadConfig('limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b, persona-c]\n').config;
 const GOOD = [{ __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' }];
@@ -116,4 +116,27 @@ test('required checks: a ruleset, classic protection, or none', () => {
 test('an error reading protection that is not a 404 is not taken for "no checks"', () => {
   const gh = fakeGh({ 'repos/o/r/rules/branches/dev': [], 'repos/o/r/branches/dev/protection': new Error('HTTP 403: Resource not accessible') });
   assert.throws(() => requiredChecks(gh, 'o/r', 'dev'), /403/);
+});
+
+const PLAN_403 = () => Object.assign(new Error('Command failed: gh api'), { stderr: 'gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)' });
+
+test('Scenario: Private repository on a free plan - the plan refusal on both endpoints means no required checks', () => {
+  const gh = fakeGh({ 'repos/o/r/rules/branches/dev': PLAN_403(), 'repos/o/r/branches/dev/protection': PLAN_403() });
+  assert.deepEqual(requiredChecks(gh, 'o/r', 'dev'), { required: false, contexts: [] });
+});
+
+test('Scenario: Refusal for permissions - a 403 that is not the plan is not taken for "no checks"', () => {
+  const denied = Object.assign(new Error('gh: Resource not accessible by integration (HTTP 403)'), { stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
+  assert.throws(() => requiredChecks(fakeGh({ 'repos/o/r/rules/branches/dev': denied }), 'o/r', 'dev'), /403/);
+  assert.equal(planRefusal(denied), false);
+});
+
+test('Scenario: Server error reading the rules - it is thrown', () => {
+  const broken = Object.assign(new Error('gh: Server Error (HTTP 500)'), { stderr: 'gh: Server Error (HTTP 500)' });
+  assert.throws(() => requiredChecks(fakeGh({ 'repos/o/r/rules/branches/dev': broken }), 'o/r', 'dev'), /500/);
+});
+
+test('a 404 on the rules endpoint is not taken for "no checks" either', () => {
+  const missing = Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' });
+  assert.throws(() => requiredChecks(fakeGh({ 'repos/o/r/rules/branches/dev': missing }), 'o/r', 'dev'), /404/);
 });
