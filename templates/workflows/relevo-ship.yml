@@ -1,4 +1,4 @@
-# relevo-template: 0.9.1
+# relevo-template: 0.9.2
 # Relevo: ships an issue when a person applies the `relevo:ship` label to it.
 # Copy to .github/workflows/relevo-ship.yml. If you renamed the ship label in relevo.yml, change it below too.
 #
@@ -27,7 +27,7 @@ name: relevo-ship
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.9.1'
+  RELEVO_VERSION: '0.9.2'
   # The version of OpenSpec that the job installs for itself.
   OPENSPEC_VERSION: '1.14.3'
 
@@ -44,6 +44,10 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  # To read the checks of the approved head (the status check rollup of a commit); without them the run stops on
+  # "Resource not accessible by integration".
+  checks: read
+  statuses: read
   # To start the queue (relevo-queue.yml) after the close, which the workflow token's close does not start by itself.
   actions: write
 

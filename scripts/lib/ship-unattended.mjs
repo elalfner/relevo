@@ -262,8 +262,9 @@ export async function runUnattendedShip(ctx) {
       }
     }
     return { outcome: 'merged', pr: pr.number, commit };
-  } catch (err) {
-    if (!(err instanceof Stop)) throw err;
+  } catch (caught) {
+    // An error the run did not foresee (a refusal of GitHub, for example) stops it like any other reason, with its message.
+    const err = caught instanceof Stop ? caught : new Stop('ship_stopped', { reasons: `unexpected error: ${firstLines(caught?.stderr || caught?.message || caught)}` });
     removeShipLabel();
     gh(['issue', 'comment', n, '--repo', repo, '--body', renderMessage(err.kind, { actor, issue: n, ...err.data }, config.language)]);
     return { outcome: 'stopped', kind: err.kind, ...err.data };
