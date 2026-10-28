@@ -63,6 +63,8 @@ El código del agente corre con los permisos del usuario del runner, que en tu p
 
 Después de cada ejecución en la nube, un comentario da los turnos, el costo y los tokens que reporta el log del ejecutor del agente (el costo es nocional con una suscripción). Si el log no los tiene, no se publica nada. Una ejecución que se detuvo porque se alcanzó el límite de uso o el crédito lo dice y te indica volver a poner `ready` más tarde; cualquier otro fallo conserva el comentario genérico con el enlace a la ejecución.
 
+Ese mismo comentario lleva un marcador oculto con esas cifras, que el resumen diario suma: termina con una línea como `Uso, últimos 7 días: 3 ejecuciones, 35 turnos, unos $3.75, 1350 tokens.` y dice cuándo el costo es nocional (en todas las ejecuciones, o `nocional en 1 de 2 ejecuciones`). Solo cuentan las ejecuciones de los últimos siete días que dejaron marcador. Las hechas antes de que tu proyecto suba `RELEVO_VERSION` a la versión que escribe el marcador no lo tienen y no se cuentan, y las cifras nunca se deducen del texto del comentario, así que la línea se va llenando durante la primera semana. El resumen sigue sin publicarse cuando nadie espera nada, sea cual sea el uso.
+
 ## Construir en tu máquina
 
 ```bash

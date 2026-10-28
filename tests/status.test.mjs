@@ -66,7 +66,7 @@ test('Scenario: Stale review - a pull request past the SLA is an alert with its 
   assert.equal(r.alerts[0].hours, 16);
 });
 
-test('Scenario: Daily digest - only who waits on what and the alerts; nothing when nothing is waiting', () => {
+test('Scenario: Digest posted - who waits on what and the alerts; nothing when nothing is waiting', () => {
   assert.equal(renderDigest(buildStatus({ config, now: NOW, issues: [], prs: [] })), null);
   const text = renderDigest(buildStatus({ config, now: NOW, issues: [issue(1, ['relevo:built'])], prs: [] }));
   assert.match(text, /@ana: #1 \(built\)/);
@@ -119,7 +119,7 @@ test('digest.issue is a validated optional setting', () => {
 
 // ---------- blocks that come from another repository
 
-import { gatherStatus } from '../scripts/lib/status-data.mjs';
+import { gatherStatus, gatherUsage } from '../scripts/lib/status-data.mjs';
 
 const LINKED = loadConfig(tpl.replace('links: []', 'links: [acme/api]')).config;
 
@@ -293,4 +293,92 @@ test('a report with things waiting still lists what could not be read, after the
   assert.match(text, /the comparison of the branch of pull request #40 with the base \(HTTP 403\)/);
   assert.match(text, /the workflow relevo-go\.yml \(HTTP 500\): the cloud is assumed to build/);
   assert.doesNotMatch(text, /\(from what could be read\)/, 'something does wait, so the empty answer is not printed');
+});
+
+// ---------- the usage of the runs in the digest
+
+const mark = (o) => `This run used 1 turn.\n\n<!-- relevo:usage ${JSON.stringify(o)} -->`;
+const botComment = (created_at, body) => ({ user: { type: 'Bot' }, created_at, body });
+
+test('Scenario: Digest with usage / Runs without a marker - one read of the comments of the repository, and only the markers of bots inside the window count', () => {
+  const asked = [];
+  const gh = (args) => {
+    asked.push(args[args.length - 1]);
+    return JSON.stringify([
+      [
+        botComment('2026-03-09T10:00:00Z', mark({ turns: 10, cost: 1, tokens: 100, notional: false })),
+        botComment('2026-03-04T10:00:00Z', mark({ turns: 20, cost: 2, notional: true })),
+        botComment('2026-03-08T10:00:00Z', 'This run used 5 turns, about $0.50.'),
+        botComment('2026-02-20T10:00:00Z', mark({ turns: 99, cost: 9 })),
+      ],
+      [{ user: { type: 'User' }, created_at: '2026-03-09T11:00:00Z', body: mark({ turns: 50 }) }],
+    ]);
+  };
+  const runs = gatherUsage({ gh, repo: 'acme/app', now: NOW });
+  assert.equal(asked.length, 1, 'one call, however many issues there are');
+  assert.match(asked[0], /^repos\/acme\/app\/issues\/comments\?since=2026-03-03T12%3A00%3A00\.000Z&per_page=100$/);
+  assert.deepEqual(runs.map((r) => r.turns), [10, 20]);
+});
+
+test('a read of the comments that fails gives no runs, and the status data carries usage only when asked', () => {
+  const failing = () => { throw new Error('HTTP 500'); };
+  assert.deepEqual(gatherUsage({ gh: failing, repo: 'acme/app', now: NOW }), []);
+  const gh = (args) => {
+    const path = args[args.length - 1];
+    if (path.includes('/issues/comments')) return JSON.stringify([[botComment('2026-03-09T10:00:00Z', mark({ turns: 3 }))]]);
+    if (path.includes('issues?') || path.includes('/pulls?')) return '[]';
+    throw new Error('HTTP 404');
+  };
+  assert.equal('usage' in gatherStatus({ gh, repo: 'acme/app', config, now: NOW }), false, 'status reads nothing it does not show');
+  assert.deepEqual(gatherStatus({ gh, repo: 'acme/app', config, withUsage: true, now: NOW }).usage.map((r) => r.turns), [3]);
+});
+
+const RUNS = [
+  { turns: 10, cost: 1, tokens: 100, notional: false },
+  { turns: 20, cost: 2.5, tokens: 1200, notional: false },
+  { turns: 5, cost: 0.25, tokens: 50, notional: false },
+];
+const digestWith = (usage, language = 'en', issues = [issue(1, ['relevo:built'])]) => renderDigest(buildStatus({ config, now: NOW, issues, prs: [], usage }), language);
+
+test('Scenario: Digest with usage - one line with the runs and the sum of their turns, cost and tokens, after the alerts', () => {
+  const text = digestWith(RUNS);
+  assert.match(text, /@ana: #1 \(built\)/);
+  assert.match(text, /\n\nUsage, last 7 days: 3 runs, 35 turns, about \$3\.75, 1,350 tokens\.$/);
+  assert.match(digestWith(RUNS, 'es'), /\n\nUso, últimos 7 días: 3 ejecuciones, 35 turnos, unos \$3\.75, 1350 tokens\.$/);
+  assert.match(digestWith(RUNS.slice(0, 1)), /: 1 run, 10 turns/);
+});
+
+test('Scenario: No usage to report - the digest is the same as before', () => {
+  const without = digestWith([]);
+  assert.doesNotMatch(without, /Usage/);
+  assert.equal(without, renderDigest(buildStatus({ config, now: NOW, issues: [issue(1, ['relevo:built'])], prs: [] })));
+  assert.equal(buildStatus({ config, now: NOW, issues: [] }).usage, null);
+});
+
+test('Scenario: Nothing waiting but usage exists - no digest is posted', () => {
+  assert.equal(digestWith(RUNS, 'en', []), null);
+});
+
+test('a cost that is notional is said to be, for all the runs that report a cost or for some of them', () => {
+  const all = RUNS.map((r) => ({ ...r, notional: true }));
+  assert.match(digestWith(all), /about \$3\.75 \(notional\), 1,350 tokens/);
+  assert.match(digestWith(all, 'es'), /unos \$3\.75 \(nocional\)/);
+  const some = [{ ...RUNS[0], notional: true }, RUNS[1], { turns: 4, notional: false }];
+  assert.match(digestWith(some), /about \$3\.50 \(notional for 1 of 2 runs\)/, 'the run without a cost is not part of the count');
+  assert.match(digestWith(some, 'es'), /\(nocional en 1 de 2 ejecuciones\)/);
+  assert.doesNotMatch(digestWith(RUNS), /notional|nocional/);
+  assert.match(digestWith([{ turns: 4, notional: false }]), /Usage, last 7 days: 1 run, 4 turns\.$/, 'a figure no run reports is left out');
+});
+
+test('the digest script adds the usage of a state file, and posts nothing for usage alone', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'digest-usage-'));
+  writeFileSync(join(dir, 'relevo.yml'), tpl);
+  const run = (state) => {
+    writeFileSync(join(dir, 'state.json'), JSON.stringify(state));
+    return spawnSync('node', [`${root}scripts/digest.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json'), '--now', '2026-03-10T12:00:00Z'], { encoding: 'utf8' });
+  };
+  const waiting = run({ issues: [issue(1, ['relevo:built'])], prs: [], milestones: [], usage: RUNS });
+  assert.equal(waiting.status, 0, waiting.stderr);
+  assert.match(waiting.stdout, /@ana: #1 \(built\)[\s\S]*Usage, last 7 days: 3 runs, 35 turns/);
+  assert.equal(run({ issues: [], prs: [], milestones: [], usage: RUNS }).stdout, '');
 });

@@ -239,6 +239,7 @@ test('Scenario: Log with usage / without usage - the consumption step runs after
   assert.ok(build.indexOf('name: Report what the run used') > build.indexOf('uses: anthropics/claude-code-action@v1'), 'after the agent');
   assert.match(step, /if: always\(\)\n\s+continue-on-error: true/);
   assert.match(step, /run-usage\.mjs --file "\$EXECUTION_FILE" \$flag/);
+  assert.match(step, /gh issue comment "\$ISSUE" --body "\$line"/, 'the whole output of the script is posted, so the hidden marker travels with the sentence');
   assert.match(step, /ONLY_SUBSCRIPTION: \$\{\{ secrets\.ANTHROPIC_API_KEY == '' && secrets\.CLAUDE_CODE_OAUTH_TOKEN != '' \}\}/);
   assert.match(step, /\[ -n "\$line" \] && gh issue comment/);
   assert.match(step, /exit 0/);

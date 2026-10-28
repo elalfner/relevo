@@ -63,6 +63,8 @@ The agent's code runs with the permissions of the runner's user, which on your o
 
 After each cloud run a comment gives the turns, the cost and the tokens that the agent runner's log reports (the cost is notional with a subscription). When the log does not have them nothing is posted. A run that stopped because the usage limit or the credit was reached says so and tells you to apply `ready` again later; any other failure keeps the generic comment with the link to the run.
 
+The same comment holds a hidden marker with those figures, which the daily digest adds up: it ends with a line such as `Usage, last 7 days: 3 runs, 35 turns, about $3.75, 1,350 tokens.` and says when the cost is notional (for all the runs, or `notional for 1 of 2 runs`). Only the runs of the last seven days that left a marker are counted. Runs made before your project raised `RELEVO_VERSION` to the release that writes the marker have none and are not counted, and the figures are never guessed from the text of the comment, so the line fills in during the first week. The digest still posts nothing when nobody is waiting, whatever the usage.
+
 ## Building on your machine
 
 ```bash
