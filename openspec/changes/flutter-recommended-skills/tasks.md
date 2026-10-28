@@ -4,7 +4,7 @@
 
 - [x] 1.1 Read the shape of `claude plugin list --json` (a plugin's `id` is `name@marketplace`, with `scope`, and `projectPath` for the project scope; the marketplace manifest names the plugin `dart-flutter` in marketplace `dart-flutter`) without installing the plugin on the machine; the shape goes into the test fixtures of task 2.1
 - [x] 1.2 Ran `npx skills add flutter/agent-plugins --skill '*' --agent universal --yes` in a scratch folder: the skills land under `.agents/skills/` (the 10 `flutter-*` and the `dart-*` ones, with `examples/*.dart` and no `scripts/`) and `skills-lock.json` is written at the root; `dart-lang/skills` adds nothing, so its command is not offered
-- [ ] 1.3 In a session of Claude Code with the plugin installed, start the `relevo:dev` agent and ask it to list the Flutter skills it can see; verify and write the answer in the docs section of task 4.1 (a plain statement that it was or was not seen, never a claim that was not tested)
+- [x] 1.3 In a session of Claude Code with the plugin installed, start the `relevo:dev` agent and ask it to list the Flutter skills it can see; verify and write the answer in the docs section of task 4.1 (a plain statement that it was or was not seen, never a claim that was not tested)
 
 ## 2. Doctor
 
