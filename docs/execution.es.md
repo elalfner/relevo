@@ -65,6 +65,23 @@ Después de cada ejecución en la nube, un comentario da los turnos, el costo y 
 
 Ese mismo comentario lleva un marcador oculto con esas cifras, que el resumen diario suma: termina con una línea como `Uso, últimos 7 días: 3 ejecuciones, 35 turnos, unos $3.75, 1350 tokens.` y dice cuándo el costo es nocional (en todas las ejecuciones, o `nocional en 1 de 2 ejecuciones`). Solo cuentan las ejecuciones de los últimos siete días que dejaron marcador. Las hechas antes de que tu proyecto suba `RELEVO_VERSION` a la versión que escribe el marcador no lo tienen y no se cuentan, y las cifras nunca se deducen del texto del comentario, así que la línea se va llenando durante la primera semana. El resumen sigue sin publicarse cuando nadie espera nada, sea cual sea el uso.
 
+## Seguir una ejecución en la nube
+
+Mientras una construcción en la nube corre, un comentario del issue muestra cuánto lleva. Se edita en el mismo sitio, nunca se le añade otro, y se ve así:
+
+```text
+Construcción de Relevo en curso: QA (intento 2 de 3)
+Tareas: 6 de 9
+Lleva 7 min
+```
+
+- **La fase** es planificación, especificación, desarrollo, QA o entrega. El skill `go` la anuncia al entrar en cada paso, con el número de intento sobre los reintentos permitidos (`qa_retries`) cuando QA rechaza el trabajo y el desarrollo empieza de nuevo. Si no anuncia nada, la fase se deduce del árbol de trabajo, que no distingue QA de un nuevo intento de desarrollo.
+- **Las tareas** son las casillas marcadas de `tasks.md` sobre el total. El workflow las cuenta él mismo cada 30 segundos, así que no dependen del agente.
+- **Los minutos** son minutos enteros desde que empezó la ejecución. Una ejecución cuyos minutos siguen creciendo mientras sus tareas y su fase no cambian está atascada, o en un paso largo: abre la ejecución para leer su log. El comentario solo se edita cuando cambia su texto, más o menos una vez por minuto.
+- **Cuando la ejecución termina**, sea cual sea el resultado, el comentario se sustituye por una línea que apunta al resultado (o, si la ejecución no dejó ninguno, lo dice) y enlaza la ejecución. El resultado es el comentario que siempre se publicó.
+
+Muestra la fase y el intento, no lo que hace un subagente dentro de ellos. Una ejecución local (`go --local`) no tiene este comentario: tú estás viendo la sesión. Para tenerlo en un proyecto que ya tiene el workflow, pasa el nuevo `relevo-go.yml` por `/relevo:init`, que lo fusiona con tus cambios, y sube `RELEVO_VERSION`; hasta entonces las ejecuciones construyen como antes, sin él. El informe nunca hace fallar una ejecución: si GitHub rechaza una edición, la construcción sigue.
+
 ## Construir en tu máquina
 
 ```bash

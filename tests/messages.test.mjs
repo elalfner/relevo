@@ -277,3 +277,13 @@ test('Scenario: Approval - the label is named only when the ship workflow is ins
   assert.match(renderMessage('approved', { ...base, ship_label: 'relevo:ship' }), /Or apply the label relevo:ship/);
   assert.match(renderMessage('approved', { ...base, ship_label: 'relevo:ship' }, 'es'), /O pon la etiqueta relevo:ship/);
 });
+
+test('the progress messages render in each language, with the minutes as given and no attempt text without an attempt', () => {
+  const en = renderMessage('run_progress', { phase: 'development', tasks_done: 0, tasks_total: 3, minutes: 0 });
+  assert.match(en, /^Relevo build in progress: development\nTasks: 0 of 3\nRunning for 0 min/);
+  const es = renderMessage('run_progress', { phase: 'qa', attempt: 1, of: 2, tasks_done: 3, tasks_total: 3, minutes: 12 }, 'es');
+  assert.match(es, /^Construcción de Relevo en curso: QA \(intento 1 de 2\)\nTareas: 3 de 3\nLleva 12 min/);
+  assert.throws(() => renderMessage('run_progress', { minutes: 1 }), /needs "phase"/);
+  assert.match(renderMessage('run_progress_closed', { minutes: 3, run_url: 'https://example.invalid/r' }), /ended after 3 min\.[\s\S]*Run: https:\/\/example\.invalid\/r$/);
+  assert.match(renderMessage('run_progress_closed', { outcome: 'none' }, 'es'), /terminó sin resultado\./);
+});
