@@ -183,3 +183,17 @@ test('Scenario: A workflow that differs - the init skill updates it only through
   assert.match(body, /run the plan again with `--from <version>`/);
   assert.doesNotMatch(body, /Never overwrite a workflow or `relevo\.yml`/, 'the old rule is gone');
 });
+
+test('Scenario: Recommended skills - the doctor skill says a recommended note is optional and that init offers the installs', () => {
+  const { meta, body } = load('doctor');
+  assert.match(meta.description, /optional skills that a stack works better with/);
+  assert.match(body, /`recommended\.` note/);
+  assert.match(body, /not a requirement/);
+});
+
+test('Scenario: Optional installs - the init skill says a recommended install is not a dependency and writes nothing for the manual steps', () => {
+  const { body } = load('init');
+  assert.match(body, /marked `optional`/);
+  assert.match(body, /never say that `go` or `ship` will not run/);
+  assert.match(body, /`manual\.recommended\.\*` steps are for the person/);
+});

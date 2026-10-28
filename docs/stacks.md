@@ -53,8 +53,23 @@ Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:g
 - The commands QA runs never rewrite your code. This matters for Vue: the `lint` script that `npm create vue` generates uses `--fix`, so the profile calls the tools directly (through `npx --no-install`, with the versions your project pins) and does not use `npm run lint`.
 - Each profile was run on a project created for it (`npm create vue@latest` with TypeScript, Vitest, ESLint and Prettier; `composer create-project laravel/laravel`). The Vue `analyze` fails on a type error, a `v-for` without `:key`, an unused variable, an explicit `any` and a single-word component name, and does not fail on `v-html`, a listener that is never removed or props copied out of reactivity. The Laravel `analyze` and `test` fail on a style problem and on a failing test, and do not fail on a mass-assignment hole, an N+1 query or a missing authorisation. The text of each profile tells QA which of those to look for by reading.
 - A project that uses `pnpm` or `yarn`, `oxlint`, or PHPStan replaces the command in `relevo.yml`, for example `checks: { analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse" }`.
-- The profiles require no extra skill. To give the developer or QA a skill of your own (a Laravel best-practices skill, say), list it in `.relevo/stacks/<stack>.md` under `skills`.
+- The profiles require no extra skill; the official Dart and Flutter ones are a recommendation (see below). To give the developer or QA a skill of your own (a Laravel best-practices skill, say), list it in `.relevo/stacks/<stack>.md` under `skills`.
 - A profile can have a section `Questions for the issue writer`. `/relevo:issue` asks those the idea leaves open (for a backend: who is authorised and what an error looks like); the developer and QA never receive it.
+
+### Using the `flutter` profile with the official skills
+
+The Flutter team publishes skills and a Dart MCP server for coding agents ([Get started with AI](https://docs.flutter.dev/ai/get-started), read on 2026-10-28). They are recommended and never required: the profile works without them, `/relevo:doctor` reports their absence as a note, and `/relevo:init` offers each install as an optional command that you confirm one by one.
+
+| Tool | How to install | Where it lives |
+|---|---|---|
+| Claude Code | `claude plugin marketplace add flutter/agent-plugins`, then `claude plugin install dart-flutter@dart-flutter` | In your Claude Code, not in the repository. The plugin also brings the Dart MCP server. |
+| Antigravity CLI | `npx skills add flutter/agent-plugins --skill '*' --agent universal --yes` | `.agents/skills/` and `skills-lock.json` in the repository: commit both. The Dart MCP server needs an entry in `.agents/mcp_config.json`: `{ "mcpServers": { "dart": { "command": "dart", "args": ["mcp-server"] } } }`. |
+| Antigravity IDE | Settings, Customizations, Build with Google Plugins, Download next to "Dart and Flutter" | Inside the IDE. `/relevo:doctor` cannot see it, so it never says that these skills are missing there. |
+
+- That `npx` command installs the Flutter skills and the Dart ones together. The Flutter documentation also gives a command for `dart-lang/skills`, whose skills the first command already holds.
+- **The cloud runner.** A plugin installed on a machine does not reach the runner that builds in the cloud. A skills folder committed to the repository does.
+- **Rules.** A plugin does not load rules by itself. If you want the official ones, copy them from the `rules` folder of `flutter/agent-plugins` into the rules file of your project (`qa.rules_from`); `/relevo:init` lists this as a step for you and never writes your rules file.
+- **Relevo does not hand these skills to the `dev` and `qa` agents.** Claude Code and Antigravity find skills by their name and description. In a session of Claude Code with the plugin installed, the `dev` agent listed the 25 skills of the plugin (`dart-flutter:flutter-*` and `dart-flutter:dart-*`) and the names of the Dart MCP server tools; the `qa` agent, a skill being invoked by an agent, and a cloud run were not tried. To make one of them read a skill from `.agents/skills/`, list it under `skills` in `.relevo/stacks/flutter.md` (see [Extra skills per role](#extra-skills-per-role)); a skill with scripts is left out unless `skills.allow_scripts` names it.
 
 ### Using the `supabase` profile in a repository
 

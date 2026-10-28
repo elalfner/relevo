@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REQUIRED_SKILLS, WORKFLOW_FILES, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { RECOMMENDED, REQUIRED_SKILLS, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -1432,4 +1432,96 @@ test('the facts say no marketplace for the current go template and one for the o
   const old = `${current}\n          plugin_marketplaces: https://github.com/o/relevo.git\n`;
   assert.equal(gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': current } })).pluginMarketplace, null);
   assert.equal(gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': old } })).pluginMarketplace, 'https://github.com/o/relevo.git');
+});
+
+// ---------- recommended skills (flutter-recommended-skills)
+
+const PLUGINS = (...rows) => () => JSON.stringify(rows);
+const DART_FLUTTER = { id: 'dart-flutter@dart-flutter', version: '1.0.7', scope: 'user', enabled: true };
+const recFacts = ({ plugins = PLUGINS(), folders = {}, adapters = [], agentBuild = 'claude', repoTop = '/repo' } = {}) => recommendedSkillFacts({
+  stack: 'flutter',
+  tool: (name, args) => { if (name !== 'claude') throw new Error('unexpected tool'); return plugins(args); },
+  listDir: (d) => { if (!(d in folders)) throw new Error('no such folder'); return folders[d]; },
+  skillDirs: ['.claude/skills', '.agents/skills'],
+  repoTop, adapters, agentBuild,
+});
+const withRec = (recommendedSkills) => runChecks(healthy({ recommendedSkills }));
+
+test('Scenario: Plugin missing in Claude Code - a note with the two commands, and the exit status is untouched', () => {
+  const results = withRec(recFacts());
+  const rec = byId(results, 'recommended.flutter.claude');
+  assert.equal(rec.status, 'note');
+  assert.ok(rec.message.includes(RECOMMENDED.flutter.claude.commands[0]) && rec.message.includes('claude plugin install dart-flutter@dart-flutter'));
+  assert.equal(exitCode(results), 0);
+  assert.deepEqual(results.filter((r) => r.status === 'warn'), []);
+  assert.equal(byId(results, 'recommended.flutter.antigravity'), undefined);
+});
+
+test('Scenario: Plugin installed - a pass, at the user scope or at the project scope of this repository', () => {
+  assert.equal(byId(withRec(recFacts({ plugins: PLUGINS(DART_FLUTTER) })), 'recommended.flutter.claude').status, 'pass');
+  const project = { ...DART_FLUTTER, scope: 'project', projectPath: '/repo' };
+  assert.equal(recFacts({ plugins: PLUGINS(project) }).claude, 'present');
+  assert.equal(recFacts({ plugins: PLUGINS({ ...project, projectPath: '/other' }) }).claude, 'missing', 'a project install of another repository does not count');
+});
+
+test('Scenario: Skills committed to the repository - a pass for each agent it applies to, and no note', () => {
+  const folders = { '.agents/skills': ['flutter-fix-layout-issues', 'dart-add-unit-test'] };
+  const facts = recFacts({ folders, adapters: [{ scope: 'project' }] });
+  assert.deepEqual(facts, { stack: 'flutter', claude: 'present', antigravity: 'present' });
+  const results = withRec(facts);
+  assert.equal(results.filter((r) => r.status === 'note').length, 0);
+  assert.equal(byId(results, 'recommended.flutter.antigravity').status, 'pass');
+  assert.equal(recFacts({ folders: { '.claude/skills': ['flutter-add-widget-test'] } }).claude, 'present');
+});
+
+test('Scenario: Claude Code cannot list its plugins - no check, unless the folder is there', () => {
+  const broken = () => { throw new Error('claude: command not found'); };
+  assert.equal(recFacts({ plugins: broken }).claude, null);
+  assert.equal(byId(withRec(recFacts({ plugins: broken })), 'recommended.flutter.claude'), undefined);
+  assert.equal(recFacts({ plugins: broken, folders: { '.agents/skills': ['flutter-use-http-package'] } }).claude, 'present');
+});
+
+test('Scenario: Antigravity in use and skills missing - a note with the npx command and the IDE route', () => {
+  const byPlugin = recFacts({ adapters: [{ scope: 'project' }] });
+  const byBuild = recFacts({ agentBuild: 'antigravity' });
+  assert.equal(byPlugin.antigravity, 'missing');
+  assert.equal(byBuild.antigravity, 'missing');
+  const note = byId(withRec(byBuild), 'recommended.flutter.antigravity');
+  assert.equal(note.status, 'note');
+  assert.ok(note.message.includes("npx skills add flutter/agent-plugins --skill '*' --agent universal --yes"));
+  assert.match(note.message, /Antigravity IDE/);
+  assert.match(note.message, /doctor cannot check/);
+  assert.ok(!note.message.includes('dart-lang/skills'), 'the second command adds nothing');
+});
+
+test('Scenario: Antigravity not in use - no antigravity check', () => {
+  const facts = recFacts();
+  assert.equal(facts.antigravity, null);
+  assert.equal(byId(withRec(facts), 'recommended.flutter.antigravity'), undefined);
+});
+
+test('Scenario: No Flutter platform - no recommended check, and gatherFacts reads none', () => {
+  assert.deepEqual(runChecks(healthy({ recommendedSkills: null })).filter((r) => r.id.startsWith('recommended.')), []);
+  const f = stackFacts(TS, ['supabase']);
+  assert.equal(f.recommendedSkills, null);
+});
+
+test('Scenario: Everything else passes and the recommended skills are missing - exit 0 and one note', () => {
+  const results = withRec(recFacts());
+  assert.equal(exitCode(results), 0);
+  assert.equal(results.filter((r) => r.status === 'note' && r.id.startsWith('recommended.')).length, 1);
+  assert.match(renderReport(results), /recommended\.flutter\.claude|works better with the official Dart and Flutter skills/);
+});
+
+test('Scenario: gatherFacts reads the recommended skills for a Flutter platform and for none other', () => {
+  const read = (agent) => gatherFacts({
+    tool: (name, args) => (name === 'claude' ? JSON.stringify([]) : 'ok'),
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p === 'relevo.yml',
+    read: () => `limits:\n  run_max_cost: 5\nagent:\n  build: ${agent}\nplatforms:\n  app:\n    stack: flutter\n    path: .\n`.replace(/limits:\n {2}run_max_cost: 5\n/, agent === 'antigravity' ? 'limits:\n  run_max_tokens: 200000\n' : 'limits:\n  run_max_cost: 5\n'),
+    listDir: (d) => { if (d === '.agents/skills') return ['flutter-add-widget-test']; throw new Error('missing'); },
+    skillDirs: ['.claude/skills', '.agents/skills'], repo: null,
+  });
+  assert.deepEqual(read('claude').recommendedSkills, { stack: 'flutter', claude: 'present', antigravity: null });
+  assert.deepEqual(read('antigravity').recommendedSkills, { stack: 'flutter', claude: 'present', antigravity: 'present' });
 });
