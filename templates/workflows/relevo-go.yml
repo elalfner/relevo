@@ -1,4 +1,4 @@
-# relevo-template: 0.10.0
+# relevo-template: 0.11.0
 # Relevo: builds an issue when someone with write access labels it `relevo:ready`.
 # Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
 #
@@ -20,7 +20,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.10.0'
+  RELEVO_VERSION: '0.11.0'
   # The version of OpenSpec that the job installs for itself.
   OPENSPEC_VERSION: '1.14.3'
 

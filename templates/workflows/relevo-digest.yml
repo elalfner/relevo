@@ -1,4 +1,4 @@
-# relevo-template: 0.10.0
+# relevo-template: 0.11.0
 # Relevo: posts one digest per working day, as a comment on the issue named by digest.issue in relevo.yml.
 # It lists who is waiting on what and the alerts, and posts nothing when nothing is waiting.
 # Subscribe your chat tool to that issue to receive it. Copy to .github/workflows/relevo-digest.yml.
@@ -14,7 +14,7 @@ name: relevo-digest
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.10.0'
+  RELEVO_VERSION: '0.11.0'
 
 on:
   schedule:

@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-28
+
 ### Added
 
 - **`/relevo:doctor` notes that a Flutter repository works better with the official Dart and Flutter skills**, for Claude Code (the plugin `dart-flutter`) and, when the repository has the Antigravity plugin of Relevo or builds with `agent.build: antigravity`, for Antigravity (`.agents/skills`). It is a note, never a warning or a failure, and it does not change the exit status. `/relevo:init` offers the installs as optional commands that you confirm one by one, and lists the steps it never does (the Antigravity IDE screen, the Dart MCP entry in `.agents/mcp_config.json`, copying the official rules to your rules file).
