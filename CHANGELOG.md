@@ -12,7 +12,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 ### Known limits
 
 - The Antigravity IDE installs the integration from its settings and the installation cannot be seen, so `doctor` says the route exists and does not claim that it is missing.
-- It has not been tested whether the `dev` and `qa` agents of Relevo see the skills of a plugin. Relevo does not hand these skills to them.
+- The `dev` agent was seen to list the skills of the plugin in a Claude Code session; `qa`, an agent invoking one of them and a cloud run were not tried. Relevo does not hand these skills to them.
 - The commands follow the Flutter documentation as read on 2026-10-28 (the repository was renamed from `flutter/skills` to `flutter/agent-plugins`); `npx skills add` also writes `skills-lock.json`.
 
 ## [0.10.0] - 2026-10-28
