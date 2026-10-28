@@ -85,6 +85,10 @@ function setup(opts = {}) {
       const oid = args.find((a) => a.startsWith('oid=')).slice(4);
       return JSON.stringify({ data: { repository: { object: { statusCheckRollup: { contexts: { nodes: rollupOf(oid) } } } } } });
     }
+    if (opts.planRefusal && (args[1] === 'repos/o/r/rules/branches/dev' || args[1] === 'repos/o/r/branches/dev/protection')) {
+      throw Object.assign(new Error('Command failed'), { stderr: 'gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)' });
+    }
+    if (opts.rulesError && args[1] === 'repos/o/r/rules/branches/dev') throw Object.assign(new Error('Command failed'), { stderr: opts.rulesError });
     if (args[1] === 'repos/o/r/rules/branches/dev') return JSON.stringify(opts.requiredChecks ? [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'test' }] } }] : []);
     if (args[1] === 'repos/o/r/branches/dev/protection') throw Object.assign(new Error('HTTP 404'), { stderr: 'HTTP 404: Not Found' });
     if (joined.startsWith('issue comment')) {
@@ -254,6 +258,23 @@ test('Scenario: No CI accepted for unattended ships - merged, and the comment sa
   const out = await runUnattendedShip(s.ctx());
   assert.equal(out.outcome, 'merged', JSON.stringify(out));
   assert.match(s.state.comments.at(-1), /No check ran on this code/);
+});
+
+test('Scenario: Private repository on a free plan - no rules available, the run reaches the merge', async () => {
+  const s = setup({ planRefusal: true });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'merged', JSON.stringify(out));
+  assert.equal(s.state.issueState, 'CLOSED');
+});
+
+test('Scenario: Unexpected error with a message - the label is removed, the reason is commented and nothing is merged', async () => {
+  const s = setup({ rulesError: 'gh: Resource not accessible by integration (HTTP 403)' });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.equal(s.state.merged, null);
+  assert.equal(s.branchHead(), s.approved, 'nothing was archived');
+  assert.match(s.state.comments[0], /Resource not accessible by integration/);
+  assert.ok(s.state.edits.length > 0, 'the label was removed');
 });
 
 test('Scenario: Required checks without an App - stops before archiving and names the secrets', async () => {

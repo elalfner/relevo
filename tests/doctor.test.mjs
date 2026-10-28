@@ -176,12 +176,18 @@ test('a branch without a required pull request fails; review.mode none does not 
   assert.equal(byId(runChecks(healthy({ config: solo, protection: { base: noApprovals, release: PROTECTED } })), 'repo.protection.base').status, 'pass');
 });
 
-test('Scenario: Protection unavailable - a warning that says what enforces approval meanwhile', () => {
+test('Scenario: Branch protection unavailable - a note that says what enforces approval meanwhile', () => {
   const results = runChecks(healthy({ protectionUnavailable: 'Upgrade to GitHub Pro', protection: {} }));
   const r = byId(results, 'repo.protection');
-  assert.equal(r.status, 'warn');
-  assert.match(r.fix, /written confirmation in `ship`/);
+  assert.equal(r.status, 'note');
+  assert.match(r.message, /written confirmation in `ship`/);
   assert.equal(byId(results, 'repo.protection.base'), undefined);
+  assert.deepEqual(results.filter((x) => x.id.startsWith('repo.protection') && x.status !== 'note'), []);
+});
+
+test('Scenario: Branch rules unreadable for another reason - a warning', () => {
+  const r = byId(runChecks(healthy({ protectionError: 'HTTP 500', protection: {} })), 'repo.protection');
+  assert.equal(r.status, 'warn');
 });
 
 test('automation readiness: secret, workflows, objective CI and the private plugin repository', () => {
