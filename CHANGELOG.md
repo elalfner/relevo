@@ -13,7 +13,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - The progress comment shows the phase and the attempt, not what a subagent is doing inside them, and it has no estimate of the time left.
 - It is for cloud builds only: a local run (`go --local`) has none.
-- Whether `RELEVO_PROGRESS_DIR` reaches the tools of the agent on a real runner is not checked yet; when it does not, the announcement does nothing and the phase is deduced from the tree.
+- The progress comment was seen on one real cloud build (the retry of QA, a cancelled job and Antigravity were not); `docs/pilot-findings.md` has the run. When `RELEVO_PROGRESS_DIR` does not reach the agent, the announcement does nothing and the phase is deduced from the tree.
 - Runs made before the marker have none and are not counted, so the line fills in during the first week.
 - `/relevo:status` does not show the usage; only the digest does.
 

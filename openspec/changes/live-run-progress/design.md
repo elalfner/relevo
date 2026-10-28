@@ -56,7 +56,7 @@ The 3rd is the safety net for a runner that persists between jobs and for a job 
 
 The skill calls `progress.mjs phase <name>` at the start of each step. It writes `phase.json` under `$RELEVO_PROGRESS_DIR` (`$RUNNER_TEMP/relevo-progress`, set for the later steps through `$GITHUB_ENV`). Without the variable the command does nothing and exits 0, which is also the local case.
 
-When there is no announcement, or it is older than the last visible change, the phase is deduced from the tree and git:
+When there is no announcement, the phase is deduced from the tree and git (an announcement, when there is one, always wins; the decision of the workflow also gives the branch of the issue, because the job starts on the default branch, which can be ahead of the base branch and must not read as a delivery):
 
 | What exists | Phase |
 |---|---|
@@ -64,7 +64,7 @@ When there is no announcement, or it is older than the last visible change, the 
 | folder without a complete `tasks.md` | specification |
 | tasks with unchecked items | development |
 | all tasks checked, nothing committed | QA |
-| a commit above the base branch | delivery |
+| the checkout is on the branch of the issue and holds a commit above the base branch | delivery |
 
 The table cannot tell QA from a retry of development, which is why the announcement exists; the table only keeps the comment alive. The change id comes from the `decision_b64` the build job already has (it is data, read as JSON and never as an instruction, and only its `change_id` and `branch` are used).
 
