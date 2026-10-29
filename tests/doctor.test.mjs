@@ -614,22 +614,49 @@ test('Scenario: Lock file in the folder of a platform - a skill that differs fro
   assert.match(r.message, /dart-add-unit-test differs from the hash in app\/skills-lock\.json/);
 });
 
-const checksOf = (files) => {
+const checksOf = (files, { stackNote = true } = {}) => {
   const f = platformFolderFacts(files);
-  return runChecks(healthy({ platformFacts: f.platformFacts, roleSkills: f.roleSkills }));
+  return runChecks(healthy({ platformFacts: f.platformFacts, roleSkills: f.roleSkills, recommendedSkills: stackNote ? f.recommendedSkills : null }));
 };
 const SKILL_FILE = 'body\n';
 
-test('Scenario: Default skill missing - one note per skill and platform with the install command, and no warning', () => {
+test('Scenario: Default skill missing - no warning and no note of its own: the note of the stack names the skill with its command', () => {
+  const r = checksOf({ 'app/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL_FILE });
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.default.')), [], 'the one missing skill is not reported a second time');
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.role.')), [], 'no warning for a default skill');
+  const stack = byId(r, 'recommended.flutter.claude');
+  assert.equal(stack.status, 'note');
+  assert.match(stack.message, /\(dart-add-unit-test\)/);
+  assert.match(stack.message, /cd app && npx skills add flutter\/agent-plugins --skill dart-add-unit-test --agent claude-code --copy --yes/);
+  assert.equal(exitCode(r), 0, 'a missing default skill does not change the exit status');
+});
+
+test('Scenario: One note for a monorepo - the Flutter platform is in app/ and nothing is installed: one note for the stack that names both, and none for each skill', () => {
   const r = checksOf({});
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.default.')), []);
+  const notes = r.filter((x) => x.status === 'note' && /flutter-add-widget-test|dart-add-unit-test/.test(x.message));
+  assert.deepEqual(notes.map((x) => x.id), ['recommended.flutter.claude']);
+  assert.match(notes[0].message, /flutter-add-widget-test, dart-add-unit-test/);
+  assert.equal(exitCode(r), 0);
+});
+
+test('Scenario: Stack with no note of its own - one note for each missing skill with its install command, and no warning', () => {
+  const r = checksOf({}, { stackNote: false });
   ['flutter-add-widget-test', 'dart-add-unit-test'].forEach((name) => {
     const n = r.filter((x) => x.id === `skills.default.app.${name}`);
     assert.equal(n.length, 1, `${name}: once, not once per role`);
     assert.equal(n[0].status, 'note');
     assert.match(n[0].message, new RegExp(`cd app && npx skills add flutter/agent-plugins --skill ${name} --agent claude-code --copy --yes`));
   });
-  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.role.')), [], 'no warning for a default skill');
-  assert.equal(exitCode(r), 0, 'a missing default skill does not change the exit status');
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.role.')), []);
+  assert.equal(exitCode(r), 0);
+});
+
+test('a skill that is present in the working tree but not on the base branch is still reported once, because the note of the stack does not name it', () => {
+  const f = platformFolderFacts({ 'app/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL_FILE, 'app/.claude/skills/dart-add-unit-test/SKILL.md': SKILL_FILE });
+  const r = runChecks(healthy({ platformFacts: f.platformFacts, roleSkills: { app: { dev: [{ name: 'dart-add-unit-test', left_out: true, reason: 'not on the base branch', default: true }], qa: [] } }, recommendedSkills: f.recommendedSkills }));
+  assert.equal(byId(r, 'recommended.flutter.claude').status, 'pass');
+  assert.equal(byId(r, 'skills.default.app.dart-add-unit-test').status, 'note');
 });
 
 test('Scenario: Skill the repository listed is missing - a warning, as before', () => {
@@ -1668,13 +1695,34 @@ test('Scenario: Claude Code cannot list its plugins - the note is still reported
   assert.doesNotMatch(rec.message, /installed on this machine/);
 });
 
-test('Scenario: Only .agents/skills and Claude Code - a pass for Antigravity and still a note for Claude Code', () => {
+test('Scenario: Only .agents/skills and Claude Code - a pass for Claude Code, because go hands the paths from that folder, and a pass for Antigravity', () => {
   const facts = recFacts({ files: inDir('.agents/skills'), adapters: [{ scope: 'project' }] });
-  assert.equal(facts.claude, 'missing');
+  assert.equal(facts.claude, 'present');
   assert.equal(facts.antigravity, 'present');
   const results = withRec(facts);
-  assert.equal(byId(results, 'recommended.flutter.claude').status, 'note');
+  assert.equal(byId(results, 'recommended.flutter.claude').status, 'pass');
   assert.equal(byId(results, 'recommended.flutter.antigravity').status, 'pass');
+  assert.equal(results.filter((r) => r.status === 'note').length, 0);
+});
+
+test('Scenario: Only .agents/skills in the folder of the platform - the same pass, and the folder of Claude Code is not needed', () => {
+  const app = [{ path: 'app', skills: SET }];
+  assert.equal(recFacts({ platforms: app, files: inDir('app/.agents/skills') }).claude, 'present');
+  assert.equal(recFacts({ platforms: app, files: inDir('.agents/skills') }).claude, 'present', 'the root is the fallback');
+});
+
+test('Scenario: Skills split between the two folders - a pass for Claude Code, and the missing one still counts for Antigravity', () => {
+  const split = ['.claude/skills/flutter-add-widget-test', '.agents/skills/dart-add-unit-test'];
+  const facts = recFacts({ files: split, adapters: [{ scope: 'project' }] });
+  assert.equal(facts.claude, 'present');
+  assert.equal(facts.antigravity, 'missing', 'Antigravity reads only .agents/skills');
+  assert.deepEqual(facts.antigravityMissing, [{ path: '.', skills: ['flutter-add-widget-test'] }]);
+});
+
+test('Scenario: Skills only under .claude/skills with Antigravity in use - a pass for Claude Code and a note for Antigravity', () => {
+  const facts = recFacts({ files: inDir('.claude/skills'), adapters: [{ scope: 'project' }] });
+  assert.equal(facts.claude, 'present');
+  assert.equal(facts.antigravity, 'missing');
 });
 
 test('Scenario: Skills in the home folder - they are treated as missing', () => {
@@ -1724,7 +1772,7 @@ test('Scenario: gatherFacts reads the default skills of the profile for a Flutte
   assert.equal(read('claude', 'app', inDir('app/.claude/skills')).recommendedSkills.claude, 'present');
   const ag = read('antigravity', '.', inDir('.agents/skills')).recommendedSkills;
   assert.equal(ag.antigravity, 'present');
-  assert.equal(ag.claude, 'missing', 'the folder of Antigravity does not count for Claude Code');
+  assert.equal(ag.claude, 'present', 'go gives the agents the path from .agents/skills too, so it counts for Claude Code');
   assert.equal(read('claude', '.', []).recommendedSkills.antigravity, null);
 });
 
