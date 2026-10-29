@@ -129,3 +129,11 @@ test('references inside a code fence are ignored, and Spanish keywords keep work
   assert.deepEqual(p.dependsOnExternal, [{ repo: 'acme/api', number: 5 }]);
   assert.deepEqual(p.dependsOn, [2]);
 });
+
+test('Code pointers: only linked files are references; local pointers and free text are left alone', () => {
+  const body = '## Code pointers\n\n- `acme/api:src/billing/charge.ts`: how an order is charged\n- `src/app.ts`: the entry point\n- the cart lives in memory\n- `acme/api:../x.ts`: out\n';
+  const { codePointers } = parseIssueBody(body);
+  assert.deepEqual(codePointers.references.map((r) => [r.repo, r.path]), [['acme/api', 'src/billing/charge.ts']]);
+  assert.deepEqual(codePointers.problems, ['"acme/api:../x.ts" leaves the repository: use a path inside it']);
+  assert.deepEqual(parseIssueBody('## Summary\n\nx\n').codePointers, { references: [], problems: [] });
+});

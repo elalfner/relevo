@@ -614,7 +614,7 @@ function linkChecks(f) {
   } else if (f.secrets.includes('RELEVO_LINKS_TOKEN')) {
     r.push(pass('links.secret', 'the RELEVO_LINKS_TOKEN secret exists for reading linked repositories'));
   } else if (anyPrivate) {
-    r.push(fail('links.secret', `${links.filter((l) => l.private).map((l) => l.repo).join(', ')} is private and there is no RELEVO_LINKS_TOKEN secret, so a dependency on it can never be read`, 'create a fine-grained token with read access to issues and pull requests of that repository and store it as the secret RELEVO_LINKS_TOKEN (Relevo only reads with it)'));
+    r.push(fail('links.secret', `${links.filter((l) => l.private).map((l) => l.repo).join(', ')} is private and there is no RELEVO_LINKS_TOKEN secret, so a dependency on it can never be read`, 'create a fine-grained token with read access to issues, pull requests and contents of that repository and store it as the secret RELEVO_LINKS_TOKEN (Relevo only reads with it)'));
   } else {
     r.push(warn('links.secret', 'every linked repository is public, so no RELEVO_LINKS_TOKEN is needed now, but a private one added later would not be readable', 'create the secret RELEVO_LINKS_TOKEN (read-only) before linking a private repository'));
   }

@@ -84,7 +84,7 @@ Look in `design.md` for headings that start `From the issue:`.
 
 - Compare each with the issue: `node <plugin>/scripts/issue-sections.mjs --body-file <issue_file> --copy "<the names that appear after From the issue:>"` must be contained, unchanged, in `design.md`. Reject a reworded, shortened or reordered section and cite the section.
 - Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding. Check the diff against each one. Reject a change that breaks one, citing its id (`D2`, `C1`), the file and line, and what the issue decided. A decision under `Discarded` is not a rule.
-- `Code pointers` are hints, not rules: do not reject for ignoring one. `Verification` is for the person's review: list it under "left for on-device review".
+- `Code pointers` are hints, not rules: do not reject for ignoring one. A pointer to a file of another repository is in `.relevo-design/manifest.json` with `section` `code-pointer`; read it from there when you need it, and never treat it as a reference to match. `Verification` is for the person's review: list it under "left for on-device review".
 - Without those headings there is nothing to apply here.
 
 ### 8. A review script
