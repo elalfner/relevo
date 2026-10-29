@@ -22,6 +22,15 @@ test('Scenario: Vue profile - analyze type-checks and lints without a fix option
   assert.deepEqual(p.tools, ['node', 'npm']);
 });
 
+test('Scenario: Defaults of Laravel - the review block has the log under storage/logs, php artisan test and no serve; the section Review is not in the body of dev and qa', () => {
+  const p = profile('laravel');
+  assert.deepEqual(p.review, { log: 'storage/logs/*.log', test: 'php artisan test' });
+  assert.equal(p.review.serve, undefined);
+  assert.match(p.reviewBody, /never read `\.env`/);
+  assert.doesNotMatch(p.body, /feature test of its scenario/);
+  assert.deepEqual(p.targets, {}, 'Targets: None is unchanged');
+});
+
 test('Scenario: Laravel profile - analyze is Pint in test mode, test is php artisan test, format is Pint, no targets', () => {
   const p = profile('laravel');
   assert.equal(p.commands.analyze, 'vendor/bin/pint --test');

@@ -30,6 +30,21 @@ test('Scenario: No adapter - iOS says it is not available yet, and unknown combi
   assert.match(adapterFor({ stack: 'django', target: null }).reason, /names no target/);
 });
 
+test('Scenario: Laravel - a stack with no targets is the api adapter, and the review needs no autopilot', () => {
+  const a = adapterFor({ stack: 'laravel', target: null });
+  assert.deepEqual([a.supported, a.kind, a.driver, a.capture, a.needs], [true, 'api', 'php artisan test', null, ['php', 'composer']]);
+  assert.equal(needsAutopilot(a), false);
+  assert.equal(adapterFor({ stack: 'laravel', target: 'api' }).supported, false);
+});
+
+test('Scenario: No adapter - the message names the adapters that exist, that the issue stays built and how to tune', () => {
+  const r = adapterFor({ stack: 'supabase', target: null }).reason;
+  assert.match(r, /names no target to review/);
+  assert.match(r, /flutter on android.*vue on web.*laravel \(api\)/);
+  assert.match(r, /issue stays built/);
+  assert.match(r, /"review" block of \.relevo\/stacks/);
+});
+
 test('the target is the first of the platform, or the usual one of the stack', () => {
   assert.equal(targetOf({ stack: 'flutter', targets: ['web', 'android'] }), 'web');
   assert.equal(targetOf({ stack: 'flutter', targets: [] }), 'android');

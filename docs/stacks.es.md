@@ -91,6 +91,26 @@ Esta sección sigue la documentación de Supabase (guías de flujo de desarrollo
 
 `/relevo:init` puede crear un archivo comentado para la tercera capa y lo deja para que le hagas commit. Hazle commit: la ejecución en la nube y tus compañeros lo leen de git, así que un archivo que se queda solo en tu máquina solo aplica ahí. `/relevo:doctor` muestra qué capas usa cada plataforma, y avisa mientras git no rastree ese archivo.
 
+## Ajusta cómo se revisa un stack
+
+El encabezado de `.relevo/stacks/<stack>.md` puede llevar un bloque `review`, y su cuerpo una sección `## Review`. El perfil `laravel` del plugin pone los valores por defecto, así que un repositorio Laravel no necesita ninguno de los dos.
+
+```yaml
+review:
+  log: storage/logs/*.log        # los archivos que lee la auditoría (una ruta o un glob); el valor por defecto de laravel
+  test: php artisan test         # el comando base; el agente le añade --filter para probar una línea
+  serve:                         # opcional; sin él el agente no arranca ningún servidor
+    command: php artisan serve --port={port}
+    url: http://localhost:{port}
+    env:
+      APP_ENV: testing
+```
+
+- Una clave que escribes reemplaza el valor por defecto del plugin para esa clave (`/relevo:doctor` lista las que reemplazaste). Es el único lugar donde un repositorio puede reemplazar un valor de un perfil, porque el bloque dice cómo se conduce el review y no es una verificación del código: `analyze`, `test` y `format` se siguen reemplazando solo con `checks`.
+- `serve` se arranca solo con `review.autopilot` en `precheck` o `verify`, después de que confirmaste que los datos no son de producción, en un puerto libre de `localhost`, con el script que lo registra y lo detiene. Su `url` debe estar en `localhost`, `127.0.0.1` o `[::1]`, y el comando se lee solo de este archivo en la rama base, nunca de un issue ni de un comentario.
+- La sección `## Review` es texto libre para el agente, que solo lo lee en un review. Puede añadir pasos y pedir más evidencia. No puede cambiar que tú confirmas cada línea, que se audita el log, que `decide` controla el pull request, que nunca se leen los archivos de entorno, que no se sugiere un waiver ni que no se parchea código en un review: `/relevo:doctor` avisa de una línea que pida alguna de esas cosas, y el review la ignora.
+- Un review de Laravel no tiene dispositivo ni navegador. Con `review.autopilot` en `off` corres los tests del proyecto y se lo dices al review (`ran <código de salida>`); con `precheck` o `verify` el agente corre el test que ya existe para cada línea y nunca escribe uno. Una corrida de tests que pasa no escribe nada en `storage/logs`, así que lo que muestra que el código se ejercitó es la corrida registrada, no el log.
+
 ## Skills extra por rol
 
 - Un perfil puede listar skills para los roles `dev`, `qa`, `issue` y `review`. `fix` usa las de `dev` y `qa`.

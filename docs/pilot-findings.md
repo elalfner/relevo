@@ -494,3 +494,22 @@ Stages, last 7 days (median): gate 14 s (3), build 7 min (2).
 - **The `unlabeled` event is no use for the times.** In #34 the `labeled relevo:building` came a second before the `unlabeled relevo:ready`, which is why the stages are paired from the `labeled` events only.
 
 Not seen: a week with a review, so the last three stages have not been seen on real data; the reading of a stage that began before the week (covered by a test); and the cap of pages or of issues.
+
+## What a Laravel test run leaves behind (tasks 1.1 to 1.3 of `laravel-review-adapter`)
+
+Run on a project from `composer create-project laravel/laravel` (Laravel 13, PHP 8.4), with a test class added that has two passing tests, a failing one and one that calls `Log::error`.
+
+- **A passing run writes nothing to `storage/logs`**: after `php artisan test` on the fresh project the folder held only its `.gitignore`. A review whose audit needs lines in the log would therefore never pass for a clean backend, which is why the `api` audit takes a recorded test run as the evidence of life.
+- **A test can write to the log**: `Log::error('probe boom')` in a test created `storage/logs/laravel.log` with `[2026-10-29 03:20:50] testing.ERROR: probe boom`. The line has the date, the environment and the level.
+- **The result is JSON when the run is not interactive**: `{"tool":"phpunit","result":"passed","tests":1,"passed":1,...}`. A failing run adds `failed` and `failures` with the test, the file, the line and the message. The exit code is 1 on a failure.
+- **`--filter`**: a name that matches one test reports `tests: 1`; one that matches two reports `tests: 2`; one that matches none reports `result: "failed"`, `tests: 0` and `raw: ["No tests found."]`, with exit code 1. A filter that matches nothing is therefore a failed run, and the count of tests is what tells a real proof from an empty one.
+- **`phpunit.xml`** declares `DB_CONNECTION` `sqlite` and `DB_DATABASE` `:memory:` in `<env>` entries. The `daily` channel of `config/logging.php` writes `laravel.log` with the date added to the name, so a glob such as `storage/logs/*.log` covers both channels.
+
+## The api review run by hand on a Laravel project (task 6.1 of `laravel-review-adapter`, local part)
+
+Run from this branch on the same project as above, with a `relevo.yml` of one platform (`stack: laravel`) and a one-scenario change folder; the scripts were called in the order the skill gives, with `review.autopilot` `verify`.
+
+- **Resolved**: `review-adapter.mjs` printed the `api` adapter (exit 0, `needs_autopilot: false`), `api-preflight.mjs` exited 0 (PHP and Composer found, `vendor/` matching the lock file, in-memory SQLite) and `stack-profile.mjs --role review` printed the defaults and the notes with no warning.
+- **A clean run, a quiet log**: `init` recorded 0 log files, the agent's run of one test (`--filter`, exit 0, 1 test) let `auto 1` mark the line, and the audit printed `REVIEW PASSED` with an empty slice.
+- **An error in the slice**: after a test that calls `Log::error`, the audit printed `REVIEW REJECTED` with the entry, and `decide` refused the pull request with "the log audit found problems", even with the person's agreement.
+- **Not tried**: the run from the sandbox with `npm pack github:elalfner/relevo#dev` (the branch is not on `dev`), a model-written review (the skill was followed by hand), `review.autopilot` `off` with a person, a `serve` block, and a database other than in-memory SQLite. Task 6.1 stays open for those.

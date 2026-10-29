@@ -121,6 +121,17 @@ El informe empieza con una línea que dice qué juzgó: el repositorio, y si los
 - **Prueba el código actual**: trae la rama remota antes de fusionar la base, y te pide confirmar por escrito si no eres la persona asignada.
 - **Sin un segundo pull request**: se reutiliza el que ya exista para la rama, y un push rechazado se detiene con el motivo.
 
+## Revisar un backend Laravel
+
+Una plataforma Laravel no tiene pantalla, así que su revisión no tiene dispositivo, navegador ni capturas. La lista de comprobación sigue teniendo una línea por escenario, y tú sigues confirmando cada línea.
+
+- **Con `review.autopilot` en `off`** (el valor por defecto) corres los tests del proyecto en tu terminal y le dices el resultado a la revisión: `ran <código de salida>`, con `--tests <n>` cuando sepas cuántos corrieron. Después escribes `ok` o `fail` por cada línea, como en cualquier revisión.
+- **Con `precheck` o `verify`** el agente corre el test de feature que ya cubre cada línea y registra el test y su código de salida. Nunca escribe un test, un filtro que no encuentra ningún test no demuestra nada, y una línea sin test se queda para ti. El pull request dice qué corridas fueron tuyas y cuáles del agente.
+- **La auditoría lee el log desde que empezó la revisión**, por defecto `storage/logs`, y nunca lo vacía ni lo borra. Una corrida de tests que pasa no escribe nada ahí, así que lo que demuestra que el código se ejercitó es la corrida registrada: una corrida limpia con el log en silencio es `REVIEW PASSED`, y ninguna corrida es `REVIEW INCONCLUSIVE`.
+- **La base de datos importa.** Antes de correr un test la revisión lee la base de datos que declara `phpunit.xml`, nunca tu `.env`. SQLite en memoria, que usa un proyecto nuevo, no necesita nada; cualquier otra base necesita tu confirmación por escrito de que no es de producción.
+- **Un servidor es opcional.** Añade un bloque `serve` al bloque `review` de `.relevo/stacks/laravel.md` ([Stacks y plataformas](stacks.md)) y, con `precheck` o `verify`, el agente puede arrancarlo en un puerto local libre para las líneas que necesitan peticiones. Sin él, no se arranca ningún servidor.
+- **Faltan dependencias y se detiene**: cuando no hay `vendor/`, la revisión te da el comando `composer install` para que lo corras tú y no instala nada.
+
 ## Dejar que el agente ayude con la revisión
 
 Por defecto la persona lo hace todo en `review` y el agente solo observa. Con `review.autopilot` en `precheck` o `verify` el agente también puede recorrer la lista, y la persona sigue confirmando las líneas y dando el acuerdo antes de que se abra un pull request.

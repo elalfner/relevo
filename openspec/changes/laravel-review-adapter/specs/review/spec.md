@@ -84,7 +84,7 @@ For the `api` adapter the audit SHALL read only what the project's log files rec
 - **THEN** the report says which file and why, and the verdict is not `REVIEW PASSED` on that file's account
 
 ### Requirement: A recorded test run proves an api review whose log is quiet
-For the `api` adapter, an empty log slice SHALL be `REVIEW INCONCLUSIVE` only when no test run is recorded in the review state, and SHALL be `REVIEW PASSED` when a run is recorded and none of its exit codes is non-zero. A recorded run with a non-zero exit code SHALL be `REVIEW REJECTED` and name the failing tests. The log slice SHALL still be scanned for unhandled exceptions, server errors and database errors. A run told by the person SHALL be recorded as the person's, and the pull request SHALL say which runs were the person's and which the agent's.
+For the `api` adapter, an empty log slice SHALL be `REVIEW INCONCLUSIVE` only when no test run is recorded in the review state, and SHALL be `REVIEW PASSED` when a run is recorded and the latest run of each line or filter exited 0, so a run repeated after a fix replaces the one before. A latest run with a non-zero exit code SHALL be `REVIEW REJECTED` and name the failing tests. The log slice SHALL still be scanned for unhandled exceptions, server errors and database errors. A run told by the person SHALL be recorded as the person's, and the pull request SHALL say which runs were the person's and which the agent's.
 
 #### Scenario: Clean run, empty log
 - **WHEN** a test run exited 0 and the log slice is empty
@@ -97,6 +97,10 @@ For the `api` adapter, an empty log slice SHALL be `REVIEW INCONCLUSIVE` only wh
 #### Scenario: Failing run
 - **WHEN** a recorded run exited non-zero
 - **THEN** the verdict is `REVIEW REJECTED` and the report names the failing tests
+
+#### Scenario: Run repeated after a fix
+- **WHEN** a run for a line exited 1 and a later run for the same line exited 0
+- **THEN** only the later run counts and the verdict can be `REVIEW PASSED`
 
 #### Scenario: Error in the log
 - **WHEN** a run exited 0 and the slice has an unhandled exception

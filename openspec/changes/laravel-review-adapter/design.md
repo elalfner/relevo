@@ -46,7 +46,8 @@ review:
   serve:                         # optional; absent means tests only
     command: php artisan serve --port={port}
     url: http://localhost:{port}
-    env: { APP_ENV: testing }
+    env:                         # a block map: the parser of the header takes no inline map
+      APP_ENV: testing
 ```
 
 The repository's values replace the plugin's defaults for this block. This is a deliberate exception to "a repository cannot replace a command" in `platforms`: those commands are the gates (`analyze`, `test`, `format`) and `checks` stays the only way to replace one; the `review` block says how the review is driven, and every gate of the review (the person confirms each line, the audit, `decide`) lies outside it. The resolved profile lists each replaced key so `doctor` and the output of the profile command show it. The body gets a section `Review`, joined after the plugin's, that is read by the agent only in a review.

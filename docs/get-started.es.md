@@ -114,6 +114,7 @@ gh issue edit 1 --add-label relevo:ready
 
 Conecta el teléfono o inicia el emulador, e inicia la app (`flutter run`). El agente muestra un resumen corto, las capturas que conviene tomar y una lista con una línea por escenario. Tú pruebas la app y escribes `ok 1`, `fail 2 <qué pasó>`, `capture <nombre>` o `done`. Cuando terminas audita el log y, con tu acuerdo, abre el pull request.
 
+- **Un backend Laravel no tiene dispositivo**: corres `php artisan test` tú y escribes `ran <código de salida>`, o configuras `review.autopilot` y el agente corre el test de cada línea; mira [Revisar un backend Laravel](commands.es.md#revisar-un-backend-laravel).
 - **Deberías ver**: la lista; tras `done`, un veredicto `REVIEW PASSED`; después tu pregunta de si se abre el pull request, y el issue termina como `relevo:pr-open`.
 - **Si no**: si no hay dispositivo, te dice qué conectar. Si una línea falla, escribe `fail <número> <qué pasó>`, ejecuta `/relevo:fix 1 <qué pasó>` y revisa otra vez. Un veredicto no concluyente significa que el log no tenía nada de tu app: iníciala de nuevo y repite los pasos. Mira [Comandos](commands.es.md) y la [Guía](guide.es.md).
 
