@@ -65,6 +65,23 @@ Lo que Relevo asume del runner:
 
 Un runner con `limits.concurrent_agents: 1` es la misma máquina que corre los checks de tus pull requests, así que un build de hasta 60 minutos los retrasa. Agrega runners con las mismas etiquetas en lugar de subir el límite.
 
+### Varios runners en una misma máquina
+
+Cada proceso de runner ejecuta un job a la vez, así que varios runners en una máquina son la forma de correr builds en paralelo allí. Lo que cada uno guarda aparte y lo que comparten:
+
+| Aparte en cada runner | Compartido por todos los runners de la máquina |
+|---|---|
+| El workspace (su propia carpeta `_work`) | El home del usuario del runner (`~/.claude` y los archivos que las herramientas guardan allí) |
+| `$RUNNER_TEMP`, donde cada job instala OpenSpec y el plugin | Las cachés de paquetes de las herramientas (pub, composer, gradle, npm) |
+| La caché de herramientas de las acciones de toolchain | El daemon de Docker |
+| La rama del issue (un build por issue) | Los puertos de la máquina |
+
+Las escrituras simultáneas en una caché o un archivo de ajustes compartido pueden chocar; no se ha probado aquí. Registrar cada runner con su propio usuario de la máquina, o en su propio contenedor, quita el home y las cachés compartidos. No quita el daemon de Docker ni los puertos.
+
+- **Los builds que pueden correr a la vez** son, como máximo, el menor entre `limits.concurrent_agents` y los runners libres. Todos los workflows de Relevo (`go`, `review`, `ship`, `queue`, `sla`, `digest`) corren con las mismas etiquetas, así que registra más runners que `limits.concurrent_agents`: con tres runners y un límite de 3, tres builds ocupan todos los runners y retrasan los checks de tus pull requests y los demás workflows.
+- **El stack Supabase no se paraleliza en una máquina.** Sus comprobaciones arrancan contenedores en la máquina (mira [Stacks](stacks.es.md)), y dos builds así a la vez pueden chocar en los puertos y en los contenedores. No dejes que dos builds de una plataforma Supabase corran juntos en una máquina, o da a cada runner su propia máquina.
+- **`limits.concurrent_agents` no es exacto cuando las puertas se solapan.** La puerta de un issue cuenta los issues con la etiqueta `relevo:building`, y la puerta de un issue no espera a la de otro. Con un solo runner las puertas hacen cola detrás del job en curso y el límite se mantiene. Con dos o más runners, o en los runners de GitHub, dos issues etiquetados a la vez pueden encontrar ambos un hueco libre y arrancar, así que el límite puede superarse en tantos como puertas se solapen. La siguiente evaluación de la cola ve la cuenta real y no arranca nada más hasta que se libere un hueco. Es un límite conocido, no un ajuste.
+
 El código del agente corre con los permisos del usuario del runner, que en tu propia máquina puede llegar a tu red. La barrera es un runner efímero o un contenedor; mira [Seguridad](security.es.md#qué-no-protege). Comprobado en un runner self-hosted: `$RUNNER_TEMP` se vacía entre jobs, pero `claude-code-action` guarda su estado en el home del usuario del runner (ajustes, cachés y las transcripciones de sus sesiones en `~/.claude/projects`), y Relevo no lo borra; límpialo tú si las transcripciones, que contienen lo que el agente leyó y escribió, no deben quedarse.
 
 ## Qué reporta una ejecución en la nube

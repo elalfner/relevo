@@ -65,6 +65,23 @@ What Relevo assumes of the runner:
 
 A runner with `limits.concurrent_agents: 1` is the same machine that runs your pull request checks, so a build of up to 60 minutes holds them up. Add runners with the same labels rather than raising the limit.
 
+### Several runners on one machine
+
+Each runner process runs one job at a time, so several runners on one machine are how builds run in parallel there. What they keep apart and what they share:
+
+| Kept apart by each runner | Shared by every runner of the machine |
+|---|---|
+| The workspace (its own `_work` folder) | The home of the runner's user (`~/.claude` and the files the tools keep there) |
+| `$RUNNER_TEMP`, where each job installs OpenSpec and the plugin | The package caches of the tools (pub, composer, gradle, npm) |
+| The tool cache of the toolchain actions | The Docker daemon |
+| The branch of the issue (one build per issue) | The ports of the machine |
+
+Concurrent writes to a shared cache or settings file can collide; this was not tried here. Registering each runner under its own user of the machine, or in its own container, removes the shared home and caches. It does not remove the Docker daemon or the ports.
+
+- **Builds that can run at once** are at most the smaller of `limits.concurrent_agents` and the free runners. Every Relevo workflow (`go`, `review`, `ship`, `queue`, `sla`, `digest`) runs on the same labels, so register more runners than `limits.concurrent_agents`: with three runners and a limit of 3, three builds take every runner and hold up the checks of your pull requests and the other workflows.
+- **The Supabase stack does not parallelise on one machine.** Its checks start containers on the machine (see [Stacks](stacks.md)), and two such builds at the same time can collide on the ports and the containers. Do not let two builds for a Supabase platform run together on one machine, or give each runner its own machine.
+- **`limits.concurrent_agents` is not exact when gates overlap.** The gate of an issue counts the issues labelled `relevo:building`, and the gate of one issue does not wait for another's. With a single runner the gates queue behind the running job and the limit holds. With two or more runners, or on the runners of GitHub, two issues labelled together can both find a free slot and start, so the limit can be exceeded by the number of gates that overlap. The next evaluation of the queue sees the real count and starts nothing more until a slot frees. This is a known limit, not a setting to tune.
+
 The agent's code runs with the permissions of the runner's user, which on your own machine can reach your network. An ephemeral runner, or a container, is the barrier; see [Security](security.md#what-it-does-not-protect). Checked on one self-hosted runner: `$RUNNER_TEMP` is emptied between jobs, but `claude-code-action` keeps its state in the home of the runner's user (settings, caches and the transcripts of its sessions under `~/.claude/projects`), which Relevo does not remove; clean it yourself if the transcripts, which hold what the agent read and wrote, should not stay.
 
 ## What a cloud run reports
