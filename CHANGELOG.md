@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **The docs now say how `/relevo:go` in a session differs from `/relevo:go --local`.** Both build in a worktree of their own; only `--local` runs a separate process with the closed tool lists and the limits of `relevo.yml`. A table in `docs/commands.md` compares them, and the guide and `docs/execution.md` link to it.
+
 ## [0.11.0] - 2026-10-28
 
 ### Added
