@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from '../scripts/lib/config.mjs';
+import { resolveProfile } from '../scripts/lib/stack-profile.mjs';
+import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
 
 const MINIMAL = 'limits:\n  run_max_cost: 5\n';
 
@@ -329,4 +331,49 @@ test('Scenario: A persistence key - runner.ephemeral does not exist and the mess
   assert.equal(ok, false);
   const e = errors.find((x) => x.path === 'runner.ephemeral');
   assert.match(e.message, /assumes every runner persists/);
+});
+
+test('Scenario: Restricted paths default - without the setting only the base list applies', () => {
+  const { ok, config } = loadConfig(MINIMAL);
+  assert.equal(ok, true);
+  assert.deepEqual(config.restricted_paths, []);
+  assert.deepEqual(restrictedList(config), restrictedList());
+});
+
+test('Scenario: A project adds its own - a valid entry is kept and the file is restricted besides the base list', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}restricted_paths:\n  - infra/prod.tfvars\n  - "*.secret"\n`);
+  assert.equal(ok, true);
+  assert.deepEqual(config.restricted_paths, ['infra/prod.tfvars', '*.secret']);
+  const list = restrictedList(config);
+  assert.ok(list.includes('infra/prod.tfvars') && list.includes('.env') && list.includes('*.pem'));
+});
+
+test('Scenario: Invalid value - an absolute path or a path outside the repository is rejected and named', () => {
+  ['/etc/passwd', '../outside'].forEach((entry) => {
+    const { ok, errors } = loadConfig(`${MINIMAL}restricted_paths:\n  - ${entry}\n`);
+    assert.equal(ok, false, entry);
+    assert.ok(errors.some((e) => e.path === 'restricted_paths' && e.message.includes(`"${entry}"`)), entry);
+  });
+  const notList = loadConfig(`${MINIMAL}restricted_paths: .env\n`);
+  assert.equal(notList.ok, false);
+  assert.ok(notList.errors.some((e) => e.path === 'restricted_paths' && /list of paths/.test(e.message)));
+});
+
+test('Scenario: A project tries to lift a base entry - a negation is refused and .env stays restricted', () => {
+  const { ok, errors, config } = loadConfig(`${MINIMAL}restricted_paths:\n  - "!.env"\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'restricted_paths' && /base list cannot be reduced/.test(e.message)));
+  assert.ok(restrictedList(config).includes('.env'), 'whatever the file says, the list keeps the base');
+});
+
+test('Scenario: A project tries to lift a base entry - a profile that names .env is refused with the same reason', () => {
+  const profile = (extra) => `---\nstack: own\n${extra}---\n`;
+  const resolve = (text) => resolveProfile({ platform: { stack: 'own' }, pluginRoot: '/p', read: (path) => (path === '.relevo/stacks/own.md' ? text : null) });
+  const generated = resolve(profile("generated: ['.env', 'dist/**']\n"));
+  assert.equal(generated.ok, false);
+  assert.match(generated.errors.join('\n'), /"generated" lists ".env", a restricted file: the base list cannot be reduced/);
+  const log = resolve(profile('review:\n  log: config/server.key\n'));
+  assert.equal(log.ok, false);
+  assert.match(log.errors.join('\n'), /"review.log" names "config\/server\.key"/);
+  assert.equal(resolve(profile("generated: ['dist/**']\nreview:\n  log: storage/logs/*.log\n")).ok, true, 'an ordinary profile is accepted');
 });

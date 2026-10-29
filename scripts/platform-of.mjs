@@ -6,10 +6,11 @@
 //   exit 0: printed   exit 1: the platform cannot be resolved (the reason is on stderr)   exit 2: bad usage or invalid relevo.yml
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { resolvePlatform } from './lib/platform-of.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

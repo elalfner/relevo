@@ -4,13 +4,14 @@
 //   node scripts/review-event.mjs --repo owner/name [--config relevo.yml] [--event-name n] [--event-path file] [--dry-run]
 //   exit 0: handled or nothing to do   exit 2: invalid configuration or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { issueFromBranch } from './lib/branch.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
 import { renderMessage } from './lib/messages.mjs';
 import { planReviewEvent } from './lib/review-events.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

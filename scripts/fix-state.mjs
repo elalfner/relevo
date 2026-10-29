@@ -4,10 +4,11 @@
 // Output: {"allowed":true,"from":"qa-failed","to":"built","notify":"assignee","labels":{"add":[...],"remove":[...]}}
 //   exit 0: a fix may run   exit 1: not allowed in this state   exit 2: bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { fixOutcome } from './lib/fix.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

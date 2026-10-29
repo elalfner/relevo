@@ -5,8 +5,8 @@
 // --subscription says that the cost is notional. Prints nothing when the log is missing or has no usage.
 // It never fails: exit 0 always, so a step that posts the text cannot fail a run.
 
-import { readFileSync } from 'node:fs';
 import { readUsage, usageLine, usageMarker } from './lib/run-usage.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

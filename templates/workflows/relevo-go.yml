@@ -291,6 +291,96 @@ jobs:
           # The decision the `decide` job already made travels with the prompt, encoded so that the issue title in it
           # is never read as an instruction. The skill decodes it and skips its own planning step.
           prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }} --decision ${{ needs.decide.outputs.decision_b64 }}
+          # relevo:restricted begin
+          # Files that no agent reads (docs/security.md): Read denials for the file tools, and the sandbox read denials, which apply
+          # only where a person enables the sandbox: it is NOT enabled here. Written from the base list and `restricted_paths` of
+          # relevo.yml by /relevo:init, so do not edit this block by hand.
+          # The action merges this input into the user-level settings of the runner, outside the repository, one top-level key
+          # at a time: that is why it carries the whole `permissions` and `sandbox` objects.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Read(**/.env)",
+                  "Read(**/.env.*.local)",
+                  "Read(**/.env.local)",
+                  "Read(**/.env.development)",
+                  "Read(**/.env.production)",
+                  "Read(**/.env.staging)",
+                  "Read(**/.env.test)",
+                  "Read(**/.env.testing)",
+                  "Read(**/.env.dev)",
+                  "Read(**/.env.prod)",
+                  "Read(**/.env.qa)",
+                  "Read(**/.env.ci)",
+                  "Read(**/.env.preview)",
+                  "Read(**/*.pem)",
+                  "Read(**/*.key)",
+                  "Read(**/*.p12)",
+                  "Read(**/*.pfx)",
+                  "Read(**/*.p8)",
+                  "Read(**/*.ppk)",
+                  "Read(**/*.keystore)",
+                  "Read(**/*.jks)",
+                  "Read(**/id_rsa)",
+                  "Read(**/id_dsa)",
+                  "Read(**/id_ecdsa)",
+                  "Read(**/id_ed25519)",
+                  "Read(**/.npmrc)",
+                  "Read(**/.netrc)",
+                  "Read(**/.pypirc)",
+                  "Read(**/.git-credentials)",
+                  "Read(**/.pgpass)",
+                  "Read(**/.htpasswd)",
+                  "Read(**/google-services.json)",
+                  "Read(**/GoogleService-Info.plist)",
+                  "Read(**/key.properties)",
+                  "Read(/${{ github.workspace }}/secrets/**)"
+                ]
+              },
+              "sandbox": {
+                "filesystem": {
+                  "denyRead": [
+                    "**/.env",
+                    "**/.env.*.local",
+                    "**/.env.local",
+                    "**/.env.development",
+                    "**/.env.production",
+                    "**/.env.staging",
+                    "**/.env.test",
+                    "**/.env.testing",
+                    "**/.env.dev",
+                    "**/.env.prod",
+                    "**/.env.qa",
+                    "**/.env.ci",
+                    "**/.env.preview",
+                    "**/*.pem",
+                    "**/*.key",
+                    "**/*.p12",
+                    "**/*.pfx",
+                    "**/*.p8",
+                    "**/*.ppk",
+                    "**/*.keystore",
+                    "**/*.jks",
+                    "**/id_rsa",
+                    "**/id_dsa",
+                    "**/id_ecdsa",
+                    "**/id_ed25519",
+                    "**/.npmrc",
+                    "**/.netrc",
+                    "**/.pypirc",
+                    "**/.git-credentials",
+                    "**/.pgpass",
+                    "**/.htpasswd",
+                    "**/google-services.json",
+                    "**/GoogleService-Info.plist",
+                    "**/key.properties",
+                    "/${{ github.workspace }}/secrets"
+                  ]
+                }
+              }
+            }
+          # relevo:restricted end
           claude_args: >-
             --max-turns 100
             --max-budget-usd 5

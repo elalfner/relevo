@@ -6,8 +6,9 @@
 //   exit 6: ready, but the test database is not in-memory SQLite (or is unknown): the person confirms it first (confirm-env)
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { apiPreflight } from './lib/api-preflight.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const result = apiPreflight({ cwd: process.cwd() }, {
   which: (tool) => spawnSync(tool, ['--version'], { stdio: 'ignore' }).status === 0,

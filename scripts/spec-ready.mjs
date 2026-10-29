@@ -5,9 +5,9 @@
 // Complete means every artifact is done (or skipped, for a change that declares skip_specs).
 //   exit 0: complete   exit 1: artifacts missing (named on stdout)   exit 2: bad arguments or OpenSpec failed
 
-import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pendingArtifacts, planningComplete } from './lib/openspec-status.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

@@ -261,3 +261,14 @@ test('Scenario: The agent is tempted to continue - the skill forbids going on wi
   assert.match(body, /do not go on from memory/);
   assert.match(body, /never write anything under `openspec\/changes\/` by hand/);
 });
+
+test('Scenario: A restricted file that is already versioned - the skill checks the base branch before it branches, and takes the failure path with the new reason', () => {
+  const branch = body.slice(body.indexOf('### 2. Branch'), body.indexOf('### 3. Specification'));
+  assert.match(branch, /scripts\/restricted-check\.mjs --ref origin\/<base>/);
+  assert.ok(branch.indexOf('restricted-check.mjs') < branch.indexOf('git switch -c'), 'the check comes before the branch is made');
+  assert.match(branch, /failure path with the reason `restricted file in the diff`/);
+  assert.match(branch, /`branch_state` `not_pushed`/);
+  assert.match(body, /`restricted file in the diff` \(a file on the restricted list/, 'the safe commit refuses it too');
+  assert.match(body, /Never read a restricted file yourself/);
+  ['restricted file in the diff'].forEach((r) => assert.ok(body.slice(body.indexOf('## Failure path'), body.indexOf('## Steps')).includes(r), `${r} is named in the failure path`));
+});

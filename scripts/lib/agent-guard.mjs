@@ -172,10 +172,12 @@ export const DENIED = ['read_url(*)', 'execute_url(*)', 'command(curl)', 'comman
 const programOf = (command) => String(command ?? '').trim().split(/\s+/)[0];
 
 /**
- * The user-level settings file of `agy` for a run: the key provider, the denied web, and the commands that are
- * allowed. `profile` is a resolved stack profile ({ commands, tools }); its programs are added.
+ * The user-level settings file of `agy` for a run: the key provider, the denied web, the restricted files and the
+ * commands that are allowed. `profile` is a resolved stack profile ({ commands, tools }); its programs are added.
+ * `restricted` are the `read_file(...)` rules of the restricted files that exist in the tree (`agyReadDenials`): the tool
+ * matches no glob, so each is an absolute path, and a rule stops its file tool but not a command such as `cat`.
  */
-export function agySettings({ profile = null, extra = [] } = {}) {
+export function agySettings({ profile = null, extra = [], restricted = [] } = {}) {
   const programs = new Set(BASE_PROGRAMS);
   for (const c of Object.values(profile?.commands ?? {})) if (programOf(c)) programs.add(programOf(c));
   for (const t of profile?.tools ?? []) if (t) programs.add(t);
@@ -183,6 +185,6 @@ export function agySettings({ profile = null, extra = [] } = {}) {
   DENIED.filter((d) => d.startsWith('command(')).forEach((d) => programs.delete(d.slice(8, -1)));
   return {
     modelProvider: 'gemini',
-    permissions: { deny: [...DENIED], allow: [...programs].sort().map((p) => `command(${p})`) }
+    permissions: { deny: [...DENIED, ...restricted], allow: [...programs].sort().map((p) => `command(${p})`) }
   };
 }

@@ -19,7 +19,7 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 - Never patch code during the review. A defect found here goes through `/relevo:fix`.
 - Never waive a finding, and never suggest or hint that one could be waived: a waiver is the person's decision, written by them as `waive <number> <reason>`.
 - Never commit the `evidence/` folder, and never force-push.
-- Never read the project's environment files (`.env`, `.env.local` and the like); only `.env.example` and the specification give variable names. Never stop, restart or signal a server you did not start with `extra-server.mjs`, above all the one the person started.
+- Never read a restricted file (the list is in `docs/security.md`: environment files, private keys, credential files); only `.env.example` and the specification give variable names. Never stop, restart or signal a server you did not start with `extra-server.mjs`, above all the one the person started.
 
 The only `adb` commands you may run are: list devices, clear or read the log (`logcat`), and the screenshot taken by `capture.mjs`.
 

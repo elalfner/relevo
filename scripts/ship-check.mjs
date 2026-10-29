@@ -6,12 +6,13 @@
 //   node scripts/ship-check.mjs --input pr.json --invoker login      (a saved `gh pr view --json ...`; null for no PR)
 // Prints the decision as JSON.   exit 0: may be merged   exit 1: must stop   exit 2: bad arguments or configuration
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
 import { shipDecision } from './lib/ship.mjs';
 import { baselineChecks, loadPr } from './lib/ship-github.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

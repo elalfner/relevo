@@ -4,11 +4,12 @@
 //   node scripts/review-sla.mjs --input prs.json [--now ISO] [--config relevo.yml]   (never writes)
 // Prints the decisions as JSON.   exit 0: evaluated   exit 2: invalid configuration or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
 import { gatherPrs, planSla, slaCommands } from './lib/sla.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
