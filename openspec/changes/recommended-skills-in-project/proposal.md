@@ -35,4 +35,4 @@ None.
 - Profile: `stacks/flutter.md` gains skill names under `skills.dev` and `skills.qa`.
 - Docs and skills: `docs/stacks.md`, `docs/stacks.es.md`, `skills/init/SKILL.md`, `skills/doctor/SKILL.md`, `CHANGELOG.md`.
 - Tests: `tests/doctor.test.mjs`, `tests/init.test.mjs`, `tests/stack-profile.test.mjs`, `tests/stack-profiles-shipped.test.mjs`, the role-skills and protected-paths tests, `tests/docs-claims.test.mjs`.
-- Behaviour: a Flutter run now reads up to three skills per role; the budget of 20 KB per role stays.
+- Behaviour: a Flutter run now reads up to two skills per role; the budget of 20 KB per role stays.

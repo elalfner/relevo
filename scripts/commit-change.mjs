@@ -4,7 +4,7 @@
 //     [--within apps/web --change 42-title] -- path [path ...]
 // --within is the folder of the platform of the issue: files outside it are refused, except the specification of --change, GLOSSARY.md and docs/adr/.
 // It stages the paths, refuses protected paths, scans the staged diff for temporary markers and credentials, and
-// commits only when nothing was found. With no --rules-file it reads qa.rules_from from relevo.yml, if there is one.
+// commits only when nothing was found. With no --rules-file it reads qa.rules_from from relevo.yml, if there is one; it also reads the platform folders there, because the skill folders of a platform are protected too.
 //   exit 0: committed (prints the short hash)   exit 1: refused, nothing committed (prints what and where)
 //   exit 2: bad arguments, "." or "-A" as a path, or git failed
 
@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { loadConfig } from './lib/config.mjs';
 import { commitChange, refusalText } from './lib/commit-change.mjs';
+import { platformFolders } from './lib/protected-paths.mjs';
 
 const argv = process.argv.slice(2);
 const sep = argv.indexOf('--');
@@ -29,15 +30,19 @@ const fail = (message) => {
 if (!opt('message') || paths.length === 0) fail('usage: commit-change.mjs --message "<message>" [--allow a,b] [--rules-file path] -- <path> [path ...]');
 
 let rulesFile = opt('rules-file') ? opt('rules-file').split(',').map((f) => f.trim()).filter(Boolean) : null;
-if (!rulesFile && existsSync('relevo.yml')) {
+let platformPaths = [];
+if (existsSync('relevo.yml')) {
   const loaded = loadConfig(readFileSync('relevo.yml', 'utf8'));
-  if (loaded.ok) rulesFile = loaded.config.qa.rules_from;
+  if (loaded.ok) {
+    if (!rulesFile) rulesFile = loaded.config.qa.rules_from;
+    platformPaths = platformFolders(loaded.config.platforms);
+  }
 }
 const allow = (opt('allow') ?? '').split(',').map((p) => p.trim()).filter(Boolean);
 const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 try {
-  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile, within: opt('within') ?? null, change: opt('change') ?? null });
+  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile, platformPaths, within: opt('within') ?? null, change: opt('change') ?? null });
   if (result.ok) {
     console.log(result.commit);
     process.exit(0);

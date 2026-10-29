@@ -51,12 +51,39 @@ test('the commands QA runs write nothing: no fix, write or update option in anal
   });
 });
 
-test('a profile of the plugin requires no skill that the plugin does not ship, and lists none by default', () => {
+test('a profile of the plugin requires no skill, and only Flutter lists skills by default', () => {
   ['vue', 'laravel', 'flutter'].forEach((stack) => {
-    const p = profile(stack);
-    assert.deepEqual(p.requires_skills, [], stack);
-    Object.values(p.skills).forEach((list) => assert.deepEqual(list, [], stack));
+    assert.deepEqual(profile(stack).requires_skills, [], stack);
   });
+  ['vue', 'laravel'].forEach((stack) => {
+    Object.values(profile(stack).skills).forEach((list) => assert.deepEqual(list, [], stack));
+  });
+});
+
+// Sizes in bytes of the SKILL.md files of flutter/agent-plugins, read on 2026-10-29 (the full set is 211 KB).
+const DEFAULT_SKILL_BYTES = { 'flutter-add-widget-test': 6381, 'dart-add-unit-test': 4709 };
+
+test('Scenario: The set - Flutter lists the same short set for dev and qa, and none for issue and review', () => {
+  const { skills } = profile('flutter');
+  const set = ['flutter-add-widget-test', 'dart-add-unit-test'];
+  assert.deepEqual(skills.dev, set);
+  assert.deepEqual(skills.qa, set);
+  assert.deepEqual(skills.issue, []);
+  assert.deepEqual(skills.review, []);
+});
+
+test('Scenario: Budget - the default set of each role is under 20 KB', () => {
+  const { skills } = profile('flutter');
+  ['dev', 'qa'].forEach((role) => {
+    const bytes = skills[role].reduce((sum, name) => sum + DEFAULT_SKILL_BYTES[name], 0);
+    assert.ok(bytes < 20 * 1024, `${role}: ${bytes} bytes`);
+  });
+});
+
+test('Scenario: No imposed architecture - the set holds no skill that prescribes an architecture or a package', () => {
+  const { skills } = profile('flutter');
+  const imposing = ['flutter-apply-architecture-best-practices', 'flutter-use-http-package', 'flutter-setup-declarative-routing', 'flutter-implement-json-serialization', 'dart-generate-test-mocks', 'dart-run-static-analysis', 'flutter-fix-layout-issues'];
+  imposing.forEach((name) => ['dev', 'qa'].forEach((role) => assert.ok(!skills[role].includes(name), `${role} lists ${name}`)));
 });
 
 test('every profile has the three parts of the body and a section of questions that is not in the body', () => {
