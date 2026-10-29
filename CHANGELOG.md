@@ -11,6 +11,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **A Flutter repository gets a default set of official skills for `dev` and `qa`.** The `flutter` profile now gives `flutter-add-widget-test` and `dart-add-unit-test` to both roles; `/relevo:init` offers one optional install per Flutter platform folder (`npx skills add flutter/agent-plugins ... --agent claude-code --copy --yes`, run from the folder), and `/relevo:doctor` reports a skill that is not committed as a note with its command. A skill of the set that is not on the base branch is left out of the run, never a failure.
 - **`skills.disable` switches a default skill off.** List a skill of the plugin by name under `skills.disable` in `.relevo/stacks/<stack>.md`; a required skill cannot be switched off, and an entry that matches nothing is reported.
 - **The skill folders of a platform are protected.** `.claude/skills/`, `.agents/` and `skills-lock.json` inside the folder of each platform are hard-protected paths, as they already were at the root, and `doctor` compares each skill with the `skills-lock.json` of the folder that holds it. Skills are looked up in the folder of the platform first and then at the root.
+- **Laravel and Vue repositories get a route to skills.** `/relevo:init` offers Laravel Boost per Laravel platform folder (`composer require laravel/boost --dev`, then `php artisan boost:install --skills --no-interaction`) and `/relevo:doctor` notes when it is missing; the `laravel` profile uses `laravel-best-practices` and `testing-best-practices` for `dev` and `qa` once they are installed. For Vue, `init` offers two skills of the community project `vuejs-ai/skills`, labelled as not official, and the `vue` profile uses them for `dev` and `qa` once they are installed.
+- **A profile can list skills used only when installed.** The header key `skills_when_installed` gives a skill to a role when its folder is on the base branch and reports nothing when it is not; `skills.disable` switches one off.
+- **The `vue` profile carries a checklist from the official documentation.** About 1.5 KB of points that can be read in a diff: a template built from user text, `innerHTML`, `:style` from a user's CSS, a `javascript:` URL, a prop shared by a whole list, deep reactivity on large data, long lists, and how to test (behaviour, not internals; no snapshot alone).
+- **`doctor` warns when a skill folder is ignored by git.** The cloud runner reads only what is committed, and Laravel's documentation says Boost's generated files can be kept out of git.
 
 ### Changed
 
@@ -30,6 +34,9 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - `limits.concurrent_agents` counts the issues labelled `relevo:building` when the gate of an issue runs, and the gates of different issues do not wait for each other: with two or more runners, or on GitHub's runners, two issues labelled together can both start and exceed it by the number of gates that overlap. With a single runner the gates queue and the limit holds.
 - The risks of runners sharing a home, caches, Docker and ports were not tried on a machine with several runners; the text says what can collide, not what was seen to.
+- The skills of Boost for Livewire, Inertia, Flux, Tailwind and Pest are not listed by the `laravel` profile: each is up to 10 KB and applies only when the package is used. A project lists the ones it wants.
+- The community Vue skills are unofficial and an early experiment by their author's own words. `vue-best-practices` tells the agent to read four reference files (about 34 KB) in every Vue task, so it adds about 44 KB of reading per run; it can be switched off with `skills.disable`.
+- `boost:install --no-interaction` installs for the agents it finds on the machine, so on a machine with none that Boost detects it may install nothing; `doctor` then shows Boost present with no skill committed.
 
 ### Changed
 

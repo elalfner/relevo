@@ -7,7 +7,7 @@ The stacks page, in both languages, SHALL give the Laravel Boost commands, say t
 
 #### Scenario: Laravel
 - **WHEN** the section on Laravel of the stacks page is read
-- **THEN** it gives `composer require laravel/boost --dev` and `php artisan boost:install --skills` run from the folder of the platform, says to commit `.claude/skills/`, `composer.json` and `composer.lock`, and names `laravel-best-practices` and `pest-testing`
+- **THEN** it gives `composer require laravel/boost --dev` and `php artisan boost:install --skills --no-interaction` run from the folder of the platform, says to commit `.claude/skills/`, `boost.json`, `composer.json` and `composer.lock`, and names `laravel-best-practices` and `testing-best-practices`
 
 #### Scenario: Skills of other packages
 - **WHEN** the section is read

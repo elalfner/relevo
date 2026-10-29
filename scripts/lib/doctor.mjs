@@ -39,6 +39,17 @@ export const RECOMMENDED = {
     antigravity: { commands: ["npx skills add flutter/agent-plugins --skill '*' --agent universal --yes"] },
   },
 };
+// Skills that `init` offers for a stack without recommending them: `doctor` says nothing when they are absent. They come
+// from a community project, not from the people who make the stack.
+export const OFFERED = {
+  vue: { source: 'vuejs-ai/skills', skills: ['vue-best-practices', 'vue-testing-best-practices'] },
+};
+const inFolder = (path) => {
+  const folder = String(path ?? '').replace(/^\.\//, '').replace(/\/+$/, '');
+  return folder === '' || folder === '.' ? '' : `cd ${folder} && `;
+};
+/** The two commands that install Laravel Boost and its skills, run from the folder of the platform (where `artisan` is). */
+export const boostInstallCommands = (path = '.') => [`${inFolder(path)}composer require laravel/boost --dev`, `${inFolder(path)}php artisan boost:install --skills --no-interaction`];
 /**
  * The command that installs skills of a stack into the project, as real files: `agent` is `claude-code` (writes
  * `.claude/skills/`) or `universal` (writes `.agents/skills/`). The installer writes in the folder it runs from, so a
@@ -46,9 +57,7 @@ export const RECOMMENDED = {
  */
 export function recommendedInstallCommand({ stack, skills, agent = 'claude-code', path = '.' }) {
   const flags = skills.map((s) => `--skill ${s}`).join(' ');
-  const command = `npx skills add ${RECOMMENDED[stack].source} ${flags} --agent ${agent} --copy --yes`;
-  const folder = String(path ?? '').replace(/^\.\//, '').replace(/\/+$/, '');
-  return folder === '' || folder === '.' ? command : `cd ${folder} && ${command}`;
+  return `${inFolder(path)}npx skills add ${(RECOMMENDED[stack] ?? OFFERED[stack]).source} ${flags} --agent ${agent} --copy --yes`;
 }
 const ANTIGRAVITY_IDE = 'in the Antigravity IDE, install "Dart and Flutter" from Settings > Customizations > Build with Google Plugins (doctor cannot check this)';
 export const OPENSPEC_INSTALL ='npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
@@ -546,6 +555,41 @@ function gatherPlatforms(f, p, tryRun) {
     f.recommendedSkills = recommendedSkillFacts({ stack: recommendedStack, platforms, exists: p.exists, tool: p.tool, repoTop: tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null), adapters: f.adapters, agentBuild: f.config?.agent?.build });
   }
 
+  // Where skills come from for the stacks that have a source: Laravel Boost (a package of the project), the Vue skills that
+  // are offered, and the skill folders that git ignores (the cloud runner reads only what is committed).
+  f.laravelBoost = [];
+  f.offeredSkills = [];
+  f.ignoredSkillFolders = [];
+  if (p.exists) {
+    const skillFolders = (path) => (path === '.' || path === '' ? ['.claude/skills', '.agents/skills'] : [`${path}/.claude/skills`, `${path}/.agents/skills`, '.claude/skills', '.agents/skills']);
+    const found = (path, name) => skillFolders(path).some((d) => tryRun(() => p.exists(`${d}/${name}`), false));
+    f.platformFacts.filter((e) => e.profile).forEach((e) => {
+      const listed = [...new Set([...(e.profile.skillsWhenInstalled?.dev ?? []), ...(e.profile.skillsWhenInstalled?.qa ?? [])])];
+      if (e.stack === 'laravel') {
+        const composerPath = e.path === '.' || e.path === '' ? 'composer.json' : `${e.path}/composer.json`;
+        if (!tryRun(() => p.exists(composerPath), false)) return;
+        const composer = tryRun(() => JSON.parse(p.read(composerPath)), null);
+        const boost = Boolean(composer && (composer.require?.['laravel/boost'] || composer['require-dev']?.['laravel/boost']));
+        f.laravelBoost.push({ name: e.name, path: e.path, boost, skillsCommitted: listed.some((name) => found(e.path, name)) });
+      } else if (OFFERED[e.stack]) {
+        const missing = OFFERED[e.stack].skills.filter((name) => !found(e.path, name));
+        f.offeredSkills.push({ stack: e.stack, name: e.name, path: e.path, skills: OFFERED[e.stack].skills, missing });
+      }
+    });
+    if (f.git) {
+      const folders = [...new Set(['.', ...Object.values(f.config?.platforms ?? {}).map((pl) => pl.path)].flatMap((path) => skillFolders(path ?? '.')))];
+      folders.filter((d) => tryRun(() => p.exists(d), false)).forEach((d) => {
+        // `git check-ignore` succeeds when the path is ignored, exits 1 when it is not, and fails otherwise (it cannot tell).
+        try {
+          p.tool('git', ['check-ignore', '-q', `${d}/probe`]);
+          f.ignoredSkillFolders.push(d);
+        } catch {
+          /* not ignored, or git cannot tell: nothing to say */
+        }
+      });
+    }
+  }
+
   // What the Autopilot of `review` needs, only when the repository asks for it.
   const mode = f.config.review?.autopilot ?? 'off';
   if (mode !== 'off') {
@@ -745,7 +789,7 @@ function platformChecks(f) {
   // A skill the plugin's profile lists and the repository lacks is one note per platform, with its install command, and
   // never a warning: the profile works without it. What the repository switched off is not missing.
   (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
-    const missing = [...new Set(Object.values(f.roleSkills?.[e.name] ?? {}).flatMap((skills) => skills.filter((s) => s.left_out && s.default).map((s) => s.name)))];
+    const missing = [...new Set(Object.values(f.roleSkills?.[e.name] ?? {}).flatMap((skills) => skills.filter((s) => s.left_out && s.default && s.reason === 'not on the base branch').map((s) => s.name)))];
     missing.forEach((name) => {
       const command = RECOMMENDED[e.stack] ? recommendedInstallCommand({ stack: e.stack, skills: [name], path: e.path }) : null;
       r.push(note(`skills.default.${e.name}.${name}`, `platform ${e.name}: the plugin lists the skill ${name} for ${e.stack}, and it is not on the base branch, so it is left out${command ? `; install it with ${command}, commit it, or switch it off with skills.disable in .relevo/stacks/${e.stack}.md` : ''}`));
@@ -761,7 +805,7 @@ function platformChecks(f) {
 
   Object.entries(f.roleSkills ?? {}).forEach(([platform, roles]) => {
     Object.entries(roles).forEach(([role, skills]) => {
-      skills.filter((s) => s.left_out && !s.default).forEach((s) => {
+      skills.filter((s) => s.left_out && !(s.default && s.reason === 'not on the base branch')).forEach((s) => {
         r.push(warn(`skills.role.${platform}.${role}.${s.name}`, `skill ${s.name} (${role}, ${platform}) is left out: ${s.reason}`, 'fix the reason, or remove the skill from the profile'));
       });
       skills.filter((s) => s.path && s.scripts).forEach((s) => {
@@ -806,6 +850,8 @@ export function runChecks(f) {
   if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
   r.push(...platformChecks(f));
   r.push(...recommendedSkillChecks(f));
+  r.push(...laravelBoostChecks(f));
+  r.push(...ignoredSkillChecks(f));
   r.push(...adapterChecks(f));
 
   // skills that think invokes
@@ -1104,6 +1150,31 @@ function workflowTextChecks(f) {
   if (unknown.length > 0) r.push(warn('automation.workflow-text-unknown', `${unknown.join(', ')} have no # relevo-template: line, so the age of their text is unknown`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes'));
   if (older.length === 0 && unknown.length === 0 && Object.keys(stamps).length > 0) r.push(pass('automation.workflow-text', 'the text of the workflows is as current as the scripts they run'));
   return r;
+}
+
+/**
+ * Laravel Boost, which installs the skills of the packages a project uses. Only a note: the profile works without it.
+ * One result for all the Laravel platforms.
+ */
+function laravelBoostChecks(f) {
+  const platforms = f.laravelBoost ?? [];
+  if (platforms.length === 0) return [];
+  const missing = platforms.filter((x) => !x.boost);
+  const uncommitted = platforms.filter((x) => x.boost && !x.skillsCommitted);
+  const r = [];
+  if (missing.length > 0) {
+    r.push(note('recommended.laravel.boost', `laravel works better with Laravel Boost, which installs skills for the packages the project uses, and it is not in composer.json of ${missing.map((x) => x.name).join(', ')}; it is optional. Install it: ${missing.flatMap((x) => boostInstallCommands(x.path)).join('; then ')}, then commit .claude/skills, boost.json, composer.json and composer.lock`));
+  }
+  if (uncommitted.length > 0) {
+    r.push(note('recommended.laravel.skills', `Laravel Boost is installed in ${uncommitted.map((x) => x.name).join(', ')} but none of the skills the laravel profile uses is committed there; run ${uncommitted.map((x) => boostInstallCommands(x.path)[1]).join('; ')}, then commit .claude/skills`));
+  }
+  if (missing.length === 0 && uncommitted.length === 0) r.push(pass('recommended.laravel.boost', 'Laravel Boost is installed and its skills are committed to the repository'));
+  return r;
+}
+
+/** A skill folder that git ignores is invisible to the cloud runner, which reads only what is committed. */
+function ignoredSkillChecks(f) {
+  return (f.ignoredSkillFolders ?? []).map((d) => warn(`skills.ignored.${d}`, `${d} exists and is ignored by git, so the cloud runner will not see the skills in it`, `remove the ignore rule that covers ${d} from .gitignore and commit the folder`));
 }
 
 /**
