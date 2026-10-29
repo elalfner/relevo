@@ -6,7 +6,7 @@
 A profile header MAY carry `skills_when_installed`, a map from a role (`dev`, `qa`, `issue`, `review`) to skill names. A listed skill SHALL be given to the role when its folder is on the base branch and SHALL be skipped without a note or a warning when it is not. The repository's profile MAY carry the key too, and its lists SHALL be added to the plugin's. `skills.disable` SHALL switch off a skill of these lists as it does for the others.
 
 #### Scenario: Listed and installed
-- **WHEN** the plugin lists `pest-testing` for `dev` under `skills_when_installed` and its folder is on the base branch
+- **WHEN** the plugin lists `laravel-best-practices` for `dev` under `skills_when_installed` and its folder is on the base branch
 - **THEN** the resolved profile gives `dev` that skill
 
 #### Scenario: Listed and absent
@@ -26,15 +26,15 @@ A profile header MAY carry `skills_when_installed`, a map from a role (`dev`, `q
 - **THEN** the resolved profile has the plugin's skills followed by the repository's
 
 ### Requirement: The Laravel profile uses the skills of Laravel Boost when installed
-The plugin's `laravel` profile SHALL list `laravel-best-practices` and `pest-testing` under `skills_when_installed` for `dev` and for `qa`, and no skill under `requires_skills` or `skills`. The two SHALL fit the budget of 20 KB per role. It SHALL NOT list a skill that applies only when a package is used, such as `livewire-development`.
+The plugin's `laravel` profile SHALL list `laravel-best-practices` and `testing-best-practices` under `skills_when_installed` for `dev` and for `qa`, and no skill under `requires_skills` or `skills`. The two SHALL fit the budget of 20 KB per role. It SHALL NOT list a skill that applies only when a package is used, such as `livewire-development`.
 
 #### Scenario: The set
 - **WHEN** the profile of `laravel` is resolved
-- **THEN** `skills_when_installed.dev` and `skills_when_installed.qa` name `laravel-best-practices` and `pest-testing`, and `requires_skills` and every `skills` list are empty
+- **THEN** `skills_when_installed.dev` and `skills_when_installed.qa` name `laravel-best-practices` and `testing-best-practices`, and `requires_skills` and every `skills` list are empty
 
-#### Scenario: A project with PHPUnit
-- **WHEN** the project does not use Pest, so `pest-testing` is not installed
-- **THEN** the run is not affected and nothing is reported about that skill
+#### Scenario: A project without Boost
+- **WHEN** the project does not use Boost, so neither skill is installed
+- **THEN** the run is not affected and nothing is reported about those skills
 
 #### Scenario: Budget
 - **WHEN** the `SKILL.md` files of the two skills are added up

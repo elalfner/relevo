@@ -3,15 +3,15 @@
 ## ADDED Requirements
 
 ### Requirement: Init offers the Laravel Boost skills as optional installs
-For a platform of stack `laravel` whose folder has a `composer.json` and no skill of the `laravel` profile committed, `init` SHALL offer two optional installs, run from that folder: `composer require laravel/boost --dev`, then `php artisan boost:install --skills`. It SHALL run each only after a yes to that command alone, SHALL list committing what they write as a manual step, and SHALL NOT run Boost for guidelines or the MCP server nor write the project's rules file.
+For a platform of stack `laravel` whose folder has a `composer.json` and no skill of the `laravel` profile committed, `init` SHALL offer two optional installs, run from that folder: `composer require laravel/boost --dev`, then `php artisan boost:install --skills --no-interaction`. It SHALL run each only after a yes to that command alone, SHALL list committing what they write as a manual step, and SHALL NOT run Boost for guidelines or the MCP server nor write the project's rules file.
 
 #### Scenario: Offered
 - **WHEN** a Laravel platform with `path: api` has `api/composer.json` without `laravel/boost` and no committed Boost skills
-- **THEN** the plan has the two optional installs, shown with the folder `api`, and nothing runs before the person says yes to each
+- **THEN** the plan has the two optional installs, the second with `--no-interaction` so that it asks nothing, shown with the folder `api`, and nothing runs before the person says yes to each
 
 #### Scenario: Commit what Boost wrote
 - **WHEN** the plan offers the installs
-- **THEN** it lists as a manual step committing `.claude/skills/` of the platform, `composer.json` and `composer.lock`, and says that Laravel suggests keeping generated files out of git and that the cloud runner reads only what is committed
+- **THEN** it lists as a manual step committing `.claude/skills/` of the platform, `boost.json`, `composer.json` and `composer.lock`, says that Boost also writes the folders of the other agents it finds (`.agents/` and `.kiro/`), which a project commits only if it uses them, and says that Laravel suggests keeping generated files out of git and that the cloud runner reads only what is committed
 
 #### Scenario: Declined
 - **WHEN** the person declines an install
@@ -30,11 +30,11 @@ For a platform of stack `laravel` whose folder has a `composer.json`, `doctor` S
 
 #### Scenario: Boost missing
 - **WHEN** `composer.json` of the platform does not require `laravel/boost`
-- **THEN** `doctor` reports the note with `composer require laravel/boost --dev` and `php artisan boost:install --skills`, and the exit status is untouched
+- **THEN** `doctor` reports the note with `composer require laravel/boost --dev` and `php artisan boost:install --skills --no-interaction`, and the exit status is untouched
 
 #### Scenario: Boost present and no skills committed
 - **WHEN** `laravel/boost` is in `require-dev` and `.claude/skills/` of the platform and the root hold none of the skills the profile lists
-- **THEN** `doctor` reports a note to run `php artisan boost:install --skills` and commit the result
+- **THEN** `doctor` reports a note to run `php artisan boost:install --skills --no-interaction` and commit the result
 
 #### Scenario: Both in place
 - **WHEN** Boost is required and a skill of the profile is committed

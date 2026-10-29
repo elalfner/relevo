@@ -128,6 +128,34 @@ test('the skills of the plugin\'s profile are marked as default, the repository\
   assert.deepEqual(out.map((s) => [s.name, s.default === true, s.left_out === true]), [['a', true, false], ['mine', false, false], ['gone', true, true]]);
 });
 
+const WHEN = (dev, plugin = dev) => ({ skills: { dev: [], qa: [], issue: [], review: [] }, skillsWhenInstalled: { dev, qa: [], issue: [], review: [] }, pluginSkillsWhenInstalled: { dev: plugin, qa: [], issue: [], review: [] } });
+const resolved = (dir, profile, extra = {}) => resolveRoleSkills({ role: 'dev', profile, git: runner(dir), baseRef: 'origin/dev', ...extra });
+
+test('Scenario: Absent - a skill used only when installed leaves no entry in the output', () => {
+  const dir = repo({ 'README.md': 'x' });
+  assert.deepEqual(resolved(dir, WHEN(['laravel-best-practices'])), []);
+});
+
+test('Scenario: Present - it is given with its path, marked as a default, in the folder of the platform or at the root', () => {
+  const dir = repo({ '.claude/skills/laravel-best-practices/SKILL.md': SKILL(), 'api/.claude/skills/testing-best-practices/SKILL.md': SKILL() });
+  const out = resolved(dir, WHEN(['laravel-best-practices', 'testing-best-practices', 'absent']), { dirs: skillDirsFor('api') });
+  assert.deepEqual(out.map((s) => [s.name, s.path, s.default]), [['laravel-best-practices', '.claude/skills/laravel-best-practices/SKILL.md', true], ['testing-best-practices', 'api/.claude/skills/testing-best-practices/SKILL.md', true]]);
+});
+
+test('Scenario: Present with scripts - it is left out with the reason, and not silently', () => {
+  const dir = repo({ '.claude/skills/x/SKILL.md': SKILL(), '.claude/skills/x/scripts/run.sh': 'x', '.claude/skills/y/SKILL.md': SKILL('disable-model-invocation: true\n') });
+  const out = resolved(dir, WHEN(['x', 'y']));
+  assert.deepEqual(out.map((s) => [s.name, s.reason]), [['x', 'has scripts and is not allowed'], ['y', 'reserved for the person']]);
+  assert.equal(resolved(dir, WHEN(['x']), { allowScripts: ['x'] })[0].path, '.claude/skills/x/SKILL.md');
+});
+
+test('a skill of the repository is not marked as a default, and a name in both lists is the listed one', () => {
+  const dir = repo({ '.claude/skills/mine/SKILL.md': SKILL(), '.claude/skills/both/SKILL.md': SKILL() });
+  const profile = { skills: { dev: ['both'], qa: [], issue: [], review: [] }, skillsWhenInstalled: { dev: ['mine', 'both', 'gone'], qa: [], issue: [], review: [] }, pluginSkillsWhenInstalled: { dev: [], qa: [], issue: [], review: [] } };
+  const out = resolved(dir, profile);
+  assert.deepEqual(out.map((s) => [s.name, s.default === true]), [['both', false], ['mine', false]], 'gone leaves no trace, and both is resolved once');
+});
+
 test('Scenario: Large skill set - 30 KB is over the budget, 10 KB is not', () => {
   assert.equal(SIZE_BUDGET_BYTES, 20480);
   assert.deepEqual(skillBudget([10 * 1024, 20 * 1024]), { bytes: 30720, over: true });
