@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RECOMMENDED, REQUIRED_SKILLS, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { folderHash } from '../scripts/lib/role-skills.mjs';
@@ -594,7 +594,7 @@ function platformFolderFacts(files) {
     read: (p) => all[p], listDir: () => [], skillDirs: [],
     git: (args) => {
       if (args[0] === 'rev-parse') return 'abc\n';
-      if (args[0] === 'ls-tree') { const f = args[4]; return folders.includes(f) ? `100644 blob abc\t${f}/SKILL.md` : ''; }
+      if (args[0] === 'ls-tree') { const f = args[4]; return folders.includes(f) ? Object.keys(all).filter((n) => n.startsWith(`${f}/`)).map((n) => `100644 blob abc\t${n}`).join('\n') : ''; }
       if (args[0] === 'show') return all[args[1].split(':')[1]];
       throw new Error(`unexpected ${args.join(' ')}`);
     },
@@ -653,6 +653,22 @@ test('Scenario: Default skill switched off - no note and no warning, and doctor 
 test('an entry of skills.disable that the profile cannot honour is reported: a note when it matches nothing, a warning when it is required', () => {
   const r = checksOf({ '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills:\n  disable: [nothing]\n---\n' });
   assert.equal(r.find((x) => x.id === 'skills.disable.app.nothing').status, 'note');
+});
+
+test('Scenario: Absent - a skill used only when installed gives no note and no warning', () => {
+  const r = checksOf({ '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills_when_installed:\n  dev: [laravel-best-practices]\n---\n' });
+  assert.deepEqual(r.filter((x) => /laravel-best-practices/.test(x.id) || /laravel-best-practices/.test(x.message ?? '')), []);
+});
+
+test('Scenario: Present with scripts - a skill used only when installed is warned about as any skill left out for that reason', () => {
+  const r = checksOf({
+    '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills_when_installed:\n  dev: [x]\n---\n',
+    'app/.claude/skills/x/SKILL.md': SKILL_FILE,
+    'app/.claude/skills/x/scripts/run.sh': 'x',
+  });
+  const w = r.find((x) => x.id === 'skills.role.app.dev.x');
+  assert.equal(w?.status, 'warn');
+  assert.match(w.message, /has scripts and is not allowed/);
 });
 
 test('the install command names each skill, runs from the platform folder, and copies real files', () => {
@@ -1710,6 +1726,95 @@ test('Scenario: gatherFacts reads the default skills of the profile for a Flutte
   assert.equal(ag.antigravity, 'present');
   assert.equal(ag.claude, 'missing', 'the folder of Antigravity does not count for Claude Code');
   assert.equal(read('claude', '.', []).recommendedSkills.antigravity, null);
+});
+
+// ---------- sources of skills for Laravel and Vue, and skill folders that git ignores (laravel-vue-skills)
+
+/** gatherFacts for a repository with one platform of `stack` in `path`, with `files` on disk and an optional `tool`. */
+function sourceFacts({ stack, path = 'api', files = {}, dirs = [], tool = () => 'ok' }) {
+  const all = { 'relevo.yml': `limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: ${stack}\n    path: ${path}\n${stack === 'vue' ? '    targets: [web]\n' : ''}`, ...files };
+  return gatherFacts({
+    tool, gh: () => { throw new Error('no network'); },
+    exists: (p) => p in all || dirs.includes(p) || Object.keys(all).some((k) => k.startsWith(`${p}/`)),
+    read: (p) => all[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const COMPOSER = (boost) => JSON.stringify({ require: { 'laravel/framework': '^13.0' }, 'require-dev': boost ? { 'laravel/boost': '^2.10' } : {} });
+const sourceChecks = (facts) => runChecks(healthy({ laravelBoost: facts.laravelBoost, ignoredSkillFolders: facts.ignoredSkillFolders }));
+
+test('Scenario: Boost missing - a note with the two commands from the folder of the platform, and the exit status is untouched', () => {
+  const facts = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(false) } });
+  assert.deepEqual(facts.laravelBoost.map((x) => [x.name, x.boost]), [['app', false]]);
+  const results = sourceChecks(facts);
+  const rec = byId(results, 'recommended.laravel.boost');
+  assert.equal(rec.status, 'note');
+  assert.ok(rec.message.includes('cd api && composer require laravel/boost --dev'));
+  assert.ok(rec.message.includes('cd api && php artisan boost:install --skills --no-interaction'));
+  assert.equal(exitCode(results), 0);
+});
+
+test('Scenario: Boost present and no skills committed - a note to run the install and commit the result', () => {
+  const facts = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(true) } });
+  assert.equal(facts.laravelBoost[0].boost, true);
+  assert.equal(facts.laravelBoost[0].skillsCommitted, false);
+  const results = sourceChecks(facts);
+  assert.equal(byId(results, 'recommended.laravel.boost'), undefined);
+  const note = byId(results, 'recommended.laravel.skills');
+  assert.equal(note.status, 'note');
+  assert.match(note.message, /boost:install --skills --no-interaction/);
+});
+
+test('Scenario: Both in place - a pass when Boost is required and a skill of the profile is committed', () => {
+  const facts = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(true), 'api/.claude/skills/laravel-best-practices/SKILL.md': 'x' } });
+  assert.equal(facts.laravelBoost[0].skillsCommitted, true);
+  assert.equal(byId(sourceChecks(facts), 'recommended.laravel.boost').status, 'pass');
+  const atRoot = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(true), '.claude/skills/testing-best-practices/SKILL.md': 'x' } });
+  assert.equal(atRoot.laravelBoost[0].skillsCommitted, true, 'the root counts too');
+});
+
+test('Scenario: No composer file, and Not Laravel - no Laravel check', () => {
+  assert.deepEqual(sourceFacts({ stack: 'laravel' }).laravelBoost, []);
+  assert.deepEqual(sourceFacts({ stack: 'vue', path: 'web' }).laravelBoost, []);
+  assert.deepEqual(sourceChecks(sourceFacts({ stack: 'laravel' })).filter((r) => r.id.startsWith('recommended.laravel')), []);
+});
+
+test('the Boost commands run from the folder of the platform, and at the root with no folder', () => {
+  assert.deepEqual(boostInstallCommands('api'), ['cd api && composer require laravel/boost --dev', 'cd api && php artisan boost:install --skills --no-interaction']);
+  assert.deepEqual(boostInstallCommands('.'), ['composer require laravel/boost --dev', 'php artisan boost:install --skills --no-interaction']);
+});
+
+const IGNORING = (ignored) => (name, args) => {
+  if (name === 'git' && args[0] === 'check-ignore') {
+    if (ignored) return '';
+    const err = new Error('not ignored');
+    err.status = 1;
+    throw err;
+  }
+  return 'ok';
+};
+
+test('Scenario: Ignored - a skill folder that git ignores is a warning that names the folder and says what to do', () => {
+  const facts = sourceFacts({ stack: 'laravel', dirs: ['api/.claude/skills'], tool: IGNORING(true) });
+  assert.deepEqual(facts.ignoredSkillFolders, ['api/.claude/skills']);
+  const w = byId(sourceChecks(facts), 'skills.ignored.api/.claude/skills');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /ignored by git, so the cloud runner will not see/);
+  assert.match(w.fix, /remove the ignore rule/);
+});
+
+test('Scenario: Tracked and Git cannot tell - nothing is said, and a folder that does not exist is not asked about', () => {
+  assert.deepEqual(sourceFacts({ stack: 'laravel', dirs: ['api/.claude/skills'], tool: IGNORING(false) }).ignoredSkillFolders, []);
+  const cannot = (name, args) => { if (name === 'git' && args[0] === 'check-ignore') { const e = new Error('fatal: not a git repository'); e.status = 128; throw e; } return 'ok'; };
+  assert.deepEqual(sourceFacts({ stack: 'laravel', dirs: ['api/.claude/skills'], tool: cannot }).ignoredSkillFolders, []);
+  assert.deepEqual(sourceFacts({ stack: 'laravel', tool: IGNORING(true) }).ignoredSkillFolders, [], 'no folder, nothing to ignore');
+});
+
+test('Scenario: Doctor says nothing - the Vue skills that are offered are not reported when absent', () => {
+  const facts = sourceFacts({ stack: 'vue', path: 'web' });
+  assert.deepEqual(facts.offeredSkills.map((x) => [x.stack, x.path, x.missing]), [['vue', 'web', ['vue-best-practices', 'vue-testing-best-practices']]]);
+  const results = runChecks(healthy({ offeredSkills: facts.offeredSkills }));
+  assert.deepEqual(results.filter((r) => /vue-/.test(r.id) || /vue-(best|testing)/.test(r.message ?? '')), []);
+  assert.equal(recommendedInstallCommand({ stack: 'vue', skills: ['vue-best-practices', 'vue-testing-best-practices'], path: 'web' }), 'cd web && npx skills add vuejs-ai/skills --skill vue-best-practices --skill vue-testing-best-practices --agent claude-code --copy --yes');
 });
 
 // ---------- api review (laravel-review-adapter)

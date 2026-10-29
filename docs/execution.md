@@ -76,7 +76,7 @@ Each runner process runs one job at a time, so several runners on one machine ar
 | The tool cache of the toolchain actions | The Docker daemon |
 | The branch of the issue (one build per issue) | The ports of the machine |
 
-Concurrent writes to a shared cache or settings file can collide; this was not tried here. Registering each runner under its own user of the machine, or in its own container, removes the shared home and caches. It does not remove the Docker daemon or the ports.
+A runner registered under your own user also shares `~/.claude` with your interactive Claude Code sessions. Concurrent writes to a shared cache or settings file can collide; this was not tried here. Registering each runner under its own user of the machine, or in its own container, removes the shared home and caches. It does not remove the Docker daemon or the ports.
 
 - **Builds that can run at once** are at most the smaller of `limits.concurrent_agents` and the free runners. Every Relevo workflow (`go`, `review`, `ship`, `queue`, `sla`, `digest`) runs on the same labels, so register more runners than `limits.concurrent_agents`: with three runners and a limit of 3, three builds take every runner and hold up the checks of your pull requests and the other workflows.
 - **The Supabase stack does not parallelise on one machine.** Its checks start containers on the machine (see [Stacks](stacks.md)), and two such builds at the same time can collide on the ports and the containers. Do not let two builds for a Supabase platform run together on one machine, or give each runner its own machine.
@@ -137,6 +137,40 @@ In a Claude Code session, running `/relevo:go <issue>` without `--local` builds 
 In Antigravity interactive chat sessions, running `/relevo:go <issue>` automatically runs the build inside an isolated subagent with `Workspace: 'share'`. This creates an ephemeral worktree automatically, allowing multiple chat tabs to build different issues concurrently without branch or OpenSpec collisions. The main repository root remains clean on the base branch, reserved for the developer and interactive `/relevo:review` sessions with connected devices. Upon opening a pull request, `review` restores the root workspace to the base branch, only in the main checkout and only when no other worktree holds that branch; it never fails the review for it.
 
 `/relevo:status` lists the `ready` issues assigned to you with the command to run when the cloud is not building, and alerts about an issue that has been `building` with no activity for `limits.building_alert_hours` hours, with how to restart it.
+
+`/relevo:review`, `/relevo:ship` and `/relevo:fix` run where you start them, in your main checkout or in a worktree you opened (for example with the Worktree button of Claude Code). In a worktree, `review` and `ship` do not switch back to the base branch afterwards, and `ship` does not delete the local branch: the worktree stays on its branch and the report says so. If another worktree holds the branch of the issue (a failed `go` keeps its worktree), they stop before changing anything and name that worktree and its path.
+
+### Worktrees from your base branch
+
+The Worktree button of Claude Code branches from the default branch of the remote (`origin/HEAD`) and cannot be given a branch name. If you work on `dev` and the default branch is `main`, every worktree it makes starts from `main`. `go` is not affected: it always builds from `origin/<branches.base>`. Setting `worktree.baseRef` to `"head"` starts from your local `HEAD` instead, which is stale unless the main checkout sits on the base branch and is up to date, so it is not the answer here.
+
+If you want the button to start from your base branch, a `WorktreeCreate` hook can create the worktree itself. This is optional and Relevo does not install it. Save this script (change `dev` to your `branches.base`) as `~/.claude/hooks/worktree-from-base.sh` and make it executable:
+
+```bash
+#!/bin/bash
+in=$(cat)
+name=$(echo "$in" | jq -r .name)
+cwd=$(echo "$in" | jq -r .cwd)
+common=$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir) || exit 1
+root=$(dirname "$common")
+git -C "$root" fetch -q origin dev >&2 || exit 1
+git -C "$root" worktree add -q -b "worktree-$name" "$root/.claude/worktrees/$name" origin/dev >&2 || exit 1
+echo "$root/.claude/worktrees/$name"
+```
+
+Then register it in `.claude/settings.local.json` (a new session is needed for a hook to load):
+
+```json
+{
+  "hooks": {
+    "WorktreeCreate": [
+      { "hooks": [{ "type": "command", "command": "$HOME/.claude/hooks/worktree-from-base.sh" }] }
+    ]
+  }
+}
+```
+
+The hook prints only the path of the worktree on stdout; everything else goes to stderr. What it gives up: it replaces the default creation, so `.worktreeinclude` is no longer processed (copy files such as `.env` by hand) and the branch is `worktree-<name>`, not the prefix of the app. Checked with Claude Desktop on one machine: the Worktree button ran the hook with `session_id`, `cwd` and `name` as input and created the worktree from `origin/dev`. The Claude Code documentation describes the same event for the command line, which was not tried here.
 
 ## With Antigravity
 

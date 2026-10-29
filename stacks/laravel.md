@@ -12,6 +12,9 @@ skills:
   qa: []
   issue: []
   review: []
+skills_when_installed:
+  dev: [laravel-best-practices, testing-best-practices]
+  qa: [laravel-best-practices, testing-best-practices]
 review:
   log: storage/logs/*.log
   test: php artisan test

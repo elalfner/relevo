@@ -36,7 +36,7 @@ Every stack SHALL have a profile: a Markdown file whose header can be read by sc
 - **THEN** validation of the profile fails and names the stack and the two places where a profile can be defined
 
 ### Requirement: The profile can be extended by the repository but not weakened
-A repository MAY add `.relevo/stacks/<stack>.md`. Its lists (tools, skills, generated files) SHALL be added to the plugin's, and its body SHALL be added after the plugin's body. It SHALL NOT remove an item of the plugin or replace a command. A verification command is replaced only through `platforms.<name>.checks` in `relevo.yml`. The one thing the repository's header MAY replace is a key of its `review` block, which says how the review is driven and is not a verification command. When the plugin has no profile for a stack, the file of the repository SHALL be the whole profile.
+A repository MAY add `.relevo/stacks/<stack>.md`. Its lists (tools, skills, generated files) SHALL be added to the plugin's, and its body SHALL be added after the plugin's body. It SHALL NOT remove an item of the plugin or replace a command. A verification command is replaced only through `platforms.<name>.checks` in `relevo.yml`. The repository's header MAY replace a key of its `review` block, which says how the review is driven and is not a verification command, and MAY name skills of the plugin's lists in `skills.disable`, so that a named skill is not given to any role; it SHALL NOT disable a skill of `requires_skills`. When the plugin has no profile for a stack, the file of the repository SHALL be the whole profile.
 
 #### Scenario: Extra hygiene
 - **WHEN** the repository's `.relevo/stacks/flutter.md` adds a rule in its body and a generated-file pattern
@@ -57,6 +57,18 @@ A repository MAY add `.relevo/stacks/<stack>.md`. Its lists (tools, skills, gene
 #### Scenario: Review key replaced
 - **WHEN** the repository's `.relevo/stacks/laravel.md` sets `review.log`
 - **THEN** the resolved profile uses the repository's value, and lists `review.log` as replaced
+
+#### Scenario: A default skill switched off
+- **WHEN** the repository's `.relevo/stacks/flutter.md` sets `skills.disable: [flutter-add-widget-test]` and the plugin lists that skill for `dev` and `qa`
+- **THEN** the resolved profile gives neither role that skill, keeps the others, and `doctor` says the skill is switched off by the repository and not that it is missing
+
+#### Scenario: A required skill cannot be switched off
+- **WHEN** `skills.disable` names a skill that the plugin lists under `requires_skills`
+- **THEN** the skill stays required, and the resolved profile reports that the entry was ignored
+
+#### Scenario: Disable that names nothing
+- **WHEN** `skills.disable` names a skill that no list of the plugin has
+- **THEN** the resolved profile reports that the entry matched nothing, and nothing else changes
 
 ### Requirement: The profile is resolved by a script, not by an agent
 The profile of a platform SHALL be resolved by one command that prints it (commands after applying `checks`, generated files, tools, targets, skills per role, the body and the layers used). `go` SHALL run it and hand the result to `dev` and `qa`; the agents SHALL NOT look for profiles themselves.
@@ -230,3 +242,94 @@ Neither the `review` block nor the section `Review` SHALL change that the person
 #### Scenario: Invalid block
 - **WHEN** the `review` block has an unknown key, a `serve` without a `url`, or a `url` that is not on `localhost`
 - **THEN** resolving the profile fails and names the key
+
+### Requirement: A profile can list skills that are used only when installed
+A profile header MAY carry `skills_when_installed`, a map from a role (`dev`, `qa`, `issue`, `review`) to skill names. A listed skill SHALL be given to the role when its folder is on the base branch and SHALL be skipped without a note or a warning when it is not. The repository's profile MAY carry the key too, and its lists SHALL be added to the plugin's. `skills.disable` SHALL switch off a skill of these lists as it does for the others.
+
+#### Scenario: Listed and installed
+- **WHEN** the plugin lists `laravel-best-practices` for `dev` under `skills_when_installed` and its folder is on the base branch
+- **THEN** the resolved profile gives `dev` that skill
+
+#### Scenario: Listed and absent
+- **WHEN** the folder of the skill is not on the base branch
+- **THEN** the skill is not given to the role, and nothing is reported for it
+
+#### Scenario: Unknown role
+- **WHEN** `skills_when_installed` has a key that is not a role
+- **THEN** resolving the profile fails and names the key
+
+#### Scenario: Switched off
+- **WHEN** the repository's `skills.disable` names a skill of `skills_when_installed`
+- **THEN** the resolved profile does not give it to any role
+
+#### Scenario: Added by the repository
+- **WHEN** the repository's `.relevo/stacks/laravel.md` lists another skill under `skills_when_installed`
+- **THEN** the resolved profile has the plugin's skills followed by the repository's
+
+### Requirement: The Laravel profile uses the skills of Laravel Boost when installed
+The plugin's `laravel` profile SHALL list `laravel-best-practices` and `testing-best-practices` under `skills_when_installed` for `dev` and for `qa`, and no skill under `requires_skills` or `skills`. The two SHALL fit the budget of 20 KB per role. It SHALL NOT list a skill that applies only when a package is used, such as `livewire-development`.
+
+#### Scenario: The set
+- **WHEN** the profile of `laravel` is resolved
+- **THEN** `skills_when_installed.dev` and `skills_when_installed.qa` name `laravel-best-practices` and `testing-best-practices`, and `requires_skills` and every `skills` list are empty
+
+#### Scenario: A project without Boost
+- **WHEN** the project does not use Boost, so neither skill is installed
+- **THEN** the run is not affected and nothing is reported about those skills
+
+#### Scenario: Budget
+- **WHEN** the `SKILL.md` files of the two skills are added up
+- **THEN** their size is below 20 KB
+
+### Requirement: The Vue profile uses two community skills when installed
+The plugin's `vue` profile SHALL list `vue-best-practices` and `vue-testing-best-practices` under `skills_when_installed` for `dev` and for `qa`, and no skill under `requires_skills` or `skills`. The two SHALL fit the budget of 20 KB per role and SHALL have no scripts. The profile SHALL NOT call them official.
+
+#### Scenario: The set
+- **WHEN** the profile of `vue` is resolved
+- **THEN** `skills_when_installed.dev` and `skills_when_installed.qa` name the two skills, and `requires_skills` and every `skills` list are empty
+
+#### Scenario: Not installed
+- **WHEN** the folders of the two skills are not on the base branch
+- **THEN** the run is not affected and nothing is reported about them
+
+#### Scenario: Budget and scripts
+- **WHEN** the two skills are read
+- **THEN** their `SKILL.md` files add up to less than 20 KB, and neither folder holds a script
+
+### Requirement: The Vue profile carries the checks of the official documentation
+The body of the plugin's `vue` profile SHALL tell the developer to avoid, and QA to look for in the diff, the security, performance and testing points of the Vue documentation that can be read in a diff, in less than 2 KB of added text. It SHALL keep the existing rule not to repeat what `analyze` enforces.
+
+#### Scenario: Security in the diff
+- **WHEN** the body of the `vue` profile is read
+- **THEN** it names a template built from user text, `innerHTML` in a render function, a `:href` or `:src` bound to a user URL that may start with `javascript:`, and `:style` bound to CSS written by a user
+
+#### Scenario: Performance in the diff
+- **WHEN** the body is read
+- **THEN** it names a prop that changes for every item of a list when only one item should update, deep reactivity on large immutable data where `shallowRef` fits, a list of hundreds of items that is not virtualized, and a wrapper component repeated for every item of a long list
+
+#### Scenario: Tests
+- **WHEN** the body is read
+- **THEN** it says to test what a component does and not how, to simulate user input and not call methods, to assert on the rendered DOM, to not rely on snapshots alone, and to test a composable that uses lifecycle hooks through a host component
+
+#### Scenario: Size
+- **WHEN** the body of the profile is compared with its size before this change
+- **THEN** it grew by less than 2 KB
+
+### Requirement: The Flutter profile lists a default set of skills for dev and qa
+The plugin's `flutter` profile SHALL list a short set of official Dart and Flutter skills under `skills` for `dev` and for `qa`, and none for `issue` and `review`. The set SHALL fit the budget of 20 KB per role, SHALL NOT include a skill that imposes an architecture or a package, and SHALL NOT include a skill with scripts or one whose steps run or hot reload the app.
+
+#### Scenario: The set
+- **WHEN** the profile of `flutter` is resolved
+- **THEN** `skills.dev` and `skills.qa` name `flutter-add-widget-test` and `dart-add-unit-test`, and `skills.issue` and `skills.review` are empty
+
+#### Scenario: Nothing that runs the app
+- **WHEN** the steps of each skill of the set are read
+- **THEN** none tells the agent to run the application, to hot reload it, to rewrite code with a fix command, or to add a mocking package
+
+#### Scenario: Budget
+- **WHEN** the `SKILL.md` files of the set are added up
+- **THEN** their size is below 20 KB for each role
+
+#### Scenario: No imposed architecture
+- **WHEN** the set is read
+- **THEN** it holds no skill that prescribes a layer structure, a state-management package or an HTTP package

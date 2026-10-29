@@ -111,3 +111,10 @@ test('the task list is checked before the developer and before the commit', () =
   assert.match(body, /must start with `Test:`/);
   assert.match(body, /\(device only\)/);
 });
+
+test('Scenario: A failed go left its worktree - fix asks who holds the branch before it switches, and changes nothing', () => {
+  const before = body.indexOf('scripts/branch-worktree.mjs --branch <branch>');
+  assert.ok(before > 0 && before < body.indexOf('`git switch <branch>`'), 'the check comes before the switch');
+  assert.match(body, /held by that worktree and its path/);
+  assert.match(body, /change nothing, say that the branch is held/);
+});

@@ -9,7 +9,7 @@ import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow } from './agent-workflow.mjs';
-import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES, recommendedInstallCommand } from './doctor.mjs';
+import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -271,6 +271,37 @@ function recommendedSkillItems(rec) {
 }
 
 /**
+ * The optional installs for Laravel Boost, one per Laravel platform that lacks it or lacks its skills committed. The
+ * install runs from the folder of the platform (where `artisan` is). Boost may write the folders of other agents too,
+ * so the person is told to commit what they use. `init` runs none of it and never writes the rules file.
+ */
+function laravelBoostItems(platforms) {
+  if (platforms.length === 0) return [];
+  const items = [];
+  platforms.forEach((x) => {
+    const [require, install] = boostInstallCommands(x.path);
+    const where = x.path === '.' || x.path === '' ? 'the root' : x.path;
+    if (!x.boost) items.push(item(`install.recommended.laravel.boost.${x.name}`, 'todo', `Optional: install Laravel Boost in ${where}, which installs skills for the packages the project uses (composer require laravel/boost --dev)`, { install: true, optional: true, command: require, detail: OPTIONAL }));
+    if (!x.skillsCommitted) items.push(item(`install.recommended.laravel.skills.${x.name}`, 'todo', `Optional: install the skills of Laravel Boost in ${where} (boost:install --skills); it writes .claude/skills, boost.json and the folders of the other agents it finds`, { install: true, optional: true, command: install, detail: OPTIONAL }));
+  });
+  if (items.length === 0) return [item('install.recommended.laravel', 'ok', 'Laravel Boost is installed and its skills are committed to the repository')];
+  items.push(item('manual.recommended.laravel.commit', 'manual', 'Commit .claude/skills, boost.json, composer.json and composer.lock (and the folders of the other agents you use, such as .agents/ or .kiro/): Boost may write them, Laravel says they can be kept out of git, and the cloud runner reads only what is committed'));
+  return items;
+}
+
+/**
+ * The optional install of the Vue skills of a community project. Offered, not recommended: they are not official and
+ * their author calls them an early experiment, so `doctor` says nothing when they are absent.
+ */
+function offeredSkillItems(offered) {
+  return offered.map((x) => {
+    const where = x.path === '.' || x.path === '' ? 'the root' : x.path;
+    if (x.missing.length === 0) return item(`install.offered.${x.stack}.${x.name}`, 'ok', `The ${x.stack} skills of the community project are committed in ${where}`);
+    return item(`install.offered.${x.stack}.${x.name}`, 'todo', `Optional, not official: install ${x.skills.join(' and ')} for ${x.stack} into ${where}, from the community project vuejs-ai/skills, which calls itself an early experiment; it writes .claude/skills and skills-lock.json there: commit both`, { install: true, optional: true, command: recommendedInstallCommand({ stack: x.stack, skills: x.missing, path: x.path }), detail: OPTIONAL });
+  });
+}
+
+/**
  * Plan every change. `ctx`:
  *   facts      from gatherFacts (doctor)
  *   answers    the person's answers (members, specWriter, reviewMode, language, platforms, links, runs, credential, runnerLabels, stackProfiles, base, release, merger)
@@ -311,6 +342,8 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   // Skills a stack works better with: optional installs (declining changes nothing), and the steps init never does itself.
   const rec = facts.recommendedSkills;
   if (rec) items.push(...recommendedSkillItems(rec));
+  items.push(...laravelBoostItems(facts.laravelBoost ?? []));
+  items.push(...offeredSkillItems(facts.offeredSkills ?? []));
 
   // What a browser review of each Vue platform needs: Playwright in its development dependencies, and its Chromium.
   Object.entries(configuredPlatforms).filter(([, p]) => isVueWeb(p)).forEach(([name, p]) => {
