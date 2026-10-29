@@ -9,7 +9,9 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { loadConfig } from './config.mjs';
+import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget } from './role-skills.mjs';
@@ -272,6 +274,7 @@ export function gatherFacts(p) {
       base: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(base)}`); return true; }, false),
       release: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(release)}`); return true; }, false),
     };
+    f.configOnBranches = configOnBranches((branch) => Buffer.from(api(`repos/${f.repo}/contents/relevo.yml?ref=${encodeURIComponent(branch)}`).content, 'base64').toString('utf8'), f.defaultBranch, base);
 
     let rulesets = [];
     f.protectionUnavailable = null;
@@ -364,6 +367,35 @@ export function gatherFacts(p) {
  * clones it is offered the plugin: { declared } or, when the file is not valid JSON, { unreadable: true }. Only the
  * shared file counts; the user's and the local settings do not reach anyone else.
  */
+/**
+ * A label event reads relevo.yml from the default branch, while every build starts from the base branch: do the two
+ * copies on GitHub give the same settings? Comments and layout do not count. null when there is nothing to compare:
+ * the default branch is the base, the base has no relevo.yml, or a read failed for another reason than a missing file.
+ */
+export function configOnBranches(readAt, defaultBranch, base) {
+  if (!defaultBranch || defaultBranch === base) return null;
+  const notFound = (err) => /404|Not Found/i.test(String(err?.stderr ?? err?.message ?? err));
+  let baseText;
+  try {
+    baseText = readAt(base);
+  } catch {
+    return null;
+  }
+  let defaultText;
+  try {
+    defaultText = readAt(defaultBranch);
+  } catch (err) {
+    return notFound(err) ? { defaultBranch, base, same: false, missingOnDefault: true } : null;
+  }
+  let same;
+  try {
+    same = isDeepStrictEqual(parseYaml(defaultText), parseYaml(baseText));
+  } catch {
+    same = defaultText === baseText;
+  }
+  return { defaultBranch, base, same, missingOnDefault: false };
+}
+
 export function pluginDeclaration(p) {
   const path = '.claude/settings.json';
   if (!p.exists(path)) return { declared: false };
@@ -709,6 +741,13 @@ export function runChecks(f) {
     else if (missing.length === 0) r.push(pass('repo.labels', 'all lifecycle labels exist'));
     else r.push(fail('repo.labels', `missing labels: ${missing.join(', ')}`, 'run /relevo:init to create them'));
     r.push(f.branches.base ? pass('repo.base-branch', `base branch ${f.config.branches.base} exists`) : fail('repo.base-branch', `base branch ${f.config.branches.base} does not exist`, `create it from ${f.config.branches.release}, or run /relevo:init`));
+  }
+  const cb = f.configOnBranches;
+  if (cb) {
+    const fix = `promote ${cb.base} to ${cb.defaultBranch} through a pull request, or make ${cb.base} the default branch`;
+    if (cb.same) r.push(pass('repo.config-default-branch', `relevo.yml on ${cb.defaultBranch}, which the cloud reads, gives the same settings as on ${cb.base}`));
+    else if (cb.missingOnDefault) r.push(warn('repo.config-default-branch', `the cloud reads relevo.yml from the default branch ${cb.defaultBranch}, which has none while ${cb.base} has one`, fix));
+    else r.push(warn('repo.config-default-branch', `the cloud reads relevo.yml from the default branch ${cb.defaultBranch}, and it differs from the one on ${cb.base}`, fix));
   }
 
   if (f.protectionError) {

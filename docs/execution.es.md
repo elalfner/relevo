@@ -10,6 +10,14 @@
 - **Solo nube** es lo mismo, con personas que eligen no construir a mano. Úsalo para construir sin que nadie espere.
 - **Solo máquinas**: `/relevo:init` no agrega los workflows de `go` ni de la cola. Cada persona construye con su propia sesión de Claude y su cuota, sin ningún secreto del modelo en el repositorio.
 
+## Qué rama lee la nube
+
+Un evento de etiqueta ejecuta los workflows de la rama por defecto del repositorio, y esos workflows hacen checkout de esa rama, así que la nube también lee `relevo.yml` de la rama por defecto. Una construcción en tu máquina lee en cambio el `relevo.yml` de tu copia de trabajo.
+
+Dónde empieza una construcción no depende de la rama por defecto: la rama de un issue siempre sale de `origin/<branches.base>`, en la nube y en una máquina, y su pull request apunta a la rama base.
+
+Con `main` como rama por defecto y `dev` como base, una construcción sigue partiendo de `dev`, pero un cambio a `relevo.yml` o a un workflow en `dev` llega a la nube solo después de promover `dev` a `main`. Si la rama base es la rama por defecto, esos cambios aplican en cuanto se fusionan en ella, y un pull request con `Closes #<n>` en su descripción cierra también el issue. `/relevo:doctor` avisa cuando el `relevo.yml` de la rama por defecto difiere del de la rama base.
+
 ## Pausar la nube sin un pull request
 
 Pon la variable del repositorio `RELEVO_CLOUD_GO` en `off` (Settings > Secrets and variables > Actions > Variables). Entonces una etiqueta `ready` no inicia nada y la cola no despacha nada, y el issue se queda en `ready` para una ejecución local. Borra la variable, o pon otro valor, para reanudar, y vuelve a aplicar `relevo:ready` a cada issue: los eventos de etiqueta que se saltaron no se repiten. Tiene que ser una variable y no un archivo porque un evento de etiqueta ejecuta los workflows de la rama por defecto, así que un cambio en un archivo necesitaría antes un pull request.
