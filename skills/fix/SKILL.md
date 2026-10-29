@@ -33,6 +33,8 @@ Stop with a clear message, changing nothing, if any of these fails:
 
 Find the repository (`$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner -q .nameWithOwner`), the issue's branch (`git branch -r --list "origin/feature/<issue>-*"`) and its change folder (`openspec/changes/<issue>-*`). If the branch is not on the remote, stop and say so: there is nothing to correct yet.
 
+Before switching, ask whether another worktree holds the branch: `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch>`. If it exits 1 it prints the path of that worktree (a run of `go` that failed keeps its worktree, for example): change nothing, say that the branch is held by that worktree and its path, and that the person can fix there or remove it with `git worktree remove` and run the fix again. Then stop.
+
 Switch to the branch: `git fetch origin <branch>`, `git switch <branch>`, `git pull --ff-only origin <branch>`.
 
 Then check two things before reading the defect:
