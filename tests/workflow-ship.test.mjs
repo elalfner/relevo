@@ -53,6 +53,15 @@ test('Scenario: Run fails without an outcome - the last step removes the label a
   assert.match(last, /ship_failed/);
 });
 
+test('the last step names the repository to gh, because it runs outside the checkout', () => {
+  const last = active.slice(active.indexOf('Report a run that ended without an outcome'));
+  assert.match(last, /GH_REPO: \$\{\{ github\.repository \}\}/);
+  // Every step that is not in work/ and calls gh must name the repository, by GH_REPO or --repo.
+  const steps = active.split(/\n      - /).slice(1);
+  steps.filter((s) => /\bgh (issue|pr|api)\b/.test(s) && !/working-directory: work/.test(s))
+    .forEach((s) => assert.match(s, /GH_REPO: |--repo /, s.split('\n')[0]));
+});
+
 test('one ship per issue, and enough time to wait for the checks', () => {
   assert.match(active, /group: relevo-ship-\$\{\{ github\.event\.issue\.number \}\}\n\s+cancel-in-progress: false/);
   assert.match(active, /timeout-minutes: 45/);

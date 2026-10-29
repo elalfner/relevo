@@ -123,6 +123,8 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          # The step runs outside the checkout (it is in work/), so gh cannot read the repository from git.
+          GH_REPO: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number }}
           ACTOR: ${{ github.event.sender.login }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

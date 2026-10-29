@@ -9,6 +9,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 ### Fixed
 
 - **The ship by label no longer stops with "Resource not accessible by integration" when it reads the protection of the base branch.** To know whether the base branch requires checks, the run read the classic protection from `branches/<b>/protection`. That endpoint needs an administration permission that the workflow token can never have, so the run stopped on a private repository on the free plan (where 0.9.2 had only taught it to accept the plan refusal of a personal token) and on any repository whose rulesets answered normally. When the rulesets endpoint refuses because of the plan, the run now does not read the classic protection at all. Any other failure to read either still stops the run before anything is archived: checks that exist are never skipped because they could not be read. `/relevo:ship <n>` was not affected.
+- **The last step of the ship workflow no longer fails on every run.** "Report a run that ended without an outcome" runs outside the checkout, so `gh` could not tell the repository and stopped with `not a git repository`. A ship that merged was then marked as a failed run, and a run that really ended without an outcome kept its label with nobody told. The step now names the repository with `GH_REPO`. Copy the change into your `.github/workflows/relevo-ship.yml` together with the new `RELEVO_VERSION`.
 
 ### Added
 
