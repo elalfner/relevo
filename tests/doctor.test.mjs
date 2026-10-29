@@ -1652,3 +1652,49 @@ test('a serve command in a profile that is not tracked by git is reported', () =
   assert.equal(idIn(apiChecks(apiFacts({ files, tracked: false })), 'review.serve.api').status, 'warn');
   assert.equal(idIn(apiChecks(apiFacts({ files, tracked: true })), 'review.serve.api'), undefined);
 });
+
+// A stack the plugin does not ship: the profile is the file of the repository.
+const ownProfile = (over = {}) => ({ ...FLUTTER, stack: 'go', layers: ['repository'], commands: {}, tools: ['go'], targets: {}, ignored: [], ...over });
+const ownPlatform = (profileOver = {}, over = {}) => ({ name: 'app', stack: 'go', path: '.', targets: [], profile: ownProfile(profileOver), errors: [], tools: [], targetTools: [], repositoryLayerTracked: true, ...over });
+const GO_STEP = "jobs:\n  build:\n    steps:\n      - if: needs.decide.outputs.stack == 'go'\n        uses: actions/setup-go@v5\n";
+
+test('Scenario: Profile with no commands - doctor warns that analyze and test are missing and names the file', () => {
+  const w = byId(runChecks(healthy({ platformFacts: [ownPlatform()] })), 'platform.app.commands');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /platform app: the profile of go defines no analyze and no test/);
+  assert.match(w.fix, /\.relevo\/stacks\/go\.md.*platforms\.app\.checks/);
+});
+
+test('Scenario: Command given by checks - no warning about the commands', () => {
+  const results = runChecks(healthy({ platformFacts: [ownPlatform({ commands: { test: 'go test ./...', analyze: 'go vet ./...' } })] }));
+  assert.equal(byId(results, 'platform.app.commands'), undefined);
+  const one = byId(runChecks(healthy({ platformFacts: [ownPlatform({ commands: { test: 'go test ./...' } })] })), 'platform.app.commands');
+  assert.match(one.message, /defines no analyze, so/);
+});
+
+test('Scenario: A stack of the plugin - no warning about the commands', () => {
+  const profile = { ...FLUTTER, commands: {}, layers: ['plugin', 'repository'] };
+  assert.equal(byId(runChecks(healthy({ platformFacts: [flutterPlatform({ profile })] })), 'platform.app.commands'), undefined);
+});
+
+test('Scenario: An own stack with no step - doctor warns, names the platform and the line to add', () => {
+  const w = toolchain(withGo(GO_TEMPLATE, [ownPlatform()]));
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /no step guarded by needs\.decide\.outputs\.stack == 'go'.*platform app \(go\).*no go/);
+  assert.match(w.fix, /- if: needs\.decide\.outputs\.stack == 'go'/);
+  assert.match(w.fix, /or, if you install it another way, ignore this/);
+});
+
+test('Scenario: An own stack with its step - the toolchain is reported as installed; a commented step does not count', () => {
+  assert.equal(toolchain(withGo(GO_STEP, [ownPlatform()])).status, 'pass');
+  const commented = GO_STEP.split('\n').map((l) => (l.trim() ? `      # ${l.trim()}` : l)).join('\n');
+  assert.equal(toolchain(withGo(commented, [ownPlatform()])).status, 'warn');
+});
+
+test('Scenario: An own stack that needs only Node - its toolchain is not judged', () => {
+  assert.equal(toolchain(withGo(GO_TEMPLATE, [ownPlatform({ stack: 'svelte', tools: ['node', 'npm'] }, { stack: 'svelte' })])), undefined);
+});
+
+test('Scenario: An own stack and no go workflow - nothing is said about the toolchain', () => {
+  assert.deepEqual(runChecks(healthy({ platformFacts: [ownPlatform()] })).filter((r) => r.id.startsWith('automation.toolchain')), []);
+});

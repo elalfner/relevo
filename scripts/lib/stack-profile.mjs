@@ -250,6 +250,12 @@ export function profileLookups({ pluginRoot, read }) {
   };
   return {
     knownTargets: (stack) => { const p = of(stack); return p ? Object.keys(p.targets) : null; },
-    knownChecks: (stack) => { const p = of(stack); return p ? Object.keys(p.commands) : null; },
+    // A stack of the repository may leave analyze, test and format to relevo.yml, so they are valid even undefined.
+    knownChecks: (stack) => {
+      const p = of(stack);
+      if (!p) return null;
+      const own = p.layers.length === 1 && p.layers[0] === 'repository';
+      return own ? [...new Set([...Object.keys(p.commands), 'analyze', 'test', 'format'])] : Object.keys(p.commands);
+    },
   };
 }
