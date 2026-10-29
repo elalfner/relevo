@@ -16,7 +16,7 @@
 ## ADDED Requirements
 
 ### Requirement: The skill folders of a platform are protected at any depth
-The folders `.claude/skills/` and `.agents/` inside the folder of any platform declared in `relevo.yml` SHALL be hard-protected paths, as they are at the root. A skill that `go` hands to an agent SHALL NOT be changeable by the run that uses it, wherever it lives.
+The folders `.claude/skills/` and `.agents/`, and the file `skills-lock.json`, inside the folder of any platform declared in `relevo.yml` SHALL be hard-protected paths, as they are at the root. A skill that `go` hands to an agent SHALL NOT be changeable by the run that uses it, wherever it lives.
 
 #### Scenario: Skill of a platform edited
 - **WHEN** the platform `app` has `path: app` and a diff touches `app/.claude/skills/dart-add-unit-test/SKILL.md`
@@ -25,6 +25,10 @@ The folders `.claude/skills/` and `.agents/` inside the folder of any platform d
 #### Scenario: Skill added to a platform
 - **WHEN** a diff adds a folder under `app/.agents/skills/`
 - **THEN** the run ends in `qa-failed` with the reason "protected path in the diff", and the skill is not given to any agent
+
+#### Scenario: Lock file of a platform edited
+- **WHEN** the platform `app` has `path: app` and a diff touches `app/skills-lock.json`
+- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff"
 
 #### Scenario: Platform at the root
 - **WHEN** a platform has `path: .`

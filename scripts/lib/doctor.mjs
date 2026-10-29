@@ -14,7 +14,8 @@ import { loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
-import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget } from './role-skills.mjs';
+import { platformFolders } from './protected-paths.mjs';
+import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
 import { testDatabase } from './api-preflight.mjs';
 import { ROLES, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
@@ -32,11 +33,23 @@ export const SKILL_INSTALL = {
 // against flutter/agent-plugins on 2026-10-28 (the Antigravity command installs the Dart skills too).
 export const RECOMMENDED = {
   flutter: {
+    source: 'flutter/agent-plugins',
     prefix: 'flutter-',
     claude: { plugin: 'dart-flutter@dart-flutter', commands: ['claude plugin marketplace add flutter/agent-plugins', 'claude plugin install dart-flutter@dart-flutter'] },
     antigravity: { commands: ["npx skills add flutter/agent-plugins --skill '*' --agent universal --yes"] },
   },
 };
+/**
+ * The command that installs skills of a stack into the project, as real files: `agent` is `claude-code` (writes
+ * `.claude/skills/`) or `universal` (writes `.agents/skills/`). The installer writes in the folder it runs from, so a
+ * platform below the root runs it from its folder.
+ */
+export function recommendedInstallCommand({ stack, skills, agent = 'claude-code', path = '.' }) {
+  const flags = skills.map((s) => `--skill ${s}`).join(' ');
+  const command = `npx skills add ${RECOMMENDED[stack].source} ${flags} --agent ${agent} --copy --yes`;
+  const folder = String(path ?? '').replace(/^\.\//, '').replace(/\/+$/, '');
+  return folder === '' || folder === '.' ? command : `cd ${folder} && ${command}`;
+}
 const ANTIGRAVITY_IDE = 'in the Antigravity IDE, install "Dart and Flutter" from Settings > Customizations > Build with Google Plugins (doctor cannot check this)';
 export const OPENSPEC_INSTALL ='npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'];
@@ -157,12 +170,15 @@ export function vueWebFacts(platforms, deps) {
 }
 
 /**
- * Are the recommended skills of a stack there, for each coding agent the repository uses? 'present', 'missing', or null
- * when it cannot be said (Claude Code cannot list its plugins) or the agent is not used. A skill folder counts for any
- * agent, because it is what `npx skills add` writes and what both tools read. Deps: `tool`, `listDir`, `skillDirs`,
- * `repoTop`, `adapters` (the Antigravity plugins of Relevo), `agentBuild`.
+ * Is the default set of a stack's skills committed to the repository, for each coding agent it uses? A skill counts
+ * only as a folder in the repository (`.claude/skills` for Claude Code, `.agents/skills` for Antigravity), in the
+ * folder of the platform or at the root: a plugin installed on a machine and the home folder do not reach the cloud
+ * runner. Returns { stack, claude, plugin, claudeMissing, antigravity, antigravityMissing } (`claude` and `antigravity`
+ * are 'present' or 'missing', `antigravity` is null when the agent is not used, `plugin` says whether the plugin is
+ * installed on this machine, or null when `claude` cannot list), or null when no platform has a default set.
+ * `platforms` is [{ path, skills }]. Deps: `exists`, `tool`, `repoTop`, `adapters`, `agentBuild`.
  */
-export function recommendedSkillFacts({ stack, tool, listDir, skillDirs, repoTop = null, adapters = [], agentBuild = 'claude' }) {
+export function recommendedSkillFacts({ stack, platforms, exists, tool, repoTop = null, adapters = [], agentBuild = 'claude' }) {
   const rec = RECOMMENDED[stack];
   const safe = (fn, fallback) => {
     try {
@@ -171,15 +187,27 @@ export function recommendedSkillFacts({ stack, tool, listDir, skillDirs, repoTop
       return fallback;
     }
   };
-  const hasFolder = (dirs) => dirs.some((d) => safe(() => listDir(d).some((n) => n.startsWith(rec.prefix)), false));
+  const targets = (platforms ?? []).filter((e) => e.skills.length > 0).map((e) => ({ path: String(e.path ?? '.').replace(/^\.\//, '').replace(/\/+$/, '') || '.', skills: e.skills }));
+  if (targets.length === 0) return null;
+  const missingIn = (agentDir) => targets
+    .map(({ path, skills }) => {
+      const dirs = path === '.' ? [agentDir] : [`${path}/${agentDir}`, agentDir];
+      return { path, skills: skills.filter((name) => !dirs.some((d) => safe(() => exists(`${d}/${name}`), false))) };
+    })
+    .filter((m) => m.skills.length > 0);
+  const claudeMissing = missingIn('.claude/skills');
   const plugins = safe(() => JSON.parse(String(tool('claude', ['plugin', 'list', '--json']))), null);
-  const folderForClaude = hasFolder(skillDirs);
-  let claude = null;
-  if (folderForClaude || (Array.isArray(plugins) && plugins.some((e) => e.id === rec.claude.plugin && (e.scope === 'user' || e.projectPath === repoTop)))) claude = 'present';
-  else if (Array.isArray(plugins)) claude = 'missing';
+  const plugin = Array.isArray(plugins) ? plugins.some((e) => e.id === rec.claude.plugin && (e.scope === 'user' || e.projectPath === repoTop)) : null;
   const usesAntigravity = adapters.length > 0 || agentBuild === 'antigravity';
-  const antigravity = !usesAntigravity ? null : hasFolder(['.agents/skills']) ? 'present' : 'missing';
-  return { stack, claude, antigravity };
+  const antigravityMissing = usesAntigravity ? missingIn('.agents/skills') : [];
+  return {
+    stack,
+    claude: claudeMissing.length === 0 ? 'present' : 'missing',
+    plugin,
+    claudeMissing,
+    antigravity: !usesAntigravity ? null : antigravityMissing.length === 0 ? 'present' : 'missing',
+    antigravityMissing,
+  };
 }
 
 // ---------- gather
@@ -513,8 +541,9 @@ function gatherPlatforms(f, p, tryRun) {
   // The skills a stack works better with: only for a stack that has a recommendation, and only when a platform uses it.
   f.recommendedSkills = null;
   const recommendedStack = Object.keys(RECOMMENDED).find((stack) => f.platformFacts.some((e) => e.stack === stack));
-  if (recommendedStack && p.listDir) {
-    f.recommendedSkills = recommendedSkillFacts({ stack: recommendedStack, tool: p.tool, listDir: p.listDir, skillDirs: p.skillDirs ?? SKILL_DIRS, repoTop: tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null), adapters: f.adapters, agentBuild: f.config?.agent?.build });
+  if (recommendedStack && p.exists) {
+    const platforms = f.platformFacts.filter((e) => e.stack === recommendedStack && e.profile).map((e) => ({ path: e.path, skills: [...new Set([...(e.profile.pluginSkills?.dev ?? []), ...(e.profile.pluginSkills?.qa ?? [])])] }));
+    f.recommendedSkills = recommendedSkillFacts({ stack: recommendedStack, platforms, exists: p.exists, tool: p.tool, repoTop: tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null), adapters: f.adapters, agentBuild: f.config?.agent?.build });
   }
 
   // What the Autopilot of `review` needs, only when the repository asks for it.
@@ -545,7 +574,7 @@ function gatherPlatforms(f, p, tryRun) {
       f.platformFacts.filter((e) => e.profile).forEach((e) => {
         f.roleSkills[e.name] = {};
         ROLES.forEach((role) => {
-          const skills = resolveRoleSkills({ role, profile: e.profile, git: p.git, baseRef, allowScripts: f.config.skills.allow_scripts });
+          const skills = resolveRoleSkills({ role, profile: e.profile, git: p.git, baseRef, allowScripts: f.config.skills.allow_scripts, dirs: skillDirsFor(e.path) });
           skills.forEach((s) => { if (s.path) s.bytes = tryRun(() => Buffer.byteLength(String(read(s.path) ?? '')), 0); });
           f.roleSkills[e.name][role] = skills;
         });
@@ -553,15 +582,19 @@ function gatherPlatforms(f, p, tryRun) {
     }
   }
 
-  // The skills lock: each skill folder must still have the hash it was installed with.
-  if (p.exists('skills-lock.json') && p.readFolder) {
-    const lock = tryRun(() => JSON.parse(p.read('skills-lock.json')), null);
-    const hashes = {};
-    Object.keys(lock?.skills ?? {}).forEach((name) => {
-      const dir = SKILL_DIRS.find((d) => p.exists(`${d}/${name}`));
-      hashes[name] = dir ? tryRun(() => folderHash(p.readFolder(`${dir}/${name}`)), null) : null;
+  // The skills lock: each skill folder must still have the hash it was installed with, in the lock file of the folder
+  // that holds it (the root, or a platform: the installer writes the lock where it runs).
+  if (p.readFolder) {
+    const locks = [{ folder: '', lock: 'skills-lock.json', dirs: SKILL_DIRS }, ...platformFolders(f.config.platforms).map((folder) => ({ folder, lock: `${folder}/skills-lock.json`, dirs: SKILL_DIRS.map((d) => `${folder}/${d}`) }))];
+    locks.filter((l) => p.exists(l.lock)).forEach((l) => {
+      const lock = tryRun(() => JSON.parse(p.read(l.lock)), null);
+      const hashes = {};
+      Object.keys(lock?.skills ?? {}).forEach((name) => {
+        const dir = l.dirs.find((d) => p.exists(`${d}/${name}`));
+        hashes[name] = dir ? tryRun(() => folderHash(p.readFolder(`${dir}/${name}`)), null) : null;
+      });
+      lockDifferences(lock, hashes).forEach((name) => f.skillLockDifferences.push(l.folder === '' ? name : { name, folder: l.folder, lock: l.lock }));
     });
-    f.skillLockDifferences = lockDifferences(lock, hashes);
   }
 }
 
@@ -709,9 +742,26 @@ function platformChecks(f) {
     });
   });
 
+  // A skill the plugin's profile lists and the repository lacks is one note per platform, with its install command, and
+  // never a warning: the profile works without it. What the repository switched off is not missing.
+  (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
+    const missing = [...new Set(Object.values(f.roleSkills?.[e.name] ?? {}).flatMap((skills) => skills.filter((s) => s.left_out && s.default).map((s) => s.name)))];
+    missing.forEach((name) => {
+      const command = RECOMMENDED[e.stack] ? recommendedInstallCommand({ stack: e.stack, skills: [name], path: e.path }) : null;
+      r.push(note(`skills.default.${e.name}.${name}`, `platform ${e.name}: the plugin lists the skill ${name} for ${e.stack}, and it is not on the base branch, so it is left out${command ? `; install it with ${command}, commit it, or switch it off with skills.disable in .relevo/stacks/${e.stack}.md` : ''}`));
+    });
+    (e.profile.skillsDisabled ?? []).forEach((name) => {
+      r.push(pass(`skills.disabled.${e.name}.${name}`, `platform ${e.name}: the skill ${name} is switched off by .relevo/stacks/${e.stack}.md`));
+    });
+    (e.profile.skillsDisableIgnored ?? []).forEach((x) => {
+      if (x.reason === 'required') r.push(warn(`skills.disable.${e.name}.${x.name}`, `platform ${e.name}: skills.disable names ${x.name}, which the profile requires, so it stays`, 'remove it from skills.disable'));
+      else r.push(note(`skills.disable.${e.name}.${x.name}`, `platform ${e.name}: skills.disable names ${x.name}, which no list of the plugin has, so it matches nothing`));
+    });
+  });
+
   Object.entries(f.roleSkills ?? {}).forEach(([platform, roles]) => {
     Object.entries(roles).forEach(([role, skills]) => {
-      skills.filter((s) => s.left_out).forEach((s) => {
+      skills.filter((s) => s.left_out && !s.default).forEach((s) => {
         r.push(warn(`skills.role.${platform}.${role}.${s.name}`, `skill ${s.name} (${role}, ${platform}) is left out: ${s.reason}`, 'fix the reason, or remove the skill from the profile'));
       });
       skills.filter((s) => s.path && s.scripts).forEach((s) => {
@@ -736,8 +786,10 @@ function platformChecks(f) {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
     }
   });
-  (f.skillLockDifferences ?? []).forEach((name) => {
-    r.push(warn(`skills.lock.${name}`, `the skill ${name} differs from the hash in skills-lock.json`, 'review the change to the skill, then run `npx skills` to refresh the lock, or restore the skill'));
+  (f.skillLockDifferences ?? []).forEach((d) => {
+    const name = typeof d === 'string' ? d : d.name;
+    const lock = typeof d === 'string' ? 'skills-lock.json' : d.lock;
+    r.push(warn(typeof d === 'string' ? `skills.lock.${name}` : `skills.lock.${d.folder}.${name}`, `the skill ${name} differs from the hash in ${lock}`, 'review the change to the skill, then run `npx skills` to refresh the lock, or restore the skill'));
   });
   return r;
 }
@@ -1055,19 +1107,25 @@ function workflowTextChecks(f) {
 }
 
 /**
- * The skills a stack works better with. Never a warning or a failure: the stack works without them, so a missing one
- * is a note with the commands, and the Antigravity IDE route, which cannot be checked, is said and not guessed.
+ * The default skills of a stack. Never a warning or a failure: the stack works without them, so a missing one is a
+ * note with the commands. It judges what is committed, because the cloud runner reads only that; a plugin installed on
+ * this machine is said and not counted. The Antigravity IDE route cannot be checked, so it is said and not guessed.
  */
 function recommendedSkillChecks(f) {
   const rec = f.recommendedSkills;
   if (!rec) return [];
-  const route = RECOMMENDED[rec.stack];
   const label = rec.stack === 'flutter' ? 'Dart and Flutter' : rec.stack;
+  const commands = (missing, agent) => missing.map((m) => recommendedInstallCommand({ stack: rec.stack, skills: m.skills, agent, path: m.path })).join('; then ');
+  const names = (missing) => [...new Set(missing.flatMap((m) => m.skills))].join(', ');
+  const commit = 'then commit the folder and skills-lock.json';
   const r = [];
-  if (rec.claude === 'present') r.push(pass(`recommended.${rec.stack}.claude`, `the official ${label} skills are available to Claude Code`));
-  else if (rec.claude === 'missing') r.push(note(`recommended.${rec.stack}.claude`, `${rec.stack} works better with the official ${label} skills, which Claude Code does not have; they are optional. Install the plugin: ${route.claude.commands.join(', then ')}`));
-  if (rec.antigravity === 'present') r.push(pass(`recommended.${rec.stack}.antigravity`, `the official ${label} skills are in .agents/skills (Antigravity)`));
-  else if (rec.antigravity === 'missing') r.push(note(`recommended.${rec.stack}.antigravity`, `${rec.stack} works better with the official ${label} skills, which are not in .agents/skills; they are optional. For the Antigravity CLI run ${route.antigravity.commands.join(', then ')}; ${ANTIGRAVITY_IDE}`));
+  if (rec.claude === 'present') r.push(pass(`recommended.${rec.stack}.claude`, `the default ${label} skills are committed to the repository (Claude Code)`));
+  else {
+    const here = rec.plugin === true ? `; the plugin ${RECOMMENDED[rec.stack].claude.plugin} is installed on this machine, which works here and does not reach the cloud runner` : '';
+    r.push(note(`recommended.${rec.stack}.claude`, `${rec.stack} works better with the default ${label} skills (${names(rec.claudeMissing)}), which are not committed to the repository, and the cloud runner reads only what is committed${here}; they are optional. Install them: ${commands(rec.claudeMissing, 'claude-code')}, ${commit}`));
+  }
+  if (rec.antigravity === 'present') r.push(pass(`recommended.${rec.stack}.antigravity`, `the default ${label} skills are in .agents/skills (Antigravity)`));
+  else if (rec.antigravity === 'missing') r.push(note(`recommended.${rec.stack}.antigravity`, `${rec.stack} works better with the default ${label} skills (${names(rec.antigravityMissing)}), which are not in .agents/skills; they are optional. For the Antigravity CLI run ${commands(rec.antigravityMissing, 'universal')}, ${commit}; ${ANTIGRAVITY_IDE}`));
   return r;
 }
 

@@ -1,5 +1,6 @@
 // Stack profiles. Implements the "platforms" specification: a profile is a Markdown file whose header scripts read
-// and whose body the agents read; the repository can add to the plugin's profile but never weaken it.
+// and whose body the agents read; the repository can add to the plugin's profile but never weaken it (it may only
+// switch off a skill of the plugin by name, `skills.disable`, and replace a key of the review block).
 //
 // The filesystem is injected (`read(path) -> text | null`) so the logic is tested without a repository.
 
@@ -12,6 +13,8 @@ const SERVE_KEYS = new Set(['command', 'url', 'env']);
 // A server the agent starts is reached on this machine only.
 const LOCAL_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:(\d+|\{port\}))?(\/\S*)?$/;
 const STACK_RE = /^[a-z][a-z0-9-]*$/;
+// The one key of `skills` that is not a role: names of the plugin's skills that the repository switches off.
+const SKILLS_DISABLE = 'disable';
 
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isStringList = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && x.trim() !== '');
@@ -24,6 +27,7 @@ const emptyProfile = (stack) => ({
   tools: [],
   requires_skills: [],
   skills: Object.fromEntries(ROLES.map((r) => [r, []])),
+  skillsDisable: [],
   targets: {},
   review: {},
   body: '',
@@ -144,7 +148,10 @@ export function parseProfile(text) {
     if (!isMap(raw.skills)) errors.push('"skills" must map a role to a list of skill names');
     else {
       Object.entries(raw.skills).forEach(([role, list]) => {
-        if (!ROLES.includes(role)) errors.push(`"skills" has unknown role "${role}"; allowed: ${ROLES.join(', ')}`);
+        if (role === SKILLS_DISABLE) {
+          if (!isStringList(list)) errors.push(`"skills.${SKILLS_DISABLE}" must be a list of skill names`);
+          else profile.skillsDisable = unique(list);
+        } else if (!ROLES.includes(role)) errors.push(`"skills" has unknown role "${role}"; allowed: ${ROLES.join(', ')}, ${SKILLS_DISABLE}`);
         else if (!isStringList(list)) errors.push(`"skills.${role}" must be a list of skill names`);
         else profile.skills[role] = unique(list);
       });
@@ -170,15 +177,25 @@ export function parseProfile(text) {
 
 /**
  * Add the repository's profile to the plugin's. Lists are joined, bodies follow each other, and a value the
- * plugin already sets is kept (the difference is reported in `ignored`). With no plugin profile the repository's
- * is the whole profile.
+ * plugin already sets is kept (the difference is reported in `ignored`). `skills.disable` of the repository removes
+ * skills of the plugin from every role (`skillsDisabled`); a required skill, or a name no plugin list has, stays and is
+ * reported in `skillsDisableIgnored`. `pluginSkills` keeps what the plugin lists, so a skill's origin is known. With no
+ * plugin profile the repository's is the whole profile.
  */
 export function mergeProfiles(plugin, repository) {
   if (!plugin && !repository) return null;
-  if (!plugin) return { ...repository, layers: ['repository'], ignored: [], reviewReplaced: [] };
-  if (!repository) return { ...plugin, layers: ['plugin'], ignored: [], reviewReplaced: [] };
+  const noDisable = { skillsDisabled: [], skillsDisableIgnored: [] };
+  if (!plugin) {
+    const { skillsDisable, ...rest } = repository;
+    return { ...rest, pluginSkills: Object.fromEntries(ROLES.map((r) => [r, []])), skillsDisabled: [], skillsDisableIgnored: skillsDisable.map((name) => ({ name, reason: 'matches nothing' })), layers: ['repository'], ignored: [], reviewReplaced: [] };
+  }
+  if (!repository) {
+    const { skillsDisable, ...rest } = plugin;
+    return { ...rest, pluginSkills: structuredClone(plugin.skills), ...noDisable, layers: ['plugin'], ignored: [], reviewReplaced: [] };
+  }
 
   const out = structuredClone(plugin);
+  delete out.skillsDisable;
   const ignored = [];
   // The review block says how the review is driven, not what gates the code, so the repository's keys replace the plugin's.
   const reviewReplaced = [];
@@ -188,6 +205,19 @@ export function mergeProfiles(plugin, repository) {
   });
   ['generated', 'tools', 'requires_skills'].forEach((key) => { out[key] = unique([...plugin[key], ...repository[key]]); });
   ROLES.forEach((role) => { out.skills[role] = unique([...plugin.skills[role], ...repository.skills[role]]); });
+  // The repository may switch off a skill of the plugin by name, never a required one.
+  const pluginNames = new Set(ROLES.flatMap((r) => plugin.skills[r]));
+  const required = new Set(out.requires_skills);
+  const skillsDisabled = [];
+  const skillsDisableIgnored = [];
+  repository.skillsDisable.forEach((name) => {
+    if (required.has(name)) skillsDisableIgnored.push({ name, reason: 'required' });
+    else if (!pluginNames.has(name)) skillsDisableIgnored.push({ name, reason: 'matches nothing' });
+    else skillsDisabled.push(name);
+  });
+  ROLES.forEach((role) => { out.skills[role] = out.skills[role].filter((n) => !skillsDisabled.includes(n)); });
+  // What the plugin's profile lists (and the repository did not switch off): the skills it recommends by default.
+  const pluginSkills = Object.fromEntries(ROLES.map((r) => [r, plugin.skills[r].filter((n) => !skillsDisabled.includes(n))]));
   ['commands', 'targets'].forEach((key) => {
     Object.entries(repository[key]).forEach(([name, value]) => {
       if (!(name in plugin[key])) out[key][name] = value;
@@ -197,7 +227,7 @@ export function mergeProfiles(plugin, repository) {
   out.body = [plugin.body, repository.body].filter(Boolean).join('\n\n');
   out.questions = [plugin.questions, repository.questions].filter(Boolean).join('\n\n');
   out.reviewBody = [plugin.reviewBody, repository.reviewBody].filter(Boolean).join('\n\n');
-  return { ...out, layers: ['plugin', 'repository'], ignored, reviewReplaced };
+  return { ...out, pluginSkills, skillsDisabled, skillsDisableIgnored, layers: ['plugin', 'repository'], ignored, reviewReplaced };
 }
 
 /** Apply `platforms.<name>.checks` of relevo.yml: the only way to replace a command. */
@@ -229,6 +259,7 @@ export function resolveProfile({ platform, pluginRoot, read }) {
   const plugin = readProfile(read, pluginProfilePath(pluginRoot, platform.stack));
   const repository = readProfile(read, repositoryProfilePath(platform.stack));
   const errors = [...plugin.errors, ...repository.errors];
+  if (plugin.profile?.skillsDisable.length > 0) errors.push(`${pluginProfilePath(pluginRoot, platform.stack)}: "skills.${SKILLS_DISABLE}" belongs in the repository's profile, not in the plugin's`);
   if (errors.length > 0) return { ok: false, errors };
   const merged = mergeProfiles(plugin.profile, repository.profile);
   if (!merged) return { ok: false, errors: [`no profile for stack "${platform.stack}": define one in ${profileLocations(platform.stack)}`] };
