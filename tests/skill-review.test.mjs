@@ -354,3 +354,10 @@ test('Scenario: Autopilot off / Capture asked for - the api review names its pre
   const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
   ['ran', 'runs-list', 'reset-log'].forEach((c) => assert.ok(source.includes(`case '${c}'`), `review-state has no "${c}" command`));
 });
+
+test('Scenario: A failed go left its worktree - review asks who holds the branch before it switches, and leaves the issue built', () => {
+  const step1 = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('git switch <branch>'));
+  assert.match(step1, /scripts\/branch-worktree\.mjs --branch <branch>/);
+  assert.match(step1, /If it exits 1 it prints the path of that worktree/);
+  assert.match(step1, /leave the issue as `built`, change nothing/);
+});

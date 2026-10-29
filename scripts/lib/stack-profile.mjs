@@ -7,7 +7,7 @@
 import { parse, YamlLiteError } from './yaml-lite.mjs';
 
 export const ROLES = ['dev', 'qa', 'issue', 'review'];
-const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'requires_skills', 'skills', 'targets', 'review']);
+const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review']);
 const REVIEW_KEYS = new Set(['log', 'test', 'serve']);
 const SERVE_KEYS = new Set(['command', 'url', 'env']);
 // A server the agent starts is reached on this machine only.
@@ -28,6 +28,7 @@ const emptyProfile = (stack) => ({
   requires_skills: [],
   skills: Object.fromEntries(ROLES.map((r) => [r, []])),
   skillsDisable: [],
+  skillsWhenInstalled: Object.fromEntries(ROLES.map((r) => [r, []])),
   targets: {},
   review: {},
   body: '',
@@ -157,6 +158,17 @@ export function parseProfile(text) {
       });
     }
   }
+  // Skills that depend on the project: used when their folder is on the base branch, skipped without a trace when not.
+  if (raw.skills_when_installed !== undefined) {
+    if (!isMap(raw.skills_when_installed)) errors.push('"skills_when_installed" must map a role to a list of skill names');
+    else {
+      Object.entries(raw.skills_when_installed).forEach(([role, list]) => {
+        if (!ROLES.includes(role)) errors.push(`"skills_when_installed" has unknown role "${role}"; allowed: ${ROLES.join(', ')}`);
+        else if (!isStringList(list)) errors.push(`"skills_when_installed.${role}" must be a list of skill names`);
+        else profile.skillsWhenInstalled[role] = unique(list);
+      });
+    }
+  }
   if (raw.targets !== undefined) {
     if (!isMap(raw.targets) || Object.values(raw.targets).some((v) => typeof v !== 'string')) errors.push('"targets" must map a target to the tool it needs (empty when none)');
     else profile.targets = { ...raw.targets };
@@ -187,11 +199,11 @@ export function mergeProfiles(plugin, repository) {
   const noDisable = { skillsDisabled: [], skillsDisableIgnored: [] };
   if (!plugin) {
     const { skillsDisable, ...rest } = repository;
-    return { ...rest, pluginSkills: Object.fromEntries(ROLES.map((r) => [r, []])), skillsDisabled: [], skillsDisableIgnored: skillsDisable.map((name) => ({ name, reason: 'matches nothing' })), layers: ['repository'], ignored: [], reviewReplaced: [] };
+    return { ...rest, pluginSkills: Object.fromEntries(ROLES.map((r) => [r, []])), pluginSkillsWhenInstalled: Object.fromEntries(ROLES.map((r) => [r, []])), skillsDisabled: [], skillsDisableIgnored: skillsDisable.map((name) => ({ name, reason: 'matches nothing' })), layers: ['repository'], ignored: [], reviewReplaced: [] };
   }
   if (!repository) {
     const { skillsDisable, ...rest } = plugin;
-    return { ...rest, pluginSkills: structuredClone(plugin.skills), ...noDisable, layers: ['plugin'], ignored: [], reviewReplaced: [] };
+    return { ...rest, pluginSkills: structuredClone(plugin.skills), pluginSkillsWhenInstalled: structuredClone(plugin.skillsWhenInstalled), ...noDisable, layers: ['plugin'], ignored: [], reviewReplaced: [] };
   }
 
   const out = structuredClone(plugin);
@@ -205,8 +217,9 @@ export function mergeProfiles(plugin, repository) {
   });
   ['generated', 'tools', 'requires_skills'].forEach((key) => { out[key] = unique([...plugin[key], ...repository[key]]); });
   ROLES.forEach((role) => { out.skills[role] = unique([...plugin.skills[role], ...repository.skills[role]]); });
+  ROLES.forEach((role) => { out.skillsWhenInstalled[role] = unique([...plugin.skillsWhenInstalled[role], ...repository.skillsWhenInstalled[role]]); });
   // The repository may switch off a skill of the plugin by name, never a required one.
-  const pluginNames = new Set(ROLES.flatMap((r) => plugin.skills[r]));
+  const pluginNames = new Set(ROLES.flatMap((r) => [...plugin.skills[r], ...plugin.skillsWhenInstalled[r]]));
   const required = new Set(out.requires_skills);
   const skillsDisabled = [];
   const skillsDisableIgnored = [];
@@ -215,9 +228,13 @@ export function mergeProfiles(plugin, repository) {
     else if (!pluginNames.has(name)) skillsDisableIgnored.push({ name, reason: 'matches nothing' });
     else skillsDisabled.push(name);
   });
-  ROLES.forEach((role) => { out.skills[role] = out.skills[role].filter((n) => !skillsDisabled.includes(n)); });
+  ROLES.forEach((role) => {
+    out.skills[role] = out.skills[role].filter((n) => !skillsDisabled.includes(n));
+    out.skillsWhenInstalled[role] = out.skillsWhenInstalled[role].filter((n) => !skillsDisabled.includes(n));
+  });
   // What the plugin's profile lists (and the repository did not switch off): the skills it recommends by default.
   const pluginSkills = Object.fromEntries(ROLES.map((r) => [r, plugin.skills[r].filter((n) => !skillsDisabled.includes(n))]));
+  const pluginSkillsWhenInstalled = Object.fromEntries(ROLES.map((r) => [r, plugin.skillsWhenInstalled[r].filter((n) => !skillsDisabled.includes(n))]));
   ['commands', 'targets'].forEach((key) => {
     Object.entries(repository[key]).forEach(([name, value]) => {
       if (!(name in plugin[key])) out[key][name] = value;
@@ -227,7 +244,7 @@ export function mergeProfiles(plugin, repository) {
   out.body = [plugin.body, repository.body].filter(Boolean).join('\n\n');
   out.questions = [plugin.questions, repository.questions].filter(Boolean).join('\n\n');
   out.reviewBody = [plugin.reviewBody, repository.reviewBody].filter(Boolean).join('\n\n');
-  return { ...out, pluginSkills, skillsDisabled, skillsDisableIgnored, layers: ['plugin', 'repository'], ignored, reviewReplaced };
+  return { ...out, pluginSkills, pluginSkillsWhenInstalled, skillsDisabled, skillsDisableIgnored, layers: ['plugin', 'repository'], ignored, reviewReplaced };
 }
 
 /** Apply `platforms.<name>.checks` of relevo.yml: the only way to replace a command. */

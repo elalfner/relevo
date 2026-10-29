@@ -116,19 +116,23 @@ The documentation SHALL have a page `upgrading`, in English and Spanish, that na
 - **THEN** each links to the upgrade page
 
 ### Requirement: The stacks page explains the recommended Flutter skills
-The stacks page, in both languages, SHALL say that the official Dart and Flutter skills are recommended and never required, give the install route of each tool, and say which route reaches the cloud runner. It SHALL NOT say that Relevo hands these skills to the `dev` or `qa` agent.
+The stacks page, in both languages, SHALL say that the default set of official Dart and Flutter skills is recommended and never required, give the command that installs it and where it lands, and say that a plugin installed on a machine does not reach the cloud runner while a committed folder does. It SHALL say that `dev` and `qa` receive the set when it is committed, and how to switch a skill off. It SHALL NOT say that Relevo hands no skill to these agents.
 
 #### Scenario: Routes by tool
 - **WHEN** the section on Flutter of the stacks page is read
-- **THEN** it gives the two `claude plugin` commands for Claude Code, the `npx skills add flutter/agent-plugins ... --agent universal` command for the Antigravity CLI, and the settings path of the Antigravity IDE
+- **THEN** it gives the `npx skills add flutter/agent-plugins` command with `--agent claude-code`, the one with `--agent universal` for the Antigravity CLI, the settings path of the Antigravity IDE, and the two `claude plugin` commands as an optional extra for working on a machine
 
 #### Scenario: Nothing is required
 - **WHEN** the section is read
-- **THEN** it says that the Flutter profile works without these skills, that `doctor` reports a missing one as a note, and that `init` offers the installs as optional
+- **THEN** it says that the Flutter profile works without these skills, that `doctor` reports a missing one as a note, and that `init` offers the install as optional
 
 #### Scenario: Cloud runner
 - **WHEN** the section is read
 - **THEN** it says that a plugin installed on a machine does not reach the cloud runner and that a skills folder committed to the repository does
+
+#### Scenario: Handed to the agents
+- **WHEN** the section is read
+- **THEN** it says that `dev` and `qa` receive the skills of the set that are committed, that the others are left out with a note, and that `skills.disable` in `.relevo/stacks/flutter.md` switches one off
 
 #### Scenario: Rules and MCP
 - **WHEN** the section is read
@@ -206,3 +210,69 @@ The stacks page, in both languages, SHALL have a section on a stack that the plu
 #### Scenario: Both languages agree
 - **WHEN** the English and the Spanish stacks pages are compared
 - **THEN** both have the section, the same example and the same commands
+
+### Requirement: The execution page says how to start worktrees from the base branch
+The page on where `go` runs SHALL say, in English and Spanish, that the Worktree button of Claude Code branches from the remote's default branch and cannot be given a branch name, and SHALL give, as an optional recipe, a `WorktreeCreate` hook that fetches `origin/<base>` and creates the worktree from it. It SHALL say that the hook replaces the default creation, so that `.worktreeinclude` and the branch prefix of the app no longer apply, and that `/relevo:init` does not install it.
+
+#### Scenario: Work happens on a base branch that is not the default
+- **WHEN** a person whose default branch is `main` and base branch is `dev` reads the page
+- **THEN** it says that the button starts from `main`, shows the hook that starts from `dev`, and says what the hook gives up
+
+#### Scenario: Not described as part of Relevo
+- **WHEN** a person reads the recipe
+- **THEN** it says that it is optional, that Relevo does not install it, and that `go` builds from `origin/<branches.base>` with or without it
+
+### Requirement: The execution page says review, ship and fix can run in a worktree
+The page SHALL say, in English and Spanish, that `review`, `ship` and `fix` also run in a worktree the person opened, that a branch held by another worktree stops them with a message that names it, and that a runner registered under the user of the person shares its home with that user's interactive sessions.
+
+#### Scenario: A person runs review from the Worktree button
+- **WHEN** a person reads the page before running `review` or `ship` in a worktree
+- **THEN** it says that the local tidy of `review` and `ship` is skipped there and that the worktree stays on its branch
+
+#### Scenario: A runner under the person's own user
+- **WHEN** a person reads the page before registering a runner under their own user
+- **THEN** it says that the runner shares `~/.claude` with their interactive sessions
+
+### Requirement: The stacks page explains the Laravel skills
+The stacks page, in both languages, SHALL give the Laravel Boost commands, say that Boost chooses skills from `composer.json` and that `--skills` installs neither guidelines nor the MCP server, say that the generated skills must be committed even though Laravel allows ignoring them, and name the two skills the profile uses.
+
+#### Scenario: Laravel
+- **WHEN** the section on Laravel of the stacks page is read
+- **THEN** it gives `composer require laravel/boost --dev` and `php artisan boost:install --skills --no-interaction` run from the folder of the platform, says to commit `.claude/skills/`, `boost.json`, `composer.json` and `composer.lock`, and names `laravel-best-practices` and `testing-best-practices`
+
+#### Scenario: Skills of other packages
+- **WHEN** the section is read
+- **THEN** it says that Boost installs skills for the packages the project uses and that a project lists those it wants under `skills` in `.relevo/stacks/laravel.md`
+
+#### Scenario: Switch off
+- **WHEN** the section is read
+- **THEN** it says to name a skill under `skills.disable` in `.relevo/stacks/laravel.md` to switch it off
+
+### Requirement: The stacks page explains the Vue skills
+The stacks page, in both languages, SHALL say that Vue publishes no official skills, that the two offered come from a community project that calls itself an early experiment, give their install command, and say that the profile uses them only when installed and how to switch one off.
+
+#### Scenario: Vue
+- **WHEN** the section on Vue of the stacks page is read
+- **THEN** it says that Vue publishes no skills, that `vuejs-ai/skills` is a community project that calls itself an early experiment, gives the install command, and says that `dev` and `qa` use `vue-best-practices` and `vue-testing-best-practices` only when installed
+
+#### Scenario: Switch off
+- **WHEN** the section is read
+- **THEN** it says to name a skill under `skills.disable` in `.relevo/stacks/vue.md` to switch it off
+
+#### Scenario: Both languages
+- **WHEN** the English and the Spanish stacks pages are compared
+- **THEN** both carry the same sections with the same commands
+
+### Requirement: The stacks page tells a required skill from a recommended one
+The stacks page, in both languages, SHALL say that a skill under `requires_skills` is required and that `doctor` fails when it is missing, that a skill listed under `skills` is given to a role, and that a recommended skill only produces a note. It SHALL say that a stack can use both, and give `supabase` as the example.
+
+#### Scenario: Difference
+- **WHEN** the section on skills of the stacks page is read
+- **THEN** it says that a required skill missing is a failure, that a recommended one missing is a note, and that a skill can be both required and listed for a role
+
+### Requirement: A page states a rule once
+A page of the documentation SHALL NOT repeat the same bullet. A repeated bullet SHALL be removed and the page keeps the place where it belongs.
+
+#### Scenario: Commands that do not rewrite code
+- **WHEN** the stacks page is read in either language
+- **THEN** the sentence that the commands QA runs never rewrite the code appears once

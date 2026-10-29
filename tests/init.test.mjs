@@ -781,3 +781,73 @@ test('Scenario: The file of an own stack already exists - it is left as it is', 
 test('Scenario: Without the list of shipped stacks nothing is proposed on its own', () => {
   assert.equal(profileOf(planInit({ facts: ownFacts, answers: goAnswers(), templates, current: empty(), admin: true }), 'go'), undefined);
 });
+
+// ---------- Laravel Boost and the community Vue skills (laravel-vue-skills)
+
+const sourceItems = (extra) => {
+  const facts = {
+    configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true },
+    skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: [], ...extra,
+  };
+  return planInit({ facts, answers: { ...ANSWERS, platforms: { api: { stack: 'laravel', path: 'api', targets: [] } } }, templates, current: empty(), admin: true });
+};
+const LV = (over = {}) => ({ name: 'api', path: 'api', boost: false, skillsCommitted: false, ...over });
+const ids = (items, prefix) => items.filter((i) => i.id.startsWith(prefix)).map((i) => i.id);
+
+test('Scenario: Offered - two optional installs for the Laravel folder, the second asking nothing, and nothing written', () => {
+  const items = sourceItems({ laravelBoost: [LV()] });
+  const require = get(items, 'install.recommended.laravel.boost.api');
+  const install = get(items, 'install.recommended.laravel.skills.api');
+  assert.equal(require.command, 'cd api && composer require laravel/boost --dev');
+  assert.equal(install.command, 'cd api && php artisan boost:install --skills --no-interaction');
+  [require, install].forEach((i) => assert.deepEqual([i.status, i.install, i.optional], ['todo', true, true]));
+  assert.ok(items.indexOf(require) < items.indexOf(install), 'the package first');
+});
+
+test('Scenario: Commit what Boost wrote - a manual step names the files, the other agents and the cloud runner', () => {
+  const step = get(sourceItems({ laravelBoost: [LV()] }), 'manual.recommended.laravel.commit');
+  assert.equal(step.status, 'manual');
+  assert.match(step.description, /\.claude\/skills, boost\.json, composer\.json and composer\.lock/);
+  assert.match(step.description, /\.agents\/ or \.kiro\//);
+  assert.match(step.description, /Laravel says they can be kept out of git/);
+  assert.match(step.description, /cloud runner reads only what is committed/);
+});
+
+test('Scenario: Declined - skipping an install of Boost changes nothing else', () => {
+  const items = sourceItems({ laravelBoost: [LV()] });
+  const skipped = skipItems(items, ['install.recommended.laravel.boost.api', 'install.recommended.laravel.skills.api']);
+  assert.equal(get(skipped, 'install.recommended.laravel.skills.api').status, 'skipped');
+  assert.equal(get(skipped, 'config').status, get(items, 'config').status);
+});
+
+test('Scenario: Already installed - one ok line and no install; with Boost required and no skills only the second install is offered', () => {
+  const done = sourceItems({ laravelBoost: [LV({ boost: true, skillsCommitted: true })] });
+  assert.deepEqual(ids(done, 'install.recommended.laravel'), ['install.recommended.laravel']);
+  assert.equal(get(done, 'install.recommended.laravel').status, 'ok');
+  assert.equal(get(done, 'manual.recommended.laravel.commit'), undefined);
+  const half = sourceItems({ laravelBoost: [LV({ boost: true })] });
+  assert.deepEqual(ids(half, 'install.recommended.laravel'), ['install.recommended.laravel.skills.api']);
+});
+
+test('Scenario: No composer file - nothing is offered for Laravel', () => {
+  assert.deepEqual(ids(sourceItems({ laravelBoost: [] }), 'install.recommended.laravel'), []);
+  assert.deepEqual(ids(sourceItems({}), 'install.recommended.laravel'), []);
+});
+
+const VUE_OFFER = (over = {}) => ({ stack: 'vue', name: 'web', path: 'web', skills: ['vue-best-practices', 'vue-testing-best-practices'], missing: ['vue-best-practices', 'vue-testing-best-practices'], ...over });
+
+test('Scenario: Offered with the label - an optional install for the Vue folder that says not official and an early experiment', () => {
+  const item = get(sourceItems({ offeredSkills: [VUE_OFFER()] }), 'install.offered.vue.web');
+  assert.equal(item.command, 'cd web && npx skills add vuejs-ai/skills --skill vue-best-practices --skill vue-testing-best-practices --agent claude-code --copy --yes');
+  assert.deepEqual([item.status, item.install, item.optional], ['todo', true, true]);
+  assert.match(item.description, /not official/);
+  assert.match(item.description, /early experiment/);
+  assert.match(item.description, /commit both/);
+});
+
+test('Scenario: Installed - the line is done, and only the missing skill is offered when one is there', () => {
+  assert.equal(get(sourceItems({ offeredSkills: [VUE_OFFER({ missing: [] })] }), 'install.offered.vue.web').status, 'ok');
+  const one = get(sourceItems({ offeredSkills: [VUE_OFFER({ missing: ['vue-testing-best-practices'] })] }), 'install.offered.vue.web');
+  assert.match(one.command, /--skill vue-testing-best-practices --agent/);
+  assert.ok(!one.command.includes('--skill vue-best-practices'));
+});

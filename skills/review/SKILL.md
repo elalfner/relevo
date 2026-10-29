@@ -53,6 +53,14 @@ If it exits 1 it names both people: ask the person for a written confirmation th
 
 The person must never review a stale base.
 
+Before switching, ask whether another worktree holds the branch (`git switch` refuses it with an error that names nothing):
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch>
+```
+
+If it exits 1 it prints the path of that worktree (a run of `go` that failed keeps its worktree, for example): leave the issue as `built`, change nothing, say that the branch is held by that worktree and its path, and that the person can review there or remove it with `git worktree remove` and run the review again. Then stop.
+
 ```bash
 git fetch origin <base> <branch>
 git switch <branch>

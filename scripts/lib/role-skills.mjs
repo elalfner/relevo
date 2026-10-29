@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { ROLES } from './stack-profile.mjs';
 
 export const SKILL_DIRS = ['.agents/skills', '.claude/skills'];
+const ABSENT = 'not on the base branch';
 
 /**
  * Where to look for a skill of a platform: its own folder first, then the root. A platform whose folder is `.` (or
@@ -83,7 +84,7 @@ export function resolveSkill({ name, git, baseRef, allowScripts = [], dirs = SKI
     if (scripts && !allowScripts.includes(name)) return out('has scripts and is not allowed');
     return { name, path: skillMd, scripts };
   }
-  return out(sawLink ? 'is a link to a folder that is not on the base branch' : 'not on the base branch');
+  return out(sawLink ? 'is a link to a folder that is not on the base branch' : ABSENT);
 }
 
 /** Resolve the skills of a role (or of `fix`) from a resolved profile. */
@@ -92,7 +93,14 @@ export function resolveRoleSkills({ role, profile, git, baseRef, allowScripts = 
   const names = [...new Set(rolesFor(role).flatMap((r) => profile.skills[r] ?? []))];
   // A skill the plugin's profile lists is a default one; the repository's own are the person's choice.
   const defaults = new Set(rolesFor(role).flatMap((r) => profile.pluginSkills?.[r] ?? []));
-  return names.map((name) => ({ ...resolveSkill({ name, git, baseRef, allowScripts, dirs }), ...(defaults.has(name) ? { default: true } : {}) }));
+  const listed = names.map((name) => ({ ...resolveSkill({ name, git, baseRef, allowScripts, dirs }), ...(defaults.has(name) ? { default: true } : {}) }));
+  // Skills that depend on the project: used when installed, and no trace when the folder is not on the base branch.
+  const whenInstalled = [...new Set(rolesFor(role).flatMap((r) => profile.skillsWhenInstalled?.[r] ?? []))].filter((name) => !names.includes(name));
+  const pluginWhenInstalled = new Set(rolesFor(role).flatMap((r) => profile.pluginSkillsWhenInstalled?.[r] ?? []));
+  const optional = whenInstalled
+    .map((name) => ({ ...resolveSkill({ name, git, baseRef, allowScripts, dirs }), ...(pluginWhenInstalled.has(name) ? { default: true } : {}) }))
+    .filter((s) => !(s.left_out && s.reason === ABSENT));
+  return [...listed, ...optional];
 }
 
 /** Sum of the sizes (bytes) of the skills handed to one role, and whether it is over the budget. */

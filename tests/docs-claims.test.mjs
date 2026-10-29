@@ -308,3 +308,15 @@ test('Scenario: The section on your own stack - both pages show the same Go prof
   assert.deepEqual(profiles[0], profiles[1], 'both languages give the same commands');
   ['analyze', 'test', 'format'].forEach((c) => assert.ok(profiles[0][c], `the example defines ${c}`));
 });
+
+test('Scenario: The stacks page explains the Laravel and Vue skills, with the same commands in both languages', () => {
+  ['docs/stacks.md', 'docs/stacks.es.md'].forEach((f) => {
+    const page = read(f);
+    ['composer require laravel/boost --dev', 'php artisan boost:install --skills --no-interaction', 'laravel-best-practices', 'testing-best-practices', 'boost.json', 'skills: { disable: [testing-best-practices] }'].forEach((s) => assert.ok(page.includes(s), `${f}: ${s}`));
+    ['npx skills add vuejs-ai/skills --skill vue-best-practices --skill vue-testing-best-practices --agent claude-code --copy --yes', 'vue-best-practices', 'vue-testing-best-practices', 'skills: { disable: [vue-best-practices] }'].forEach((s) => assert.ok(page.includes(s), `${f}: ${s}`));
+    assert.match(page, /early experiment|experimento temprano/, `${f}: the Vue skills are an experiment`);
+    assert.match(page, /not official|No es oficial/, `${f}: and not official`);
+    assert.ok(page.includes('skills_when_installed'), `${f}: the key`);
+    assert.ok(page.includes('.claude/skills/'), `${f}: the folder to commit`);
+  });
+});
