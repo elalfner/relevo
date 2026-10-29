@@ -67,6 +67,7 @@ Lee el último comentario: dice qué falta. Si falta información, ejecuta `/rel
 ## Nube, local o ambos
 
 - **Ambos** (el valor por defecto) construye en la nube cuando se pone `ready`, y aun así puedes construir a mano.
+- Para construir a mano, ejecuta `/relevo:go <n>` en tu sesión para mirar e intervenir, o añade `--local` para dejarlo corriendo con los límites de la nube: [la diferencia](commands.es.md#en-la-sesión-o-por-separado).
 - **Solo nube** sirve para construir sin que nadie espere; **solo máquinas** no tiene secreto de modelo en el repositorio y cada persona usa su propia sesión.
 - Para cambiar sin un pull request, pon la variable del repositorio `RELEVO_CLOUD_GO` en `off` y la nube se detiene; bórrala para reanudar, y vuelve a poner `ready` a los issues que esperaron. Los detalles están en [Dónde corre `go`](execution.es.md).
 

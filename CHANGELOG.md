@@ -9,6 +9,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **`doctor` warns when the cloud would read a different `relevo.yml`.** A label event reads `relevo.yml` from the default branch of the repository, while every build starts from the base branch. When the two are different branches, `doctor` compares the two copies on GitHub and warns when their settings differ, or when the default branch has none, with the fix of promoting the base branch or making it the default branch. Comments and layout do not count.
 - **The page on where `go` runs says which branch the cloud reads.** A new section explains that the cloud reads its workflows and `relevo.yml` from the default branch, that the branch of a build always starts from `branches.base` whatever the default branch is, and what changes when the base branch is the default branch.
 
+### Changed
+
+- **The docs now say how `/relevo:go` in a session differs from `/relevo:go --local`.** Both build in a worktree of their own; only `--local` runs a separate process with the closed tool lists and the limits of `relevo.yml`. A table in `docs/commands.md` compares them, and the guide and `docs/execution.md` link to it.
+
 ## [0.11.1] - 2026-10-28
 
 ### Fixed

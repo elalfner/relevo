@@ -46,11 +46,24 @@ Qué construir, la ruta de un acuerdo guardado, o el número de un issue que ree
 
 ### `/relevo:go [issue-number] [--local] [--decision <base64>]`
 
-El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina en un worktree propio (así pueden correr dos a la vez), y `--local` hace lo mismo en un proceso aparte con las listas cerradas de herramientas del workflow. `--decision` lo pasa el workflow, no se escribe. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `qa-failed` y el comentario dice que es código que QA no aprobó ([Falló QA](guide.es.md#falló-qa)).
+El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina en un worktree propio (así pueden correr dos a la vez), y `--local` construye en un proceso aparte con las listas cerradas de herramientas y los límites del workflow (el worktree es el mismo; el resto difiere, ver abajo). `--decision` lo pasa el workflow, no se escribe. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `qa-failed` y el comentario dice que es código que QA no aprobó ([Falló QA](guide.es.md#falló-qa)).
 
 ```text
 /relevo:go 42 --local
 ```
+
+#### En la sesión o por separado
+
+| | `/relevo:go 42` en una sesión | `/relevo:go 42 --local` |
+|---|---|---|
+| Quién construye | tu propia sesión de Claude Code | un proceso `claude -p` nuevo (`agy -p` con Antigravity) |
+| Herramientas | las de tu sesión | las listas cerradas del workflow |
+| Límites | ninguno de `relevo.yml` | los límites de turnos y coste de `relevo.yml` |
+| Lo que ves | la construcción, en vivo; puedes intervenir | la salida cuando termina |
+| Contexto | usa el contexto de tu sesión | no lo toca |
+| Worktree | propio, en `.relevo-worktrees/` | el mismo lugar |
+
+Usa la sesión cuando quieras mirar e intervenir; usa `--local` para dejarlo corriendo con los mismos límites que la nube.
 
 ### `/relevo:review [issue-number]`
 

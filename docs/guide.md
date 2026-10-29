@@ -67,6 +67,7 @@ Read the last comment: it says what is missing. If information is missing, run `
 ## Cloud, local or both
 
 - **Both** (the default) builds in the cloud when `ready` is applied, and you can still build by hand.
+- To build by hand, run `/relevo:go <n>` in your session to watch and step in, or add `--local` to leave it running under the limits of the cloud: [the difference](commands.md#in-the-session-or-on-its-own).
 - **Cloud only** is for building without anyone waiting; **machines only** has no model secret in the repository and each person uses their own session.
 - To switch without a pull request, set the repository variable `RELEVO_CLOUD_GO` to `off` and the cloud stops; delete it to resume, then apply `ready` again to the issues that waited. The details are in [Where `go` runs](execution.md).
 
