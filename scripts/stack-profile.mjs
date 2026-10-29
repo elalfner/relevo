@@ -67,6 +67,8 @@ console.log(JSON.stringify({
   requires_skills: profile.requires_skills,
   skills: profile.skills,
   plugin_skills: profile.pluginSkills,
+  skills_when_installed: profile.skillsWhenInstalled,
+  plugin_skills_when_installed: profile.pluginSkillsWhenInstalled,
   skills_disabled: profile.skillsDisabled,
   skills_disable_ignored: profile.skillsDisableIgnored,
   layers: profile.layers,
