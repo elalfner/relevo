@@ -287,3 +287,11 @@ test('the resolved profile carries the warnings, and the command prints the revi
   assert.doesNotMatch(dev.body, /Skip the audit|feature test of its scenario/);
   assert.equal(run(dir, '--plugin-root', PLUGIN_ROOT, '--role', 'boss').status, 2);
 });
+
+test('Scenario: Command given by checks - a stack of the repository accepts analyze, test and format in checks without defining them', async () => {
+  const { profileLookups } = await import('../scripts/lib/stack-profile.mjs');
+  const read = (path) => (path === '.relevo/stacks/go.md' ? '---\nstack: go\n---\nBody.\n' : null);
+  const lookups = profileLookups({ pluginRoot: '/p', read });
+  assert.deepEqual(lookups.knownChecks('go'), ['analyze', 'test', 'format']);
+  assert.equal(lookups.knownChecks('nothing'), null, 'a stack with no profile is not judged here');
+});

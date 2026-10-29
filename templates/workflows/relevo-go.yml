@@ -168,7 +168,8 @@ jobs:
       #       node-version: 22
       #       cache: npm
       #       cache-dependency-path: ${{ needs.decide.outputs.path }}/package-lock.json
-      # Another stack: add a step guarded by its name, and its dependencies below.
+      # Another stack, including one of your own (Go, Python...): add a step guarded by its name, and its dependencies
+      # below. `/relevo:doctor` warns when a stack that only your repository defines has no such step.
       # Installing the dependencies is the project's choice, because the package manager and the lockfile vary. Do it
       # from the folder of the platform, for example:
       #   - if: needs.decide.outputs.stack == 'vue'

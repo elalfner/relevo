@@ -715,3 +715,51 @@ test('a recommended install is shown in the plan with its command', () => {
   const text = renderPlan(recItems(REC('missing')));
   assert.match(text, /Optional: install the official Dart and Flutter plugin for Claude Code \(1 of 2\) \(claude plugin marketplace add flutter\/agent-plugins\)/);
 });
+
+// A stack the plugin does not ship: the file of the repository is the whole profile.
+const SHIPPED = ['flutter', 'vue', 'laravel', 'supabase'];
+const ownFacts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: {} };
+const goAnswers = (extra = {}) => ({ ...ANSWERS, platform: undefined, platforms: { app: { stack: 'go', path: '.' } }, ...extra });
+const profileOf = (items, stack) => items.find((i) => i.id === `stack-profile.${stack}`);
+
+test('Scenario: A Go platform - the plan proposes the whole profile, with its commands commented, and it parses', async () => {
+  const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
+  const item = profileOf(planInit({ facts: ownFacts, answers: goAnswers(), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true }), 'go');
+  assert.equal(item.status, 'todo');
+  assert.equal(item.path, '.relevo/stacks/go.md');
+  assert.match(item.description, /left for you to commit/);
+  assert.match(item.description, /the plugin does not ship/);
+  const parsed = parseProfile(item.content);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.profile.stack, 'go');
+  assert.deepEqual(parsed.profile.commands, {}, 'no command is written for the person');
+  ['analyze', 'test', 'format'].forEach((c) => assert.match(item.content, new RegExp(`^#   ${c}: `, 'm')));
+  assert.match(item.content, /^## Hygiene for the developer$/m);
+  assert.match(item.content, /^## What the auditor looks for in the diff$/m);
+});
+
+test('Scenario: A stack the plugin ships - no profile file is proposed and the form that adds to the plugin stays', () => {
+  const plan = planInit({ facts: ownFacts, answers: goAnswers({ platforms: { app: { stack: 'vue', path: '.', targets: ['web'] } } }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true });
+  assert.equal(profileOf(plan, 'vue'), undefined);
+  const asked = profileOf(planInit({ facts: ownFacts, answers: goAnswers({ platforms: { app: { stack: 'vue', path: '.', targets: ['web'] } }, stackProfiles: ['vue'] }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true }), 'vue');
+  assert.match(asked.description, /adds to the plugin's/);
+  assert.match(asked.content, /Lists are added to the plugin's profile/);
+  assert.doesNotMatch(asked.content, /# commands:/);
+});
+
+test('Scenario: The person declines the profile of a stack the plugin does not ship - none is planned', () => {
+  const plan = planInit({ facts: ownFacts, answers: goAnswers({ declinedStackProfiles: ['go'] }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true });
+  assert.equal(profileOf(plan, 'go'), undefined);
+  assert.equal(plan.find((i) => i.id === 'config').status, 'todo');
+});
+
+test('Scenario: The file of an own stack already exists - it is left as it is', () => {
+  const plan = planInit({ facts: ownFacts, answers: goAnswers(), templates: { ...templates, shippedStacks: SHIPPED }, current: { ...empty(), stackProfiles: { go: true } }, admin: true });
+  const item = profileOf(plan, 'go');
+  assert.equal(item.status, 'ok');
+  assert.equal(item.content, undefined);
+});
+
+test('Scenario: Without the list of shipped stacks nothing is proposed on its own', () => {
+  assert.equal(profileOf(planInit({ facts: ownFacts, answers: goAnswers(), templates, current: empty(), admin: true }), 'go'), undefined);
+});

@@ -292,3 +292,19 @@ test('Scenario: The plugin token - no page tells a new project to store RELEVO_P
   assert.match(read('docs/execution.es.md'), /no necesita `RELEVO_PLUGIN_TOKEN`/);
   assert.match(read('docs/install.md'), /no token is needed to read it/);
 });
+
+test('Scenario: The section on your own stack - both pages show the same Go profile, which parses, and name the cloud step', async () => {
+  const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
+  const profiles = ['docs/stacks.md', 'docs/stacks.es.md'].map((f) => {
+    const page = read(f);
+    assert.match(page, /^## (Your own stack|Tu propio stack)$/m, `${f}: the section`);
+    assert.ok(page.includes("needs.decide.outputs.stack == 'go'"), `${f}: the cloud step is guarded by the name of the stack`);
+    assert.ok(page.includes('.relevo/stacks/go.md'), `${f}: the file`);
+    const block = page.match(/ *```markdown\n( *---\n *stack: go[\s\S]*?)\n *```/)[1].split('\n').map((l) => l.replace(/^ {3}/, '')).join('\n');
+    const parsed = parseProfile(block);
+    assert.deepEqual(parsed.errors, [], `${f}: the example parses`);
+    return parsed.profile.commands;
+  });
+  assert.deepEqual(profiles[0], profiles[1], 'both languages give the same commands');
+  ['analyze', 'test', 'format'].forEach((c) => assert.ok(profiles[0][c], `the example defines ${c}`));
+});
