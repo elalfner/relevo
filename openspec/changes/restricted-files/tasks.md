@@ -1,10 +1,12 @@
 # Tasks
 
-## 1. Confirm what the tools offer
+## 1. Confirm by a run what the documentation leaves open
 
-- [ ] 1.1 Read the full Claude Code settings reference and sandboxing pages and write down the wildcard syntax of `sandbox.filesystem.denyRead` in design.md, so the base list can be rendered; verify by a path-list example that matches `.env` at any depth.
-- [ ] 1.2 Check whether `claude-code-action` accepts sandbox settings (its `settings` input or a settings file) and record the answer in design.md; verify by a dry run of the workflow step on the sandbox repository or by reading the action's `action.yml` at the pinned version.
-- [ ] 1.3 Check what the Antigravity CLI offers to deny a file read (its settings and its documentation at the pinned version) and record it in design.md; verify by an `agy` run in a scratch folder that is refused when it reads a denied file, or by a written "none exists".
+The documentation answers are recorded in design.md; these are the three that only a run can settle.
+
+- [ ] 1.1 Check that a `denyRead` entry written as `**/.env` blocks `.env` at any depth, and otherwise use the documented `~/**/.env` form or one entry per existing path; verify by a sandboxed `python -c "open('.env')"` that fails and records the result in design.md.
+- [ ] 1.2 Check whether `claude-code-action` forwards its `settings` input as `--settings` (read its source at the pinned version, or pass `--settings` in `claude_args`); verify with a run in the sandbox repository in which a script that opens `.env` is refused, and record the answer in design.md.
+- [ ] 1.3 Check with `agy` and a throwaway file that a `read_file` deny stops the agent's own file tool, whether it reaches `cat`, and whether a bare filename matches; verify by the refusals seen, and record the result in design.md.
 
 ## 2. The list and its matcher
 
