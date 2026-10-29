@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
-import { resolveRoleSkills } from './lib/role-skills.mjs';
+import { resolveRoleSkills, skillDirsFor } from './lib/role-skills.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
 
 const arg = (name) => {
@@ -46,7 +46,7 @@ if (!resolved.ok) fail(resolved.errors.join('\n'), 1);
 const baseRef = arg('base') ?? `origin/${loaded.config.branches.base}`;
 const git = (args) => execFileSync('git', args, { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 try {
-  const skills = resolveRoleSkills({ role, profile: resolved.profile, git, baseRef, allowScripts: loaded.config.skills.allow_scripts });
+  const skills = resolveRoleSkills({ role, profile: resolved.profile, git, baseRef, allowScripts: loaded.config.skills.allow_scripts, dirs: skillDirsFor(platform.path) });
   console.log(JSON.stringify({ role, platform: name, base: baseRef, skills }, null, 2));
 } catch (err) {
   fail(err.message, 2);

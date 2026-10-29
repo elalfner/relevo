@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkProtected, formatViolations, hardPathsInAllow, matchesGlob } from '../scripts/lib/protected-paths.mjs';
+import { checkProtected, formatViolations, hardPathsInAllow, matchesGlob, platformFolders } from '../scripts/lib/protected-paths.mjs';
 
 test('Scenario: Workflow edited - refused even when the issue lists the path', () => {
   const r = checkProtected(['.github/workflows/ci.yml'], { allow: ['.github/workflows/ci.yml', '.github/**'] });
@@ -112,4 +112,37 @@ test('Scenario: A run edits its own plugin - what carries the instructions or pe
   assert.match(formatViolations(checkProtected(['.agents/plugins/relevo/skills/go/SKILL.md']).violations), /\.agents\/plugins\/relevo\/skills\/go\/SKILL\.md {2}protected path/);
   assert.equal(checkProtected(['docs/agents.md', 'src/agents/list.dart', 'README.md']).ok, true, 'ordinary files with similar names are not caught');
   assert.deepEqual(hardPathsInAllow(['AGENTS.md', '.agents/**', 'lib/**']), ['AGENTS.md', '.agents/**'], 'an Allow-paths entry that names them is reported');
+});
+
+const APP = { platformPaths: ['app'] };
+
+test('Scenario: Skill of a platform edited - refused even when the issue lists the path', () => {
+  const r = checkProtected(['app/.claude/skills/dart-add-unit-test/SKILL.md'], { ...APP, allow: ['app/.claude/skills/**'] });
+  assert.deepEqual(r.violations, [{ path: 'app/.claude/skills/dart-add-unit-test/SKILL.md', tier: 'hard', rule: 'app/.claude/skills/' }]);
+});
+
+test('Scenario: Skill added to a platform - a folder under the agents folder of the platform is refused', () => {
+  assert.equal(checkProtected(['app/.agents/skills/new/SKILL.md'], APP).violations[0].tier, 'hard');
+});
+
+test('Scenario: Lock file of a platform edited - refused', () => {
+  assert.equal(checkProtected(['app/skills-lock.json'], APP).violations[0].rule, 'app/skills-lock.json');
+});
+
+test('the code of a platform stays free, and so does a similar name outside its folder', () => {
+  assert.equal(checkProtected(['app/lib/main.dart', 'other/.claude/skills/a.md', 'application/.agents/x'], APP).ok, true);
+});
+
+test('Scenario: Platform at the root - only the root rules apply and nothing else becomes protected', () => {
+  assert.deepEqual(platformFolders({ app: { path: '.' }, web: { path: './' }, api: {} }), []);
+  assert.equal(checkProtected(['lib/.claude/skills/a.md'], { platformPaths: platformFolders({ app: { path: '.' } }) }).ok, true);
+});
+
+test('platform folders are read from the registry, once each, without slashes at the ends', () => {
+  assert.deepEqual(platformFolders({ a: { path: 'apps/web/' }, b: { path: './apps/web' }, c: { path: 'backend' } }), ['apps/web', 'backend']);
+});
+
+test('an Allow-paths entry that would cover the skills of a platform can never be allowed', () => {
+  assert.deepEqual(hardPathsInAllow(['app/.claude/skills/x/SKILL.md', 'app/lib/main.dart', 'app/**'], APP), ['app/.claude/skills/x/SKILL.md', 'app/**']);
+  assert.deepEqual(hardPathsInAllow(['app/.claude/skills/x/SKILL.md']), [], 'without the platform folder it is an ordinary path');
 });

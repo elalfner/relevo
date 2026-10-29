@@ -40,11 +40,15 @@ A repository MAY add `.relevo/stacks/<stack>.md`. Its lists (tools, skills, gene
 ## ADDED Requirements
 
 ### Requirement: The Flutter profile lists a default set of skills for dev and qa
-The plugin's `flutter` profile SHALL list a short set of official Dart and Flutter skills under `skills` for `dev` and for `qa`, and none for `issue` and `review`. The set SHALL fit the budget of 20 KB per role, SHALL NOT include a skill that imposes an architecture or a package, and SHALL NOT include a skill with scripts.
+The plugin's `flutter` profile SHALL list a short set of official Dart and Flutter skills under `skills` for `dev` and for `qa`, and none for `issue` and `review`. The set SHALL fit the budget of 20 KB per role, SHALL NOT include a skill that imposes an architecture or a package, and SHALL NOT include a skill with scripts or one whose steps run or hot reload the app.
 
 #### Scenario: The set
 - **WHEN** the profile of `flutter` is resolved
-- **THEN** `skills.dev` and `skills.qa` name `flutter-fix-layout-issues`, `flutter-add-widget-test` and `dart-add-unit-test`, and `skills.issue` and `skills.review` are empty
+- **THEN** `skills.dev` and `skills.qa` name `flutter-add-widget-test` and `dart-add-unit-test`, and `skills.issue` and `skills.review` are empty
+
+#### Scenario: Nothing that runs the app
+- **WHEN** the steps of each skill of the set are read
+- **THEN** none tells the agent to run the application, to hot reload it, to rewrite code with a fix command, or to add a mocking package
 
 #### Scenario: Budget
 - **WHEN** the `SKILL.md` files of the set are added up

@@ -17,6 +17,17 @@
 - **WHEN** the issue is for a platform whose stack has no such skill listed, and another platform's folder holds Flutter skills
 - **THEN** `go` gives that agent none of the Flutter skills
 
+### Requirement: The lock file next to the skills is the one checked
+`doctor` SHALL compare each skill folder with its hash in the `skills-lock.json` that sits in the folder that holds the skills: the folder of the platform, or the root.
+
+#### Scenario: Lock file in the folder of a platform
+- **WHEN** `app/.claude/skills/dart-add-unit-test` differs from its hash in `app/skills-lock.json`
+- **THEN** `doctor` warns and names the skill
+
+#### Scenario: Skills at the root
+- **WHEN** the skills are under the root and `skills-lock.json` is at the root
+- **THEN** `doctor` compares them as before
+
 ### Requirement: A default skill that is not installed is a note
 A skill listed by the plugin's profile, and not by the repository, that is not on the base branch SHALL be left out of the run with the reason "not on the base branch", and `doctor` SHALL report it once as a note with the command that installs it, never as a warning. A skill listed by the repository that is left out SHALL keep being reported as a warning.
 

@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { MAX_REFERENCES, parseIssueBody } from './issue-parse.mjs';
 import { resolvePlatform } from './platform-of.mjs';
-import { hardPathsInAllow } from './protected-paths.mjs';
+import { hardPathsInAllow, platformFolders } from './protected-paths.mjs';
 import { findCredentials } from './scan.mjs';
 
 export const TITLE_MAX = 72;
@@ -56,7 +56,7 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
   const left = PLACEHOLDERS.filter((p) => String(body ?? '').includes(p));
   if (left.length) problems.push(`the body still contains template text: ${left.join(', ')}`);
   findCredentials(String(body ?? '')).forEach(({ name }) => problems.push(`the body contains something that looks like a credential (${name}); issues are readable by everyone with access`));
-  hardPathsInAllow(parsed.allowPaths, { rulesFile }).forEach((entry) => problems.push(`Allow-paths lists "${entry}", which can never be allowed: workflows, the Relevo configuration, skills and the project rules are not changed by an unattended run`));
+  hardPathsInAllow(parsed.allowPaths, { rulesFile, platformPaths: platformFolders(platforms) }).forEach((entry) => problems.push(`Allow-paths lists "${entry}", which can never be allowed: workflows, the Relevo configuration, skills and the project rules are not changed by an unattended run`));
 
   parsed.dependsOnInvalid.forEach((token) => problems.push(`Depends-on has "${token}", which is not a reference; write #12 for an issue of this repository or owner/repo#12 for one of a linked repository`));
   [...new Set(parsed.dependsOnExternal.map((d) => d.repo))].filter((repo) => !links.includes(repo)).forEach((repo) => {

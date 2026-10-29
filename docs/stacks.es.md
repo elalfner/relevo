@@ -50,26 +50,28 @@ Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` 
   - `dev` mantiene datos de prueba en `supabase/seed.sql` de forma idempotente (`INSERT ... ON CONFLICT DO NOTHING`).
   - Para desplegar a la nube tras mergear un PR, usa la plantilla `.github/workflows/deploy-supabase.yml` (despliegue automático a Staging en `dev` y a Producción con aprobación humana en `main`).
 
-- Los comandos que ejecuta QA nunca reescriben tu código. Importa en Vue: el script `lint` que genera `npm create vue` usa `--fix`, así que el perfil llama a las herramientas directamente (con `npx --no-install`, con las versiones que fija tu proyecto) y no usa `npm run lint`.
 - Cada perfil se ejecutó en un proyecto creado para eso (`npm create vue@latest` con TypeScript, Vitest, ESLint y Prettier; `composer create-project laravel/laravel`). El `analyze` de Vue falla con un error de tipos, un `v-for` sin `:key`, una variable sin usar, un `any` explícito y un componente de una sola palabra, y no falla con `v-html`, un listener que nunca se quita o props copiadas fuera de la reactividad. El `analyze` y el `test` de Laravel fallan con un problema de estilo y con una prueba que falla, y no fallan con una asignación masiva sin protección, una consulta N+1 o una autorización que falta. El texto de cada perfil le dice a QA cuáles de esas debe buscar leyendo.
 - Un proyecto que usa `pnpm` o `yarn`, `oxlint` o PHPStan reemplaza el comando en `relevo.yml`, por ejemplo `checks: { analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse" }`.
-- Los perfiles no exigen ninguna skill extra; las oficiales de Dart y Flutter son una recomendación (ver abajo). Para darle al desarrollo o a QA una skill propia (una de buenas prácticas de Laravel, por ejemplo), lístala en `.relevo/stacks/<stack>.md` bajo `skills`.
+- Solo `supabase` exige skills. El perfil `flutter` le da dos skills recomendadas a `dev` y `qa` (ver abajo). Para darle al desarrollo o a QA una skill propia (una de buenas prácticas de Laravel, por ejemplo), lístala en `.relevo/stacks/<stack>.md` bajo `skills`.
 - Un perfil puede tener una sección `Questions for the issue writer`. `/relevo:issue` hace las preguntas que la idea deja abiertas (en un backend: quién está autorizado y cómo es un error); el desarrollo y QA nunca la reciben.
 
 ### Usar el perfil `flutter` con las skills oficiales
 
-El equipo de Flutter publica skills y un servidor MCP de Dart para agentes de código ([Get started with AI](https://docs.flutter.dev/ai/get-started), leído el 2026-10-28). Se recomiendan y nunca se exigen: el perfil funciona sin ellas, `/relevo:doctor` informa su ausencia como una nota y `/relevo:init` ofrece cada instalación como un comando opcional que confirmas uno por uno.
+El equipo de Flutter publica skills y un servidor MCP de Dart para agentes de código ([Get started with AI](https://docs.flutter.dev/ai/get-started), leído el 2026-10-28). El perfil le da dos de esas skills a `dev` y `qa`, `flutter-add-widget-test` y `dart-add-unit-test`, porque cubren cómo escribir las pruebas de una funcionalidad, algo que el texto del perfil no trae. Se recomiendan y nunca se exigen: el perfil funciona sin ellas, `/relevo:doctor` informa la que falta como una nota y `/relevo:init` ofrece la instalación como un comando opcional que confirmas.
 
 | Herramienta | Cómo instalar | Dónde queda |
 |---|---|---|
-| Claude Code | `claude plugin marketplace add flutter/agent-plugins`, luego `claude plugin install dart-flutter@dart-flutter` | En tu Claude Code, no en el repositorio. El plugin trae también el servidor MCP de Dart. |
-| CLI de Antigravity | `npx skills add flutter/agent-plugins --skill '*' --agent universal --yes` | `.agents/skills/` y `skills-lock.json` en el repositorio: haz commit de ambos. El servidor MCP de Dart necesita una entrada en `.agents/mcp_config.json`: `{ "mcpServers": { "dart": { "command": "dart", "args": ["mcp-server"] } } }`. |
+| Claude Code, y el runner en la nube | `npx skills add flutter/agent-plugins --skill flutter-add-widget-test --skill dart-add-unit-test --agent claude-code --copy --yes`, desde la carpeta de la plataforma (`cd app && ...` para `path: app`) | `.claude/skills/` y `skills-lock.json` en esa carpeta, la raíz para `path: .`: haz commit de ambos. |
+| CLI de Antigravity | El mismo comando con `--agent universal` | `.agents/skills/` y `skills-lock.json` en esa carpeta: haz commit de ambos. El servidor MCP de Dart necesita una entrada en `.agents/mcp_config.json`: `{ "mcpServers": { "dart": { "command": "dart", "args": ["mcp-server"] } } }`. |
 | IDE de Antigravity | Settings, Customizations, Build with Google Plugins, Download junto a "Dart and Flutter" | Dentro del IDE. `/relevo:doctor` no lo ve, así que nunca dice que estas skills faltan allí. |
 
-- Ese comando `npx` instala juntas las skills de Flutter y las de Dart. La documentación de Flutter da además un comando para `dart-lang/skills`, cuyas skills el primero ya trae.
-- **El runner en la nube.** Un plugin instalado en una máquina no llega al runner que construye en la nube. Una carpeta de skills con commit en el repositorio, sí.
+- **El runner en la nube.** Lee solo lo que tiene commit en la rama base. Haz commit de la carpeta de skills y de `skills-lock.json`. Un plugin instalado en una máquina no llega al runner, y `/relevo:doctor` no lo cuenta como skills instaladas.
+- **Qué reciben `dev` y `qa`.** Las skills del conjunto que tienen commit: Relevo le da a cada agente la ruta de su `SKILL.md`, buscando primero en la carpeta de la plataforma y luego en la raíz. Una skill del conjunto sin commit queda fuera de la ejecución, y `/relevo:doctor` informa una nota con su comando. Una ejecución en la nube con estas skills todavía no se probó.
+- **Apagar una.** Lístala bajo `skills.disable` en `.relevo/stacks/flutter.md`, por ejemplo `skills: { disable: [flutter-add-widget-test] }`. Solo se puede apagar una skill de las listas del plugin, nunca una de `requires_skills`.
+- **Están protegidas.** Una ejecución sin supervisión no puede cambiar las carpetas de skills ni `skills-lock.json`, dentro de la carpeta de cada plataforma igual que en la raíz.
+- **Más skills.** `flutter/agent-plugins` trae 25 (también las de Dart). Instala otra con el mismo comando y lístala bajo `skills` en `.relevo/stacks/flutter.md` (ver [Skills extra por rol](#skills-extra-por-rol)); cada una que listes se lee en cada ejecución, y `/relevo:doctor` avisa cuando un rol pasa de 20 KB.
+- **El plugin, para trabajar en tu máquina.** `claude plugin marketplace add flutter/agent-plugins`, luego `claude plugin install dart-flutter@dart-flutter`, instala todas y el servidor MCP de Dart en tu Claude Code. Es un extra opcional que se queda en tu máquina, y Relevo no lo cuenta.
 - **Reglas.** Un plugin no carga reglas por sí mismo. Si quieres las oficiales, cópialas de la carpeta `rules` de `flutter/agent-plugins` al archivo de reglas de tu proyecto (`qa.rules_from`); `/relevo:init` lo lista como un paso tuyo y nunca escribe tu archivo de reglas.
-- **Relevo no les pasa estas skills a los agentes `dev` y `qa`.** Claude Code y Antigravity encuentran las skills por su nombre y descripción. En una sesión de Claude Code con el plugin instalado, el agente `dev` listó las 25 skills del plugin (`dart-flutter:flutter-*` y `dart-flutter:dart-*`) y los nombres de las herramientas del servidor MCP de Dart; no se probó el agente `qa`, que un agente invoque una skill, ni una ejecución en la nube. Para que uno de ellos lea una skill de `.agents/skills/`, lístala bajo `skills` en `.relevo/stacks/flutter.md` (ver [Skills extra por rol](#skills-extra-por-rol)); una skill con scripts queda fuera salvo que `skills.allow_scripts` la nombre.
 
 ### Usar el perfil `supabase` en un repositorio
 
@@ -117,10 +119,12 @@ review:
 - El agente lee el `SKILL.md` de cada una y solo las partes que aplican. Las reglas de Relevo y de tu proyecto mandan sobre cualquier skill.
 - Una skill se usa solo si está en la rama base, si la persona no la reservó para sí con `disable-model-invocation` y si no tiene scripts. Una skill con scripts debe nombrarse una por una en `skills.allow_scripts`.
 - `/relevo:doctor` lista las skills que se dejaron fuera y por qué, avisa cuando las skills de un rol pesan más de 20 KB y avisa cuando una skill ya no coincide con `skills-lock.json`.
+- Una skill que un perfil lista en `requires_skills` es exigida: `/relevo:doctor` falla cuando no está instalada. Una skill en `skills` se le da a ese rol. Un stack puede usar las dos para la misma skill: `supabase` exige `supabase` y `supabase-postgres-best-practices` y se las da a `dev`, `qa` e `issue`. Una skill recomendada es la que el perfil del plugin le da a un rol sin exigirla (las dos de `flutter`): si falta, `/relevo:doctor` informa una nota y la ejecución sigue sin ella.
+- Para apagar una skill del plugin, nómbrala en `skills.disable` de `.relevo/stacks/<stack>.md`; una exigida no se puede apagar.
 
 ## Lo que una ejecución sin supervisión no puede cambiar
 
-- `relevo.yml`, todo lo que está en `.relevo/`, las carpetas de skills y `skills-lock.json`, porque deciden las verificaciones a las que se somete el trabajo. Una ejecución que los toca termina en `qa-failed`.
+- `relevo.yml`, todo lo que está en `.relevo/`, las carpetas de skills y `skills-lock.json` (también dentro de la carpeta de cada plataforma), porque deciden las verificaciones a las que se somete el trabajo. Una ejecución que los toca termina en `qa-failed`.
 - Los archivos que listas en `qa.rules_from`.
 - Los archivos fuera de la carpeta de la plataforma del issue (salvo la spec del propio cambio, `GLOSSARY.md` y `docs/adr/`), a menos que el issue los liste en `Allow-paths:`.
 - El comando de una verificación, desde un perfil: solo `relevo.yml` puede reemplazarlo.
