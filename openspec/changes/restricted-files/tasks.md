@@ -2,10 +2,10 @@
 
 ## 1. Confirm by a run what the documentation leaves open
 
-The documentation answers are recorded in design.md; these are the three that only a run can settle.
+The documentation answers are recorded in design.md; these are the ones that only a run can settle (1.1 needs a Claude Code session with working credentials, 1.3 an `agy` session).
 
 - [ ] 1.1 Check that a `denyRead` entry written as `**/.env` blocks `.env` at any depth, and otherwise use the documented `~/**/.env` form or one entry per existing path; verify by a sandboxed `python -c "open('.env')"` that fails and records the result in design.md.
-- [ ] 1.2 Check whether `claude-code-action` forwards its `settings` input as `--settings` (read its source at the pinned version, or pass `--settings` in `claude_args`); verify with a run in the sandbox repository in which a script that opens `.env` is refused, and record the answer in design.md.
+- [x] 1.2 Checked in the source of `claude-code-action` at `v1`: the `settings` input is merged into the user-level `~/.claude/settings.json`, not passed as `--settings`; recorded in design.md. A run in the sandbox repository still confirms the sandbox denials (task 8.2).
 - [ ] 1.3 Check with `agy` and a throwaway file that a `read_file` deny stops the agent's own file tool, whether it reaches `cat`, and whether a bare filename matches; verify by the refusals seen, and record the result in design.md.
 
 ## 2. The list and its matcher
