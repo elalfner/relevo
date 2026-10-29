@@ -345,3 +345,12 @@ test('Scenario: Autopilot set for this review - an uncommitted relevo.yml is nam
   assert.match(body, /Never stage or commit `relevo\.yml` in this review/);
   assert.match(body, /stop and show its `advice` as it is/);
 });
+
+test('Scenario: Autopilot off / Capture asked for - the api review names its preflight, its commands and what it never does', () => {
+  ['api-preflight.mjs', 'stack-profile.mjs --platform <platform> --role review'].forEach((x) => assert.ok(body.includes(x), `the skill never names ${x}`));
+  ['--adapter api', 'review-state.mjs ran', 'runs-list', 'reset-log', '--by agent --line'].forEach((x) => assert.ok(body.includes(x), `the skill never uses ${x}`));
+  assert.match(body, /takes no capture/);
+  assert.match(body, /Never write or edit a test/);
+  const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
+  ['ran', 'runs-list', 'reset-log'].forEach((c) => assert.ok(source.includes(`case '${c}'`), `review-state has no "${c}" command`));
+});

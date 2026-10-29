@@ -18,7 +18,7 @@ For each platform whose stack has the `api` review adapter, `doctor` SHALL check
 - **THEN** `doctor` adds none of these checks
 
 ### Requirement: Doctor checks the review block of a profile
-`doctor` SHALL warn when the resolved profile of a platform has a `review` block that is invalid, a `serve` whose command is not on the base branch, a `log` that matches no file and whose directory does not exist, or text in the section `Review` that asks for what the block cannot change. It SHALL list which `review` keys the repository replaced.
+`doctor` SHALL report, as the failure of an invalid profile, a `review` block that cannot be read, and SHALL warn about a `serve` whose command is not on the base branch, a `log` that matches no file and whose directory does not exist, or text in the section `Review` that asks for what the block cannot change. It SHALL list which `review` keys the repository replaced.
 
 #### Scenario: Log path that matches nothing
 - **WHEN** `review.log` is `var/log/app.log` and neither the file nor `var/log` exists
