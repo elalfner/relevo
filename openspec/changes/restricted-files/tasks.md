@@ -2,9 +2,9 @@
 
 ## 1. Confirm by a run what the documentation leaves open
 
-The documentation answers are recorded in design.md; these are the ones that only a run can settle (1.1 needs a Claude Code session with working credentials, 1.3 an `agy` session).
+The documentation answers are recorded in design.md; these are the ones that only a run can settle (1.3 needs an `agy` session).
 
-- [ ] 1.1 Check that a `denyRead` entry written as `**/.env` blocks `.env` at any depth, and otherwise use the documented `~/**/.env` form or one entry per existing path; verify by a sandboxed `python -c "open('.env')"` that fails and records the result in design.md.
+- [x] 1.1 Tried on macOS: `denyRead: ["**/.env"]` blocks `.env` at the root and at depth for a sandboxed script and leaves other files readable; recorded in design.md. Linux is checked in task 8.2.
 - [x] 1.2 Checked in the source of `claude-code-action` at `v1`: the `settings` input is merged into the user-level `~/.claude/settings.json`, not passed as `--settings`; recorded in design.md. A run in the sandbox repository still confirms the sandbox denials (task 8.2).
 - [ ] 1.3 Check with `agy` and a throwaway file that a `read_file` deny stops the agent's own file tool, whether it reaches `cat`, and whether a bare filename matches; verify by the refusals seen, and record the result in design.md.
 
