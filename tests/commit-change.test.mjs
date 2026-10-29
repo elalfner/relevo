@@ -80,6 +80,31 @@ test('the Relevo configuration and the folders of skills are refused as well', (
   assert.equal(run(dir, '--message', 'm', '--', '.claude/skills/x/SKILL.md').status, 1);
 });
 
+const APP_CONFIG = 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: flutter\n    path: app\n    targets: [web]\n';
+
+test('Scenario: Skill of a platform edited - refused from the folders of relevo.yml, before anything is staged', () => {
+  const dir = repo({ 'relevo.yml': APP_CONFIG });
+  put(dir, 'app/.claude/skills/dart-add-unit-test/SKILL.md', 'x\n');
+  put(dir, 'app/skills-lock.json', '{}\n');
+  put(dir, 'app/lib/main.dart', 'void main() {}\n');
+  const skill = run(dir, '--message', 'm', '--', 'app/.claude/skills/dart-add-unit-test/SKILL.md');
+  assert.equal(skill.status, 1);
+  assert.match(skill.stderr, /app\/\.claude\/skills\/dart-add-unit-test\/SKILL\.md {2}protected path/);
+  assert.equal(run(dir, '--message', 'm', '--', 'app/skills-lock.json').status, 1);
+  assert.deepEqual(staged(dir), []);
+  assert.equal(run(dir, '--message', 'feat: main', '--', 'app/lib/main.dart').status, 0, 'the code of the platform is committed');
+});
+
+test('a folder named as a whole is checked for the skills of a platform inside it', () => {
+  const dir = repo({ 'relevo.yml': APP_CONFIG });
+  put(dir, 'app/lib/main.dart', 'void main() {}\n');
+  put(dir, 'app/.agents/skills/new/SKILL.md', 'x\n');
+  const r = run(dir, '--message', 'm', '--', 'app');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /app\/\.agents\/skills\/new\/SKILL\.md {2}protected path/);
+  assert.deepEqual(staged(dir), [], 'the named paths are unstaged again');
+});
+
 test('Scenario: Lock file without permission - refused; with --allow it is committed', () => {
   const dir = repo({ 'pubspec.lock': 'a\n' });
   put(dir, 'pubspec.lock', 'b\n');

@@ -9,7 +9,7 @@ import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow } from './agent-workflow.mjs';
-import { isVueWeb, OPENSPEC_INSTALL, RECOMMENDED, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES } from './doctor.mjs';
+import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -240,22 +240,33 @@ const item = (id, status, description, extra = {}) => ({ id, status, description
 const OPTIONAL = 'It is optional: if you decline, nothing else changes and /relevo:doctor keeps a note about it.';
 const MCP_ENTRY = '{ "mcpServers": { "dart": { "command": "dart", "args": ["mcp-server"] } } }';
 
-/** The optional installs and the manual steps for the recommended skills of a stack (see RECOMMENDED in doctor.mjs). */
+/**
+ * The optional installs and the manual steps for the default skills of a stack (see RECOMMENDED in doctor.mjs): one
+ * install per platform folder that lacks them, run from that folder, because the installer writes where it runs.
+ * Declining changes nothing else; init never runs them (the skill does, after a yes to each) and never writes the
+ * project's rules file or an MCP configuration file.
+ */
 function recommendedSkillItems(rec) {
-  const route = RECOMMENDED[rec.stack];
   const label = rec.stack === 'flutter' ? 'Dart and Flutter' : rec.stack;
   const items = [];
-  if (rec.claude === 'present') items.push(item(`install.recommended.${rec.stack}.claude`, 'ok', `The official ${label} skills are available to Claude Code`));
-  else if (rec.claude === 'missing') {
-    route.claude.commands.forEach((command, i) => items.push(item(`install.recommended.${rec.stack}.claude.${i === 0 ? 'marketplace' : 'plugin'}`, 'todo', `Optional: install the official ${label} plugin for Claude Code (${i + 1} of ${route.claude.commands.length})`, { install: true, optional: true, command, detail: OPTIONAL })));
-  }
-  if (rec.antigravity === 'present') items.push(item(`install.recommended.${rec.stack}.antigravity`, 'ok', `The official ${label} skills are in .agents/skills`));
+  const where = (path) => (path === '.' ? 'the root' : path);
+  const installs = (agent, missing, writes) => missing.forEach((m) => {
+    const id = `install.recommended.${rec.stack}.${agent === 'claude-code' ? 'claude' : 'antigravity'}.${m.path === '.' ? 'root' : m.path}`;
+    const tool = agent === 'claude-code' ? 'Claude Code' : 'the Antigravity CLI';
+    items.push(item(id, 'todo', `Optional: install the default ${label} skills (${m.skills.join(', ')}) for ${tool} into ${where(m.path)}; it writes ${writes} and skills-lock.json there: commit both`, { install: true, optional: true, command: recommendedInstallCommand({ stack: rec.stack, skills: m.skills, agent, path: m.path }), detail: OPTIONAL }));
+  });
+  if (rec.claude === 'present') items.push(item(`install.recommended.${rec.stack}.claude`, 'ok', `The default ${label} skills are committed to the repository (Claude Code)`));
+  else installs('claude-code', rec.claudeMissing, '.claude/skills');
+  if (rec.antigravity === 'present') items.push(item(`install.recommended.${rec.stack}.antigravity`, 'ok', `The default ${label} skills are in .agents/skills`));
   else if (rec.antigravity === 'missing') {
-    route.antigravity.commands.forEach((command) => items.push(item(`install.recommended.${rec.stack}.antigravity`, 'todo', `Optional: install the official ${label} skills for the Antigravity CLI (it also writes skills-lock.json: commit both)`, { install: true, optional: true, command, detail: OPTIONAL })));
+    installs('universal', rec.antigravityMissing, '.agents/skills');
     items.push(item(`manual.recommended.${rec.stack}.antigravity-ide`, 'manual', `Optional, Antigravity IDE: install "${label}" from Settings > Customizations > Build with Google Plugins`));
     items.push(item(`manual.recommended.${rec.stack}.mcp`, 'manual', `Optional, Antigravity CLI: add the ${label} MCP server to .agents/mcp_config.json (or ~/.gemini/config/mcp_config.json)`, { checklist: [MCP_ENTRY] }));
   }
-  if (rec.claude === 'missing' || rec.antigravity === 'missing') items.push(item(`manual.recommended.${rec.stack}.rules`, 'manual', `Optional: plugins do not load the official ${label} rules; copy the ones you want from https://github.com/flutter/agent-plugins/tree/main/rules into the rules file of the project`));
+  if (rec.claude === 'missing' || rec.antigravity === 'missing') {
+    items.push(item(`manual.recommended.${rec.stack}.commit`, 'manual', `Commit the new skills folder and skills-lock.json with the other files Relevo wrote: the cloud runner reads only what is committed`));
+    items.push(item(`manual.recommended.${rec.stack}.rules`, 'manual', `Optional: the official ${label} rules are not installed with the skills; copy the ones you want from https://github.com/flutter/agent-plugins/tree/main/rules into the rules file of the project`));
+  }
   return items;
 }
 

@@ -52,6 +52,70 @@ test('Scenario: A repository tries to remove a check - the plugin command is kep
   assert.deepEqual(mergeProfiles(plugin, parseProfile('---\nstack: vue\ncommands:\n  test: vitest\n---\n').profile).ignored, [], 'the same value is not a difference');
 });
 
+const withPluginSkills = parseProfile(`${header('requires_skills: [req]\nskills:\n  dev: [a, b]\n  qa: [a]\n')}\nPlugin body.\n`).profile;
+const repoDisabling = (names) => parseProfile(`---\nstack: vue\nskills:\n  disable: [${names}]\n---\n`).profile;
+
+test('Scenario: A default skill switched off - the named skill leaves every role and the others stay', () => {
+  const merged = mergeProfiles(withPluginSkills, repoDisabling('a'));
+  assert.deepEqual(merged.skills.dev, ['b']);
+  assert.deepEqual(merged.skills.qa, []);
+  assert.deepEqual(merged.skillsDisabled, ['a']);
+  assert.deepEqual(merged.skillsDisableIgnored, []);
+  assert.deepEqual(merged.pluginSkills.dev, ['b'], 'a switched-off skill is no longer a default');
+  assert.equal(merged.skillsDisable, undefined);
+});
+
+test('Scenario: A required skill cannot be switched off - it stays and the entry is reported as ignored', () => {
+  const merged = mergeProfiles(withPluginSkills, repoDisabling('req, a'));
+  assert.deepEqual(merged.requires_skills, ['req']);
+  assert.deepEqual(merged.skillsDisableIgnored, [{ name: 'req', reason: 'required' }]);
+  assert.deepEqual(merged.skillsDisabled, ['a']);
+});
+
+test('Scenario: Disable that names nothing - it is reported and nothing else changes', () => {
+  const merged = mergeProfiles(withPluginSkills, repoDisabling('nothing'));
+  assert.deepEqual(merged.skills.dev, ['a', 'b']);
+  assert.deepEqual(merged.skillsDisabled, []);
+  assert.deepEqual(merged.skillsDisableIgnored, [{ name: 'nothing', reason: 'matches nothing' }]);
+});
+
+test('a skill that only the repository lists is not a plugin skill, so disabling it matches nothing', () => {
+  const repo = parseProfile('---\nstack: vue\nskills:\n  dev: [mine]\n  disable: [mine]\n---\n').profile;
+  const merged = mergeProfiles(withPluginSkills, repo);
+  assert.deepEqual(merged.skills.dev, ['a', 'b', 'mine']);
+  assert.deepEqual(merged.skillsDisableIgnored, [{ name: 'mine', reason: 'matches nothing' }]);
+});
+
+test('the origin of the skills is kept: what the plugin lists is separate from what the repository added', () => {
+  const repo = parseProfile('---\nstack: vue\nskills:\n  dev: [mine]\n---\n').profile;
+  const merged = mergeProfiles(withPluginSkills, repo);
+  assert.deepEqual(merged.pluginSkills.dev, ['a', 'b']);
+  assert.deepEqual(merged.skills.dev, ['a', 'b', 'mine']);
+  assert.deepEqual(mergeProfiles(withPluginSkills, null).pluginSkills, withPluginSkills.skills);
+  assert.deepEqual(mergeProfiles(null, repo).pluginSkills.dev, []);
+});
+
+test('skills.disable must be a list of names, and it is an error in the profile of the plugin', () => {
+  assert.match(parseProfile('---\nstack: vue\nskills:\n  disable: x\n---\n').errors.join(' '), /"skills.disable" must be a list/);
+  const dir = mkdtempSync(join(tmpdir(), 'plugin-'));
+  mkdirSync(join(dir, 'stacks'));
+  writeFileSync(join(dir, 'stacks', 'vue.md'), '---\nstack: vue\nskills:\n  disable: [a]\n---\n');
+  const r = resolveProfile({ platform: { stack: 'vue' }, pluginRoot: dir, read: (p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } } });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(' '), /belongs in the repository's profile/);
+});
+
+test('the command prints what the repository switched off and what it ignored', () => {
+  const dir = repo({ 'relevo.yml': CONFIG(), '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills:\n  disable: [dart-add-unit-test, nothing]\n---\n' });
+  const out = run(dir, '--plugin-root', PLUGIN_ROOT);
+  assert.equal(out.status, 0, out.stderr);
+  const printed = JSON.parse(out.stdout);
+  assert.deepEqual(printed.skills.dev, ['flutter-add-widget-test']);
+  assert.deepEqual(printed.skills_disabled, ['dart-add-unit-test']);
+  assert.deepEqual(printed.skills_disable_ignored, [{ name: 'nothing', reason: 'matches nothing' }]);
+  assert.deepEqual(printed.plugin_skills.qa, ['flutter-add-widget-test']);
+});
+
 test('Scenario: Command replaced the supported way - platforms.<name>.checks wins', () => {
   const p = applyChecks(plugin, { test: 'pnpm test' });
   assert.equal(p.commands.test, 'pnpm test');

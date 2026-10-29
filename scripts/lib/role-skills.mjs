@@ -7,6 +7,16 @@ import { createHash } from 'node:crypto';
 import { ROLES } from './stack-profile.mjs';
 
 export const SKILL_DIRS = ['.agents/skills', '.claude/skills'];
+
+/**
+ * Where to look for a skill of a platform: its own folder first, then the root. A platform whose folder is `.` (or
+ * that has none) looks only at the root.
+ */
+export function skillDirsFor(platformPath) {
+  const folder = String(platformPath ?? '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+  if (folder === '' || folder === '.') return [...SKILL_DIRS];
+  return [...SKILL_DIRS.map((d) => `${folder}/${d}`), ...SKILL_DIRS];
+}
 export const SIZE_BUDGET_BYTES = 20 * 1024;
 const SCRIPT_EXTENSIONS = ['.sh', '.bash', '.js', '.mjs', '.cjs', '.ts', '.py', '.rb', '.php', '.ps1'];
 const NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
@@ -80,7 +90,9 @@ export function resolveSkill({ name, git, baseRef, allowScripts = [], dirs = SKI
 export function resolveRoleSkills({ role, profile, git, baseRef, allowScripts = [], dirs = SKILL_DIRS }) {
   if (![...ROLES, 'fix'].includes(role)) throw new Error(`unknown role "${role}"; allowed: ${[...ROLES, 'fix'].join(', ')}`);
   const names = [...new Set(rolesFor(role).flatMap((r) => profile.skills[r] ?? []))];
-  return names.map((name) => resolveSkill({ name, git, baseRef, allowScripts, dirs }));
+  // A skill the plugin's profile lists is a default one; the repository's own are the person's choice.
+  const defaults = new Set(rolesFor(role).flatMap((r) => profile.pluginSkills?.[r] ?? []));
+  return names.map((name) => ({ ...resolveSkill({ name, git, baseRef, allowScripts, dirs }), ...(defaults.has(name) ? { default: true } : {}) }));
 }
 
 /** Sum of the sizes (bytes) of the skills handed to one role, and whether it is over the budget. */
