@@ -638,6 +638,9 @@ function linkChecks(f) {
   return r;
 }
 
+/** Is the profile only the repository's (the plugin ships none for the stack)? */
+const isOwnProfile = (e) => e.profile?.layers?.length === 1 && e.profile.layers[0] === 'repository';
+
 /** What the profile of each platform asks for: tools, targets, layers, skills. */
 function platformChecks(f) {
   const r = [];
@@ -653,6 +656,11 @@ function platformChecks(f) {
       const path = `.relevo/stacks/${e.stack}.md`;
       const effect = e.profile.layers.includes('plugin') ? `use only the plugin's profile for ${e.stack}, without your rules` : `have no profile for ${e.stack}`;
       r.push(warn(`platform.${e.name}.profile.tracked`, `platform ${e.name}: ${path} is not tracked by git, so the cloud run and a fresh clone ${effect}`, `commit ${path} and push it with the rest of the repository's Relevo files`));
+    }
+    // A stack the plugin does not ship is whatever its file says: without analyze and test QA has nothing to run.
+    if (isOwnProfile(e)) {
+      const missing = ['analyze', 'test'].filter((c) => !e.profile.commands?.[c]);
+      if (missing.length > 0) r.push(warn(`platform.${e.name}.commands`, `platform ${e.name}: the profile of ${e.stack} defines no ${missing.join(' and no ')}, so QA has no command to run for it`, `write ${missing.join(' and ')} in .relevo/stacks/${e.stack}.md, or set platforms.${e.name}.checks in relevo.yml`));
     }
     (e.profile.ignored ?? []).forEach((x) => {
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
@@ -901,13 +909,26 @@ function toolchainChecks(f) {
   const go = f.workflows?.['relevo-go.yml'];
   if (!go?.present || typeof go.text !== 'string') return [];
   const active = go.text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  return (f.platformFacts ?? []).filter((e) => TOOLCHAIN_ACTIONS[e.stack]).map((e) => {
+  const known = (f.platformFacts ?? []).filter((e) => TOOLCHAIN_ACTIONS[e.stack]).map((e) => {
     const { action, step } = TOOLCHAIN_ACTIONS[e.stack];
     return active.includes(action)
       ? pass(`automation.toolchain.${e.name}`, `the go workflow installs the toolchain of platform ${e.name} (${e.stack})`)
       : fail(`automation.toolchain.${e.name}`, `the go workflow installs no toolchain for platform ${e.name} (${e.stack}), so every cloud build would fail QA after spending the run`, `enable ${step} of the build job in relevo-go.yml (the template has it active; compare with /relevo:init), or, if you install it another way, ignore this`);
   });
+  // A stack of the repository has no step in the template: the convention is a step guarded by the name of the stack.
+  // Only a warning, because the toolchain may come another way (an image, a runner that has it). A stack that needs only
+  // Node is not judged: the job installs Node for Relevo itself.
+  const own = (f.platformFacts ?? []).filter((e) => !TOOLCHAIN_ACTIONS[e.stack] && isOwnProfile(e) && (e.profile.tools ?? []).some((t) => !NODE_TOOLS.includes(t))).map((e) => {
+    const guard = `needs.decide.outputs.stack == '${e.stack}'`;
+    return active.includes(guard)
+      ? pass(`automation.toolchain.${e.name}`, `the go workflow has a step for the stack of platform ${e.name} (${e.stack})`)
+      : warn(`automation.toolchain.${e.name}`, `the go workflow has no step guarded by ${guard}, so a cloud build for platform ${e.name} (${e.stack}) may find no ${e.profile.tools.filter((t) => !NODE_TOOLS.includes(t)).join(', ')} and fail QA after spending the run`, `add a step to the build job of relevo-go.yml that installs it, guarded by "- if: ${guard}" (see the comment in the template), or, if you install it another way, ignore this`);
+  });
+  return [...known, ...own];
 }
+
+// The tools that the build job already has: it installs Node for Relevo itself.
+const NODE_TOOLS = ['node', 'npm'];
 
 const HOSTED_RUNNER = ['ubuntu-latest'];
 

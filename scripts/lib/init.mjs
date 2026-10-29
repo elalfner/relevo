@@ -82,9 +82,14 @@ function setPlatforms(text, platforms) {
   return text.replace(re, platformsBlock(platforms));
 }
 
-/** A commented `.relevo/stacks/<stack>.md` that adds to the plugin's profile. It adds; it never replaces. */
-export function stackProfileTemplate(stack) {
-  return `---
+/**
+ * A commented `.relevo/stacks/<stack>.md`. For a stack the plugin ships it adds to the plugin's profile and never
+ * replaces it. For a stack the plugin does not ship (`own`) it is the whole profile: the commands are left commented
+ * because one that passes without checking anything would be worse than none, and `doctor` warns until they exist.
+ */
+export function stackProfileTemplate(stack, { own = false } = {}) {
+  if (!own) {
+    return `---
 stack: ${stack}
 # Lists are added to the plugin's profile; a command that the plugin sets cannot be replaced here (use
 # platforms.<name>.checks in relevo.yml for that).
@@ -97,6 +102,35 @@ stack: ${stack}
 
 <!-- Hygiene of this project for ${stack}, in plain sentences. The developer follows it and QA audits against it.
      It is added after the plugin's text for the stack. -->
+`;
+  }
+  return `---
+stack: ${stack}
+# The plugin has no profile for ${stack}, so this file is the whole profile. Write the commands QA runs, from the
+# folder of the platform. analyze and test must not rewrite your code; only format may. Until analyze and test are
+# written (here or in platforms.<name>.checks of relevo.yml), /relevo:doctor warns.
+# commands:
+#   analyze: <a command that fails on a type, lint or vet error>
+#   test: <a command that runs the tests once>
+#   format: <a command that formats the code>
+# The tools the job needs on the runner (each is checked with \`<tool> --version\`).
+# tools: []
+# Generated files that are left out of the diff QA reviews.
+# generated: []
+# skills:
+#   dev: []
+#   qa: []
+---
+
+# ${stack}
+
+## Hygiene for the developer
+
+<!-- What the developer does and avoids in ${stack} code, in plain sentences that can be checked by reading the diff. -->
+
+## What the auditor looks for in the diff
+
+<!-- The bugs of ${stack} that analyze and test do not catch, so QA looks for them by reading. -->
 `;
 }
 
@@ -295,11 +329,17 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));
   else items.push(item('config', 'todo', 'Create relevo.yml from the answers', { content: renderConfig(templates.config, { base, release, ...answers }) }));
 
-  // optional stack profiles of the repository (created only when asked for; init never commits them, the person does)
-  (answers.stackProfiles ?? []).forEach((stack) => {
+  // profile files of the repository (init never commits them, the person does): the ones asked for, and one for each
+  // stack the plugin does not ship, where the file is the whole profile, unless the person declined it
+  const shipped = templates.shippedStacks ?? null;
+  const isOwn = (stack) => shipped !== null && !shipped.includes(stack);
+  const declined = answers.declinedStackProfiles ?? [];
+  const ownStacks = [...new Set(Object.values(configuredPlatforms).map((p) => p?.stack).filter((stack) => stack && isOwn(stack) && !declined.includes(stack)))];
+  [...new Set([...(answers.stackProfiles ?? []), ...ownStacks])].forEach((stack) => {
     const path = `.relevo/stacks/${stack}.md`;
+    const own = isOwn(stack);
     if ((current.stackProfiles ?? {})[stack]) items.push(item(`stack-profile.${stack}`, 'ok', `${path} exists`));
-    else items.push(item(`stack-profile.${stack}`, 'todo', `Create ${path}, a commented profile that adds to the plugin's (left for you to commit)`, { path, content: stackProfileTemplate(stack) }));
+    else items.push(item(`stack-profile.${stack}`, 'todo', own ? `Create ${path}, the profile of ${stack}, which the plugin does not ship: write its commands, then commit it (left for you to commit; /relevo:doctor warns until analyze and test exist)` : `Create ${path}, a commented profile that adds to the plugin's (left for you to commit)`, { path, content: stackProfileTemplate(stack, { own }) }));
   });
 
   // labels
