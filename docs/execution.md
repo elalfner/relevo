@@ -10,6 +10,14 @@ English · [Español](execution.es.md)
 - **Cloud only** is the same, with people choosing not to build by hand. Use it to build without anyone waiting.
 - **Machines only**: `/relevo:init` does not add the `go` and queue workflows. Each person builds with their own Claude session and quota, with no model secret in the repository.
 
+## Which branch the cloud reads
+
+A label event runs the workflows of the repository's default branch, and those workflows check out that branch, so the cloud also reads `relevo.yml` from the default branch. A build on your machine reads the `relevo.yml` of your working copy instead.
+
+Where a build starts does not depend on the default branch: the branch of an issue always starts from `origin/<branches.base>`, in the cloud and on a machine, and its pull request targets the base branch.
+
+With `main` as the default branch and `dev` as the base, a build still branches from `dev`, but a change to `relevo.yml` or to a workflow on `dev` reaches the cloud only after `dev` is promoted to `main`. Making the base branch the default branch makes those changes apply as soon as they are merged into it, and a pull request body with `Closes #<n>` then closes the issue too. `/relevo:doctor` warns when `relevo.yml` on the default branch differs from the one on the base branch.
+
 ## Pause the cloud without a pull request
 
 Set the repository variable `RELEVO_CLOUD_GO` to `off` (Settings > Secrets and variables > Actions > Variables). A `ready` label then starts nothing and the queue dispatches nothing, and the issue stays `ready` for a local run. Delete the variable, or set anything else, to resume, then apply `relevo:ready` again to each issue: the label events that were skipped are not replayed. It has to be a variable and not a file because a label event runs the workflows of the default branch, so a change to a file would need a pull request first.
