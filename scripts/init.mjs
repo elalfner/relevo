@@ -4,7 +4,7 @@
 //   node scripts/init.mjs apply [--answers answers.json] [--repo owner/name] [--from version] [--skip id,id] [--json]
 //   --from names the published version a workflow that differs came from, when none is close enough to tell
 // `plan` changes nothing. `apply` carries out the planned changes except installs (the skill asks first).
-// answers.json: { "members": ["a","b"], "specWriter": "a", "reviewMode": "peer", "language": "en", "platforms": { "app": { "stack": "flutter", "path": ".", "targets": ["android"] } }, "stackProfiles": [] }
+// answers.json: { "members": ["a","b"], "specWriter": "a", "reviewMode": "peer", "language": "en", "platforms": { "app": { "stack": "flutter", "path": ".", "targets": ["android"] } }, "stackProfiles": [], "declinedStackProfiles": [] }
 // It never reads or writes the model API key.
 // exit 0: done   exit 2: bad arguments or a failed change
 
@@ -65,13 +65,15 @@ const templates = {
   config: readFileSync(`${root}/templates/relevo.yml`, 'utf8'),
   agentBlocks: answers.agentBuild && answers.agentBuild !== 'claude' ? readFileSync(`${root}/templates/agents/${answers.agentBuild}-step.yml`, 'utf8') : null,
   workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, readFileSync(`${root}/templates/workflows/${f}`, 'utf8')])),
+  // The stacks the plugin ships a profile for: any other stack is defined only by the repository.
+  shippedStacks: readdirSync(`${root}/stacks`).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)),
 };
 const keepPaths = ['openspec/specs/.gitkeep', 'openspec/changes/archive/.gitkeep'];
 const current = {
   workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, existsSync(`.github/workflows/${f}`) ? readFileSync(`.github/workflows/${f}`, 'utf8') : null])),
   gitignore: existsSync('.gitignore') ? readFileSync('.gitignore', 'utf8') : null,
   keepFiles: Object.fromEntries(keepPaths.map((p) => [p, existsSync(p)])),
-  stackProfiles: Object.fromEntries((answers.stackProfiles ?? []).map((s) => [s, existsSync(`.relevo/stacks/${s}.md`)])),
+  stackProfiles: Object.fromEntries([...new Set([...(answers.stackProfiles ?? []), ...Object.values(answers.platforms ?? facts.config?.platforms ?? {}).map((p) => p?.stack).filter(Boolean)])].map((s) => [s, existsSync(`.relevo/stacks/${s}.md`)])),
 };
 
 // A workflow that exists and differs may be updated by a merge with the published templates (asked for lazily: it uses npm).

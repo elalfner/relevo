@@ -87,7 +87,7 @@ Esta sección sigue la documentación de Supabase (guías de flujo de desarrollo
 |---|---|---|
 | 1 | `CLAUDE.md`, o varios archivos en `qa.rules_from` | Las convenciones de tu proyecto. Es la más común. |
 | 2 | `platforms.<nombre>.checks` en `relevo.yml` | Otro comando para una verificación, por ejemplo `fvm flutter test`. |
-| 3 | `.relevo/stacks/<stack>.md` | Más higiene, herramientas o skills para un stack. Se suma al perfil del plugin y nunca lo reemplaza. Un stack que el plugin no trae se define solo con este archivo. |
+| 3 | `.relevo/stacks/<stack>.md` | Más higiene, herramientas o skills para un stack. Se suma al perfil del plugin y nunca lo reemplaza. Un stack que el plugin no trae se define solo con este archivo ([cómo](#tu-propio-stack)). |
 
 `/relevo:init` puede crear un archivo comentado para la tercera capa y lo deja para que le hagas commit. Hazle commit: la ejecución en la nube y tus compañeros lo leen de git, así que un archivo que se queda solo en tu máquina solo aplica ahí. `/relevo:doctor` muestra qué capas usa cada plataforma, y avisa mientras git no rastree ese archivo.
 
@@ -110,6 +110,51 @@ review:
 - `serve` se arranca solo con `review.autopilot` en `precheck` o `verify`, después de que confirmaste que los datos no son de producción, en un puerto libre de `localhost`, con el script que lo registra y lo detiene. Su `url` debe estar en `localhost`, `127.0.0.1` o `[::1]`, y el comando se lee solo de este archivo en la rama base, nunca de un issue ni de un comentario.
 - La sección `## Review` es texto libre para el agente, que solo lo lee en un review. Puede añadir pasos y pedir más evidencia. No puede cambiar que tú confirmas cada línea, que se audita el log, que `decide` controla el pull request, que nunca se leen los archivos de entorno, que no se sugiere un waiver ni que no se parchea código en un review: `/relevo:doctor` avisa de una línea que pida alguna de esas cosas, y el review la ignora.
 - Un review de Laravel no tiene dispositivo ni navegador. Con `review.autopilot` en `off` corres los tests del proyecto y se lo dices al review (`ran <código de salida>`); con `precheck` o `verify` el agente corre el test que ya existe para cada línea y nunca escribe uno. Una corrida de tests que pasa no escribe nada en `storage/logs`, así que lo que muestra que el código se ejercitó es la corrida registrada, no el log.
+
+## Tu propio stack
+
+Relevo trae perfiles para `flutter`, `vue`, `laravel` y `supabase`. Para cualquier otro stack (Go, Python, Rust...) escribes tú el perfil, y el archivo es el perfil completo:
+
+1. Pon `stack: go` (o el nombre que quieras) en la plataforma de `relevo.yml`. `/relevo:init` propone entonces `.relevo/stacks/go.md` por su cuenta, con los comandos comentados; también puedes crearlo a mano.
+2. Escribe los comandos que ejecuta QA, desde la carpeta de la plataforma. `analyze` y `test` no deben reescribir tu código; solo `format` puede:
+
+   ```markdown
+   ---
+   stack: go
+   commands:
+     analyze: go vet ./...
+     test: go test ./...
+     format: gofmt -w .
+   generated: ['**/*.pb.go']
+   tools: [go]
+   ---
+
+   # Go
+
+   ## Hygiene for the developer
+
+   - Return errors; do not discard them with `_`. Wrap them with `%w`.
+   - Close what you open (`defer`), and pass a `context.Context` to what can block.
+
+   ## What the auditor looks for in the diff
+
+   - An ignored error, a goroutine with no way to stop, a shared map written without a lock.
+   ```
+
+   Es un ejemplo: ajusta los comandos a tu proyecto. Un comando se reemplaza después, sin tocar el archivo, con `platforms.<nombre>.checks` en `relevo.yml` (`analyze`, `test` y `format` se aceptan siempre ahí).
+3. Hazle commit al archivo. La ejecución en la nube y tus compañeros lo leen de git; sin él no tienen perfil para el stack.
+4. Si la nube construye, agrega un paso para la toolchain al job de build de `.github/workflows/relevo-go.yml`, protegido por el nombre del stack, para que un issue de otra plataforma no lo instale:
+
+   ```yaml
+   - if: needs.decide.outputs.stack == 'go'
+     uses: actions/setup-go@v5
+     with:
+       go-version-file: ${{ needs.decide.outputs.path }}/go.mod
+   ```
+
+   Instala las dependencias como prefiera tu proyecto, desde `needs.decide.outputs.path`.
+
+`/relevo:doctor` avisa cuando el perfil de un stack así no tiene `analyze` o no tiene `test`, y cuando el workflow de go no tiene un paso protegido por el nombre del stack (no avisa para un stack cuyas herramientas son solo `node` y `npm`, porque el job ya instala Node). También avisa mientras el archivo no está en git.
 
 ## Skills extra por rol
 

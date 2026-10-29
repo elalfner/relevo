@@ -87,7 +87,7 @@ This section follows the Supabase documentation (local development workflow and 
 |---|---|---|
 | 1 | `CLAUDE.md`, or several files in `qa.rules_from` | The conventions of your project. This is the most common one. |
 | 2 | `platforms.<name>.checks` in `relevo.yml` | Another command for a check, for example `fvm flutter test`. |
-| 3 | `.relevo/stacks/<stack>.md` | More hygiene, tools or skills for a stack. It adds to the plugin's profile and never replaces it. A stack the plugin does not ship is defined only by this file. |
+| 3 | `.relevo/stacks/<stack>.md` | More hygiene, tools or skills for a stack. It adds to the plugin's profile and never replaces it. A stack the plugin does not ship is defined only by this file ([how](#your-own-stack)). |
 
 `/relevo:init` can create a commented file for the third layer and leaves it for you to commit. Commit it: the cloud run and your teammates read it from git, so a file that stays only on your machine applies only there. `/relevo:doctor` shows which layers each platform uses, and warns while that file is not tracked by git.
 
@@ -110,6 +110,51 @@ review:
 - `serve` is started only with `review.autopilot` `precheck` or `verify`, after you confirmed that the data is not production, on a free port of `localhost`, through the script that records and stops it. Its `url` must be on `localhost`, `127.0.0.1` or `[::1]`, and the command is read only from this file on the base branch, never from an issue or a comment.
 - The section `## Review` is free text for the agent, read only in a review. It can add steps and ask for more evidence. It cannot change that you confirm every line, that the log is audited, that `decide` gates the pull request, that environment files are never read, that no waiver is suggested or that no code is patched in a review: `/relevo:doctor` warns about a line that asks for one of them, and the review ignores it.
 - A Laravel review has no device and no browser. With `review.autopilot` `off` you run the project's tests and tell the review (`ran <exit code>`); with `precheck` or `verify` the agent runs the existing test of each line and never writes one. A test run that passes writes nothing to `storage/logs`, so the recorded run, and not the log, is what shows that the code was exercised.
+
+## Your own stack
+
+Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any other stack (Go, Python, Rust...) you write the profile yourself, and the file is the whole profile:
+
+1. Set `stack: go` (or the name you want) on the platform in `relevo.yml`. `/relevo:init` then proposes `.relevo/stacks/go.md` on its own, with the commands commented out; you can also create it by hand.
+2. Write the commands QA runs, from the folder of the platform. `analyze` and `test` must not rewrite your code; only `format` may:
+
+   ```markdown
+   ---
+   stack: go
+   commands:
+     analyze: go vet ./...
+     test: go test ./...
+     format: gofmt -w .
+   generated: ['**/*.pb.go']
+   tools: [go]
+   ---
+
+   # Go
+
+   ## Hygiene for the developer
+
+   - Return errors; do not discard them with `_`. Wrap them with `%w`.
+   - Close what you open (`defer`), and pass a `context.Context` to what can block.
+
+   ## What the auditor looks for in the diff
+
+   - An ignored error, a goroutine with no way to stop, a shared map written without a lock.
+   ```
+
+   This is an example: adjust the commands to your project. A command is replaced later, without touching the file, with `platforms.<name>.checks` in `relevo.yml` (`analyze`, `test` and `format` are always accepted there).
+3. Commit the file. The cloud run and your teammates read it from git; without it they have no profile for the stack.
+4. If the cloud builds, add a step for the toolchain to the build job of `.github/workflows/relevo-go.yml`, guarded by the name of the stack, so an issue for another platform does not install it:
+
+   ```yaml
+   - if: needs.decide.outputs.stack == 'go'
+     uses: actions/setup-go@v5
+     with:
+       go-version-file: ${{ needs.decide.outputs.path }}/go.mod
+   ```
+
+   Install the dependencies in the way your project prefers, from `needs.decide.outputs.path`.
+
+`/relevo:doctor` warns when the profile of such a stack has no `analyze` or no `test`, and when the go workflow has no step guarded by the name of the stack (it does not warn for a stack whose tools are only `node` and `npm`, because the job already installs Node). It also warns while the file is not tracked by git.
 
 ## Extra skills per role
 
