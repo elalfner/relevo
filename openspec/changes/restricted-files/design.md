@@ -81,6 +81,14 @@ Level 1 needs no setting: it is a property of the worktree plus a check that fai
 - [A false positive on a name such as `key.json` that is not a secret] → the extension in `relevo.yml` only adds, so a project that finds the base too wide reports it; the base list stays conservative and the exception is by explicit name (`.env.example`), not by pattern.
 - [Content already in a transcript or a log] → out of scope; the page lists it as not covered.
 
+## Results of the cloud run (sandbox repository, `c1bb814` of `dev`)
+
+- A restricted file in the diff: an issue asking for `.env.production` ended in `qa-failed` with "restricted file in the diff", the branch was not pushed and no pull request was opened (7 turns).
+- The `settings` input was applied on the runner: "Merged settings with input settings" and "Settings saved successfully", with the `Read(**/.env)`-style rules and the `denyRead` entries as rendered.
+- With the sandbox not enabled, a normal build of an issue that mentions `.env` ran to `built` (15 turns): `git`, `gh` and the Flutter toolchain worked.
+- Not shown: a refused `Read` of `.env` (the agent wrote code that reads the file at run time and never opened it; `permission_denials_count` was 0), and the sandbox enabled on Linux. Both are task 8.4.
+- Two gates of the queue stopped the first launches without cost (no milestone, no assignee); they are about the test issues, not the change.
+
 ## Migration Plan
 
 Nothing to migrate for a repository that does not use the new key. A repository whose base branch has a versioned restricted file starts to fail its runs with a clear reason; the message names the path and says to remove it and rotate the secret. `doctor` reports it first, so the person sees it before a run. Rollback is a revert of the change: no data format changes.
