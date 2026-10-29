@@ -283,6 +283,7 @@ test('init reminds about the read-only secret by name only, and only when there 
   assert.equal(asked.status, 'manual');
   assert.match(asked.description, /RELEVO_LINKS_TOKEN/);
   assert.match(asked.description, /init never reads or writes it/);
+  assert.match(asked.description, /read access to issues, pull requests and contents/);
   assert.doesNotMatch(asked.description, /ghp_|github_pat_/);
   const done = planInit({ facts: { ...facts, secrets: ['RELEVO_LINKS_TOKEN'] }, answers: { ...ANSWERS, links: ['acme/api'] }, templates, current: empty(), admin: true }).find((i) => i.id === 'manual.links-token');
   assert.equal(done.status, 'ok');

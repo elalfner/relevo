@@ -154,13 +154,16 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/issue-hash.mjs --repo <owner/name> --issue <i
 
 If it exits 1, the text was edited after `ready`: take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`, and save its body to a file outside the working tree (call it `<issue_file>`): the sections are copied from it by a script, never retyped.
 
-**Design reference.** If the issue has a `## Design reference` section (`issue-sections.mjs --body-file <issue_file> --list` names its sections), fetch what it points to before you write anything. The script reads the references from the issue itself, downloads pasted attachments only when `design.images` is on, and leaves them in `.relevo-design/`, which git ignores:
+**References.** If the issue has a `## Design reference` section, or a `## Code pointers` bullet that names a file of another repository as `owner/repo:path` (`issue-sections.mjs --body-file <issue_file> --list` names its sections), get what they point to before you write anything.
+
+- **In the cloud** the environment variable `RELEVO_REFERENCES` is set: a step before you already fetched them, with a token you do not have. Do not run the fetcher again. Read the manifest at that path; if the file does not exist, the issue had nothing to fetch.
+- **Otherwise** (a local run) fetch them yourself. The script reads the references from the issue itself, downloads pasted attachments only when `design.images` is on, and leaves them in `.relevo-design/`, which git ignores:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/design-fetch.mjs --issue <issue> --repo <owner/name>
 ```
 
-If it exits 1 it prints each reference it refused and why. That is a defect in the specification, not something to work around: take the `needs-spec` path described below with `reason` `missing`, naming each refused reference and its reason in `missing`, and stop without pushing. If it exits 0, `.relevo-design/manifest.json` says where each file is; give its path to `relevo:dev` and `relevo:qa`.
+If it exits 1 it prints each reference it refused and why; in the cloud the manifest lists them under `refused`. A refused reference is a defect in the specification, not something to work around: take the `needs-spec` path described below with `reason` `missing`, and stop without pushing. In `missing`, name each refused reference and copy its reason word for word, in English, without rewording or translating it: it names the repository, GitHub's answer and the secret to check, which the person searches for. Otherwise `.relevo-design/manifest.json` says where each file is and which section it came from (`section`: `design` or `code-pointer`); give its path to `relevo:dev` and `relevo:qa`.
 
 Write the change specification from the issue, with the OpenSpec command line, without the pauses of the interactive `propose` workflow (it asks questions and stops after planning; you must not). The issue is the source of truth.
 
@@ -180,7 +183,7 @@ What to write:
   ```
 
   Each section lands under `## From the issue: <Section>`; one the issue does not have is left out. The decisions (`D1`...) and constraints (`C1`...) are binding for the developer and for QA. Do not edit, summarise or reorder what the script wrote. The `Outcome` and `Out of scope` sections feed `proposal.md` as they are, and the `Related:` line is only information.
-- **A scenario per design reference.** For every bullet of the `Design reference` section, add a scenario to the specification: `#### Scenario: Matches the reference <name>` with `WHEN the screen is shown` and `THEN it matches <the reference> in <what the bullet says must match>`. These become lines of the review checklist that the person confirms by looking at their screen, and QA checks them. Write nothing for example code that has no bullet.
+- **A scenario per design reference.** For every bullet of the `Design reference` section (the manifest entries with `section` `design`), add a scenario to the specification: `#### Scenario: Matches the reference <name>` with `WHEN the screen is shown` and `THEN it matches <the reference> in <what the bullet says must match>`. These become lines of the review checklist that the person confirms by looking at their screen, and QA checks them. Write nothing for example code that has no bullet, and no scenario for a code pointer: it is a hint, not something to match.
 - **Documentation.** If the issue has a `## Documentation` section, copy it word for word into `design.md` under the heading `Documentation from the issue` (it is the only place the developer and QA can read it), and add one task to `tasks.md`: write that documentation exactly as given. Add no other documentation. If the issue has no such section, add no documentation task.
 
 If the issue has an `Open questions` section with content, or the text `NEEDS CLARIFICATION`, it is ambiguous by its own words: the planner sends such an issue back before a build starts, but if you meet one here (a hand-run) take the same path below.

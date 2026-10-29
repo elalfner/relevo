@@ -98,33 +98,63 @@ export async function downloadAttachment(url, { fetch, token = null, max = IMAGE
   return { ok: false, reason: `more than ${HOPS_MAX} redirects` };
 }
 
-/** One file of a linked repository, read through `gh api` (injected). Returns { ok, buf, type } or { ok: false, reason }. */
-export async function fetchRepoFile({ repo, path }, { gh, max = TEXT_MAX } = {}) {
+/** GitHub's own words from a failed `gh` call: its error line when there is one, else the first line of the message. */
+function ghMessage(error) {
+  const stderr = String(error?.stderr ?? '').trim();
+  const line = stderr.split('\n').find((l) => l.trim() !== '');
+  return (line ?? String(error?.message ?? error).split('\n')[0]).trim();
+}
+
+/**
+ * Why a linked repository could not be read, in terms the person can act on. A 404 or 403 names what reads it:
+ * the RELEVO_LINKS_TOKEN secret, the cloud without it, or the person's own `gh` login.
+ */
+export function unreadableReason(repo, error, { linksToken = false, cloud = false } = {}) {
+  const text = `${String(error?.stderr ?? '')}\n${String(error?.message ?? error)}`;
+  const code = text.match(/HTTP (\d{3})/)?.[1];
+  if (code !== '404' && code !== '403') return `${repo} could not be read: ${ghMessage(error)}`;
+  if (linksToken) return `the RELEVO_LINKS_TOKEN secret cannot read ${repo} (GitHub answered ${code}): give it read access to the contents of ${repo}`;
+  if (cloud) return `${repo} could not be read without a token (GitHub answered ${code}): if it is private, store a token with read access to its contents as the secret RELEVO_LINKS_TOKEN`;
+  return `your gh login cannot read ${repo} (GitHub answered ${code})`;
+}
+
+/**
+ * One file of a linked repository. The metadata comes first (`gh`, injected), so a directory or a file over the image
+ * limit is refused without downloading it; then the raw bytes (`ghRaw`, injected, returns a Buffer). The bytes decide
+ * what it is: an image up to IMAGE_MAX, else UTF-8 text up to TEXT_MAX. Returns { ok, buf, type } or { ok: false, reason }.
+ */
+export async function fetchRepoFile({ repo, path }, { gh, ghRaw, linksToken = false, cloud = false } = {}) {
+  const endpoint = `repos/${repo}/contents/${path}`;
   let info;
+  let buf;
   try {
-    info = JSON.parse(gh(['api', `repos/${repo}/contents/${path}`]));
+    info = JSON.parse(gh(['api', endpoint]));
+    if (Array.isArray(info) || info.type !== 'file') return { ok: false, reason: `${path} is not a file` };
+    if (info.size > IMAGE_MAX) return { ok: false, reason: `the file is larger than ${Math.round(IMAGE_MAX / 1024 / 1024)} MB` };
+    buf = Buffer.from(ghRaw(['api', '-H', 'Accept: application/vnd.github.raw', endpoint]));
   } catch (error) {
-    return { ok: false, reason: `${repo} could not be read: ${String(error?.message ?? error).split('\n')[0]}` };
+    return { ok: false, reason: unreadableReason(repo, error, { linksToken, cloud }) };
   }
-  if (Array.isArray(info) || info.type !== 'file') return { ok: false, reason: `${path} is not a file` };
-  if (info.size > max) return { ok: false, reason: `the file is larger than ${Math.round(max / 1024)} KB` };
-  if (info.encoding !== 'base64' || typeof info.content !== 'string') return { ok: false, reason: 'the file could not be read' };
-  const buf = Buffer.from(info.content, 'base64');
-  if (buf.length > max) return { ok: false, reason: `the file is larger than ${Math.round(max / 1024)} KB` };
-  if (!isText(buf)) return { ok: false, reason: 'the file is not text' };
+  const image = sniffImage(buf);
+  if (image) {
+    if (buf.length > IMAGE_MAX) return { ok: false, reason: `the file is larger than ${Math.round(IMAGE_MAX / 1024 / 1024)} MB` };
+    return { ok: true, buf, type: image };
+  }
+  if (!isText(buf)) return { ok: false, reason: 'the file is neither a PNG, JPEG, GIF or WebP image nor text' };
+  if (buf.length > TEXT_MAX) return { ok: false, reason: `the file is larger than ${Math.round(TEXT_MAX / 1024)} KB` };
   return { ok: true, buf, type: 'text' };
 }
 
 /**
  * The references of an issue (from parseDesign) turned into files.
- *   references  [{ kind, target, repo?, path?, allowed?, match }]
+ *   references  [{ kind, target, repo?, path?, allowed?, match, section? }] (section: 'design' or 'code-pointer')
  *   images      design.images
  *   links       the linked repositories
  *   exists      (path) => boolean, for the references to files of the repository
  * Returns { files: [{ reference, kind, buf?, type }], refused: [{ reference, reason }] }.
  * A `path` reference needs no download: it is checked and the builder reads it where it is.
  */
-export async function fetchReferences({ references, images = false, links = [], exists, fetch, gh, token = null }) {
+export async function fetchReferences({ references, images = false, links = [], exists, fetch, gh, ghRaw, token = null, linksToken = false, cloud = false }) {
   const files = [];
   const refused = [];
   for (const ref of references) {
@@ -146,8 +176,8 @@ export async function fetchReferences({ references, images = false, links = [], 
     } else if (ref.kind === 'repo-file') {
       if (!links.includes(ref.repo)) refused.push({ reference: ref.target, reason: `${ref.repo} is not in links of relevo.yml` });
       else {
-        const r = await fetchRepoFile(ref, { gh });
-        if (r.ok) files.push({ reference: ref.target, kind: 'repo-file', buf: r.buf, type: r.type, path: ref.path });
+        const r = await fetchRepoFile(ref, { gh, ghRaw, linksToken, cloud });
+        if (r.ok) files.push({ reference: ref.target, kind: 'repo-file', buf: r.buf, type: r.type, path: ref.path, ...(ref.section ? { section: ref.section } : {}) });
         else refused.push({ reference: ref.target, reason: r.reason });
       }
     }

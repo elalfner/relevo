@@ -199,11 +199,18 @@ test('the guarded examples name only stacks the plugin ships or documents, and t
 test('Scenario: Private linked repository - the gate step of go and the queue step map the read-only secret, and nothing else does', () => {
   const queue = readFileSync(`${root}templates/workflows/relevo-queue.yml`, 'utf8');
   const mapping = /GH_LINKS_TOKEN: \$\{\{ secrets\.RELEVO_LINKS_TOKEN \}\}/g;
-  assert.equal((workflow.match(mapping) ?? []).length, 1, 'go maps it once');
+  assert.equal((workflow.match(mapping) ?? []).length, 2, 'go maps it twice: the gate and the fetch step');
   assert.equal((queue.match(mapping) ?? []).length, 1, 'the queue maps it once');
-  // In go it belongs to the `decide` job, which only reads and comments; the build job never sees it.
+  // In go it belongs to the `decide` job, which only reads and comments, and to the one step of the build that fetches
+  // the references before the agent. The agent step never sees it.
   assert.match(jobText('decide'), mapping);
-  assert.doesNotMatch(jobText('build'), /RELEVO_LINKS_TOKEN|GH_LINKS_TOKEN/);
+  const build = jobText('build');
+  assert.equal((build.match(mapping) ?? []).length, 1, 'the build maps it once');
+  const fetch = build.slice(build.indexOf('- name: Fetch the references of the issue'), build.indexOf('# relevo:agent-step begin'));
+  assert.match(fetch, mapping, 'in the fetch step');
+  const agent = build.slice(build.indexOf('# relevo:agent-step begin'), build.indexOf('# relevo:agent-step end'));
+  assert.doesNotMatch(agent, /RELEVO_LINKS_TOKEN|GH_LINKS_TOKEN/);
+  assert.doesNotMatch(build.slice(build.indexOf('# relevo:agent-step end')), /RELEVO_LINKS_TOKEN|GH_LINKS_TOKEN/, 'nor any step after it');
   // The token that can push stays the default one.
   assert.doesNotMatch(workflow, /github_token: \$\{\{ secrets\.RELEVO_LINKS_TOKEN/);
   assert.match(workflow, /never to write/);
@@ -272,7 +279,7 @@ test('Scenario: A runner without the toolchain - the check stops the job before 
 
 test('the toolchain check names the guard of the scripts it runs, and runs nothing for a pass', () => {
   const text = workflow.slice(workflow.indexOf('name: Check the toolchain'), workflow.indexOf('      # One comment on the issue shows'));
-  assert.match(text, /for f in scripts\/toolchain-check\.mjs scripts\/render-message\.mjs \.claude-plugin\/plugin\.json; do/);
+  assert.match(text, /for f in scripts\/toolchain-check\.mjs scripts\/render-message\.mjs scripts\/design-fetch\.mjs \.claude-plugin\/plugin\.json; do/);
   assert.match(text, /lacks \$f/);
   assert.match(text, /if result=\$\(node [^\n]*\); then\n\s+exit 0\n\s+fi/, 'a complete toolchain passes silently');
 });
@@ -298,4 +305,17 @@ test('Scenario: The package has no manifest - the run stops before the agent and
   assert.ok(loop, 'a guard that names the missing file');
   assert.ok(loop[1].split(/\s+/).includes('.claude-plugin/plugin.json'));
   assert.ok(workflow.indexOf('name: Check the toolchain') < workflow.indexOf('# relevo:agent-step begin'), 'the guard is before the agent');
+});
+
+test('Scenario: Private linked repository in the cloud - the references are fetched by a step before the agent, which reads the manifest', () => {
+  const build = jobText('build');
+  const step = build.indexOf('- name: Fetch the references of the issue');
+  assert.ok(step > build.indexOf('name: Check the toolchain'), 'after the package is unpacked');
+  assert.ok(step < build.indexOf('# relevo:agent-step begin'), 'before the agent');
+  const text = build.slice(step, build.indexOf('# relevo:agent-step begin'));
+  assert.match(text, /node "\$RUNNER_TEMP\/relevo\/scripts\/design-fetch\.mjs" --issue "\$ISSUE" --repo "\$GITHUB_REPOSITORY" \|\| code=\$\?/);
+  assert.match(text, /\[ "\$code" -le 1 \] \|\| exit "\$code"/, 'a refused reference is not a failure; anything else is');
+  assert.match(text, /echo "RELEVO_REFERENCES=\$GITHUB_WORKSPACE\/\.relevo-design\/manifest\.json" >> "\$GITHUB_ENV"/);
+  assert.match(text, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(build, /RELEVO_LINKS_TOKEN: a read-only token \(issues, pull requests and contents\)[^]*never reaches the agent/);
 });

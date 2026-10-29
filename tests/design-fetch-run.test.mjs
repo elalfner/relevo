@@ -8,21 +8,38 @@ import { join } from 'node:path';
 const CLI = new URL('../scripts/design-fetch.mjs', import.meta.url).pathname;
 const ISSUE = 'https://github.com/user-attachments/assets/0a1b2c3d-1111-2222-3333-444455556666';
 
-/** A repository with relevo.yml, a picture, and a fake `gh` that answers the contents API of a linked repository. */
-function repo({ config = '', body }) {
+const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBP'), Buffer.alloc(32, 4)]);
+
+/**
+ * A repository with relevo.yml, a picture, and a fake `gh` that answers the contents API of linked repositories from
+ * `remote/<owner>/<repo>/contents/<path>`: the metadata, or the raw bytes when the raw media type is asked for.
+ */
+function repo({ config = '', body, env = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-df-'));
   execFileSync('git', ['init', '-q'], { cwd: dir });
   writeFileSync(join(dir, 'relevo.yml'), `limits:\n  run_max_cost: 5\n${config}`);
   mkdirSync(join(dir, 'design'));
   writeFileSync(join(dir, 'design', 'home.png'), 'x');
   writeFileSync(join(dir, 'issue.md'), body);
+  const remote = (path, content) => {
+    mkdirSync(join(dir, 'remote', path, '..'), { recursive: true });
+    writeFileSync(join(dir, 'remote', path), content);
+  };
+  remote('acme/design/contents/components/Card.vue', '<template><div class="card"/></template>');
+  remote('acme/design/contents/screens/home.webp', WEBP);
   const bin = join(dir, 'bin');
   mkdirSync(bin);
-  const text = '<template><div class="card"/></template>';
-  writeFileSync(join(bin, 'gh'), `#!/bin/sh\necho '{"type":"file","size":${text.length},"encoding":"base64","content":"${Buffer.from(text).toString('base64')}"}'\n`);
+  writeFileSync(join(bin, 'gh'), [
+    '#!/bin/sh',
+    'for a; do last="$a"; done',
+    `f="${join(dir, 'remote')}/\${last#repos/}"`,
+    '[ -f "$f" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }',
+    'case "$*" in *vnd.github.raw*) cat "$f" ;; *) printf \'{"type":"file","size":%s}\\n\' "$(wc -c < "$f" | tr -d \' \')" ;; esac',
+    '',
+  ].join('\n'));
   chmodSync(join(bin, 'gh'), 0o755);
   const run = (...args) => spawnSync('node', [CLI, '--body-file', join(dir, 'issue.md'), '--repo-root', dir, '--config', join(dir, 'relevo.yml'), '--out', join(dir, '.relevo-design'), ...args], {
-    encoding: 'utf8', cwd: dir, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    encoding: 'utf8', cwd: dir, env: { ...process.env, GH_LINKS_TOKEN: '', GITHUB_ACTIONS: '', ...env, PATH: `${bin}:${process.env.PATH}` },
   });
   return { dir, run, manifest: () => JSON.parse(readFileSync(join(dir, '.relevo-design', 'manifest.json'), 'utf8')) };
 }
@@ -31,7 +48,26 @@ const section = (refs) => `## Summary\n\nx\n\n## Design reference\n\n${refs}\n`;
 test('an issue without the section needs nothing', () => {
   const r = repo({ body: '## Summary\n\nx\n' }).run();
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /no Design reference/);
+  assert.match(r.stdout, /no references to fetch/);
+});
+
+test('an issue with only local code pointers fetches nothing', () => {
+  const t = repo({ body: '## Summary\n\nx\n\n## Code pointers\n\n- `src/app.ts`: the entry point\n- the cart lives in memory\n' });
+  const r = t.run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /no references to fetch/);
+  assert.equal(existsSync(join(t.dir, '.relevo-design')), false);
+});
+
+test('Scenario: Linked code pointer - a linked pointer is fetched beside the design references, each with its section', () => {
+  const body = `${section('- `design/home.png`: the layout')}\n## Code pointers\n\n- \`acme/design:components/Card.vue\`: how the card is built\n- \`src/app.ts\`: local\n`;
+  const t = repo({ config: 'links: [acme/design]\n', body });
+  const r = t.run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(t.manifest().files.map((f) => [f.section, f.kind, f.reference]), [
+    ['design', 'path', 'design/home.png'],
+    ['code-pointer', 'repo-file', 'acme/design:components/Card.vue'],
+  ]);
 });
 
 test('Scenario: Reference in the repository - a file that exists is available where it is, nothing is copied', () => {
@@ -73,6 +109,22 @@ test('a file of a linked repository is read through gh and saved apart from the 
   assert.equal(entry.kind, 'repo-file');
   assert.equal(readFileSync(entry.file, 'utf8'), '<template><div class="card"/></template>');
   assert.match(entry.file, /01-Card\.vue$/);
+});
+
+test('Scenario: Image of a linked repository - a WebP lands in the folder as an image, with design.images off', () => {
+  const t = repo({ config: 'links: [acme/design]\n', body: section('- `acme/design:screens/home.webp`: the layout') });
+  const r = t.run();
+  assert.equal(r.status, 0, r.stderr);
+  const entry = t.manifest().files[0];
+  assert.deepEqual([entry.kind, entry.type, entry.bytes], ['repo-file', 'webp', WEBP.length]);
+  assert.ok(readFileSync(entry.file).equals(WEBP));
+});
+
+test('an unreadable linked file says which secret cannot read it', () => {
+  const t = repo({ config: 'links: [acme/private]\n', body: section('- `acme/private:home.webp`: the layout'), env: { GH_LINKS_TOKEN: 'read-token', GITHUB_ACTIONS: 'true' } });
+  const r = t.run();
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /refused: acme\/private:home\.webp: the RELEVO_LINKS_TOKEN secret cannot read acme\/private \(GitHub answered 404\)/);
 });
 
 test('a repository that is not linked is refused', () => {

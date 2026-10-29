@@ -119,13 +119,14 @@ Discarded: sort by date (nobody asked for it).
 ```
 
 - A decision is `### D<number>. <title>`, a constraint is `- C<number>: <limit>`. Ids are not repeated.
+- A code pointer to a file of another repository is written `owner/repo:path` in backticks, and the repository must be in `links` of `relevo.yml`. `go` fetches it for the builder, who reads it as a hint to check, like any pointer. It counts towards the five references of the next section. Write the process it follows in `Decisions` and `Constraints`; the pointer only names the files the builder must see.
 - **`Open questions` blocks the build.** An issue that has a question there, or the text `NEEDS CLARIFICATION` anywhere, fails the check and goes back to its writer as ambiguous. Answer the question and delete the section.
 - `Related: #14, #15` lists issues of the same idea. It only informs; `Depends-on:` is what blocks.
 - A body of more than about 8,000 characters passes with a warning: shorter, well delimited issues build better.
 
 ### 8. Design reference (optional)
 
-When the screen has to look like something, point to it. One bullet per reference, at most five, each saying after the colon what must match (structure, spacing, typography, colour, states):
+When the screen has to look like something, point to it. One bullet per reference, at most five together with the code pointers of other repositories, each saying after the colon what must match (structure, spacing, typography, colour, states):
 
 ```markdown
 ## Design reference
@@ -136,7 +137,7 @@ When the screen has to look like something, point to it. One bullet per referenc
 ```
 
 - A file of this repository is written in backticks and must exist; it is always available to the builder.
-- A file of another repository is written `owner/repo:path`, and the repository must be in `links` of `relevo.yml`.
+- A file of another repository is written `owner/repo:path`, and the repository must be in `links` of `relevo.yml`. It may be text up to 200 KB or a PNG, JPEG, GIF or WebP image up to 5 MB, and it does not depend on `design.images`: it was committed on purpose. A private repository is read in the cloud with the secret `RELEVO_LINKS_TOKEN`, which needs read access to its contents.
 - A picture is pasted into the issue from its web page (GitHub has no way to attach one from a tool) and GitHub writes the link. It is downloaded and shown to the model only when `design.images` is `true` in `relevo.yml`, because a screenshot can show customer data. Otherwise commit the picture to the repository and point to the file.
 - Example code goes in a fenced block in the same section.
 - `go` copies the section to the design, adds a scenario "Matches the reference <name>" for each bullet, and QA checks the code against it. In the review that scenario is a line you confirm by looking at your screen. If a reference cannot be fetched, the issue goes back to its writer saying which one.

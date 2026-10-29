@@ -2,7 +2,8 @@
 // Fetches the design references of an issue so the builder can read them. Usage:
 //   node scripts/design-fetch.mjs --issue 42 [--repo owner/name] [--out .relevo-design] [--config relevo.yml] [--repo-root .]
 //   node scripts/design-fetch.mjs --body-file issue.md ...      (the body from a file instead of GitHub, for tests)
-// The references come only from the issue. Pasted attachments are downloaded only when design.images is true; files of
+// The references come only from the issue: the bullets of "Design reference" and the bullets of "Code pointers" that
+// name a file of a linked repository. Pasted attachments are downloaded only when design.images is true; files of
 // linked repositories are read through `gh api`. Downloads go to <out> (default .relevo-design), which is added to
 // .git/info/exclude so it is never committed, with a manifest.json. The files of this repository are not copied.
 //   exit 0: every reference is available   exit 1: some reference was refused (the reasons are printed)   exit 2: bad arguments
@@ -12,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } fr
 import { join, resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { fetchReferences } from './lib/design-fetch.mjs';
-import { parseDesign } from './lib/issue-parse.mjs';
+import { parseCodePointers, parseDesign } from './lib/issue-parse.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -51,29 +52,44 @@ if (bodyFile) {
 }
 
 const design = parseDesign(body);
-if (!design.present) {
-  console.log('the issue has no Design reference');
+const pointers = parseCodePointers(body);
+if (!design.present && pointers.references.length === 0 && pointers.problems.length === 0) {
+  console.log('the issue has no references to fetch');
   process.exit(0);
 }
 
+// The token for linked repositories replaces GH_TOKEN only in these calls, which read the linked repositories and
+// nothing else. The raw call returns a Buffer, so an image is not decoded as text.
 const linksToken = process.env.GH_LINKS_TOKEN;
-const gh = (args) => execFileSync('gh', args, { encoding: 'utf8', env: { ...process.env, ...(linksToken ? { GH_TOKEN: linksToken } : {}) } });
+const linksEnv = { ...process.env, ...(linksToken ? { GH_TOKEN: linksToken } : {}) };
+const gh = (args) => execFileSync('gh', args, { encoding: 'utf8', env: linksEnv });
+const ghRaw = (args) => execFileSync('gh', args, { env: linksEnv, maxBuffer: 16 * 1024 * 1024 });
 const result = await fetchReferences({
-  references: design.references,
+  references: [
+    ...design.references.map((r) => ({ ...r, section: 'design' })),
+    ...pointers.references.map((r) => ({ ...r, section: 'code-pointer' })),
+  ],
   images: config.design.images === true,
   links: config.links,
   exists: (path) => existsSync(join(repoRoot, path)),
   fetch: globalThis.fetch,
   gh,
+  ghRaw,
   token: process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? null,
+  linksToken: Boolean(linksToken),
+  cloud: process.env.GITHUB_ACTIONS === 'true',
 });
-const refused = [...design.problems.map((p) => ({ reference: 'Design reference', reason: p })), ...result.refused];
+const refused = [
+  ...design.problems.map((p) => ({ reference: 'Design reference', reason: p })),
+  ...pointers.problems.map((p) => ({ reference: 'Code pointers', reason: p })),
+  ...result.refused,
+];
 
 const EXT = { png: 'png', jpeg: 'jpg', gif: 'gif', webp: 'webp' };
 const manifest = { files: [], refused };
 mkdirSync(out, { recursive: true });
 result.files.forEach((f, i) => {
-  const entry = { reference: f.reference, kind: f.kind, type: f.type };
+  const entry = { reference: f.reference, section: f.section ?? 'design', kind: f.kind, type: f.type };
   if (f.kind === 'path') {
     entry.file = f.path;
   } else {

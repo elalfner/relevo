@@ -35,7 +35,16 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
   if (parsed.needsClarification) problems.push('the body contains NEEDS CLARIFICATION: resolve it before the issue can be built');
   parsed.idProblems.forEach((p) => problems.push(p));
   parsed.design.problems.forEach((p) => problems.push(`Design reference: ${p}`));
-  if (parsed.design.references.length > MAX_REFERENCES) problems.push(`Design reference has ${parsed.design.references.length} references; the most Relevo takes is ${MAX_REFERENCES}, so split the issue or keep the ones that matter`);
+  parsed.codePointers.problems.forEach((p) => problems.push(`Code pointers: ${p}`));
+  const pointers = parsed.codePointers.references.length;
+  const total = parsed.design.references.length + pointers;
+  if (total > MAX_REFERENCES) {
+    const counted = pointers > 0 ? `Design reference and the linked Code pointers have ${total} references together` : `Design reference has ${total} references`;
+    problems.push(`${counted}; the most Relevo takes is ${MAX_REFERENCES}, so split the issue or keep the ones that matter`);
+  }
+  parsed.codePointers.references.forEach((ref) => {
+    if (!links.includes(ref.repo)) problems.push(`Code pointers: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
+  });
   parsed.design.references.forEach((ref) => {
     if (ref.kind === 'path' && repoRoot && !existsSync(join(repoRoot, ref.path))) problems.push(`Design reference: "${ref.target}" does not exist in the repository`);
     if (ref.kind === 'repo-file' && !links.includes(ref.repo)) problems.push(`Design reference: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
