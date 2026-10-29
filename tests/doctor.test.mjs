@@ -401,9 +401,11 @@ test('a plugin_marketplaces URL that carries a credential is not reported as unr
   assert.equal(byId(runChecks({ ...healthy(), ...f, config: healthy().config }), 'automation.plugin-clone'), undefined);
 });
 
-function probes({ localFiles, remote, files = {} }) {
+function probes({ localFiles, remote, files = {}, defaultBranch = 'main', configs = {}, calls = [] }) {
   const api = {
-    'repos/o/r': { default_branch: 'main' },
+    'repos/o/r': { default_branch: defaultBranch },
+    // relevo.yml on each branch: a text, or an Error to throw for that read.
+    ...Object.fromEntries(Object.entries(configs).map(([b, t]) => [`repos/o/r/contents/relevo.yml?ref=${b}`, t instanceof Error ? t : { content: Buffer.from(t).toString('base64') }])),
     'repos/o/r/contents/.github/workflows?ref=main': remote === null ? null : Object.keys(remote).map((name) => ({ name })),
     ...Object.fromEntries(Object.entries(remote ?? {}).map(([n, t]) => [`repos/o/r/contents/.github/workflows/${n}?ref=main`, { content: Buffer.from(t).toString('base64') }])),
     'repos/o/relevo': { private: true },
@@ -413,12 +415,58 @@ function probes({ localFiles, remote, files = {} }) {
     tool: () => 'ok',
     gh: (args) => {
       const path = args[args.length - 1];
+      calls.push(path);
       if (!(path in api) || api[path] === null) throw new Error(`HTTP 404 ${path}`);
+      if (api[path] instanceof Error) throw api[path];
       return JSON.stringify(api[path]);
     },
     exists: (p) => p in all, read: (p) => all[p], listDir: () => Object.keys(localFiles), skillDirs: [], repo: 'o/r',
   };
 }
+const BASE_CONFIG = '# the base branch\nbranches:\n  base: dev\nlimits:\n  run_max_turns: 100\n';
+
+test('Scenario: Only a comment differs - the copies on the default and the base branch give the same settings', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG, main: 'branches:\n    base: dev   # promoted\nlimits:\n    run_max_turns: 100\n' } }));
+  assert.deepEqual(f.configOnBranches, { defaultBranch: 'main', base: 'dev', same: true, missingOnDefault: false });
+});
+
+test('Scenario: A limit changed only on the base branch - the copies differ', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG, main: BASE_CONFIG.replace('100', '60') } }));
+  assert.deepEqual(f.configOnBranches, { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: false });
+});
+
+test('Scenario: No configuration on the default branch - a missing file is reported as missing', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG } }));
+  assert.deepEqual(f.configOnBranches, { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: true });
+});
+
+test('Scenario: A branch cannot be read - nothing to compare', () => {
+  assert.equal(gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG, main: new Error('HTTP 502 Bad Gateway') } })).configOnBranches, null);
+  assert.equal(gatherFacts(probes({ localFiles: {}, remote: {}, configs: { main: BASE_CONFIG } })).configOnBranches, null);
+});
+
+test('Scenario: The base branch is the default branch - no comparison and no read of relevo.yml', () => {
+  const calls = [];
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, defaultBranch: 'dev', configs: { dev: BASE_CONFIG }, calls }));
+  assert.equal(f.configOnBranches, null);
+  assert.deepEqual(calls.filter((c) => c.includes('contents/relevo.yml')), []);
+});
+
+test('the comparison of relevo.yml between branches: nothing without the fact, a pass when the same, a warning with the fix otherwise', () => {
+  assert.equal(byId(runChecks(healthy()), 'repo.config-default-branch'), undefined);
+  const check = (over) => byId(runChecks(healthy({ configOnBranches: { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: false, ...over } })), 'repo.config-default-branch');
+  assert.equal(check({ same: true }).status, 'pass');
+  const differs = check({});
+  assert.equal(differs.status, 'warn');
+  assert.match(differs.message, /the cloud reads relevo\.yml from the default branch main, and it differs from the one on dev/);
+  assert.equal(differs.fix, 'promote dev to main through a pull request, or make dev the default branch');
+  const missing = check({ missingOnDefault: true });
+  assert.equal(missing.status, 'warn');
+  assert.match(missing.message, /main, which has none while dev has one/);
+  assert.equal(missing.fix, differs.fix);
+  assert.equal(exitCode(runChecks(healthy({ configOnBranches: { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: false } }))), 0);
+});
+
 const CHECKOUT = (token) => `      - uses: actions/checkout@v4\n        with:\n          repository: o/relevo\n          ref: main\n          path: .relevo-plugin\n${token ? '          token: ${{ secrets.RELEVO_PLUGIN_TOKEN }}\n' : ''}\n`;
 
 test('Scenario: Workflow fixed only in the working copy - doctor judges what is on the default branch, not the local file (the old layout is judged by the checkout)', () => {

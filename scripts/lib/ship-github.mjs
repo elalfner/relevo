@@ -36,7 +36,6 @@ export function loadPr(gh, repo, branch) {
 }
 
 const errorText = (err) => `${err?.stderr ?? ''}\n${err?.message ?? err}`;
-const notFound = (err) => /404|Not Found/i.test(errorText(err));
 
 /**
  * True when GitHub refuses a branch-rules call because of the plan or the visibility of the repository (a private
@@ -73,8 +72,10 @@ export function baselineChecks(gh, repo, baseline, head) {
 /**
  * Whether merging into `branch` requires status checks, by a ruleset or by classic branch protection.
  * Returns { required: boolean, contexts: [names] }. A branch without protection requires none, and neither does one
- * whose rules the plan of the repository does not offer. Any other failure to read them is thrown: checks that exist
- * must not be skipped because they could not be read.
+ * whose rules the plan of the repository does not offer (that plan offers no classic protection either, so it is not
+ * read). The classic protection comes from the summary on the branch itself, which the workflow token can read;
+ * `branches/<b>/protection` needs an administration permission that token can never have. Any other failure to read
+ * them is thrown: checks that exist must not be skipped because they could not be read.
  */
 export function requiredChecks(gh, repo, branch) {
   const contexts = new Set();
@@ -87,17 +88,14 @@ export function requiredChecks(gh, repo, branch) {
     });
   } catch (err) {
     if (!planRefusal(err)) throw err;
+    return { required: false, contexts: [] };
   }
-  try {
-    const protection = JSON.parse(gh(['api', `repos/${repo}/branches/${encodeURIComponent(branch)}/protection`]));
-    const classic = protection.required_status_checks;
-    if (classic) {
-      required = true;
-      (classic.contexts ?? []).forEach((c) => contexts.add(c));
-      (classic.checks ?? []).forEach((c) => contexts.add(c.context));
-    }
-  } catch (err) {
-    if (!notFound(err) && !planRefusal(err)) throw err;
+  const summary = JSON.parse(gh(['api', `repos/${repo}/branches/${encodeURIComponent(branch)}`]));
+  const classic = summary.protection?.required_status_checks;
+  if (classic?.enforcement_level && classic.enforcement_level !== 'off') {
+    required = true;
+    (classic.contexts ?? []).forEach((c) => contexts.add(c));
+    (classic.checks ?? []).forEach((c) => contexts.add(c.context));
   }
   return { required, contexts: [...contexts] };
 }

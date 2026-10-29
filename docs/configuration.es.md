@@ -14,7 +14,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 
 | Ajuste | Qué controla | En la plantilla |
 |---|---|---|
-| `branches.base` | rama de integración: los pull requests de las features apuntan a ella | `dev` |
+| `branches.base` | rama de integración: toda rama de construcción sale de ella y su pull request apunta a ella, sea cual sea la rama por defecto del repositorio | `dev` |
 | `branches.release` | rama de publicación, que se promueve desde la base en un pull request aparte | `main` |
 | `links` | repositorios de los que un issue puede depender con `Depends-on: owner/repo#N` (una lista cerrada); uno privado se lee con el secreto de solo lectura `RELEVO_LINKS_TOKEN` | ninguno |
 | `tracker`, `git_provider`, `platforms` | dónde viven los issues y los pull requests, y las plataformas que se construyen ([Stacks y plataformas](stacks.es.md)); la línea anterior `platform: flutter-android` sigue funcionando | `github`, `github`, una plataforma Flutter para Android |

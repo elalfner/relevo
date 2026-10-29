@@ -14,7 +14,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 
 | Setting | What it controls | In the template |
 |---|---|---|
-| `branches.base` | integration branch: feature pull requests target it | `dev` |
+| `branches.base` | integration branch: every build branch starts from it and its pull request targets it, whatever the default branch of the repository is | `dev` |
 | `branches.release` | release branch, promoted from the base in a separate pull request | `main` |
 | `links` | repositories an issue may depend on with `Depends-on: owner/repo#N` (a closed list); a private one is read with the read-only secret `RELEVO_LINKS_TOKEN` | none |
 | `tracker`, `git_provider`, `platforms` | where the issues and pull requests live, and the platforms that are built ([Stacks and platforms](stacks.md)); the older `platform: flutter-android` still works | `github`, `github`, one Flutter platform for Android |

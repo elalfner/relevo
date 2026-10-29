@@ -85,12 +85,18 @@ function setup(opts = {}) {
       const oid = args.find((a) => a.startsWith('oid=')).slice(4);
       return JSON.stringify({ data: { repository: { object: { statusCheckRollup: { contexts: { nodes: rollupOf(oid) } } } } } });
     }
-    if (opts.planRefusal && (args[1] === 'repos/o/r/rules/branches/dev' || args[1] === 'repos/o/r/branches/dev/protection')) {
+    if (opts.planRefusal && args[1] === 'repos/o/r/rules/branches/dev') {
       throw Object.assign(new Error('Command failed'), { stderr: 'gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)' });
     }
     if (opts.rulesError && args[1] === 'repos/o/r/rules/branches/dev') throw Object.assign(new Error('Command failed'), { stderr: opts.rulesError });
     if (args[1] === 'repos/o/r/rules/branches/dev') return JSON.stringify(opts.requiredChecks ? [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'test' }] } }] : []);
-    if (args[1] === 'repos/o/r/branches/dev/protection') throw Object.assign(new Error('HTTP 404'), { stderr: 'HTTP 404: Not Found' });
+    // The workflow token reads the branch, never its admin-only protection endpoint; on a free private repository the
+    // branch is not read at all.
+    if (args[1] === 'repos/o/r/branches/dev' && !opts.planRefusal) {
+      const level = opts.classicChecks ? 'everyone' : 'off';
+      return JSON.stringify({ name: 'dev', protected: !!opts.classicChecks, protection: { enabled: !!opts.classicChecks, required_status_checks: { enforcement_level: level, contexts: opts.classicChecks ?? [], checks: [] } } });
+    }
+    if (args[1]?.startsWith('repos/o/r/branches/dev')) throw Object.assign(new Error('Command failed'), { stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
     if (joined.startsWith('issue comment')) {
       state.comments.push(args[args.indexOf('--body') + 1]);
       return '';
@@ -283,6 +289,14 @@ test('Scenario: Required checks without an App - stops before archiving and name
   assert.equal(out.kind, 'ship_needs_app');
   assert.equal(s.branchHead(), s.approved);
   assert.match(s.state.comments[0], /RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY/);
+});
+
+test('Scenario: Classic protection that requires checks - read with the workflow token, and without an App it stops', async () => {
+  const s = setup({ classicChecks: ['build'] });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.kind, 'ship_needs_app', JSON.stringify(out));
+  assert.equal(s.branchHead(), s.approved, 'nothing was archived');
+  assert.equal(s.state.merged, null);
 });
 
 test('Scenario: Required checks and an App - waits for the checks of the archive commit, then merges', async () => {
