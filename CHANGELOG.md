@@ -19,7 +19,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Changed
 
-- **A plugin installed on a machine no longer counts as the Flutter skills being installed.** The cloud runner reads only what is committed, so `/relevo:doctor` now judges the committed folders, and says that the plugin works on the machine and does not reach the runner. `.agents/skills` counts for Antigravity only. `/relevo:init` no longer offers the plugin of Claude Code; the docs keep it as an optional extra for working locally.
+- **A plugin installed on a machine no longer counts as the Flutter skills being installed.** The cloud runner reads only what is committed, so `/relevo:doctor` now judges the committed folders, and says that the plugin works on the machine and does not reach the runner. `.claude/skills` and `.agents/skills` both count for Claude Code, because `go` hands the agents the path of each skill from either folder, and only `.agents/skills` counts for Antigravity. When the skills of a stack are missing, one note names them all instead of one note per skill. `/relevo:init` no longer offers the plugin of Claude Code; the docs keep it as an optional extra for working locally.
 - **The stacks page tells a required skill from a recommended one,** says that `dev` and `qa` receive the default skills when they are committed, and drops a bullet that appeared twice.
 - **The stop for a stack with no review adapter says what to do next.** It names the adapters that exist, says the issue stays `built`, and says to open the pull request by hand after reading the diff or to ask for an adapter.
 

@@ -182,9 +182,9 @@ export function vueWebFacts(platforms, deps) {
 
 /**
  * Is the default set of a stack's skills committed to the repository, for each coding agent it uses? A skill counts
- * only as a folder in the repository (`.claude/skills` for Claude Code, `.agents/skills` for Antigravity), in the
- * folder of the platform or at the root: a plugin installed on a machine and the home folder do not reach the cloud
- * runner. Returns { stack, claude, plugin, claudeMissing, antigravity, antigravityMissing } (`claude` and `antigravity`
+ * only as a folder in the repository, in the folder of the platform or at the root (`.claude/skills` or `.agents/skills`
+ * for Claude Code, because `go` gives the agents the path from either; `.agents/skills` for Antigravity): a plugin
+ * installed on a machine and the home folder do not reach the cloud runner. Returns { stack, claude, plugin, claudeMissing, antigravity, antigravityMissing } (`claude` and `antigravity`
  * are 'present' or 'missing', `antigravity` is null when the agent is not used, `plugin` says whether the plugin is
  * installed on this machine, or null when `claude` cannot list), or null when no platform has a default set.
  * `platforms` is [{ path, skills }]. Deps: `exists`, `tool`, `repoTop`, `adapters`, `agentBuild`.
@@ -200,17 +200,20 @@ export function recommendedSkillFacts({ stack, platforms, exists, tool, repoTop 
   };
   const targets = (platforms ?? []).filter((e) => e.skills.length > 0).map((e) => ({ path: String(e.path ?? '.').replace(/^\.\//, '').replace(/\/+$/, '') || '.', skills: e.skills }));
   if (targets.length === 0) return null;
-  const missingIn = (agentDir) => targets
+  // The folders an agent reads, in the folder of the platform and then at the root; a skill counts from any of them.
+  const missingIn = (agentDirs) => targets
     .map(({ path, skills }) => {
-      const dirs = path === '.' ? [agentDir] : [`${path}/${agentDir}`, agentDir];
+      const dirs = path === '.' ? agentDirs : [...agentDirs.map((d) => `${path}/${d}`), ...agentDirs];
       return { path, skills: skills.filter((name) => !dirs.some((d) => safe(() => exists(`${d}/${name}`), false))) };
     })
     .filter((m) => m.skills.length > 0);
-  const claudeMissing = missingIn('.claude/skills');
+  // `go` hands the agents the path of each SKILL.md from `.claude/skills` or `.agents/skills`, so both count for Claude Code;
+  // only `.agents/skills` counts for Antigravity.
+  const claudeMissing = missingIn(['.claude/skills', '.agents/skills']);
   const plugins = safe(() => JSON.parse(String(tool('claude', ['plugin', 'list', '--json']))), null);
   const plugin = Array.isArray(plugins) ? plugins.some((e) => e.id === rec.claude.plugin && (e.scope === 'user' || e.projectPath === repoTop)) : null;
   const usesAntigravity = adapters.length > 0 || agentBuild === 'antigravity';
-  const antigravityMissing = usesAntigravity ? missingIn('.agents/skills') : [];
+  const antigravityMissing = usesAntigravity ? missingIn(['.agents/skills']) : [];
   return {
     stack,
     claude: claudeMissing.length === 0 ? 'present' : 'missing',
@@ -799,9 +802,17 @@ function platformChecks(f) {
   });
 
   // A skill the plugin's profile lists and the repository lacks is one note per platform, with its install command, and
-  // never a warning: the profile works without it. What the repository switched off is not missing.
+  // never a warning: the profile works without it. What the repository switched off is not missing. When the note of the
+  // stack (`recommended.<stack>.claude`) already names a missing skill, it is not reported a second time.
+  const norm = (path) => String(path ?? '.').replace(/^\.\//, '').replace(/\/+$/, '') || '.';
+  const namedByStack = (e) => {
+    const rec = f.recommendedSkills;
+    if (!rec || rec.stack !== e.stack || rec.claude !== 'missing') return new Set();
+    return new Set(rec.claudeMissing.filter((m) => norm(m.path) === norm(e.path)).flatMap((m) => m.skills));
+  };
   (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
-    const missing = [...new Set(Object.values(f.roleSkills?.[e.name] ?? {}).flatMap((skills) => skills.filter((s) => s.left_out && s.default && s.reason === 'not on the base branch').map((s) => s.name)))];
+    const covered = namedByStack(e);
+    const missing = [...new Set(Object.values(f.roleSkills?.[e.name] ?? {}).flatMap((skills) => skills.filter((s) => s.left_out && s.default && s.reason === 'not on the base branch').map((s) => s.name)))].filter((name) => !covered.has(name));
     missing.forEach((name) => {
       const command = RECOMMENDED[e.stack] ? recommendedInstallCommand({ stack: e.stack, skills: [name], path: e.path }) : null;
       r.push(note(`skills.default.${e.name}.${name}`, `platform ${e.name}: the plugin lists the skill ${name} for ${e.stack}, and it is not on the base branch, so it is left out${command ? `; install it with ${command}, commit it, or switch it off with skills.disable in .relevo/stacks/${e.stack}.md` : ''}`));
