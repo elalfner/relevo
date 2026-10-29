@@ -7,13 +7,14 @@
 //   prints {"start":[12,15],"summary":{...}}
 //   exit 0: evaluated   exit 2: invalid or missing configuration, or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
 import { planGo } from './lib/plan.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import { ownedByQueue, startable } from './lib/requeue.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

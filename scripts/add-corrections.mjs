@@ -3,8 +3,9 @@
 //   node scripts/add-corrections.mjs openspec/changes/<id>/tasks.md "first task" "second task"
 // Prints {"section":N,"iteration":K,"ids":["N.1",...]}.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { addCorrections } from './lib/tasks-file.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const [file, ...titles] = process.argv.slice(2);
 if (!file || !existsSync(file) || titles.length === 0) {

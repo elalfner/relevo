@@ -14,11 +14,12 @@
 // The `start` decisions are returned for the skill to build.
 //   exit 0: planned   exit 2: invalid or missing configuration, or bad arguments
 
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
 import { planGo, withoutCredential } from './lib/plan.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);

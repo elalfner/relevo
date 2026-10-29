@@ -184,8 +184,8 @@ test('the same recoveries in Spanish', () => {
 test('branch_state unsafe is the same as the older pushed: false, and now names a protected path too', () => {
   const unsafe = renderMessage('qa_failed', { ...FAILED, branch_state: 'unsafe' });
   assert.equal(unsafe, renderMessage('qa_failed', { ...FAILED, pushed: false }));
-  assert.match(unsafe, /was NOT pushed \(a possible credential, a temporary marker or a protected path was found\)/);
-  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'unsafe' }, 'es'), /NO se subió \(se encontró una posible credencial, un marcador temporal o una ruta protegida\)/);
+  assert.match(unsafe, /was NOT pushed \(a possible credential, a temporary marker, a protected path or a restricted file was found\)/);
+  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'unsafe' }, 'es'), /NO se subió \(se encontró una posible credencial, un marcador temporal, una ruta protegida o un archivo restringido\)/);
 });
 
 test('a plain failed build is unchanged: pushed branch and the fix command', () => {

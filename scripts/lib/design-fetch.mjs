@@ -2,6 +2,7 @@
 // limits" of openspec/specs/go/spec.md. The network and `gh` are injected so the module is tested without either.
 
 import { ATTACHMENT_HOSTS, MAX_REFERENCES } from './issue-parse.mjs';
+import { BASE_PATTERNS, isRestricted } from './restricted-paths.mjs';
 
 export const IMAGE_MAX = 5 * 1024 * 1024;
 export const TEXT_MAX = 200 * 1024;
@@ -151,10 +152,11 @@ export async function fetchRepoFile({ repo, path }, { gh, ghRaw, linksToken = fa
  *   images      design.images
  *   links       the linked repositories
  *   exists      (path) => boolean, for the references to files of the repository
+ *   restricted  the list of restricted files: a reference to one is refused by its name, before anything is read or downloaded
  * Returns { files: [{ reference, kind, buf?, type }], refused: [{ reference, reason }] }.
  * A `path` reference needs no download: it is checked and the builder reads it where it is.
  */
-export async function fetchReferences({ references, images = false, links = [], exists, fetch, gh, ghRaw, token = null, linksToken = false, cloud = false }) {
+export async function fetchReferences({ references, images = false, links = [], exists, fetch, gh, ghRaw, token = null, linksToken = false, cloud = false, restricted = BASE_PATTERNS }) {
   const files = [];
   const refused = [];
   for (const ref of references) {
@@ -162,7 +164,9 @@ export async function fetchReferences({ references, images = false, links = [], 
       refused.push({ reference: ref.target, reason: `more than ${FILES_MAX} references` });
       continue;
     }
-    if (ref.kind === 'path') {
+    if ((ref.kind === 'path' || ref.kind === 'repo-file') && isRestricted(ref.path, restricted)) {
+      refused.push({ reference: ref.target, reason: 'it is a restricted file: no agent or script of Relevo reads or publishes it' });
+    } else if (ref.kind === 'path') {
       if (exists(ref.path)) files.push({ reference: ref.target, kind: 'path', path: ref.path, type: 'repository' });
       else refused.push({ reference: ref.target, reason: 'the file does not exist in the repository' });
     } else if (ref.kind === 'attachment') {

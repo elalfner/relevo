@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The run guard and the settings of an Antigravity run. Usage:
-//   node scripts/agent-guard.mjs settings --out <file> [--platform <name>] [--config relevo.yml] [--plugin-root <dir>]
-//       writes the user-level settings of `agy` for the run: the key provider, the denied web and the allowed commands
+//   node scripts/agent-guard.mjs settings --out <file> [--platform <name>] [--config relevo.yml] [--plugin-root <dir>] [--root <tree>]
+//       writes the user-level settings of `agy` for the run: the key provider, the denied web, a read denial for each
+//       restricted file that exists in the tree (by exact path: the tool matches no glob) and the allowed commands
 //   node scripts/agent-guard.mjs run --prompt <text> --timeout-minutes <n> --summary <file> [--config relevo.yml]
 //       [--max-turns <n>] [--max-tokens <n>] [--github-output <file>] [--agy <path>]
 //       starts `agy -p` under the limits and writes the summary of the run (the same shape that run-usage.mjs reads).
@@ -9,12 +10,14 @@
 // exit codes of `run`: 0 success, 1 the agent failed, 10 a tool was refused, 11 turn limit, 12 token limit, 13 time limit,
 // 14 no result; 2 bad usage. The agent's output is never printed: the log has one line per step, and the final answer.
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXIT, agySettings, runGuard } from './lib/agent-guard.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
+import { agyReadDenials, findRestrictedFiles, restrictedList } from './lib/restricted-paths.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const [mode, ...rest] = process.argv.slice(2);
 const arg = (name) => {
@@ -38,10 +41,14 @@ if (mode === 'settings') {
   if (!out) usage('settings needs --out');
   const pluginRoot = resolve(arg('plugin-root') ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));
   let profile = null;
+  let list = restrictedList();
   const configPath = resolve(arg('config') ?? 'relevo.yml');
+  // The tree the agent works in: where relevo.yml is, or the current folder. Its restricted files are found by name.
+  const treeRoot = resolve(arg('root') ?? (existsSync(configPath) ? dirname(configPath) : '.'));
   if (existsSync(configPath)) {
     const loaded = loadConfig(readFileSync(configPath, 'utf8'));
     if (!loaded.ok) usage(`relevo.yml is invalid:\n${loaded.errors.map((e) => `  ${e.message}`).join('\n')}`);
+    list = restrictedList(loaded.config);
     const names = Object.keys(loaded.config.platforms);
     const name = arg('platform') ?? (names.length === 1 ? names[0] : undefined);
     if (!name || !loaded.config.platforms[name]) usage(`the platform must be one of: ${names.join(', ')}`);
@@ -55,8 +62,9 @@ if (mode === 'settings') {
     profile = resolved.profile;
   }
   mkdirSync(dirname(resolve(out)), { recursive: true });
-  writeFileSync(resolve(out), `${JSON.stringify(agySettings({ profile }), null, 2)}\n`);
-  console.log(`settings written to ${out}`);
+  const restricted = agyReadDenials(findRestrictedFiles(treeRoot, list), list, treeRoot);
+  writeFileSync(resolve(out), `${JSON.stringify(agySettings({ profile, restricted }), null, 2)}\n`);
+  console.log(`settings written to ${out}${restricted.length > 0 ? ` (read denied for ${restricted.length} restricted file${restricted.length === 1 ? '' : 's'}, by exact path)` : ''}`);
   process.exit(0);
 }
 

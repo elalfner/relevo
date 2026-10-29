@@ -9,6 +9,9 @@
 #   cost limit             none: the quota and the budget of the Google Cloud project that owns the key are the ceiling.
 #                          Use a key made for Relevo, in its own project, with a quota
 #   refused tools          the agent exits 0 when a tool is refused; the guard reads the refusal and fails the run
+#   restricted files       the settings file also denies read_file for each restricted file that exists in the tree, by exact path
+#                          (the tool matches no glob). The denial stops the file tool and does not reach a command such as `cat`:
+#                          the shell is not covered for this agent, and the file is absent from the tree the run builds in (docs/security.md)
 #   closed tool list       the settings file written below: the web is denied and only listed commands are allowed. It is
 #                          a prefix list, not an operating-system boundary: `node` can run any script, as Bash can for Claude
 #   the key                GEMINI_API_KEY is an environment variable of the agent's own commands, so the agent can read it

@@ -2,11 +2,12 @@
 // Validates relevo.yml. Usage: node scripts/validate-config.mjs [path] [--json] [--effective]
 //   exit 0: valid   exit 1: invalid   exit 2: file not found
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { profileLookups } from './lib/stack-profile.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));

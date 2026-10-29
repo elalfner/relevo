@@ -6,10 +6,11 @@
 // The language comes from --language, else from relevo.yml (if found), else English.
 //   exit 0: printed   exit 2: unknown state or reason, a missing issue number, or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { NEXT_STEP_STATES, nextStep } from './lib/next-step.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

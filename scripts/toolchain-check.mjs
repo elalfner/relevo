@@ -7,12 +7,13 @@
 //   exit 2: bad usage or an invalid relevo.yml
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
 import { missingTools, RUNNER_TOOLS } from './lib/toolchain-check.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

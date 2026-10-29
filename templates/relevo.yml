@@ -38,6 +38,8 @@ limits:
   building_alert_hours: 3          # hours without activity before an issue on `building` is reported as stuck
   run_max_cost: 5                  # REQUIRED: US dollars per unattended run; choose your own
 
+# restricted_paths: [infra/prod.tfvars]   # files no agent or script of Relevo reads, added to the built-in list (.env files, private keys, credential files, secrets/); it only adds, never removes (docs/security.md)
+
 # runner:                            # where the Relevo workflows run; leave it out for GitHub-hosted (ubuntu-latest)
 #   labels: [self-hosted, linux-build]     # a self-hosted runner is assumed to persist between jobs (docs/execution.md)
 

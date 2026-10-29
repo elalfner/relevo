@@ -472,8 +472,8 @@ export function renderMessage(kind, data = {}, language = 'en') {
         ? `La rama ${values.branch} está subida; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} is pushed; the state did not advance and no pull request was opened.`,
       unsafe: es
-        ? `La rama ${values.branch} NO se subió (se encontró una posible credencial, un marcador temporal o una ruta protegida); el estado no avanzó y no se abrió ningún pull request.`
-        : `The branch ${values.branch} was NOT pushed (a possible credential, a temporary marker or a protected path was found); the state did not advance and no pull request was opened.`,
+        ? `La rama ${values.branch} NO se subió (se encontró una posible credencial, un marcador temporal, una ruta protegida o un archivo restringido); el estado no avanzó y no se abrió ningún pull request.`
+        : `The branch ${values.branch} was NOT pushed (a possible credential, a temporary marker, a protected path or a restricted file was found); the state did not advance and no pull request was opened.`,
       not_pushed: es
         ? `La rama ${values.branch} no se subió; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} was not pushed; the state did not advance and no pull request was opened.`,
