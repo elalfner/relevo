@@ -41,3 +41,4 @@
 
 - Archive the change after the pull request to `dev` is merged, then run `npm test` and `openspec validate --all` again.
 - Laravel (Laravel Boost) and Vue go in a separate change.
+- Task 1.3 was not done: on 2026-10-29 the change was archived without a real cloud run. The stacks page and the changelog say that a cloud run with these skills was not tried, and that whether a subagent discovers a skills folder nested in a platform by name is not known; `dev` and `qa` read the skills through the paths Relevo gives them.
