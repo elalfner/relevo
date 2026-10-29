@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES, recommendedSkillFacts } from '../scripts/lib/doctor.mjs';
 import { mergeWebHook, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { claudeProposal, mergeAgyDenials, mergeClaudeDenials, missingClaudeEntries, restrictedFacts } from '../scripts/lib/restricted-settings.mjs';
@@ -927,4 +927,26 @@ test('a project entry of restricted_paths is in the proposal, and Antigravity ge
   assert.deepEqual(merged.permissions.deny, ['read_url(*)', 'read_file(/work/repo/.env)', 'read_file(/work/repo/infra/prod.tfvars)']);
   assert.deepEqual(merged.permissions.allow, ['command(git)']);
   assert.equal(get(plan(bare(denialFacts(null))), 'install.restricted-deny.antigravity'), undefined, 'not offered when the repository does not use it');
+});
+
+// ---------- the same facts as doctor (doctor-agents-skills)
+
+const skillFactsFor = (files, adapters = []) => recommendedSkillFacts({ stack: 'flutter', platforms: [{ path: 'app', skills: SET }], exists: (p) => files.includes(p), tool: () => { throw new Error('claude is not installed'); }, adapters });
+
+test('Scenario: Skills under .agents/skills - init lists the Claude Code line as done and offers no install', () => {
+  const items = recItems(skillFactsFor(SET.map((n) => `app/.agents/skills/${n}`)));
+  assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
+  assert.deepEqual(recIds(items).filter((id) => id.startsWith('install.') && id !== 'install.recommended.flutter.claude'), []);
+  assert.equal(get(items, 'manual.recommended.flutter.commit'), undefined, 'nothing to commit when nothing is offered');
+});
+
+test('Scenario: Skills under neither folder - init still offers the install for Claude Code from the folder of the platform', () => {
+  const items = recItems(skillFactsFor([]));
+  assert.match(get(items, 'install.recommended.flutter.claude.app').command, /^cd app && npx skills add flutter\/agent-plugins .* --agent claude-code --copy --yes$/);
+});
+
+test('Scenario: Antigravity in use with the skills only under .claude/skills - the install for Antigravity is offered', () => {
+  const items = recItems(skillFactsFor(SET.map((n) => `app/.claude/skills/${n}`), [{ scope: 'project' }]));
+  assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
+  assert.match(get(items, 'install.recommended.flutter.antigravity.app').command, /--agent universal/);
 });
