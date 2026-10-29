@@ -82,3 +82,28 @@ test('Scenario: Plan shown up front - with precheck or verify a fixed note says 
   const cli = spawnSync('node', [new URL('../scripts/review-brief.mjs', import.meta.url).pathname, '--issue', '42', '--title', 'Birthday list', '--body-file', join(dir, 'body.md'), '--autopilot', 'verify'], { encoding: 'utf8' });
   assert.match(cli.stdout, /you confirm every line/);
 });
+
+test('Scenario: Autopilot off - an api review has no screen, so the brief says to run the tests and tell the exit code', () => {
+  const off = reviewBrief({ issue: { number: 42, title: 'Birthday list', body: BODY }, built: BUILT, kind: 'api' });
+  assert.match(off, /run the project's tests yourself.*ran <exit code>/);
+  const es = reviewBrief({ issue: { number: 42, title: 'Birthday list', body: BODY }, kind: 'api', language: 'es' });
+  assert.match(es, /corre tú los tests del proyecto.*ran <código>/);
+});
+
+test('Scenario: A test covers the line - with precheck or verify the api brief says the agent runs the existing test and never writes one', () => {
+  ['precheck', 'verify'].forEach((autopilot) => {
+    const brief = reviewBrief({ issue: { number: 42, title: 'Birthday list', body: BODY }, kind: 'api', autopilot });
+    assert.match(brief, /runs the existing test of each line it finds and never writes one/);
+    assert.match(brief, /a line with no test stays for you/);
+    assert.doesNotMatch(brief, /appearance/);
+  });
+  assert.doesNotMatch(reviewBrief({ issue: { number: 42, title: 'Birthday list', body: BODY }, autopilot: 'verify' }), /existing test/);
+});
+
+test('the script takes --kind', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-brief-'));
+  writeFileSync(join(dir, 'body.md'), BODY);
+  const r = spawnSync('node', [new URL('../scripts/review-brief.mjs', import.meta.url).pathname, '--issue', '42', '--title', 'Birthday list', '--body-file', join(dir, 'body.md'), '--kind', 'api'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /ran <exit code>/);
+});

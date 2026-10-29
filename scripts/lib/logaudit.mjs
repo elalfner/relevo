@@ -60,6 +60,57 @@ export function auditLog(text, { scope = null } = {}) {
   return { verdict: findings.length === 0 ? PASSED : REJECTED, findings, counts };
 }
 
+// The classes of an api review, read from the slice of the Laravel log. A log entry starts with "[date] env.LEVEL:".
+const LARAVEL_ENTRY = /^\[\d{4}-\d{2}-\d{2}[ T][\d:.+-]+\]\s+\S+\.(ERROR|CRITICAL|ALERT|EMERGENCY):/;
+const SQL_ERROR = /SQLSTATE\[|\bQueryException\b|\bPDOException\b/;
+// An error entry about the database is a database finding, the more specific class, not also an exception.
+const API_RULES = [
+  { cls: 'exception', test: (l) => LARAVEL_ENTRY.test(l) && !SQL_ERROR.test(l) },
+  { cls: 'database', test: (l) => SQL_ERROR.test(l) },
+  { cls: 'lazy-loading', test: (l) => /Attempted to lazy load|LazyLoadingViolationException/.test(l) },
+  { cls: 'server-error', test: (l) => /\bHTTP\/\d(?:\.\d)?"? 5\d\d\b|\bresponse 5\d\d\b|\b500 Internal Server Error\b/.test(l) },
+];
+
+/**
+ * Audit the slice of the Laravel log of an api review, with the test runs recorded in the state ([{ exit, tests, by, line,
+ * filter, failing }]). The latest run of each line (or filter) counts, so a run repeated after a fix replaces the one before.
+ * A quiet log is not a failure to judge: a run that passes writes nothing, so a recorded run is the evidence that the code
+ * was exercised, and only an empty slice with no run at all is inconclusive.
+ * Returns { verdict, findings, counts, reason? }.
+ */
+export function auditApi({ text = '', runs = [], unreadable = [] } = {}) {
+  const latest = new Map();
+  runs.forEach((r) => latest.set(r.line ?? r.filter ?? '*', r));
+  const findings = [];
+  const seen = new Set();
+  const add = (cls, line, excerpt) => {
+    const key = `${cls}|${excerpt}`;
+    if (seen.has(key) || findings.length >= MAX_FINDINGS) return;
+    seen.add(key);
+    findings.push({ class: cls, line, excerpt });
+  };
+  [...latest.values()].filter((r) => r.exit !== 0).forEach((r) => {
+    const what = r.failing?.length ? r.failing.join(', ') : `the run${r.filter ? ` filtered by ${r.filter}` : ''} exited ${r.exit}${r.tests === 0 ? ' and ran no test' : ''}`;
+    add('test-failure', 0, `${what} (${r.by ?? 'person'})`.slice(0, MAX_EXCERPT));
+  });
+  String(text).split('\n').forEach((raw, idx) => {
+    const line = raw.replace(ANSI_RE, '');
+    API_RULES.forEach((rule) => {
+      if (rule.test(line)) add(rule.cls, idx + 1, line.trim().slice(0, MAX_EXCERPT));
+    });
+  });
+  const counts = {};
+  findings.forEach((f) => { counts[f.class] = (counts[f.class] ?? 0) + 1; });
+  if (findings.length > 0) return { verdict: REJECTED, findings, counts, ...(unreadable.length ? { unreadable } : {}) };
+  if (unreadable.length > 0) {
+    return { verdict: INCONCLUSIVE, reason: `a log file could not be read (${unreadable.map((u) => `${u.file}: ${u.reason}`).join('; ')}), so the audit cannot say the log is clean`, findings, counts, unreadable };
+  }
+  if (runs.length === 0 && String(text).trim() === '') {
+    return { verdict: INCONCLUSIVE, reason: 'no test run is recorded and the log has nothing since the review started: run the tests and say so (ran <exit code>)', findings, counts };
+  }
+  return { verdict: PASSED, findings, counts };
+}
+
 /** Markdown report of an audit. */
 export function auditReport(audit, { issue, scope } = {}) {
   const lines = [`# Review report${issue ? ` for #${issue}` : ''}`, '', `**${audit.verdict}**`, ''];
@@ -67,12 +118,17 @@ export function auditReport(audit, { issue, scope } = {}) {
     lines.push(`This audit proves nothing: ${audit.reason}. It cannot be waived.`);
     return `${lines.join('\n')}\n`;
   }
-  if (scope?.pids?.length) {
+  if (scope?.kind === 'api') {
+    lines.push(`Scope: what ${scope.pattern} received since the review started, and the test runs of the review (${scope.runs ?? 0} recorded).`, '');
+    if (audit.findings.length === 0) lines.push('The log slice has no unhandled exception, server error, database error or lazy-loading violation, and no recorded run failed.');
+  } else if (scope?.pids?.length) {
     lines.push(`Scope: only the processes of \`${scope.package}\` (pid ${scope.pids.join(', ')}); other apps' log lines were ignored.`, '');
   } else {
     lines.push('Scope: the whole device log.', '');
   }
-  if (audit.findings.length === 0) {
+  if (audit.findings.length === 0 && scope?.kind === 'api') {
+    // said above
+  } else if (audit.findings.length === 0) {
     lines.push('The device log contains none of the error classes: layout, lifecycle, exceptions, network or data errors, missing activity.');
   } else {
     lines.push(`${audit.findings.length} finding(s):`, '');

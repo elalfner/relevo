@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 // Keeps the state of an on-device review and decides whether a pull request may be opened.
 //   review-state.mjs init <change-dir> [--autopilot off|precheck|verify]   build the checklist from the change's scenarios
+//   review-state.mjs init <change-dir> --adapter api [--log <path or glob>] [--cwd <dir>]
+//                                                 an api review: also records how much of the log files exists now
+//   review-state.mjs ran <exit code> [--by person|agent] [--filter <f>] [--tests <n>] [--line <n>] [--failing a,b]
+//                                                 an api review: record a test run (the person's, or the agent's for a line)
+//   review-state.mjs runs-list                    print the "Test runs" section for the pull request body
+//   review-state.mjs reset-log                    an api review: take the log files as they are now (after a fix)
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
 //   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
 //   review-state.mjs capture <path>               record a screenshot that was taken (refused after "agree")
@@ -23,9 +29,10 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { readSlice, snapshotLog } from './lib/api-log.mjs';
 import { checklistFromChange } from './lib/checklist.mjs';
-import { auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
-import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, newState, precheckItem, qaPass, recordCapture, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
+import { auditApi, auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
+import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
 
 const argv = process.argv.slice(2);
 const si = argv.indexOf('--state');
@@ -51,14 +58,21 @@ try {
     case 'init': {
       if (!rest[0] || !existsSync(rest[0])) fail('usage: review-state.mjs init <change-directory>');
       const ai = rest.indexOf('--autopilot');
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1] });
+      const flag = (name) => (rest.indexOf(`--${name}`) === -1 ? undefined : rest[rest.indexOf(`--${name}`) + 1]);
+      const api = flag('adapter') === 'api';
+      if (flag('adapter') !== undefined && !api) fail('--adapter can only be "api"');
+      const log = api ? snapshotLog(flag('log') ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log });
+      if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
-      console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})`);
+      console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})${api ? `; the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)` : ''}`);
       break;
     }
     case 'sync': {
       if (!rest[0] || !existsSync(rest[0])) fail('usage: review-state.mjs sync <change-directory>');
       const state = syncState(load(), checklistFromChange(rest[0]));
+      // The log of the old code is not the log of the new: an api review takes the files as they are now.
+      if (state.kind === 'api') state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
       save(state);
       const pending = state.items.filter((i) => i.status === 'pending').length;
       console.log(`${state.items.length} checklist item(s), ${pending} to test again; the log audit and the agreement must be repeated`);
@@ -93,8 +107,42 @@ try {
       console.log(`${text.split('\n').filter(Boolean).length} line(s) added to ${file}`);
       break;
     }
+    case 'ran': {
+      const [exit, ...flags] = rest;
+      const flag = (name) => (flags.indexOf(`--${name}`) === -1 ? undefined : flags[flags.indexOf(`--${name}`) + 1]);
+      const state = recordRun(load(), { exit, by: flag('by'), filter: flag('filter'), tests: flag('tests'), line: flag('line'), failing: flag('failing')?.split(',').filter(Boolean) });
+      save(state);
+      const last = state.runs.at(-1);
+      console.log(`recorded: run by the ${last.by}${last.line ? ` for line ${last.line}` : ''}, exit ${last.exit}${last.tests !== undefined ? `, ${last.tests} test(s)` : ''}`);
+      break;
+    }
+    case 'runs-list':
+      process.stdout.write(runsSection(load()));
+      break;
+    case 'reset-log': {
+      const state = load();
+      if (state.kind !== 'api') fail('reset-log is for an api review');
+      state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
+      save(state);
+      console.log(`the log ${state.log.pattern} is read from now on (${Object.keys(state.log.offsets).length} file(s) as they are)`);
+      break;
+    }
     case 'audit': {
       const state = load();
+      if (state.kind === 'api') {
+        const slice = readSlice(state.log, { cwd: state.cwd ?? '.' });
+        const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable });
+        const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length };
+        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}) };
+        applyWaivers(state);
+        audit.verdict = state.audit.verdict;
+        save(state);
+        writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
+        console.log(audit.verdict);
+        if (audit.reason) console.log(`  ${audit.reason}`);
+        audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+        break;
+      }
       const pi = rest.indexOf('--package');
       const pkg = pi === -1 ? null : rest[pi + 1];
       const pids = rest.flatMap((a, i) => (a === '--pid' ? [rest[i + 1]] : []));
@@ -171,7 +219,7 @@ try {
       break;
     }
     default:
-      fail('usage: review-state.mjs <init|set|sync|capture|qa-pass|drain|audit|waive|waived|confirm-env|precheck|auto|auto-list|agree|show|decide> [...]');
+      fail('usage: review-state.mjs <init|set|sync|capture|qa-pass|drain|audit|ran|runs-list|reset-log|waive|waived|confirm-env|precheck|auto|auto-list|agree|show|decide> [...]');
   }
 } catch (err) {
   fail(err.message);

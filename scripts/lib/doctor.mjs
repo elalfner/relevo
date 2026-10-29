@@ -15,6 +15,8 @@ import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget } from './role-skills.mjs';
+import { adapterFor, targetOf } from './review-adapters.mjs';
+import { testDatabase } from './api-preflight.mjs';
 import { ROLES, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
@@ -481,6 +483,21 @@ function gatherPlatforms(f, p, tryRun) {
         const tool = resolved.profile.targets[target] ?? '';
         return { target, tool, ok: tool === '' ? true : available(tool) };
       });
+      // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
+      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
+      if (adapter.supported && adapter.kind === 'api') {
+        const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
+        const xml = ['phpunit.xml', 'phpunit.xml.dist'].find((n) => p.exists(at(n)));
+        entry.api = { vendor: p.exists(at('vendor/autoload.php')), database: testDatabase(xml ? tryRun(() => p.read(at(xml)), null) : null) };
+      }
+      // The review block of the profile: where the log is, and whether the folder it names exists.
+      const logPattern = resolved.profile.review?.log;
+      if (logPattern) {
+        const segments = logPattern.split('/').filter(Boolean);
+        const literal = segments.findIndex((s) => /[*?]/.test(s));
+        const dir = (literal === -1 ? segments.slice(0, -1) : segments.slice(0, literal)).join('/');
+        entry.reviewLog = { pattern: logPattern, dir, dirExists: dir === '' ? true : p.exists(platform.path === '.' || platform.path === '' ? dir : `${platform.path}/${dir}`) };
+      }
       // The cloud and a fresh clone read the repository's layer from git, not from this working copy. `null` means
       // git could not say (no git, or not a repository).
       if (resolved.profile.layers.includes('repository')) {
@@ -507,7 +524,7 @@ function gatherPlatforms(f, p, tryRun) {
     f.autopilot = {
       mode,
       platforms: Object.entries(f.config.platforms).map(([name, platform]) => {
-        const entry = { name, stack: platform.stack, path: platform.path };
+        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets };
         if (platform.stack === 'flutter') {
           entry.driverEntry = p.exists(join(platform.path, 'lib/main_driver.dart'));
           const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
@@ -640,6 +657,27 @@ function platformChecks(f) {
     (e.profile.ignored ?? []).forEach((x) => {
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
+    // What an api review needs, and what the review block of the profile says.
+    if (e.api) {
+      const inDir = e.path && e.path !== '.' ? `cd ${e.path} && ` : '';
+      if (!e.api.vendor) r.push(warn(`review.api.${e.name}.vendor`, `platform ${e.name} has no vendor/ folder, so the review cannot run its tests`, `run \`${inDir}composer install\``));
+      else r.push(pass(`review.api.${e.name}.vendor`, `platform ${e.name}: the dependencies are installed`));
+      const db = e.api.database;
+      if (db.safe) r.push(pass(`review.api.${e.name}.database`, `platform ${e.name}: the tests use in-memory SQLite`));
+      else r.push(note(`review.api.${e.name}.database`, `platform ${e.name}: ${db.reason}; the review asks for your written confirmation that it is not production before it runs a test`));
+    }
+    (e.profile.reviewReplaced ?? []).forEach((key) => {
+      r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));
+    });
+    (e.profile.reviewWarnings ?? []).forEach((w, i) => {
+      r.push(warn(`review.text.${e.name}.${i}`, `platform ${e.name}: the section Review of .relevo/stacks/${e.stack}.md asks to ${w.rule} ("${w.text}"), which a review never changes: the review ignores that line`, 'remove the line; the section can add steps and ask for more evidence, not loosen a rule'));
+    });
+    if (e.reviewLog && !e.reviewLog.dirExists) {
+      r.push(warn(`review.log.${e.name}`, `platform ${e.name}: review.log is ${e.reviewLog.pattern}, and ${e.reviewLog.dir} does not exist, so the audit would read no log`, 'point review.log at the folder where the app writes its log'));
+    }
+    if (e.profile.review?.serve && e.repositoryLayerTracked === false) {
+      r.push(warn(`review.serve.${e.name}`, `platform ${e.name}: the serve command of the review comes from .relevo/stacks/${e.stack}.md, which is not on the base branch, so the review ignores it in a fresh clone`, `commit .relevo/stacks/${e.stack}.md on the base branch`));
+    }
     e.tools.forEach(({ tool, ok, cliOk }) => {
       if (seen.has(`tool:${tool}`)) return;
       seen.add(`tool:${tool}`);
@@ -684,6 +722,8 @@ function platformChecks(f) {
     } else if (e.stack === 'vue') {
       if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, `run /relevo:init, which offers it, or \`${e.path && e.path !== '.' ? `cd ${e.path} && ` : ''}npm install -D playwright && npx playwright install chromium\` and commit package.json and the lock file`));
       else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
+    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }) }).kind === 'api') {
+      r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
     } else {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
     }
