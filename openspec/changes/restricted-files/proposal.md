@@ -34,5 +34,5 @@ None.
 - Templates: `templates/workflows/relevo-go.yml` and the Antigravity step.
 - Skills and stacks: `skills/review/SKILL.md`, `stacks/laravel.md` and any other stack that repeats the rule.
 - Documentation: `docs/security.md`, `docs/security.es.md`, the `relevo.yml` reference.
-- Still to confirm by a run, listed in the design: whether `**/.env` matches at any depth in `sandbox.filesystem.denyRead`, and, for Antigravity, whether a `read_file` deny stops the agent's own file tool and reaches the shell.
+- Still to confirm by a run, listed in the design: for Antigravity, whether a `read_file` deny stops the agent's own file tool and reaches the shell.
 - No new dependency. The limit that a prefix-based shell allow list is not an operating-system boundary stays, and the documentation says so.
