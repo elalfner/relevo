@@ -635,10 +635,10 @@ After a merge, `init` SHALL set the pin and the stamp of the workflow to the cur
 - **THEN** the check passes
 
 ### Requirement: Doctor notes the recommended Dart and Flutter skills
-For a repository with a platform of stack `flutter`, `doctor` SHALL report once, for each coding agent the repository uses, whether the default set of official skills of the `flutter` profile is in the repository: a pass when it is, a note when it is not, with the install command. Only a skill folder committed to the repository counts, in `.claude/skills` for Claude Code and in `.agents/skills` for Antigravity, at the root or in the folder of a Flutter platform. A plugin installed on a machine, and the home folder of the person, SHALL NOT count, because the cloud runner does not see them. The agents are Claude Code, and Antigravity when the repository has an Antigravity plugin of Relevo or sets `agent.build: antigravity`.
+For a repository with a platform of stack `flutter`, `doctor` SHALL report once, for each coding agent the repository uses, whether the default set of official skills of the `flutter` profile is in the repository: a pass when it is, a note when it is not, with the install command. Only a skill folder committed to the repository counts, at the root or in the folder of a Flutter platform: `.claude/skills` and `.agents/skills` for Claude Code, because `go` hands the agents the path of each `SKILL.md` from either, and `.agents/skills` for Antigravity. A plugin installed on a machine, and the home folder of the person, SHALL NOT count, because the cloud runner does not see them. The agents are Claude Code, and Antigravity when the repository has an Antigravity plugin of Relevo or sets `agent.build: antigravity`.
 
 #### Scenario: Plugin missing in Claude Code
-- **WHEN** a platform has stack `flutter` and none of the skills of the default set is under `.claude/skills` at the root or in the folder of a Flutter platform
+- **WHEN** a platform has stack `flutter` and none of the skills of the default set is under `.claude/skills` or `.agents/skills` at the root or in the folder of a Flutter platform
 - **THEN** `doctor` reports a note `recommended.flutter.claude` with the install command for Claude Code, and says that the cloud runner reads only what is committed
 
 #### Scenario: Plugin installed
@@ -655,7 +655,11 @@ For a repository with a platform of stack `flutter`, `doctor` SHALL report once,
 
 #### Scenario: Only `.agents/skills` and Claude Code
 - **WHEN** the skills are under `.agents/skills` and not under `.claude/skills`
-- **THEN** `doctor` reports a pass for Antigravity when it is in use, and still reports the note `recommended.flutter.claude`
+- **THEN** `doctor` reports a pass `recommended.flutter.claude`, because `go` gives `dev` and `qa` the paths from that folder, and a pass for Antigravity when it is in use
+
+#### Scenario: Skills split between the two folders
+- **WHEN** one skill of the set is under `.claude/skills` and the other under `.agents/skills`
+- **THEN** `doctor` reports a pass `recommended.flutter.claude`
 
 #### Scenario: Skills in the home folder
 - **WHEN** the skills are only under `~/.claude/skills`
