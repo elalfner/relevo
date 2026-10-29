@@ -35,9 +35,10 @@
 
 ## 6. Whole change
 
-- [ ] 6.1 Run a review from the sandbox with `npm pack github:elalfner/relevo#dev` on a Laravel issue, with autopilot `off` and with `verify`, and record in `docs/pilot-findings.md` what was caught, what was not and what was not tried
+- [x] 6.1 Run the review by hand on a fresh Laravel project (`composer create-project laravel/laravel`), calling the scripts in the order the skill gives with `review.autopilot` `verify`, and record in `docs/pilot-findings.md` what was caught and what was not tried; the Laravel project is not in the sandbox, so a review driven by a model on a real repository is a follow-up below
 - [x] 6.2 Run `npm test` and `openspec validate --all` and verify both pass
 
 ## Workflow follow-up
 
+- After the merge, review a real Laravel issue with `/relevo:review` from `npm pack github:elalfner/relevo#dev` in a Laravel repository (the sandbox has none), with `review.autopilot` `off` and with `verify`, and add to `docs/pilot-findings.md` what the model did with the skill, what was caught and what was not.
 - Archive the change after the pull request to `dev` is merged, then run `npm test` and `openspec validate --all` again.
