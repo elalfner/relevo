@@ -8,6 +8,12 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - **`doctor` warns when the cloud would read a different `relevo.yml`.** A label event reads `relevo.yml` from the default branch of the repository, while every build starts from the base branch. When the two are different branches, `doctor` compares the two copies on GitHub and warns when their settings differ, or when the default branch has none, with the fix of promoting the base branch or making it the default branch. Comments and layout do not count.
 - **The page on where `go` runs says which branch the cloud reads.** A new section explains that the cloud reads its workflows and `relevo.yml` from the default branch, that the branch of a build always starts from `branches.base` whatever the default branch is, and what changes when the base branch is the default branch.
+- **The page on self-hosted runners explains several runners on one machine.** What each runner keeps apart (workspace, `$RUNNER_TEMP`, tool cache, branch of the issue) and what they share (the home of the runner's user, package caches, the Docker daemon, the ports), why to register more runners than `limits.concurrent_agents`, that the Supabase stack does not parallelise on one machine, and that runners of one user share what the agent can read (a sentence in the security page too). English and Spanish. See `docs/execution.md`.
+
+### Known limits
+
+- `limits.concurrent_agents` counts the issues labelled `relevo:building` when the gate of an issue runs, and the gates of different issues do not wait for each other: with two or more runners, or on GitHub's runners, two issues labelled together can both start and exceed it by the number of gates that overlap. With a single runner the gates queue and the limit holds.
+- The risks of runners sharing a home, caches, Docker and ports were not tried on a machine with several runners; the text says what can collide, not what was seen to.
 
 ## [0.11.1] - 2026-10-28
 
