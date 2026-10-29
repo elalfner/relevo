@@ -15,6 +15,7 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 | Someone without the right skips the review capacity of the team | `relevo:urgent` counts only when the person who applied it could mark the issue `ready` (maintainer when `trust` is `public`); any other label is removed with a comment, and it never skips the specification, the dependencies or `limits.concurrent_agents` | a script |
 | The issue is edited after someone labelled it `ready` | the text that was approved is hashed and `go` refuses to build a different one (`issue-hash.mjs`) | a script |
 | A run changes the files that control the workflow | workflows, `relevo.yml`, `.relevo/`, the folders of skills and the project rules file are protected paths; a commit that touches them is refused (`commit-change.mjs`) | a script |
+| An agent or a script reads a file that holds a secret, or publishes it | a list of restricted files (environment files, private keys, credential files, mobile service configuration, `secrets/` and `restricted_paths` of `relevo.yml`) that the agents are told not to read, that a worktree never holds, and that no script of Relevo opens or publishes; one in a diff, or versioned, ends the run in `qa-failed` with the reason "restricted file in the diff" ([Restricted files](#restricted-files)) | the runner, and a script |
 | A run adds a dependency that runs code when installed | dependency files are protected unless the issue lists them in `Allow-paths:`, dependencies are installed without package scripts, and QA rejects a dependency the design does not justify | a script, and QA |
 | A pull request changes the skills the agent follows | the extra skills are read from the base branch, never from the branch under work, and a skill with scripts runs only if `skills.allow_scripts` lists it | a script |
 | A repository weakens the checks of a stack | a repository profile can add to the plugin's profile but cannot replace a command; only `platforms.<name>.checks` does, in the open | a script |
@@ -59,6 +60,44 @@ What the table does not say, for Antigravity:
 - **The guard counts what the tool reports.** A turn is a model response, of the main agent or of a subagent. Tokens are input plus output as the tool reports them; tokens read from the cache are not counted, so the limit is more lenient than the work the model did.
 - **A prefix list is not an operating-system boundary.** The closed list restricts which commands the agent may start, not what an allowed command does. This is the same limit as the one above for Claude.
 - **Not tried:** that the quality of the adversarial QA holds with a Gemini model; a full cloud run on a real runner (see the known limits in the changelog); whether the CLI can update itself during a run.
+
+## Restricted files
+
+Some files should be read by no agent and by no script of Relevo: environment files, private keys, credential stores. The list is the base list below plus `restricted_paths` in `relevo.yml`, which only adds (a profile cannot weaken it, and `relevo.yml` cannot take an entry away). It is separate from the protected paths, which are about what a diff may write.
+
+**The base list.** `.env` and `.env.*` at any depth, except `.env.example` (the skills and the stacks read it for the names of the variables); private keys and certificates (`*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.p8`, `*.ppk`, `*.keystore`, `*.jks`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`); credential files of package managers and of the shell (`.npmrc`, `.netrc`, `.pypirc`, `.git-credentials`, `.pgpass`, `.htpasswd`); the service configuration of mobile apps (`google-services.json`, `GoogleService-Info.plist`, `key.properties`); and a `secrets/` folder at the root and at the root of each platform. The match is by path name, and a name you did not expect (`key.json`) is not on it: add it to `restricted_paths`.
+
+**What the tool denials cover of `.env.*`.** The rules of Claude Code cannot say "except `.env.example`", so the denials of the cloud workflow and of `/relevo:init` list the common variants (`.env.local`, `.env.development`, `.env.production`, `.env.staging`, `.env.test`, `.env.testing`, `.env.dev`, `.env.prod`, `.env.qa`, `.env.ci`, `.env.preview` and `.env.*.local`), not every `.env.*`. A variant outside that list (`.env.docker`, `.env.backup`, `.env.sample`, `.env.old`, `.env.stage`) is restricted for Relevo's own scripts and is not in the worktree, but no agent tool denies it: add such names to `restricted_paths`, which does write a denial for each entry. `.env.example` is the only exempt name.
+
+**A versioned mobile configuration file fails every run.** A repository that deliberately versions `google-services.json` or `GoogleService-Info.plist` (some teams do, because the values are not secret) has a restricted file versioned, so `go` stops with the reason "restricted file in the diff" and `/relevo:doctor` fails. The list has no exception for them: untrack the file and keep it out of git, or accept that runs stop.
+
+**The check is by name.** The path is resolved against the working folder before it is compared, so `a/./b`, `a//b` and `a/../a/b` are the same name, but a symbolic link to a restricted file is not followed: a link with an ordinary name is not recognised.
+
+### Three levels of hiding
+
+| Level | What the agent sees | Where it holds |
+|---|---|---|
+| **Not in the tree** | "no such file": the file is not there | the tree Relevo builds. `go` builds in a git worktree, which holds only versioned files, and no script copies or links a restricted file into it (a `.worktreeinclude` file is a feature of Claude Code that does, and Relevo's worktree does not process it). A restricted file that is versioned is a failure, not something to hide: `go` stops on it and `/relevo:doctor` fails |
+| **Read denied** | the read is blocked and the agent is told so; a directory listing still shows the name | the settings of the agent, below |
+| **Shell sandboxed** | the process that opens the file is refused by the operating system | Claude Code, where a person enables its sandbox (the cloud workflow does not); not Antigravity |
+
+The first level is the only one that answers "no such file". At the second and the third the agent learns that something is blocked.
+
+### What each agent enforces
+
+| | Claude Code | Antigravity CLI |
+|---|---|---|
+| The file tools of the agent | **enforced**: `Read(...)` rules in `permissions.deny`, written by `/relevo:init` between the `# relevo:restricted begin` and `# relevo:restricted end` lines of the cloud workflow, in the `settings` input of the action, which the action merges into the user-level settings of the runner, outside the repository | **enforced** for the exact paths listed: one `read_file(...)` rule for each restricted file that exists in the tree, written outside the repository when the run starts. The tool documents no globs, and a bare name matches only at the root, so a file created after the run starts is not covered |
+| The scripts of Relevo | **enforced**: they refuse to open or publish a restricted file, and the safe commit refuses one in the diff | **enforced**, the same |
+| A file command in a shell (`cat .env`) | **enforced** for the commands Claude Code recognizes (`cat`, `head`, `tail`, `sed`, redirections), by the `Read` rules | **not covered**: the denial does not reach a command (tried), and the commands in the allow list can read the file |
+| A process that opens the file itself (a script, `node -e`) | **not covered in the cloud**: the workflow writes `sandbox.filesystem.denyRead` but does not enable the sandbox, because it has not been shown that the build still fetches, comments, labels and pushes with it on. Where a person enables the sandbox of Claude Code (a local run), the denial refuses the process | **not covered** |
+| A command that reads without naming the file (`grep -r`) | **partial**: no `Read` rule covers it by name; in the cloud it is not covered, and where a person enables the sandbox the denial does | **not covered** |
+| The content that already reached a transcript or a log | **not covered** | **not covered** |
+| A restricted file committed by mistake | **not covered**: it is in the history. `go` and `/relevo:doctor` report it, and the secret must be rotated | **not covered**, the same |
+
+On a person's machine Relevo proposes and checks, and never enforces: `/relevo:init` shows the entries and writes them to your settings only after a yes to that item, and `/relevo:doctor` warns, by path name and without opening any file, for each restricted file that exists in the working folder and that no denial covers.
+
+**No ignore file is a control.** A `.gitignore` entry keeps a file out of git, not out of an agent's reach; `.claudeignore` has no effect according to the documentation of Claude Code, and `.claudecode.json` is not documented as a control. Relevo writes only settings that the documentation of the tool lists as denying a read, and offers none of these files as protection.
 
 ## On a public repository
 

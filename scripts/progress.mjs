@@ -13,7 +13,7 @@
 // It never fails: exit 0 always, so a step that reports progress cannot fail a run. Errors go to stderr.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
@@ -21,6 +21,7 @@ import { resolveLabelNames } from './lib/labels.mjs';
 import {
   INTERVAL_MS, PHASES, closeProgress, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
 } from './lib/progress.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const args = process.argv.slice(3);
 const arg = (name) => {

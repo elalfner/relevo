@@ -10,9 +10,10 @@
 //   exit 4: Playwright does not resolve from the project   exit 5: the Chromium of Playwright is missing
 //   exit 6: the address or one of its modules does not answer below 400   exit 2: bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { loadPlaywright } from './lib/web-review.mjs';
 import { webPreflight } from './lib/web-preflight.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

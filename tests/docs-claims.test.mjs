@@ -139,6 +139,31 @@ test('the security page names the measures by files, settings and labels that ex
   });
 });
 
+test('Scenario: Reading the page for restricted files - the three levels, the rows per agent, the limits and the ignore files that are not a control', () => {
+  const heading = { 'docs/security.md': '## Restricted files', 'docs/security.es.md': '## Archivos restringidos' };
+  Object.entries(heading).filter(([f]) => exists(f)).forEach(([f, h]) => {
+    const page = read(f);
+    assert.ok(page.includes(h), `${f}: the section`);
+    const section = page.slice(page.indexOf(h), page.indexOf('\n## ', page.indexOf(h) + 1));
+    ['restricted_paths', '.env.example', '.claudeignore', '.claudecode.json', '.gitignore', 'grep -r', 'node -e', 'read_file', 'permissions.deny', 'sandbox.filesystem.denyRead', 'no such file', 'Claude Code', 'Antigravity']
+      .forEach((w) => assert.ok(section.includes(w), `${f} does not mention ${w}`));
+    // One row of the table per kind of read, with each agent in its own column.
+    const rows = section.split('\n').filter((l) => l.startsWith('|'));
+    ['cat .env', 'grep -r', 'node -e'].forEach((w) => assert.ok(rows.some((r) => r.includes(w) && r.split('|').length >= 5), `${f}: a row for ${w} with a column per agent`));
+    const process = rows.find((r) => r.includes('node -e'));
+    assert.match(process, /\*\*(not covered in the cloud|no cubierto en la nube)\*\*/, `${f}: a process that opens files itself is not covered in the cloud`);
+    assert.ok(!/failIfUnavailable/.test(section), `${f}: the sandbox is not asked for in the cloud`);
+    assert.ok(rows.some((r) => /\*\*(enforced|se cumple)\*\*/.test(r)), `${f}: enforced`);
+    assert.ok(rows.some((r) => /\*\*(partial|parcial)\*\*/.test(r)), `${f}: partial`);
+    assert.ok(rows.some((r) => /\*\*(not covered|no cubierto)\*\*/.test(r)), `${f}: not covered`);
+  });
+});
+
+test('the security page lists the restricted files in its first table, and the configuration page links the section', () => {
+  ['docs/security.md', 'docs/security.es.md'].filter(exists).forEach((f) => assert.match(read(f), /restricted file in the diff/, `${f}: the failure reason`));
+  ['docs/configuration.md', 'docs/configuration.es.md'].filter(exists).forEach((f) => assert.match(read(f), /`restricted_paths`/, f));
+});
+
 // ---------- get started
 
 const STEPS = {

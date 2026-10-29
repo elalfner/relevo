@@ -27,12 +27,13 @@
 //   review-state.mjs decide                       exit 0 when the pull request may be opened, 1 when not
 // The state lives in evidence/review-state.json (override with --state). That folder is never committed.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { readSlice, snapshotLog } from './lib/api-log.mjs';
 import { checklistFromChange } from './lib/checklist.mjs';
 import { auditApi, auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
 import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const argv = process.argv.slice(2);
 const si = argv.indexOf('--state');

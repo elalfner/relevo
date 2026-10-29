@@ -91,7 +91,7 @@ test('doctor points to init for the fixes and says what enforces approval when p
 });
 
 test('Scenario: Monorepo - init asks for the stack, the folder and the targets of each platform and writes platforms', () => {
-  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  const init = load('init').body;
   assert.match(init, /the platforms: for each one a name, its stack/);
   assert.match(init, /`platforms` \(a map of name to `\{ stack, path, targets \}`\)/);
   assert.match(init, /`stackProfiles`/);
@@ -196,4 +196,14 @@ test('Scenario: Optional installs - the init skill says a recommended install is
   assert.match(body, /marked `optional`/);
   assert.match(body, /never say that `go` or `ship` will not run/);
   assert.match(body, /`manual\.recommended\.\*` steps are for the person/);
+});
+
+test('Scenario: Restricted files - init shows the exact entries and writes them only after a yes to that item; doctor opens no restricted file', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /`install\.restricted-deny`/);
+  assert.match(init, /ask for a yes to this item alone/);
+  assert.match(init, /scripts\/restricted-settings\.mjs/);
+  assert.match(init, /If the person declines, write nothing for it and go on/);
+  assert.match(init, /Never open a restricted file to decide any of this/);
+  assert.match(load('doctor').body, /Never open a restricted file/);
 });

@@ -9,12 +9,14 @@
 // exit 0: done   exit 2: bad arguments or a failed change
 
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { gatherFacts, readOnlyGh, vueWebFacts, WORKFLOW_FILES } from './lib/doctor.mjs';
 import { applyPlan, planInit, renderPlan, skipItems } from './lib/init.mjs';
+import { findRestrictedFiles, restrictedList } from './lib/restricted-paths.mjs';
 import { planUpgrades, publishedTemplates, unifiedDiff } from './lib/workflow-upgrade.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -49,6 +51,10 @@ const facts = gatherFacts({
   read: (p) => readFileSync(p, 'utf8'),
   listDir: (p) => readdirSync(p),
   skillDirs: ['.claude/skills', '.agents/skills', `${homedir()}/.claude/skills`],
+  // The restricted files that exist here are found by name (no file is opened); the settings of the person are read by name too.
+  root: process.cwd(),
+  restrictedFiles: (list) => findRestrictedFiles(process.cwd(), list),
+  readUser: (path) => (existsSync(`${homedir()}/${path}`) ? readFileSync(`${homedir()}/${path}`, 'utf8') : null),
   repo,
 });
 
@@ -85,7 +91,7 @@ const upgrades = (file) => {
   try {
     const state = planUpgrades({
       files: [file], ours: current.workflows, templates: templates.workflows, agentBlocks: templates.agentBlocks,
-      labels: facts.config?.runner?.labels ?? answers.runnerLabels, build: answers.agentBuild ?? 'claude', from: arg('from') ?? null, source,
+      labels: facts.config?.runner?.labels ?? answers.runnerLabels, build: answers.agentBuild ?? 'claude', from: arg('from') ?? null, source, restricted: restrictedList(facts.config),
     })[file];
     return state.status === 'update' ? { ...state, diff: unifiedDiff(current.workflows[file], state.text) } : state;
   } catch (err) {

@@ -2,12 +2,12 @@
 // relevo init | install | update | doctor | version. See scripts/lib/cli.mjs and scripts/lib/init-tools.mjs. `install`
 // and `init` without --scope ask where, in a terminal, with the project preselected; `init` also asks for the tools.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { USAGE, execute, isInsideGitRepo, parseArgs, resolveScope, scopeChoices } from './lib/cli.mjs';
 import { TOOLS, initScopeChoices, parseInitArgs, repoRoot, resolveInitScope, runInit, runUpdate } from './lib/init-tools.mjs';
 import { select, selectMany } from './lib/select.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const argv = process.argv.slice(2);

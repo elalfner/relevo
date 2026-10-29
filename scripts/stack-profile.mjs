@@ -9,11 +9,12 @@
 // `platforms.<name>.checks` of relevo.yml applied. The agents receive this output; they do not look for profiles.
 //   exit 0: printed   exit 1: the stack has no profile (or a profile is invalid)   exit 2: bad usage or invalid relevo.yml
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

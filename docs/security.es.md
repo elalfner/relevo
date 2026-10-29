@@ -15,6 +15,7 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 | Alguien sin el derecho se salta la capacidad de revisión del equipo | `relevo:urgent` cuenta solo si quien la puso podía marcar el issue como `ready` (mantenedor cuando `trust` es `public`); cualquier otra etiqueta se quita con un comentario, y nunca salta la especificación, las dependencias ni `limits.concurrent_agents` | un script |
 | El issue se edita después de que alguien le puso `ready` | el texto aprobado se resume con un hash y `go` se niega a construir otro distinto (`issue-hash.mjs`) | un script |
 | Una ejecución cambia los archivos que controlan el workflow | los workflows, `relevo.yml`, `.relevo/`, las carpetas de skills y el archivo de reglas del proyecto son rutas protegidas; un commit que las toca se rechaza (`commit-change.mjs`) | un script |
+| Un agente o un script lee un archivo que guarda un secreto, o lo publica | una lista de archivos restringidos (archivos de entorno, llaves privadas, archivos de credenciales, configuración de servicios móviles, `secrets/` y `restricted_paths` de `relevo.yml`) que se le dice a los agentes que no lean, que un worktree nunca contiene y que ningún script de Relevo abre ni publica; uno en un diff, o versionado, termina la ejecución en `qa-failed` con el motivo "restricted file in the diff" ([Archivos restringidos](#archivos-restringidos)) | el ejecutor, y un script |
 | Una ejecución añade una dependencia que ejecuta código al instalarse | los archivos de dependencias están protegidos salvo que el issue los liste en `Allow-paths:`, las dependencias se instalan sin scripts de paquetes, y QA rechaza una dependencia que el diseño no justifica | un script, y QA |
 | Un pull request cambia las skills que sigue el agente | las skills extra se leen de la rama base, nunca de la rama en trabajo, y una skill con scripts solo corre si `skills.allow_scripts` la lista | un script |
 | Un repositorio debilita las comprobaciones de un stack | el perfil de un repositorio puede añadir al del plugin pero no reemplazar un comando; solo lo hace `platforms.<name>.checks`, a la vista | un script |
@@ -59,6 +60,44 @@ Lo que la tabla no dice, para Antigravity:
 - **La guardia cuenta lo que reporta la herramienta.** Un turno es una respuesta del modelo, del agente principal o de un subagente. Los tokens son entrada más salida como los reporta la herramienta; los tokens leídos de la caché no se cuentan, así que el límite es más holgado que el trabajo que hizo el modelo.
 - **Una lista de prefijos no es una frontera del sistema operativo.** La lista cerrada restringe qué comandos puede iniciar el agente, no lo que hace un comando permitido. Es el mismo límite que el de arriba para Claude.
 - **No probado:** que la calidad de la QA adversarial se mantenga con un modelo de Gemini; una ejecución completa en la nube sobre un ejecutor real (mira los límites conocidos del changelog); si la CLI puede actualizarse sola durante una ejecución.
+
+## Archivos restringidos
+
+Hay archivos que no debería leer ningún agente ni ningún script de Relevo: archivos de entorno, llaves privadas, almacenes de credenciales. La lista es la lista base de abajo más `restricted_paths` en `relevo.yml`, que solo suma (un perfil no puede debilitarla, y `relevo.yml` no puede quitar una entrada). Es aparte de las rutas protegidas, que tratan de lo que un diff puede escribir.
+
+**La lista base.** `.env` y `.env.*` a cualquier profundidad, salvo `.env.example` (las skills y los stacks lo leen para los nombres de las variables); llaves privadas y certificados (`*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.p8`, `*.ppk`, `*.keystore`, `*.jks`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`); archivos de credenciales de gestores de paquetes y del shell (`.npmrc`, `.netrc`, `.pypirc`, `.git-credentials`, `.pgpass`, `.htpasswd`); la configuración de servicios de las apps móviles (`google-services.json`, `GoogleService-Info.plist`, `key.properties`); y una carpeta `secrets/` en la raíz y en la raíz de cada plataforma. La coincidencia es por nombre de ruta, y un nombre que no esperabas (`key.json`) no está en ella: agrégalo a `restricted_paths`.
+
+**Qué cubren las denegaciones de herramienta de `.env.*`.** Las reglas de Claude Code no pueden decir "salvo `.env.example`", así que las denegaciones del workflow en la nube y de `/relevo:init` listan las variantes comunes (`.env.local`, `.env.development`, `.env.production`, `.env.staging`, `.env.test`, `.env.testing`, `.env.dev`, `.env.prod`, `.env.qa`, `.env.ci`, `.env.preview` y `.env.*.local`), no todos los `.env.*`. Una variante fuera de esa lista (`.env.docker`, `.env.backup`, `.env.sample`, `.env.old`, `.env.stage`) está restringida para los scripts de Relevo y no está en el worktree, pero ninguna herramienta del agente la deniega: agrega esos nombres a `restricted_paths`, que sí escribe una denegación por cada entrada. `.env.example` es el único nombre exento.
+
+**Un archivo de configuración móvil versionado hace fallar cada ejecución.** Un repositorio que versiona a propósito `google-services.json` o `GoogleService-Info.plist` (algunos equipos lo hacen, porque los valores no son secretos) tiene un archivo restringido versionado, así que `go` se detiene con el motivo "restricted file in the diff" y `/relevo:doctor` falla. La lista no tiene excepción para ellos: deja de versionar el archivo y mantenlo fuera de git, o acepta que las ejecuciones se detengan.
+
+**La comprobación es por nombre.** La ruta se resuelve contra la carpeta de trabajo antes de compararla, así que `a/./b`, `a//b` y `a/../a/b` son el mismo nombre, pero un enlace simbólico a un archivo restringido no se sigue: un enlace con un nombre común no se reconoce.
+
+### Tres niveles de ocultamiento
+
+| Nivel | Qué ve el agente | Dónde se cumple |
+|---|---|---|
+| **No está en el árbol** | "no such file": el archivo no está | el árbol que construye Relevo. `go` construye en un worktree de git, que solo contiene archivos versionados, y ningún script copia ni enlaza un archivo restringido ahí (un archivo `.worktreeinclude` es una función de Claude Code que sí lo hace, y el worktree de Relevo no lo procesa). Un archivo restringido que está versionado es un fallo, no algo que ocultar: `go` se detiene ahí y `/relevo:doctor` falla |
+| **Lectura denegada** | la lectura se bloquea y se le avisa al agente; un listado del directorio todavía muestra el nombre | los ajustes del agente, abajo |
+| **Shell en sandbox** | el sistema operativo rechaza al proceso que abre el archivo | Claude Code, donde una persona activa su sandbox (el workflow en la nube no); Antigravity no |
+
+El primer nivel es el único que responde "no such file". En el segundo y el tercero el agente se entera de que algo está bloqueado.
+
+### Qué hace cumplir cada agente
+
+| | Claude Code | Antigravity CLI |
+|---|---|---|
+| Las herramientas de archivos del agente | **se cumple**: reglas `Read(...)` en `permissions.deny`, escritas por `/relevo:init` entre las líneas `# relevo:restricted begin` y `# relevo:restricted end` del workflow en la nube, en el input `settings` de la action, que la action mezcla en los ajustes de usuario del ejecutor, fuera del repositorio | **se cumple** para las rutas exactas de la lista: una regla `read_file(...)` por cada archivo restringido que existe en el árbol, escrita fuera del repositorio al empezar la ejecución. La herramienta no documenta globs, y un nombre sin ruta solo coincide en la raíz, así que un archivo creado después de empezar la ejecución no queda cubierto |
+| Los scripts de Relevo | **se cumple**: se niegan a abrir o publicar un archivo restringido, y el commit seguro rechaza uno en el diff | **se cumple**, igual |
+| Un comando de archivos en un shell (`cat .env`) | **se cumple** para los comandos que Claude Code reconoce (`cat`, `head`, `tail`, `sed`, redirecciones), con las reglas `Read` | **no cubierto**: la denegación no alcanza a un comando (probado), y los comandos de la lista permitida pueden leer el archivo |
+| Un proceso que abre el archivo por sí mismo (un script, `node -e`) | **no cubierto en la nube**: el workflow escribe `sandbox.filesystem.denyRead` pero no activa el sandbox, porque no se ha demostrado que la construcción siga descargando, comentando, etiquetando y subiendo con él activado. Donde una persona activa el sandbox de Claude Code (una ejecución local), la denegación rechaza al proceso | **no cubierto** |
+| Un comando que lee sin nombrar el archivo (`grep -r`) | **parcial**: ninguna regla `Read` lo cubre por nombre; en la nube no está cubierto, y donde una persona activa el sandbox la denegación sí | **no cubierto** |
+| El contenido que ya llegó a una transcripción o a un log | **no cubierto** | **no cubierto** |
+| Un archivo restringido versionado por error | **no cubierto**: está en el historial. `go` y `/relevo:doctor` lo reportan, y hay que rotar el secreto | **no cubierto**, igual |
+
+En la máquina de una persona Relevo propone y comprueba, y nunca hace cumplir: `/relevo:init` muestra las entradas y las escribe en tus ajustes solo tras un sí a ese punto, y `/relevo:doctor` avisa, por nombre de ruta y sin abrir ningún archivo, de cada archivo restringido que existe en la carpeta de trabajo y que ninguna denegación cubre.
+
+**Ningún archivo de ignorar es un control.** Una entrada de `.gitignore` saca un archivo de git, no del alcance de un agente; `.claudeignore` no tiene efecto según la documentación de Claude Code, y `.claudecode.json` no está documentado como control. Relevo escribe solo ajustes que la documentación de la herramienta lista como denegación de lectura, y no ofrece ninguno de esos archivos como protección.
 
 ## En un repositorio público
 

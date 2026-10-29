@@ -5,8 +5,8 @@
 //   node scripts/issue-sections.mjs --body-file issue.md --copy "Decisions,Constraints"   the block go appends to design.md
 // exit 0: done (a --copy with nothing to copy prints nothing)   exit 1: --section names a section that is not there   exit 2: bad arguments
 
-import { readFileSync } from 'node:fs';
 import { copyBlock, section, sections } from './lib/issue-sections.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

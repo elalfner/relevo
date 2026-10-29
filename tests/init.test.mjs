@@ -5,6 +5,8 @@ import { loadConfig } from '../scripts/lib/config.mjs';
 import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
 import { mergeWebHook, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
+import { claudeProposal, mergeAgyDenials, mergeClaudeDenials, missingClaudeEntries, restrictedFacts } from '../scripts/lib/restricted-settings.mjs';
+import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
 const template = readFileSync(`${root}templates/relevo.yml`, 'utf8');
@@ -850,4 +852,79 @@ test('Scenario: Installed - the line is done, and only the missing skill is offe
   const one = get(sourceItems({ offeredSkills: [VUE_OFFER({ missing: ['vue-testing-best-practices'] })] }), 'install.offered.vue.web');
   assert.match(one.command, /--skill vue-testing-best-practices --agent/);
   assert.ok(!one.command.includes('--skill vue-best-practices'));
+});
+
+// ---- read denials of the restricted files
+
+
+const LIST = restrictedList();
+const denialFacts = (settingsText, extra = {}) => ({ restricted: restrictedFacts({ list: LIST, root: '/work/repo', read: (p) => (p === '.claude/settings.json' ? settingsText : null), present: ['.env'], ...extra }) });
+
+test('Scenario: Offered for Claude Code - one optional item shows the Read entries and the sandbox entries, and nothing is written by the script', () => {
+  const it = get(plan(bare(denialFacts(null))), 'install.restricted-deny');
+  assert.equal(it.status, 'todo');
+  assert.equal(it.install, true);
+  assert.equal(it.optional, true);
+  const shown = JSON.parse(it.entries);
+  assert.ok(shown.permissions.deny.includes('Read(**/.env)'));
+  assert.ok(shown.sandbox.filesystem.denyRead.includes('**/.env'));
+  assert.ok(![...shown.permissions.deny, ...shown.sandbox.filesystem.denyRead].some((e) => e.includes('example')), 'the example file is not among them');
+  assert.match(it.detail, /switches nothing on/);
+  assert.match(renderPlan([it]), /\[will do\] Optional: deny the read of the restricted files/);
+  const calls = [];
+  applyPlan([it], { repo: 'o/r', io: { gh: (a) => calls.push(a), write: (p) => calls.push(p), append: (p) => calls.push(p) } });
+  assert.deepEqual(calls, [], 'nothing is written before the person says yes');
+});
+
+test('Scenario: Existing settings are kept - the accepted item adds the missing denials after the entries the person wrote', () => {
+  const before = JSON.stringify({ attribution: { commit: '' }, permissions: { allow: ['Bash(git status)'], deny: ['Bash(curl:*)', 'Read(**/.env)'] }, sandbox: { enabled: true, filesystem: { allowWrite: ['/tmp'] } } }, null, 2);
+  const after = JSON.parse(mergeClaudeDenials(before, LIST));
+  assert.deepEqual(after.attribution, { commit: '' });
+  assert.deepEqual(after.permissions.allow, ['Bash(git status)']);
+  assert.deepEqual(after.permissions.deny.slice(0, 2), ['Bash(curl:*)', 'Read(**/.env)'], 'the entries of the person keep their place');
+  assert.equal(after.permissions.deny.filter((r) => r === 'Read(**/.env)').length, 1, 'an entry that was there is not repeated');
+  assert.ok(after.permissions.deny.includes('Read(**/*.pem)'));
+  assert.equal(after.sandbox.enabled, true);
+  assert.deepEqual(after.sandbox.filesystem.allowWrite, ['/tmp']);
+  assert.ok(after.sandbox.filesystem.denyRead.includes('**/.env'));
+  assert.equal(mergeClaudeDenials(JSON.stringify(after), LIST), JSON.stringify(after), 'a file that has everything is returned as it is');
+});
+
+test('a new file gets the entries and the sandbox is not switched on; a broken file is never rewritten', () => {
+  const made = JSON.parse(mergeClaudeDenials(null, LIST));
+  assert.deepEqual(made.permissions.deny, claudeProposal(LIST).deny);
+  assert.equal(made.sandbox.enabled, undefined);
+  assert.throws(() => mergeClaudeDenials('{ not json', LIST));
+  assert.throws(() => mergeClaudeDenials('[]', LIST), /not a JSON object/);
+  assert.throws(() => mergeClaudeDenials('{"permissions":{"deny":"x"}}', LIST), /not a list/);
+});
+
+test('Scenario: Declined - the item is left as todo with nothing applied, and the plan goes on', () => {
+  const items = skipItems(plan(bare(denialFacts(null))), ['install.restricted-deny']);
+  assert.equal(get(items, 'install.restricted-deny').status, 'skipped');
+  assert.equal(get(items, 'config').status, 'todo', 'the rest of the plan is as it was');
+  const results = applyPlan(items.filter((i) => i.id === 'install.restricted-deny'), { repo: 'o/r', io: { gh: () => '', write: () => assert.fail('nothing is written'), append: () => assert.fail('nothing is appended') } });
+  assert.deepEqual(results, [], 'a declined item is not applied and makes no later step fail');
+});
+
+test('a repository whose settings already deny the files shows the item as in place, and a broken file as manual', () => {
+  const have = JSON.stringify({ permissions: { deny: claudeProposal(LIST).deny }, sandbox: { filesystem: { denyRead: claudeProposal(LIST).denyRead } } });
+  assert.equal(get(plan(bare(denialFacts(have))), 'install.restricted-deny').status, 'ok');
+  assert.equal(get(plan(bare(denialFacts('{ nope'))), 'install.restricted-deny').status, 'manual');
+  assert.equal(get(plan(bare()), 'install.restricted-deny'), undefined, 'without the fact there is no item');
+  assert.deepEqual(missingClaudeEntries(JSON.parse(have), LIST), { deny: [], denyRead: [] });
+});
+
+test('a project entry of restricted_paths is in the proposal, and Antigravity gets exact-path rules for the files that exist', () => {
+  const own = restrictedList({ restricted_paths: ['infra/prod.tfvars'] });
+  assert.ok(claudeProposal(own).deny.includes('Read(./infra/prod.tfvars)'));
+  const facts = denialFacts(null, { list: own, present: ['.env', 'infra/prod.tfvars'], antigravity: true });
+  const it = get(plan(bare(facts)), 'install.restricted-deny.antigravity');
+  assert.equal(it.status, 'todo');
+  assert.deepEqual(JSON.parse(it.entries).permissions.deny, ['read_file(/work/repo/.env)', 'read_file(/work/repo/infra/prod.tfvars)']);
+  assert.match(it.detail, /matches no glob/);
+  const merged = JSON.parse(mergeAgyDenials('{"modelProvider":"gemini","permissions":{"deny":["read_url(*)"],"allow":["command(git)"]}}', JSON.parse(it.entries).permissions.deny));
+  assert.deepEqual(merged.permissions.deny, ['read_url(*)', 'read_file(/work/repo/.env)', 'read_file(/work/repo/infra/prod.tfvars)']);
+  assert.deepEqual(merged.permissions.allow, ['command(git)']);
+  assert.equal(get(plan(bare(denialFacts(null))), 'install.restricted-deny.antigravity'), undefined, 'not offered when the repository does not use it');
 });

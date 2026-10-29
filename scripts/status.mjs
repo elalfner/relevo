@@ -4,12 +4,13 @@
 //   node scripts/status.mjs --input state.json [--me login] [--now ISO] [--json]
 // exit 0: reported   exit 2: invalid configuration or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { realGh, realGhLinks } from './lib/github.mjs';
 import { buildStatus, renderStatus } from './lib/status.mjs';
 import { gatherStatus } from './lib/status-data.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

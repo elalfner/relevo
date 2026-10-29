@@ -7,7 +7,7 @@ The cloud build of each supported agent SHALL receive the restricted files as re
 
 #### Scenario: Reading the Claude workflow
 - **WHEN** a person reads the workflow rendered for `agent.build: claude`
-- **THEN** the `Read` denials and the sandbox read denials for the base list and for `restricted_paths` are visible, and the example file is not among them
+- **THEN** the `Read` denials and the sandbox read denials for the base list and for `restricted_paths` are visible, the sandbox is shown as not enabled, and the example file is not among them
 
 #### Scenario: The list changes
 - **WHEN** a project adds an entry to `restricted_paths`
@@ -20,9 +20,13 @@ The cloud build of each supported agent SHALL receive the restricted files as re
 ### Requirement: Claude Code gets both read controls
 For Claude Code the denials SHALL be `Read` rules and sandbox read denials together, because a `Read` rule does not reach a process that opens files itself and a sandbox denial does not reach the `Read` tool.
 
+#### Scenario: The cloud sandbox is not enabled by default
+- **WHEN** the workflow is rendered for the cloud build
+- **THEN** the sandbox read denials are present but `sandbox.enabled` is not set, until a full cloud run has shown that the build still fetches, comments, labels and pushes with it enabled, and the security page lists a process that opens files itself as not covered in the cloud
+
 #### Scenario: A script reads the file
-- **WHEN** the agent runs a script that opens `.env` itself
-- **THEN** the sandbox denial refuses it, and the security page lists such a process as not covered where the sandbox is not available
+- **WHEN** the agent runs a script that opens `.env` itself on a machine where the sandbox is enabled
+- **THEN** the sandbox denial refuses it, and the security page lists such a process as not covered where the sandbox is not enabled
 
 #### Scenario: A file command in a shell
 - **WHEN** the agent runs `cat .env`

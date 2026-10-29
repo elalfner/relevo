@@ -5,9 +5,10 @@
 // file that is not a JSON object is left as it is.
 // exit 0: written, or already there   exit 2: the file could not be merged
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { mergeWebHook } from './lib/init.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const i = process.argv.indexOf('--settings');
 const path = i === -1 ? '.claude/settings.json' : process.argv[i + 1];

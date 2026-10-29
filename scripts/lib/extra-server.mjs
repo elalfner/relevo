@@ -8,7 +8,8 @@ import { listeners } from './dev-server-guard.mjs';
 
 export const EXIT = { refused: 1, busy: 3, envFiles: 4, noLsof: 5 };
 
-// Example files hold no values the app loads.
+// Example files hold no values the app loads. This is about what a dev server loads, not the restricted list, which
+// leaves out only `.env.example`.
 const EXAMPLES = new Set(['.env.example', '.env.sample', '.env.template']);
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

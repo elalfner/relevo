@@ -4,8 +4,9 @@
 //   before: run before the developer; after: run after QA passes.
 // exit 0: ok   exit 1: prints why not   exit 2: bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { checkFixTasks } from './lib/tasks-file.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

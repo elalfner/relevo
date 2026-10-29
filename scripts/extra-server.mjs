@@ -9,10 +9,11 @@
 //   exit 0: done   exit 1: not recorded, or the port is not served by the recorded server (it was stopped)
 //   exit 2: bad arguments   exit 3: the port is busy   exit 4: --unset with environment files present   exit 5: no lsof
 
-import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readdirSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { checkServer, parseSet, startServer, stopServers } from './lib/extra-server.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const dash = process.argv.indexOf('--');
 const argv = dash === -1 ? process.argv.slice(2) : process.argv.slice(2, dash);
