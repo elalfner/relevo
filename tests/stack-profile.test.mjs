@@ -116,6 +116,36 @@ test('the command prints what the repository switched off and what it ignored', 
   assert.deepEqual(printed.plugin_skills.qa, ['flutter-add-widget-test']);
 });
 
+const withWhenInstalled = parseProfile(`${header('skills_when_installed:\n  dev: [a, b]\n  qa: [a]\n')}\nPlugin body.\n`).profile;
+
+test('Scenario: Listed and installed - the key is read per role and a profile without it has empty lists', () => {
+  assert.deepEqual(withWhenInstalled.skillsWhenInstalled, { dev: ['a', 'b'], qa: ['a'], issue: [], review: [] });
+  assert.deepEqual(plugin.skillsWhenInstalled, { dev: [], qa: [], issue: [], review: [] });
+});
+
+test('Scenario: Unknown role - a key that is not a role fails and names it', () => {
+  assert.match(parseProfile('---\nstack: vue\nskills_when_installed:\n  boss: [x]\n---\n').errors.join(' '), /"skills_when_installed" has unknown role "boss"/);
+  assert.match(parseProfile('---\nstack: vue\nskills_when_installed:\n  dev: x\n---\n').errors.join(' '), /"skills_when_installed.dev" must be a list/);
+  assert.match(parseProfile('---\nstack: vue\nskills_when_installed: x\n---\n').errors.join(' '), /must map a role/);
+});
+
+test('Scenario: Added by the repository - the plugin\'s skills are followed by the repository\'s, and the origin is kept', () => {
+  const repo = parseProfile('---\nstack: vue\nskills_when_installed:\n  dev: [mine]\n---\n').profile;
+  const merged = mergeProfiles(withWhenInstalled, repo);
+  assert.deepEqual(merged.skillsWhenInstalled.dev, ['a', 'b', 'mine']);
+  assert.deepEqual(merged.pluginSkillsWhenInstalled.dev, ['a', 'b']);
+  assert.deepEqual(mergeProfiles(withWhenInstalled, null).pluginSkillsWhenInstalled, withWhenInstalled.skillsWhenInstalled);
+  assert.deepEqual(mergeProfiles(null, repo).pluginSkillsWhenInstalled.dev, []);
+});
+
+test('Scenario: Switched off - skills.disable removes a skill of this key from every role', () => {
+  const merged = mergeProfiles(withWhenInstalled, repoDisabling('a'));
+  assert.deepEqual(merged.skillsWhenInstalled.dev, ['b']);
+  assert.deepEqual(merged.skillsWhenInstalled.qa, []);
+  assert.deepEqual(merged.skillsDisabled, ['a']);
+  assert.deepEqual(merged.pluginSkillsWhenInstalled.dev, ['b']);
+});
+
 test('Scenario: Command replaced the supported way - platforms.<name>.checks wins', () => {
   const p = applyChecks(plugin, { test: 'pnpm test' });
   assert.equal(p.commands.test, 'pnpm test');
@@ -358,4 +388,11 @@ test('Scenario: Command given by checks - a stack of the repository accepts anal
   const lookups = profileLookups({ pluginRoot: '/p', read });
   assert.deepEqual(lookups.knownChecks('go'), ['analyze', 'test', 'format']);
   assert.equal(lookups.knownChecks('nothing'), null, 'a stack with no profile is not judged here');
+});
+
+test('the command prints the skills used only when installed, and the ones the plugin listed', () => {
+  const dir = repo({ 'relevo.yml': CONFIG(), '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills_when_installed:\n  dev: [mine]\n---\n' });
+  const printed = JSON.parse(run(dir, '--plugin-root', PLUGIN_ROOT).stdout);
+  assert.deepEqual(printed.skills_when_installed.dev, ['mine']);
+  assert.deepEqual(printed.plugin_skills_when_installed.dev, []);
 });

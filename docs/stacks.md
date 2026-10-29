@@ -52,7 +52,7 @@ Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:g
 
 - Each profile was run on a project created for it (`npm create vue@latest` with TypeScript, Vitest, ESLint and Prettier; `composer create-project laravel/laravel`). The Vue `analyze` fails on a type error, a `v-for` without `:key`, an unused variable, an explicit `any` and a single-word component name, and does not fail on `v-html`, a listener that is never removed or props copied out of reactivity. The Laravel `analyze` and `test` fail on a style problem and on a failing test, and do not fail on a mass-assignment hole, an N+1 query or a missing authorisation. The text of each profile tells QA which of those to look for by reading.
 - A project that uses `pnpm` or `yarn`, `oxlint`, or PHPStan replaces the command in `relevo.yml`, for example `checks: { analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse" }`.
-- Only `supabase` requires skills. The `flutter` profile gives two recommended skills to `dev` and `qa` (see below). To give the developer or QA a skill of your own (a Laravel best-practices skill, say), list it in `.relevo/stacks/<stack>.md` under `skills`.
+- Only `supabase` requires skills. The `flutter` profile gives two recommended skills to `dev` and `qa`, and `laravel` and `vue` use skills only when they are installed (see below). To give the developer or QA a skill of your own (a Laravel best-practices skill, say), list it in `.relevo/stacks/<stack>.md` under `skills`.
 - A profile can have a section `Questions for the issue writer`. `/relevo:issue` asks those the idea leaves open (for a backend: who is authorised and what an error looks like); the developer and QA never receive it.
 
 ### Using the `flutter` profile with the official skills
@@ -72,6 +72,24 @@ The Flutter team publishes skills and a Dart MCP server for coding agents ([Get 
 - **More skills.** `flutter/agent-plugins` holds 25 (the Dart ones too). Install another with the same command and list it under `skills` in `.relevo/stacks/flutter.md` (see [Extra skills per role](#extra-skills-per-role)); each one you list is read at every run, and `/relevo:doctor` warns when a role passes 20 KB.
 - **The plugin, for working on your machine.** `claude plugin marketplace add flutter/agent-plugins`, then `claude plugin install dart-flutter@dart-flutter`, installs all of them and the Dart MCP server in your Claude Code. It is an optional extra that stays on your machine, and Relevo does not count it.
 - **Rules.** A plugin does not load rules by itself. If you want the official ones, copy them from the `rules` folder of `flutter/agent-plugins` into the rules file of your project (`qa.rules_from`); `/relevo:init` lists this as a step for you and never writes your rules file.
+
+### Using the `laravel` profile with Laravel Boost
+
+Laravel publishes its guidance for coding agents through [Laravel Boost](https://laravel.com/framework/docs/boost) (read on 2026-10-29), a development dependency that installs skills for the packages your project uses. The profile uses two of them, `laravel-best-practices` and `testing-best-practices`, only when they are installed and committed; when they are not, nothing is reported. Boost is recommended and never required: `/relevo:doctor` reports a note when it is missing, and `/relevo:init` offers the install as optional commands that you confirm one by one.
+
+- **Install.** From the folder of the platform: `composer require laravel/boost --dev`, then `php artisan boost:install --skills --no-interaction`. `--skills` installs the skills and leaves the guidelines (`CLAUDE.md`) and the MCP server alone, and `--no-interaction` installs for the agents it finds on your machine without asking. Boost chooses the skills from `composer.json`: a fresh Laravel 13 project got `laravel-best-practices`, `testing-best-practices`, `tailwindcss-development`, `infer-conventions` and `deploying-to-cloud`.
+- **Commit what it wrote.** `.claude/skills/`, `boost.json`, `composer.json` and `composer.lock`. Boost may also write the folders of the other agents it finds (`.agents/`, `.kiro/`), which you commit only if you use them. The Laravel documentation says the generated files can be kept out of git; for the skills that would hide them from the cloud runner, which reads only what is committed, and `/relevo:doctor` warns when a skill folder is ignored by git.
+- **Other skills.** The skills for Livewire, Inertia, Flux, Tailwind or Pest apply only when you use the package and cost up to 10 KB each, so the profile does not list them. List the ones you want under `skills` in `.relevo/stacks/laravel.md` (see [Extra skills per role](#extra-skills-per-role)).
+- **Switch one off.** `skills: { disable: [testing-best-practices] }` in `.relevo/stacks/laravel.md`.
+
+### Using the `vue` profile with community skills
+
+Vue publishes no skills for coding agents. The closest set is [vuejs-ai/skills](https://github.com/vuejs-ai/skills), a community project (MIT) that calls itself an early experiment whose skills "may be incomplete due to hallucinations". It is not official. `/relevo:init` offers two of its skills, `vue-best-practices` and `vue-testing-best-practices`, as an optional install, and the profile gives them to `dev` and `qa` only when they are installed. `/relevo:doctor` says nothing when they are absent.
+
+- **Install.** `cd <folder of the platform> && npx skills add vuejs-ai/skills --skill vue-best-practices --skill vue-testing-best-practices --agent claude-code --copy --yes`. It writes `.claude/skills/` and `skills-lock.json` in that folder: commit both. The files are plain Markdown with no script (checked on 2026-10-29).
+- **What they cost.** `vue-testing-best-practices` is an index of 2 KB whose references are read by symptom. `vue-best-practices` is 10 KB and tells the agent to read four reference files (34 KB) in every Vue task, so it adds about 44 KB of reading to each run of `dev` and of `qa`. Switch it off if that is too much.
+- **Switch one off.** `skills: { disable: [vue-best-practices] }` in `.relevo/stacks/vue.md`.
+- **The checklist is in the profile, not in a skill.** The text of the profile has the security, performance and testing points of the Vue documentation that can be read in a diff: a template built from user text, `innerHTML`, a shared prop that changes for every item of a list, a snapshot as the only assertion, and others.
 
 ### Using the `supabase` profile in a repository
 
@@ -166,6 +184,7 @@ Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any ot
 - `/relevo:doctor` lists the skills that were left out and why, warns when the skills of a role are larger than 20 KB, and warns when a skill no longer matches `skills-lock.json`.
 - A skill a profile lists under `requires_skills` is required: `/relevo:doctor` fails when it is not installed. A skill under `skills` is given to that role. A stack can use both for the same skill: `supabase` requires `supabase` and `supabase-postgres-best-practices` and gives them to `dev`, `qa` and `issue`. A recommended skill is one that the profile of the plugin gives to a role without requiring it (the two of `flutter`): when it is missing, `/relevo:doctor` reports a note and the run goes on without it.
 - To switch a skill of the plugin off, name it under `skills.disable` in `.relevo/stacks/<stack>.md`; a required one cannot be.
+- A profile can also list skills under `skills_when_installed`: they are given to the role when their folder is on the base branch, and nothing is reported when it is not. `laravel` and `vue` use it, because the skills they use depend on what the project installed.
 
 ## What an unattended run cannot change
 

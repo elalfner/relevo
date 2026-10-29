@@ -12,6 +12,9 @@ skills:
   qa: []
   issue: []
   review: []
+skills_when_installed:
+  dev: [vue-best-practices, vue-testing-best-practices]
+  qa: [vue-best-practices, vue-testing-best-practices]
 targets:
   web: ""
 ---
@@ -39,6 +42,9 @@ If the project uses `oxlint`, `pnpm` or `yarn`, or names its checks differently,
 - Type props and emits (`defineProps<...>()`, `defineEmits<...>()`); avoid `any`.
 - Keep side effects out of `computed`; use `watch` or an event handler.
 - Write a Vitest test for each scenario the DOM can show, with `@vue/test-utils`. A scenario that depends on the real browser (layout, animation, a real network) is covered by correct code and verified in the review.
+- Never build a template from user text (`template: '<div>' + text + '</div>'`), and do not use `innerHTML` in a render function or JSX. Bind `:style` to an object of allowed properties, never to a CSS string a user wrote. A user URL in `:href` or `:src` may start with `javascript:`: check the scheme.
+- In a list, give each child the value it needs (`:active="item.id === activeId"`), not the shared one that changes for every item (`:active-id`). Virtualize a list of hundreds of items, and do not wrap each item of a long list in an extra component. Use `shallowRef` for large data that is only replaced, never edited in place.
+- Test what a component does, not how: click and type instead of calling its methods, assert on the rendered DOM, and do not rely on a snapshot alone or mock the child components. Test a composable that uses lifecycle hooks or `inject` through a host component.
 
 ## What the auditor looks for in the diff
 
@@ -51,6 +57,9 @@ Run on a fresh project (`create-vue` with TypeScript, Vitest, ESLint and Prettie
 - **States**: missing loading, empty or error state; an action that can be sent twice.
 - **Types**: `as` casts that hide a mismatch, an event or prop that the component does not declare.
 - **Network**: a request with no error handling; a token or secret written in the code.
+- **Security**: a template string built from user text; `innerHTML` in a render function; `:style` bound to a CSS string from a user; a user URL in `:href` or `:src` with no scheme check.
+- **Performance**: a prop that changes for every item of a list when one item changed; hundreds of items not virtualized; an extra component around each item of a long list; large data made deeply reactive that is only replaced.
+- **Tests**: a test that calls component methods or reads private state; a snapshot as the only assertion; a child component mocked in a component test.
 - **Generated code**: leave `dist/`, `*.tsbuildinfo` and generated declaration files out of the review.
 
 Do not spend time re-checking what `analyze` already enforces: read its output.
