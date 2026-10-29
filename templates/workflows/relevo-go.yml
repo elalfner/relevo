@@ -83,9 +83,10 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          # Only needed when `links` in relevo.yml lists a private repository: a read-only token (issues and pull
-          # requests) stored as the secret RELEVO_LINKS_TOKEN. It is used only to read the issues the dependencies
-          # name, never to write, and an empty value is fine (public repositories are read without it).
+          # Only needed when `links` in relevo.yml lists a private repository: a read-only token (issues, pull
+          # requests and contents) stored as the secret RELEVO_LINKS_TOKEN. Here it reads the issues the dependencies
+          # name; the step "Fetch the references of the issue" of the build reads files with it. It is used only to
+          # read, never to write, and an empty value is fine (public repositories are read without it).
           GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
@@ -200,7 +201,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/relevo"
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo"
-          for f in scripts/toolchain-check.mjs scripts/render-message.mjs .claude-plugin/plugin.json; do
+          for f in scripts/toolchain-check.mjs scripts/render-message.mjs scripts/design-fetch.mjs .claude-plugin/plugin.json; do
             [ -f "$RUNNER_TEMP/relevo/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
           if result=$(node "$RUNNER_TEMP/relevo/scripts/toolchain-check.mjs" --platform "$PLATFORM" --plugin-root "$RUNNER_TEMP/relevo"); then
@@ -239,6 +240,24 @@ jobs:
           echo "RELEVO_PROGRESS_DIR=$dir" >> "$GITHUB_ENV"
           RELEVO_PROGRESS_DIR="$dir" nohup node "$script" watch --issue "$ISSUE" --decision "$DECISION" --max-minutes 65 > "$dir/watch.log" 2>&1 &
           exit 0
+
+      # Fetches what the issue points to (its Design reference, and the Code pointers that name a file of a linked
+      # repository) before the agent starts, into .relevo-design/, which git ignores. This is the only step of this job
+      # that gets RELEVO_LINKS_TOKEN: a read-only token (issues, pull requests and contents) that reads the files of
+      # the private repositories in `links`, never writes, and never reaches the agent. An empty value is fine (public
+      # repositories are read without it). A refused reference does not fail the step: the manifest lists it and the
+      # agent sends the issue back to needs-spec with the reason. Any other failure stops the job here.
+      - name: Fetch the references of the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: |
+          code=0
+          node "$RUNNER_TEMP/relevo/scripts/design-fetch.mjs" --issue "$ISSUE" --repo "$GITHUB_REPOSITORY" || code=$?
+          [ "$code" -le 1 ] || exit "$code"
+          echo "RELEVO_REFERENCES=$GITHUB_WORKSPACE/.relevo-design/manifest.json" >> "$GITHUB_ENV"
 
       # relevo:agent-step begin
       - id: agent

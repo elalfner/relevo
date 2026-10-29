@@ -398,3 +398,36 @@ test('an issue without the section is untouched, and the CLI takes --repo-root',
   assert.equal(missing.status, 1);
   assert.match(missing.stderr, /does not exist in the repository/);
 });
+
+// ---------- code pointers of linked repositories
+
+const withPointers = (pointers, refs = '') => `${GOOD}\n## Code pointers\n\n${pointers}\n${refs ? `\n## Design reference\n\n${refs}\n` : ''}`;
+const pointerCheck = (pointers, extra = {}) => checkIssueDraft({ title: 'Home', body: withPointers(pointers, extra.refs), repoRoot: REF_DIR, links: extra.links ?? [] });
+
+test('Scenario: Linked pointer - a file of a linked repository passes and is read as a reference', () => {
+  assert.deepEqual(pointerCheck('- `acme/api:src/billing/charge.ts`: how an order is charged', { links: ['acme/api'] }).problems, []);
+  const parsed = parseIssueBody(withPointers('- `acme/api:src/billing/charge.ts`: how an order is charged'));
+  assert.deepEqual(parsed.codePointers.references, [{ kind: 'repo-file', target: 'acme/api:src/billing/charge.ts', repo: 'acme/api', path: 'src/billing/charge.ts', match: 'how an order is charged' }]);
+});
+
+test('Scenario: Pointer to a repository not linked - the check names it and lists the linked ones', () => {
+  const r = pointerCheck('- `other/repo:src/x.ts`: the parser', { links: ['acme/api'] });
+  assert.match(r.problems.join('\n'), /Code pointers: "other\/repo:src\/x\.ts" names other\/repo, which is not in links of relevo\.yml \(acme\/api\)/);
+});
+
+test('Scenario: Pointer to this repository - local pointers and free text are not read', () => {
+  const body = withPointers('- `src/app.ts`: the entry point\n- the store keeps the cart in memory\n- `does/not/exist.ts`: gone');
+  assert.deepEqual(checkIssueDraft({ title: 'Home', body, repoRoot: REF_DIR }).problems, []);
+  assert.deepEqual(parseIssueBody(body).codePointers.references, []);
+});
+
+test('a linked pointer that leaves the repository is refused', () => {
+  assert.match(pointerCheck('- `acme/api:../secret.ts`: x', { links: ['acme/api'] }).problems.join('\n'), /Code pointers: "acme\/api:\.\.\/secret\.ts" leaves the repository/);
+});
+
+test('Scenario: Six references across both sections - design references and linked pointers count together', () => {
+  const refs = Array.from({ length: 3 }, (_, i) => `- \`design/home.png\`: part ${i}`).join('\n');
+  const pointers = Array.from({ length: 3 }, (_, i) => `- \`acme/api:src/f${i}.ts\`: step ${i}`).join('\n');
+  assert.match(pointerCheck(pointers, { refs, links: ['acme/api'] }).problems.join('\n'), /Design reference and the linked Code pointers have 6 references together; the most Relevo takes is 5/);
+  assert.deepEqual(pointerCheck(pointers.split('\n').slice(0, 2).join('\n'), { refs, links: ['acme/api'] }).problems, []);
+});

@@ -30,6 +30,44 @@ function withoutCode(body) {
   return out;
 }
 
+const REPO_FILE_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+:[^\s]+$/;
+
+/** Is this path absolute, or does it climb out of the repository? */
+function leavesRepository(path) {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.split(/[\\/]/).includes('..');
+}
+
+/**
+ * The "Code pointers" section, for what the fetcher downloads: only the bullets whose backticked target is a file of
+ * another repository, `owner/repo:path`. Every other bullet (a file of this repository, free text) is left alone.
+ * Returns { references: [{ kind: 'repo-file', target, repo, path, match }], problems }.
+ */
+export function parseCodePointers(body) {
+  const found = section(body, 'Code pointers');
+  const references = [];
+  const problems = [];
+  if (!found) return { references, problems };
+  let inFence = false;
+  found.text.split('\n').forEach((line) => {
+    if (FENCE_RE.test(line)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence || !/^\s*[-*+]\s+/.test(line)) return;
+    const m = line.replace(/^\s*[-*+]\s+/, '').trim().match(/^`([^`]+)`\s*(?::\s*(.*))?$/);
+    if (!m || !REPO_FILE_RE.test(m[1].trim())) return;
+    const target = m[1].trim();
+    const [repo, ...rest] = target.split(':');
+    const path = rest.join(':');
+    if (leavesRepository(path)) {
+      problems.push(`"${target}" leaves the repository: use a path inside it`);
+      return;
+    }
+    references.push({ kind: 'repo-file', target, repo, path, match: (m[2] ?? '').trim() });
+  });
+  return { references, problems };
+}
+
 /**
  * The "Design reference" section: a bullet per reference, `- <target>: <what must match>`, plus fenced example code.
  * <target> is a backticked path of the repository, a backticked owner/repo:path of a linked repository, or a link.
@@ -67,14 +105,13 @@ export function parseDesign(body) {
       } catch { /* not a URL */ }
       const ok = ATTACHMENT_HOSTS.includes(host) && (host !== 'github.com' || new URL(target).pathname.startsWith('/user-attachments/'));
       Object.assign(ref, { kind: 'attachment', allowed: ok });
-    } else if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+:[^\s]+$/.test(target)) {
+    } else if (REPO_FILE_RE.test(target)) {
       const [repo, ...rest] = target.split(':');
       Object.assign(ref, { kind: 'repo-file', repo, path: rest.join(':') });
     } else {
       Object.assign(ref, { kind: 'path', path: target });
     }
-    const path = ref.path;
-    if (path !== undefined && (path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.split(/[\\/]/).includes('..'))) {
+    if (ref.path !== undefined && leavesRepository(ref.path)) {
       problems.push(`"${target}" leaves the repository: use a path inside it`);
       return;
     }
@@ -190,5 +227,6 @@ export function parseIssueBody(body) {
   if (edgeCases === 0) missing.push('edge cases (a list under an "Edge cases" heading)');
 
   const design = parseDesign(body);
-  return { design, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
+  const codePointers = parseCodePointers(body);
+  return { design, codePointers, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
 }

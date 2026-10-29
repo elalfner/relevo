@@ -223,3 +223,12 @@ test('QA compares example code, checks an image plausibly, rejects an invented a
   assert.match(section, /reject an asset .* that the diff adds and that is neither in the project nor in the references/);
   assert.match(section, /left for on-device review/);
 });
+
+test('Scenario: Linked code pointer - dev and QA read a linked pointer from the manifest, as a hint and never as a reference to match', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  [dev, qa].forEach((text) => {
+    assert.match(text, /`\.relevo-design\/manifest\.json` with `section` `code-pointer`/);
+    assert.match(text, /never (?:as|treat it as) a reference to match/);
+  });
+});

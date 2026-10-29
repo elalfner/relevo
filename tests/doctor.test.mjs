@@ -598,7 +598,7 @@ test('Scenario: Private linked repository without the secret - doctor fails and 
   const r = byId(results, 'links.secret');
   assert.equal(r.status, 'fail');
   assert.match(r.message, /acme\/api is private and there is no RELEVO_LINKS_TOKEN/);
-  assert.match(r.fix, /read access to issues and pull requests.*RELEVO_LINKS_TOKEN/);
+  assert.match(r.fix, /read access to issues, pull requests and contents.*RELEVO_LINKS_TOKEN/);
   assert.equal(byId(results, 'links.acme/api').status, 'pass');
 });
 

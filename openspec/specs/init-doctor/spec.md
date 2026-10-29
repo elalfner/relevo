@@ -241,11 +241,11 @@ For each platform, `doctor` SHALL check the tools the profile requires, the tool
 - **THEN** `doctor` shows it as left out with the reason
 
 ### Requirement: Doctor checks the linked repositories
-When `links` is not empty, `doctor` SHALL check that each linked repository can be read, and that the secret `RELEVO_LINKS_TOKEN` exists (its name only, never its value); a missing secret is a warning when every linked repository is public and a failure when one is private. When `links` is empty, none of this is checked.
+When `links` is not empty, `doctor` SHALL check that each linked repository can be read, and that the secret `RELEVO_LINKS_TOKEN` exists (its name only, never its value); a missing secret is a warning when every linked repository is public and a failure when one is private. The fix SHALL ask for a token with read access to issues, pull requests and contents. When `links` is empty, none of this is checked.
 
 #### Scenario: Private linked repository without the secret
 - **WHEN** `links` lists a private repository and the secret does not exist
-- **THEN** `doctor` fails that check and says to create a read-only token and store it as `RELEVO_LINKS_TOKEN`
+- **THEN** `doctor` fails that check and says to create a token with read access to issues, pull requests and contents and store it as `RELEVO_LINKS_TOKEN`
 
 #### Scenario: Public linked repositories
 - **WHEN** every linked repository is public and no secret exists
@@ -256,11 +256,11 @@ When `links` is not empty, `doctor` SHALL check that each linked repository can 
 - **THEN** `doctor` does not mention the secret
 
 ### Requirement: Init asks for the linked repositories
-`init` SHALL ask which repositories this one depends on, write `links`, and remind the person to create the read-only secret, without reading or writing it.
+`init` SHALL ask which repositories this one depends on, write `links`, and remind the person to create the read-only secret with read access to issues, pull requests and contents, without reading or writing it.
 
 #### Scenario: Front and back
 - **WHEN** the person names `acme/api`
-- **THEN** `relevo.yml` has `links: [acme/api]` and `init` shows what token to create
+- **THEN** `relevo.yml` has `links: [acme/api]` and `init` shows what token to create, with read access to issues, pull requests and contents
 
 ### Requirement: Doctor reports the execution mode
 `doctor` SHALL report the credential mode deduced from the secret names (`api_key`, `subscription`, both as a warning, none as a warning that only local runs are possible), the state of the repository variable `RELEVO_CLOUD_GO`, a one-line reminder to read the current Anthropic policy on automated use of a subscription when the mode is `subscription`, and a warning when the mode is `subscription` and `limits.concurrent_agents` is more than 1.
