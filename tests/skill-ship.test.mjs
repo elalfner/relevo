@@ -125,3 +125,24 @@ test('the skill knows that the checks of the approved head carry over, and names
   assert.match(body, /do not ask about `no-ci` then/);
   assert.match(body, /apply the `relevo:ship` label/);
 });
+
+test('Scenario: A failed go left its worktree - ship asks who holds the branch before it switches, and archives nothing', () => {
+  const check = body.indexOf('scripts/branch-worktree.mjs --branch <branch>');
+  assert.ok(check > 0 && check < body.indexOf('git switch <branch>'), 'the check comes before the switch');
+  assert.ok(check < body.indexOf('openspec archive "<change folder name>" -y'), 'and before anything is archived');
+  assert.match(body, /stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path/);
+});
+
+test('Scenario: Ship in a worktree - the tidy runs only under the condition review uses, and the branch is not deleted otherwise', () => {
+  const tidy = body.slice(body.indexOf('3. Tidy the local copy'), body.indexOf('## Report'));
+  const review = readFileSync(root('skills/review/SKILL.md'), 'utf8');
+  const guard = '[ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ] && ! git worktree list --porcelain | grep -qx "branch refs/heads/<base>"';
+  assert.ok(tidy.includes(guard) && review.includes(guard), 'the same condition as review step 9');
+  assert.match(tidy, /run none of them, because `git branch -d` also fails on the branch the working tree is standing on/);
+  assert.match(tidy, /say which branch the working tree stays on/);
+});
+
+test('Scenario: The tidy fails - it is a note, and the merge, the closed issue and the labels stand', () => {
+  const tidy = body.slice(body.indexOf('3. Tidy the local copy'), body.indexOf('## Report'));
+  assert.match(tidy, /say so as a note: the pull request is already merged, so it never changes the outcome/);
+});
