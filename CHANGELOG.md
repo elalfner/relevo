@@ -15,6 +15,21 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - **`doctor` warns when the cloud would read a different `relevo.yml`.** A label event reads `relevo.yml` from the default branch of the repository, while every build starts from the base branch. When the two are different branches, `doctor` compares the two copies on GitHub and warns when their settings differ, or when the default branch has none, with the fix of promoting the base branch or making it the default branch. Comments and layout do not count.
 - **The page on where `go` runs says which branch the cloud reads.** A new section explains that the cloud reads its workflows and `relevo.yml` from the default branch, that the branch of a build always starts from `branches.base` whatever the default branch is, and what changes when the base branch is the default branch.
+- **The page on self-hosted runners explains several runners on one machine.** What each runner keeps apart (workspace, `$RUNNER_TEMP`, tool cache, branch of the issue) and what they share (the home of the runner's user, package caches, the Docker daemon, the ports), why to register more runners than `limits.concurrent_agents`, that the Supabase stack does not parallelise on one machine, and that runners of one user share what the agent can read (a sentence in the security page too). English and Spanish. See `docs/execution.md`.
+- **Linked repositories can hold pictures and code for the builder.** A design reference `owner/repo:path` may now be a PNG, JPEG, GIF or WebP image up to 5 MB as well as a text file; it does not depend on `design.images`, which stays about pasted pictures. `Code pointers` also accept `owner/repo:path` for a repository in `links`: the file is fetched for the builder as a hint to check, and counts towards the five references with the design references. When an issue builds on a process of another repository, `/relevo:issue` reads it with your access and writes the process into the issue.
+
+### Known limits
+
+- `limits.concurrent_agents` counts the issues labelled `relevo:building` when the gate of an issue runs, and the gates of different issues do not wait for each other: with two or more runners, or on GitHub's runners, two issues labelled together can both start and exceed it by the number of gates that overlap. With a single runner the gates queue and the limit holds.
+- The risks of runners sharing a home, caches, Docker and ports were not tried on a machine with several runners; the text says what can collide, not what was seen to.
+
+### Changed
+
+- **The docs now say how `/relevo:go` in a session differs from `/relevo:go --local`.** Both build in a worktree of their own; only `--local` runs a separate process with the closed tool lists and the limits of `relevo.yml`. A table in `docs/commands.md` compares them, and the guide and `docs/execution.md` link to it.
+
+### Fixed
+
+- **A design reference to a private linked repository no longer sends the issue back with a 404 when `RELEVO_LINKS_TOKEN` can read it.** The agent fetched the references itself, inside a job that never gets that token, so it read with the workflow token, which sees only the current repository. A step before the agent now fetches them with the token, which the agent still never holds. A file that cannot be read now says why: that `RELEVO_LINKS_TOKEN` cannot read that repository, that a private repository needs it, or that your `gh` login cannot read it, and the reason reaches the issue word for word. To adopt it, give `RELEVO_LINKS_TOKEN` read access to the contents of the linked repositories (Contents: read) and copy `.github/workflows/relevo-go.yml` again.
 
 ## [0.11.1] - 2026-10-28
 

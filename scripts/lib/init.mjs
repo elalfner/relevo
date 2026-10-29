@@ -386,7 +386,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   const links = facts.config?.links ?? answers.links ?? [];
   if (links.length > 0) {
     if ((facts.secrets ?? []).includes('RELEVO_LINKS_TOKEN')) items.push(item('manual.links-token', 'ok', 'The RELEVO_LINKS_TOKEN secret exists (init never reads it)'));
-    else items.push(item('manual.links-token', 'manual', `If ${links.join(', ')} ${links.length > 1 ? 'are' : 'is'} private, create a fine-grained token with read access to issues and pull requests and store it yourself as the secret RELEVO_LINKS_TOKEN (init never reads or writes it; Relevo only reads with it, and public repositories need none)`));
+    else items.push(item('manual.links-token', 'manual', `If ${links.join(', ')} ${links.length > 1 ? 'are' : 'is'} private, create a fine-grained token with read access to issues, pull requests and contents and store it yourself as the secret RELEVO_LINKS_TOKEN (init never reads or writes it; Relevo only reads with it, and public repositories need none)`));
   }
   if (hasSupabase) {
     items.push(item('manual.supabase-mcp', 'manual', 'To explore your Supabase database in Claude Code or Antigravity during /relevo:think, consider connecting the Supabase MCP server (see https://supabase.com/docs/guides/ai-tools)'));

@@ -46,11 +46,24 @@ What to build, the path of a saved agreement, or the number of an issue to rewri
 
 ### `/relevo:go [issue-number] [--local] [--decision <base64>]`
 
-The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `/relevo:go` in a Claude Code session builds it on your machine in a worktree of its own (so two can run at once), and `--local` does the same in a separate process with the closed tool lists of the workflow. `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
+The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `/relevo:go` in a Claude Code session builds it on your machine in a worktree of its own (so two can run at once), and `--local` builds in a separate process with the closed tool lists and the limits of the workflow (the worktree is the same; the rest differs, see below). `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
 
 ```text
 /relevo:go 42 --local
 ```
+
+#### In the session or on its own
+
+| | `/relevo:go 42` in a session | `/relevo:go 42 --local` |
+|---|---|---|
+| Who builds | your own Claude Code session | a new `claude -p` process (`agy -p` with Antigravity) |
+| Tools | those of your session | the closed lists of the workflow |
+| Limits | none of `relevo.yml` | the turn and cost limits of `relevo.yml` |
+| What you see | the build, live; you can step in | the output when it ends |
+| Context | uses the context of your session | does not touch it |
+| Worktree | its own, under `.relevo-worktrees/` | the same place |
+
+Use the session when you want to watch and step in; use `--local` to leave it running under the same limits as the cloud.
 
 ### `/relevo:review [issue-number]`
 
