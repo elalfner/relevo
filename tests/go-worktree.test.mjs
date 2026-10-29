@@ -150,3 +150,55 @@ test('go-local and go-worktree name the worktree the same way', () => {
   assert.equal(planLocalRun({ issue: '42', repoRoot: REPO, config }).worktree, worktreePath(REPO, '42'));
   assert.equal(createWorktree({ issue: '42', config, runner: fakeRunner() }).worktree, worktreePath(REPO, '42'));
 });
+
+// ---------- restricted files stay out of the tree that is built
+
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+test('Scenario: A restricted file is not in the tree - an ignored .env in the main folder is not in the worktree, and nothing copies or links it', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'relevo-wt-restricted-')));
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const origin = join(base, 'origin.git');
+  const main = join(base, 'shop');
+  git(base, 'init', '-q', '--bare', '-b', 'dev', origin);
+  git(base, 'clone', '-q', origin, main);
+  git(main, 'config', 'user.email', 'a@b');
+  git(main, 'config', 'user.name', 't');
+  git(main, 'checkout', '-q', '-b', 'dev');
+  writeFileSync(join(main, '.gitignore'), '.env\nsecrets/\n*.pem\n');
+  writeFileSync(join(main, '.env.example'), 'API_KEY=\n');
+  writeFileSync(join(main, 'README.md'), 'x\n');
+  git(main, 'add', '.');
+  git(main, 'commit', '-qm', 'base');
+  git(main, 'push', '-q', 'origin', 'dev');
+  // The files that the person keeps beside the code, ignored by git.
+  writeFileSync(join(main, '.env'), 'APP_NAME=shop\n');
+  writeFileSync(join(main, 'server.pem'), 'canary\n');
+  mkdirSync(join(main, 'secrets'));
+  writeFileSync(join(main, 'secrets', 'k.txt'), 'canary\n');
+  // A `.worktreeinclude` is how Claude Code copies ignored files into a worktree: Relevo's own worktree never reads it.
+  writeFileSync(join(main, '.worktreeinclude'), '.env\n');
+
+  const runner = { capture: (cmd, args, options) => execFileSync(cmd, args, { cwd: options.cwd ?? main, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+  const r = createWorktree({ issue: '7', config, runner: { capture: (cmd, args, options) => runner.capture(cmd, args, { cwd: options.cwd ?? main }) } });
+  assert.equal(r.status, EXIT.ok, r.messages.join('\n'));
+  assert.ok(existsSync(join(r.worktree, 'README.md')), 'the versioned files are there');
+  assert.ok(existsSync(join(r.worktree, '.env.example')), 'the example file is versioned, so it is there');
+  ['.env', 'server.pem', 'secrets', 'secrets/k.txt', '.worktreeinclude'].forEach((path) => assert.ok(!existsSync(join(r.worktree, path)), `${path} is not in the worktree`));
+  assert.ok(r.worktree.startsWith(base) && !r.worktree.startsWith(`${main}/`), 'the worktree is outside the main folder, so no link back is needed');
+  // The module that makes the worktree has no way to copy or link a file: it only runs git.
+  const source = readFileSync(`${root}scripts/lib/go-worktree.mjs`, 'utf8');
+  assert.doesNotMatch(source, /copyFile|cpSync|symlink|linkSync|renameSync|worktreeinclude/i);
+});
+
+test('no script of Relevo copies, links or moves a file into a tree', () => {
+  const scripts = new URL('../scripts/', import.meta.url).pathname;
+  const files = execFileSync('git', ['ls-files', '--', 'scripts'], { cwd: root, encoding: 'utf8' }).split('\n').filter((f) => f.endsWith('.mjs'));
+  // The one script that copies (the plugin's own folders into a tool's folder) filters by the restricted list.
+  const offenders = files.filter((f) => { const text = readFileSync(`${root}${f}`, 'utf8'); return /\b(copyFileSync|cpSync|symlinkSync|linkSync|copyFile)\b/.test(text) && !/isRestricted/.test(text); });
+  assert.deepEqual(offenders, [], `${offenders.join(', ')} copies or links files without the restricted list: a restricted file must never be one of them`);
+  assert.ok(scripts.endsWith('/scripts/'));
+});

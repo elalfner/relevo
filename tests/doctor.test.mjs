@@ -1983,3 +1983,100 @@ test('Scenario: An own stack that needs only Node - its toolchain is not judged'
 test('Scenario: An own stack and no go workflow - nothing is said about the toolchain', () => {
   assert.deepEqual(runChecks(healthy({ platformFacts: [ownPlatform()] })).filter((r) => r.id.startsWith('automation.toolchain')), []);
 });
+
+// ---------- restricted files
+
+import { claudeProposal } from '../scripts/lib/restricted-settings.mjs';
+import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
+
+const RLIST = restrictedList();
+const settingsWithDenials = JSON.stringify({ permissions: { deny: claudeProposal(RLIST).deny } });
+/** Probes of a repository with the given files: `read` records every path it is asked for, so a test can say what was opened. */
+function restrictedProbes({ files = {}, present = [], tracked = [], user = {} } = {}) {
+  const opened = [];
+  const all = { 'relevo.yml': CONFIG_TEXT, ...files };
+  return {
+    opened,
+    probes: {
+      tool: (name, args) => (name === 'git' && args[0] === 'ls-files' ? `${tracked.join('\0')}\0` : 'ok'),
+      gh: () => { throw new Error('HTTP 404'); },
+      exists: (p) => p in all,
+      read: (p) => { opened.push(p); return all[p]; },
+      listDir: () => [],
+      skillDirs: [],
+      root: '/work/repo',
+      restrictedFiles: () => present,
+      readUser: (p) => { opened.push(`~/${p}`); return user[p] ?? null; },
+    },
+  };
+}
+const restrictedResults = (over) => {
+  const { opened, probes } = restrictedProbes(over);
+  const f = gatherFacts(probes);
+  return { results: runChecks({ ...healthy(), restricted: f.restricted }), opened, f };
+};
+
+test('Scenario: Denials present - the settings deny the read of every restricted file that exists, and the check passes', () => {
+  const { results } = restrictedResults({ files: { '.claude/settings.json': settingsWithDenials }, present: ['.env', 'api/.env.production'] });
+  assert.equal(byId(results, 'restricted.denials').status, 'pass');
+  assert.match(byId(results, 'restricted.denials').message, /\.env, api\/\.env\.production/);
+  assert.equal(byId(results, 'restricted.versioned').status, 'pass');
+  assert.deepEqual(results.filter((r) => r.id.startsWith('restricted.') && r.status !== 'pass'), []);
+});
+
+test('Scenario: Denial missing - .env exists and no Read denial covers it: a warning that names the path and says init proposes the entries', () => {
+  const { results } = restrictedResults({ present: ['.env'] });
+  const w = byId(results, 'restricted.denial..env');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /\.env exists and no Read denial/);
+  assert.match(w.fix, /\/relevo:init: it proposes the entries/);
+  assert.deepEqual(failing(results), [], 'a missing denial is never a failure');
+  assert.equal(exitCode(results), 0);
+});
+
+test('the user settings of the person count, and a rule in .claude/settings.local.json counts too', () => {
+  const user = restrictedResults({ present: ['.env'], user: { '.claude/settings.json': settingsWithDenials } });
+  assert.equal(byId(user.results, 'restricted.denials').status, 'pass');
+  const local = restrictedResults({ present: ['.env'], files: { '.claude/settings.local.json': JSON.stringify({ permissions: { deny: ['Read(./.env)'] } }) } });
+  assert.equal(byId(local.results, 'restricted.denials').status, 'pass');
+});
+
+test('Scenario: A versioned restricted file - doctor reports a failure that names the path', () => {
+  const { results } = restrictedResults({ tracked: ['README.md', 'config/private.pem', '.env.example'] });
+  const f = byId(results, 'restricted.versioned');
+  assert.equal(f.status, 'fail');
+  assert.match(f.message, /git versions config\/private\.pem/);
+  assert.ok(!f.message.includes('.env.example'), 'the example file is not restricted');
+  assert.match(f.fix, /rotate the secret/);
+  assert.equal(exitCode(results), 1);
+});
+
+test('Scenario: Doctor stays read-only - no restricted file is opened, only the settings files, and nothing is written', () => {
+  const { opened } = restrictedResults({ present: ['.env', 'secrets/a.txt'], tracked: ['config/private.pem'], files: { '.env': 'A=canary', 'secrets/a.txt': 'canary' } });
+  const allowed = new Set(['relevo.yml', '.claude/settings.json', '.claude/settings.local.json', '~/.claude/settings.json', '~/.gemini/antigravity-cli/settings.json']);
+  assert.ok(opened.every((p) => allowed.has(p) || p.startsWith('.github/') || p.startsWith('.relevo/') || p === '.gitignore'), `unexpected read: ${[...new Set(opened)].join(', ')}`);
+  ['.env', 'secrets/a.txt', 'config/private.pem'].forEach((path) => assert.ok(!opened.includes(path), `${path} was opened`));
+});
+
+test('an invalid settings file is a warning, not a failure, and the check with no restricted file has nothing to deny', () => {
+  const broken = restrictedResults({ present: ['.env'], files: { '.claude/settings.json': '{ nope' } });
+  assert.equal(byId(broken.results, 'restricted.settings').status, 'warn');
+  assert.deepEqual(failing(broken.results), []);
+  const none = restrictedResults({});
+  assert.equal(byId(none.results, 'restricted.denials').status, 'pass');
+  assert.match(byId(none.results, 'restricted.denials').message, /nothing to deny/);
+});
+
+test('Antigravity: for a repository that builds with it, a missing read_file rule warns by path, and the exact rule satisfies it', () => {
+  const agy = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\n').config;
+  const probesFor = (user) => ({ ...restrictedProbes({ files: { 'relevo.yml': 'agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\n', '.claude/settings.json': settingsWithDenials }, present: ['.env'], user }).probes });
+  const missing = runChecks({ ...healthy({ config: agy }), restricted: gatherFacts(probesFor({})).restricted });
+  assert.equal(byId(missing, 'restricted.antigravity..env').status, 'warn');
+  assert.match(byId(missing, 'restricted.antigravity..env').message, /not a command such as cat/);
+  const covered = runChecks({ ...healthy({ config: agy }), restricted: gatherFacts(probesFor({ '.gemini/antigravity-cli/settings.json': JSON.stringify({ permissions: { deny: ['read_file(/work/repo/.env)'] } }) })).restricted });
+  assert.equal(byId(covered, 'restricted.antigravity..env'), undefined);
+});
+
+test('without the fact (an older caller) the restricted checks are absent and a healthy repository stays green', () => {
+  assert.deepEqual(runChecks(healthy()).filter((r) => r.id.startsWith('restricted.')), []);
+});

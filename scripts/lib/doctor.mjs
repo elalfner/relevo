@@ -15,6 +15,8 @@ import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { platformFolders } from './protected-paths.mjs';
+import { restrictedListFromText } from './restricted-paths.mjs';
+import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
 import { testDatabase } from './api-preflight.mjs';
@@ -286,6 +288,16 @@ export function gatherFacts(p) {
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
   f.pluginDeclared = pluginDeclaration(p);
   f.webHook = webHookDeclaration(p);
+  // The restricted files and what the settings of the agents say about them, by path name: no restricted file is opened.
+  f.restricted = restrictedFacts({
+    list: restrictedListFromText(f.configText),
+    root: p.root ?? process.cwd(),
+    read: (path) => (p.exists(path) ? p.read(path) : null),
+    readUser: p.readUser ?? (() => null),
+    present: p.restrictedFiles ? tryRun(() => p.restrictedFiles(restrictedListFromText(f.configText)), []) : [],
+    tracked: tryRun(() => String(p.tool('git', ['ls-files', '-z'])).split('\0').filter(Boolean), []),
+    antigravity: f.config?.agent?.build === 'antigravity',
+  });
   f.remoteSession = process.env.CLAUDE_CODE_REMOTE === 'true';
 
   // Workflows: what runs on GitHub is what is on the default branch, not what is in the working copy, so once the
@@ -885,6 +897,7 @@ export function runChecks(f) {
   r.push(f.evidenceIgnored ? pass('evidence.ignored', 'evidence/ is ignored by git') : fail('evidence.ignored', 'evidence/ is not in .gitignore; `review` would put screenshots in git', 'add the line `evidence/` to .gitignore (or run /relevo:init)'));
   r.push(...pluginDeclaredChecks(f));
   r.push(...webHookChecks(f));
+  r.push(...restrictedChecks(f));
 
   // GitHub side
   if (!f.repo || !f.ghAuth) {
@@ -1086,6 +1099,32 @@ function pluginDeclaredChecks(f) {
   if (f.pluginDeclared?.unreadable) r.push(warn('plugin.declared', '.claude/settings.json is not valid JSON, so it cannot be checked whether the repository declares the Relevo plugin', 'fix the file; /relevo:init then offers to declare the plugin'));
   else if (f.pluginDeclared?.declared) r.push(pass('plugin.declared', 'the repository declares the Relevo plugin in .claude/settings.json, so a teammate who opens it is offered it'));
   else if (f.pluginDeclared) r.push(warn('plugin.declared', 'the repository does not declare the Relevo plugin in .claude/settings.json: a teammate who clones it is not offered the plugin and finds no /relevo: commands', 'run /relevo:init, or claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin and claude plugin install relevo@relevo --scope project, and commit .claude/settings.json'));
+  return r;
+}
+
+/**
+ * The restricted files (docs/security.md). A versioned one fails: the secret is already in the history. A missing read
+ * denial warns, never fails, because the settings of a person are theirs; it is found by name, for each restricted file
+ * that exists in the working folder, in the settings of each agent the repository uses. No restricted file is opened.
+ */
+function restrictedChecks(f) {
+  const x = f.restricted;
+  if (!x) return [];
+  const r = [];
+  if (x.tracked.length > 0) {
+    r.push(fail('restricted.versioned', `git versions ${x.tracked.join(', ')}, which ${x.tracked.length === 1 ? 'is a restricted file' : 'are restricted files'}: the secret is already in the history and a run of go would stop on it`, 'rotate the secret, remove the file from the repository (git rm --cached) and keep it ignored'));
+  } else r.push(pass('restricted.versioned', 'no restricted file is versioned'));
+
+  if (x.claude.unreadable.length > 0) r.push(warn('restricted.settings', `${x.claude.unreadable.join(', ')} is not valid JSON, so it cannot be checked whether it denies the read of the restricted files`, 'fix the file; /relevo:init then offers the denials'));
+  const uncovered = x.claude.uncovered;
+  if (x.present.length === 0) r.push(pass('restricted.denials', 'no restricted file exists in this working folder, so there is nothing to deny'));
+  else if (uncovered.length === 0 && x.claude.unreadable.length === 0) r.push(pass('restricted.denials', `the settings of Claude Code deny the read of ${x.present.join(', ')}`));
+  uncovered.forEach((path) => r.push(warn(`restricted.denial.${path}`, `${path} exists and no Read denial of the settings of Claude Code covers it, so an agent in this folder can read it`, 'run /relevo:init: it proposes the entries and writes them only after a yes')));
+
+  if (x.antigravity.used) {
+    if (x.antigravity.unreadable) r.push(warn('restricted.antigravity.settings', 'the settings of Antigravity are not valid JSON, so it cannot be checked whether they deny the read of the restricted files', 'fix the file; /relevo:init then offers the denials'));
+    x.antigravity.uncovered.forEach((path) => r.push(warn(`restricted.antigravity.${path}`, `${path} exists and no read_file denial of the settings of Antigravity covers it (the denial stops its file tool, not a command such as cat)`, 'run /relevo:init: it proposes the entries and writes them only after a yes')));
+  }
   return r;
 }
 

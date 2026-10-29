@@ -310,7 +310,7 @@ test('Scenario: Run with another configuration / Audit of the normal run - extra
 });
 
 test('Scenario: An environment file exists - environment files are never read', () => {
-  assert.match(body, /Never read the project's environment files/);
+  assert.match(body, /Never read a restricted file \(the list is in `docs\/security\.md`/);
   assert.match(autopilot, /refuses `--unset` while an environment file exists/);
 });
 

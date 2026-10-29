@@ -6,10 +6,11 @@
 // The skill reads exit 3 as "stop" and exit 4 as "build where you are".
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { createWorktree, EXIT, removeWorktree } from './lib/go-worktree.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const args = process.argv.slice(2);
 const [command, issue] = args;

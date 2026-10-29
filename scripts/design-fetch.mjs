@@ -9,11 +9,13 @@
 //   exit 0: every reference is available   exit 1: some reference was refused (the reasons are printed)   exit 2: bad arguments
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { fetchReferences } from './lib/design-fetch.mjs';
+import { restrictedList } from './lib/restricted-paths.mjs';
 import { parseCodePointers, parseDesign } from './lib/issue-parse.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -29,7 +31,7 @@ const bodyFile = arg('body-file');
 if (!issue && !bodyFile) fail('usage: design-fetch.mjs --issue <n> [--repo owner/name] [--out .relevo-design] [--config relevo.yml] [--repo-root .]', 2);
 
 const configPath = resolve(arg('config') ?? 'relevo.yml');
-let config = { design: { images: false }, links: [] };
+let config = { design: { images: false }, links: [], restricted_paths: [] };
 if (existsSync(configPath)) {
   const loaded = loadConfig(readFileSync(configPath, 'utf8'));
   if (!loaded.ok) fail(`relevo.yml is invalid:\n${loaded.errors.map((e) => `  ${e.message}`).join('\n')}`, 2);
@@ -70,6 +72,7 @@ const result = await fetchReferences({
     ...pointers.references.map((r) => ({ ...r, section: 'code-pointer' })),
   ],
   images: config.design.images === true,
+  restricted: restrictedList(config),
   links: config.links,
   exists: (path) => existsSync(join(repoRoot, path)),
   fetch: globalThis.fetch,

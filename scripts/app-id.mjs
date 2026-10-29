@@ -2,8 +2,9 @@
 // Prints the Android application id of the project (from android/app/build.gradle.kts or build.gradle).
 //   exit 0: printed   exit 2: not found (the log audit then covers the whole log)
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { applicationId } from './lib/appid.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const dir = process.argv[2] ?? 'android/app';
 for (const name of ['build.gradle.kts', 'build.gradle']) {

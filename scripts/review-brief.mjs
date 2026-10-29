@@ -4,8 +4,8 @@
 //        [--autopilot off|precheck|verify] [--kind device|browser|api]
 // exit 0: printed   exit 2: bad arguments
 
-import { readFileSync } from 'node:fs';
 import { reviewBrief } from './lib/review-brief.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

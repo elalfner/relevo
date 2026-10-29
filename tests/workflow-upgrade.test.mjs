@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chooseBase, conflictsOf, distance, pinOf, planUpgrades, publishedTemplates, stampOf, unifiedDiff, upgradeWorkflow } from '../scripts/lib/workflow-upgrade.mjs';
 import { runnerLine } from '../scripts/lib/init.mjs';
+import { withRestricted } from '../scripts/lib/agent-workflow.mjs';
+import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
 
 // Implements the scenarios of "Init updates a workflow by a three-way merge", "A merged workflow is written only when
 // clean and confirmed" and "The pin and the stamp are set, not merged".
@@ -162,4 +164,18 @@ test('planUpgrades gives a state only for the files that exist', () => {
   const out = planUpgrades({ files: ['relevo-go.yml', 'relevo-sla.yml'], ours: { 'relevo-go.yml': own(V1), 'relevo-sla.yml': null }, templates: { 'relevo-go.yml': V3, 'relevo-sla.yml': V3 }, agentBlocks: null, labels: undefined, build: 'claude', source });
   assert.deepEqual(Object.keys(out), ['relevo-go.yml']);
   assert.equal(out['relevo-go.yml'].status, 'update');
+});
+
+test('Scenario: The list changes - a workflow with the old restricted block is updated to the block of the new list, with no conflict', () => {
+  const go = readFileSync(`${root}templates/workflows/relevo-go.yml`, 'utf8');
+  const before = restrictedList({});
+  const after = restrictedList({ restricted_paths: ['infra/prod.tfvars'] });
+  const ours = withRestricted(go, before);
+  const source = { versions: () => ['0.5.0'], read: () => go };
+  const out = planUpgrades({ files: ['relevo-go.yml'], ours: { 'relevo-go.yml': ours }, templates: { 'relevo-go.yml': go }, agentBlocks: null, labels: undefined, build: 'claude', source, restricted: after })['relevo-go.yml'];
+  assert.equal(out.status, 'update');
+  assert.equal(out.text, withRestricted(go, after), 'the block is written from the list, not merged');
+  assert.match(out.text, /Read\(\/\$\{\{ github\.workspace \}\}\/infra\/prod\.tfvars\)/);
+  const same = planUpgrades({ files: ['relevo-go.yml'], ours: { 'relevo-go.yml': withRestricted(go, after) }, templates: { 'relevo-go.yml': go }, agentBlocks: null, labels: undefined, build: 'claude', source, restricted: after })['relevo-go.yml'];
+  assert.equal(same.status, 'current');
 });

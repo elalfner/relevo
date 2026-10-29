@@ -7,10 +7,11 @@
 //   exit 0: done   exit 2: bad usage or something missing   other: the exit status of the run
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { runLocal } from './lib/go-local.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);

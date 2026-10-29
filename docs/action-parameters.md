@@ -11,6 +11,7 @@ Verified on 2026-10-14 against the documentation and `action.yml` of `anthropics
 | `github_token` | `${{ github.token }}` | the action documents it for a custom GitHub App; it worked with the workflow token in the pilot |
 | `prompt` | `/relevo:go <issue number>` | |
 | `claude_args` | `--max-turns`, `--max-budget-usd`, `--plugin-dir`, `--allowedTools`, `--disallowedTools` | the documented way to pass CLI flags. `--plugin-dir ${{ runner.temp }}/relevo` loads the plugin from the package the job unpacked; verified on 2026-10-27 on a run that listed the plugin as `relevo@inline` with its nine commands and two agents (see [pilot-findings.md](pilot-findings.md)) |
+| `settings` | the `Read` denials and the sandbox read denials of the restricted files, written between the `relevo:restricted` markers by `/relevo:init` | documented as a JSON string or a path. Read in the source of the action at `v1` (`base-action/src/setup-claude-code-settings.ts`): it is not passed as `--settings`; it is merged into `~/.claude/settings.json` of the runner with a shallow spread, so each top-level key it names replaces the existing one, which is why the template gives the whole `permissions` and `sandbox` objects. That file is outside the repository, so a pull request cannot loosen it |
 | `allowed_bots` | `github-actions` (only) | the queue starts builds with `gh workflow run`, so the actor is the Actions bot and the action refuses it otherwise (seen in the sandbox: "Workflow initiated by non-human actor"); never `*` |
 
 ## Output the template reads

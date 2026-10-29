@@ -13,7 +13,7 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 ## What you must never do
 
 - Never run a command that writes: no `gh` call except the reads inside the script, no `git add`, no install, no file edit. If something is wrong, tell the person the fix; do not apply it. `/relevo:init` is what applies fixes.
-- Never read, print or ask for the value of a secret. The script lists secret names only.
+- Never read, print or ask for the value of a secret. The script lists secret names only. Never open a restricted file (`.env`, a private key, a credential file): the script compares their names with the settings and says which have no read denial, and that is all you need.
 - Never hide a failure or turn it into a pass.
 
 ## Steps

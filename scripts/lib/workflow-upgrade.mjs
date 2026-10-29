@@ -15,7 +15,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { agentWorkflow } from './agent-workflow.mjs';
+import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
+import { BASE_PATTERNS } from './restricted-paths.mjs';
 import { runnerLine } from './init.mjs';
 
 const PIN_RE = /^(\s*RELEVO_VERSION:\s*)(['"]?)([\w.+-]+)\2[ \t]*$/m;
@@ -102,21 +103,24 @@ function structureProblem(merged, current) {
  *   { status: 'nobase' }                         no published template is close to the file
  *   { status: 'error', message }                 git failed
  * `candidates` are [{ version, template, blocks }] (the raw template of a published version and its agent blocks, or
- * null). `render` turns a raw template into what `init` would write for this repository.
+ * null). `render` turns a raw template into what `init` would write for this repository, and `normalize` rewrites in a
+ * file the parts that are generated from relevo.yml, before the merge and after it.
  */
-export function upgradeWorkflow({ ours, current, candidates, from = null, render, merge = gitMergeFile }) {
+export function upgradeWorkflow({ ours, current, candidates, from = null, render, merge = gitMergeFile, normalize = (text) => text }) {
   const theirs = render(current.template, current.blocks);
   const rendered = candidates.map((c) => ({ ...c, rendered: render(c.template, c.blocks) }));
   const base = chooseBase(ours, rendered, { from });
   if (!base) return { status: 'nobase' };
 
-  let prepared = ours;
+  // `normalize` writes again what is generated from relevo.yml (the restricted block), so it is set, not merged: a new
+  // entry of `restricted_paths` reaches the file even though the person's copy still has the old block.
+  let prepared = normalize(ours);
   if (pinOf(prepared) !== null && pinOf(base.rendered) !== null) prepared = setPin(prepared, pinOf(base.rendered));
   if (stampOf(prepared) !== null && stampOf(base.rendered) !== null) prepared = setStamp(prepared, stampOf(base.rendered));
 
   const result = merge(prepared, base.rendered, theirs);
   if (result.status === 0) {
-    let text = result.stdout;
+    let text = normalize(result.stdout);
     if (pinOf(theirs) !== null) text = setPin(text, pinOf(theirs));
     if (stampOf(theirs) !== null && stampOf(text) !== null) text = setStamp(text, stampOf(theirs));
     const problem = structureProblem(text, theirs);
@@ -163,10 +167,10 @@ export function publishedTemplates({ exec, tmp = mkdtempSync(join(tmpdir(), 'rel
 
 /**
  * The state of each workflow of the repository that exists and differs from what `init` would write. `ours` and
- * `templates` map a file name to its text; `repo` brings `runnerLabels` and `build`; `source` is `publishedTemplates`.
+ * `templates` map a file name to its text; `repo` brings `runnerLabels` and `build`; `restricted` is the list of restricted files (`restrictedList(config)`); `source` is `publishedTemplates`.
  */
-export function planUpgrades({ files, ours, templates, agentBlocks, labels, build, from = null, source, merge }) {
-  const render = (template, blocks) => runnerLine(agentWorkflow(template, build, blocks), labels);
+export function planUpgrades({ files, ours, templates, agentBlocks, labels, build, from = null, source, merge, restricted = BASE_PATTERNS }) {
+  const render = (template, blocks) => runnerLine(withRestricted(agentWorkflow(template, build, blocks), restricted), labels);
   const versions = files.some((f) => ours[f] != null) ? source.versions() : [];
   const out = {};
   files.filter((f) => ours[f] != null).forEach((file) => {
@@ -174,7 +178,7 @@ export function planUpgrades({ files, ours, templates, agentBlocks, labels, buil
       const template = source.read(version, `templates/workflows/${file}`);
       return template === null ? null : { version, template, blocks: build === 'claude' ? null : source.read(version, `templates/agents/${build}-step.yml`) };
     }).filter(Boolean);
-    out[file] = upgradeWorkflow({ ours: ours[file], current: { template: templates[file], blocks: agentBlocks }, candidates, from, render, merge });
+    out[file] = upgradeWorkflow({ ours: ours[file], current: { template: templates[file], blocks: agentBlocks }, candidates, from, render, merge, normalize: (text) => withRestricted(text, restricted) });
   });
   return out;
 }

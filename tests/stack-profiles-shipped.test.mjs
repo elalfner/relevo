@@ -26,7 +26,7 @@ test('Scenario: Defaults of Laravel - the review block has the log under storage
   const p = profile('laravel');
   assert.deepEqual(p.review, { log: 'storage/logs/*.log', test: 'php artisan test' });
   assert.equal(p.review.serve, undefined);
-  assert.match(p.reviewBody, /never read `\.env`/);
+  assert.match(p.reviewBody, /never read a restricted file/);
   assert.doesNotMatch(p.body, /feature test of its scenario/);
   assert.deepEqual(p.targets, {}, 'Targets: None is unchanged');
 });

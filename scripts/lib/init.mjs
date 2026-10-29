@@ -8,7 +8,9 @@
 import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
-import { agentWorkflow } from './agent-workflow.mjs';
+import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
+import { restrictedList } from './restricted-paths.mjs';
+import { claudeProposalText } from './restricted-settings.mjs';
 import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
@@ -27,6 +29,9 @@ const TOKEN_LINE = '          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE
 // The two official commands that install the plugin at the project scope; the person confirms this exact line.
 export const PLUGIN_PROJECT_COMMAND = 'claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project';
 const PLUGIN_PROJECT_DETAIL = 'It writes the marketplace and the enabled plugin into .claude/settings.json of this repository. It works even if the plugin is already installed for your machine, and nothing is committed for you.';
+
+const RESTRICTED_DETAIL = 'It adds the entries shown to permissions.deny and sandbox.filesystem.denyRead of .claude/settings.json of this repository, after the ones the file already has, and switches nothing on: a Read rule stops the file tools and the file commands Claude Code recognizes in a shell, and the sandbox denial applies only where you enable the sandbox. A command that reads without naming the file (grep -r) is not covered. The file is left for you to commit. If you decline, /relevo:doctor keeps warning.';
+const RESTRICTED_AGY_DETAIL = 'It adds the rules shown to permissions.deny in ~/.gemini/antigravity-cli/settings.json, after the ones the file already has. The tool matches no glob, so each rule is the exact path of a file that exists now; a file created later needs another run. A read_file rule stops its file tool and does not reach a command such as cat. If you decline, /relevo:doctor keeps warning.';
 
 const WEB_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it installs OpenSpec when it is missing (npm install --global @fission-ai/openspec); on a terminal it does nothing. The file is left for you to commit.';
 
@@ -369,6 +374,18 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   else if (facts.webHook?.unreadable) items.push(item('install.web-hook', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the hook that installs OpenSpec in web sessions'));
   else if (facts.webHook) items.push(item('install.web-hook', 'todo', 'Add a hook that installs OpenSpec at the start of a web session of Claude Code, where it is missing (the changed .claude/settings.json is left for you to commit)', { install: true, command: `node \${CLAUDE_PLUGIN_ROOT}/scripts/web-hook.mjs`, hook: WEB_HOOK_COMMAND, detail: WEB_HOOK_DETAIL }));
 
+  // The read denials of restricted files, for a person's own agents: shown with their exact text, written only after a yes.
+  const restricted = facts.restricted;
+  if (restricted) {
+    const missing = restricted.claude.missing;
+    if (restricted.claude.unreadable.includes('.claude/settings.json')) items.push(item('install.restricted-deny', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the read denials for the restricted files'));
+    else if (missing.deny.length === 0 && missing.denyRead.length === 0) items.push(item('install.restricted-deny', 'ok', 'The Claude Code settings of this repository deny the read of the restricted files (.claude/settings.json)'));
+    else items.push(item('install.restricted-deny', 'todo', 'Optional: deny the read of the restricted files (environment files, private keys, credential files, secrets/ and restricted_paths) in .claude/settings.json, as Read rules and as sandbox read denials; your other entries are kept', { install: true, optional: true, command: 'node ${CLAUDE_PLUGIN_ROOT}/scripts/restricted-settings.mjs', entries: claudeProposalText(missing), detail: RESTRICTED_DETAIL }));
+    if (restricted.antigravity.used && restricted.antigravity.rules.length > 0) {
+      items.push(item('install.restricted-deny.antigravity', 'todo', 'Optional: deny the read_file of the restricted files that exist in this folder in the Antigravity settings of your user, one rule for each, by exact path', { install: true, optional: true, command: 'node ${CLAUDE_PLUGIN_ROOT}/scripts/restricted-settings.mjs --agent antigravity', entries: JSON.stringify({ permissions: { deny: restricted.antigravity.rules } }, null, 2), detail: RESTRICTED_AGY_DETAIL }));
+    }
+  }
+
   // relevo.yml
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));
   else items.push(item('config', 'todo', 'Create relevo.yml from the answers', { content: renderConfig(templates.config, { base, release, ...answers }) }));
@@ -425,7 +442,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   WORKFLOW_FILES.forEach((file) => {
     if (runs === 'local' && cloudFiles.includes(file)) return;
     const shared = file === 'relevo-go.yml' ? credentialLine(templates.workflows[file], credential) : templates.workflows[file];
-    const wanted = runnerLine(agentWorkflow(shared, build, templates.agentBlocks), runnerLabels);
+    const wanted = runnerLine(withRestricted(agentWorkflow(shared, build, templates.agentBlocks), restrictedList(facts.config)), runnerLabels);
     const have = current.workflows[file] ?? null;
     // The state of the update is asked for only when the file exists and differs: it may need the network.
     const upgrade = () => (typeof upgrades === 'function' ? upgrades(file) : upgrades[file]);

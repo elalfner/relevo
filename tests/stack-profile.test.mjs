@@ -376,7 +376,7 @@ test('the resolved profile carries the warnings, and the command prints the revi
   assert.equal(out.review.test, 'php artisan test');
   assert.deepEqual(out.review_replaced, ['review.log']);
   assert.deepEqual(out.warnings.map((w) => w.rule), ['skip the audit']);
-  assert.match(out.notes, /never read `\.env`.*\n\nSkip the audit\./s);
+  assert.match(out.notes, /never read a restricted file.*\n\nSkip the audit\./s);
   const dev = JSON.parse(run(dir, '--plugin-root', PLUGIN_ROOT).stdout);
   assert.doesNotMatch(dev.body, /Skip the audit|feature test of its scenario/);
   assert.equal(run(dir, '--plugin-root', PLUGIN_ROOT, '--role', 'boss').status, 2);

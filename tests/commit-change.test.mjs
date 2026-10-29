@@ -212,3 +212,41 @@ test('without --within nothing is restricted by folder', () => {
   put(dir, 'apps/api/b.php', 'b2\n');
   assert.equal(run(dir, '--message', 'feat: x', '--', 'apps/api/b.php').status, 0);
 });
+
+test('Scenario: A restricted file in the diff - a named .pem is refused with the reason, before anything is staged', () => {
+  const dir = repo();
+  put(dir, 'config/private.pem', 'not a real key\n');
+  const before = head(dir);
+  const r = run(dir, '--message', 'feat: tls', '--', 'config/private.pem');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /config\/private\.pem {2}restricted file in the diff \(\*\.pem\)/);
+  assert.equal(head(dir), before);
+  assert.deepEqual(staged(dir), []);
+});
+
+test('a restricted file inside a folder that was named is found after staging, and the whole folder is unstaged', () => {
+  const dir = repo();
+  put(dir, 'deploy/run.sh', 'echo hi\n');
+  put(dir, 'deploy/.env.production', 'A=1\n');
+  const r = run(dir, '--message', 'feat: deploy', '--', 'deploy');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /deploy\/\.env\.production {2}restricted file in the diff/);
+  assert.ok(!r.stderr.includes('A=1') && !r.stdout.includes('A=1'), 'its content is never printed');
+  assert.deepEqual(staged(dir), []);
+});
+
+test('a project entry of restricted_paths is refused too, and the example file is committed', () => {
+  const dir = repo({ 'relevo.yml': 'limits:\n  run_max_cost: 5\nrestricted_paths:\n  - infra/prod.tfvars\n' });
+  put(dir, 'infra/prod.tfvars', 'x = 1\n');
+  const r = run(dir, '--message', 'chore: infra', '--', 'infra/prod.tfvars');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /infra\/prod\.tfvars {2}restricted file in the diff \(infra\/prod\.tfvars\)/);
+  put(dir, '.env.example', 'API_URL=\n');
+  assert.equal(run(dir, '--message', 'docs: env names', '--', '.env.example').status, 0, 'the example file is not restricted');
+});
+
+test('Scenario: Clean diff - with no restricted file the commit goes through', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  assert.equal(run(dir, '--message', 'feat: a', '--', 'lib/a.dart').status, 0);
+});

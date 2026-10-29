@@ -5,6 +5,7 @@
 // The filesystem is injected (`read(path) -> text | null`) so the logic is tested without a repository.
 
 import { parse, YamlLiteError } from './yaml-lite.mjs';
+import { isRestricted } from './restricted-paths.mjs';
 
 export const ROLES = ['dev', 'qa', 'issue', 'review'];
 const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review']);
@@ -145,6 +146,9 @@ export function parseProfile(text) {
     if (!isStringList(raw[key])) errors.push(`"${key}" must be a list of names`);
     else profile[key] = unique(raw[key]);
   });
+  // A profile only adds, and it cannot weaken the list of restricted files: a path it names for the agents to treat or
+  // read (generated files, the review log) is never one of them.
+  profile.generated.filter((entry) => isRestricted(entry)).forEach((entry) => errors.push(`"generated" lists "${entry}", a restricted file: the base list cannot be reduced by a profile`));
   if (raw.skills !== undefined) {
     if (!isMap(raw.skills)) errors.push('"skills" must map a role to a list of skill names');
     else {
@@ -177,6 +181,7 @@ export function parseProfile(text) {
     const r = parseReviewBlock(raw.review);
     errors.push(...r.errors);
     profile.review = r.value;
+    if (r.value.log && isRestricted(r.value.log)) errors.push(`"review.log" names "${r.value.log}", a restricted file: the base list cannot be reduced by a profile`);
   }
   // The questions for the issue writer and the section Review are kept apart from the body: dev and qa never receive them.
   const noQuestions = splitQuestions((match[2] ?? '').trim());

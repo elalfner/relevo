@@ -3,10 +3,11 @@
 //   echo '{"assignee":"ana","issue":31,...}' | node scripts/render-message.mjs built [--config relevo.yml] [--language es]
 // The language comes from --language, else from relevo.yml (if found), else English.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { MESSAGE_KINDS, renderMessage } from './lib/messages.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const kind = process.argv[2];
 if (!kind || !MESSAGE_KINDS.includes(kind)) {
