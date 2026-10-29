@@ -67,7 +67,7 @@ Use the session when you want to watch and step in; use `--local` to leave it ru
 
 ### `/relevo:review [issue-number]`
 
-The number of a `built` issue. It starts the review on the device or in a browser, shows a short brief, the shot list and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
+The number of a `built` issue. It starts the review on the device, in a browser or, for a backend such as Laravel, with the project's tests, shows a short brief, the shot list (none for a backend) and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
 
 ```text
 /relevo:review 42
@@ -133,6 +133,17 @@ The report starts with a line that says what it judged: the repository, and whet
 - **A micro-fix is a commit** before the pull request opens.
 - **It tests the current code**: it brings in the remote branch before it merges the base, and it asks you to confirm in writing if you are not the assignee.
 - **No second pull request**: an existing one for the branch is reused, and a rejected push stops with the reason.
+
+## Reviewing a Laravel backend
+
+A Laravel platform has no screen, so its review has no device, no browser and no screenshot. The checklist still has one line per scenario, and you still confirm every line.
+
+- **With `review.autopilot` `off`** (the default) you run the project's tests in your terminal and tell the review the result: `ran <exit code>`, with `--tests <n>` when you know how many ran. Then you write `ok` or `fail` for each line, as in any review.
+- **With `precheck` or `verify`** the agent runs the existing feature test that covers each line and records the test and its exit code. It never writes a test, a filter that matches no test proves nothing, and a line with no test stays for you. The pull request says which runs were yours and which were the agent's.
+- **The audit reads the log since the review started**, by default `storage/logs`, and never empties or deletes it. A test run that passes writes nothing there, so a recorded run is what shows that the code was exercised: a clean run with a quiet log is `REVIEW PASSED`, and no run at all is `REVIEW INCONCLUSIVE`.
+- **The database matters.** Before it runs a test the review reads the database that `phpunit.xml` declares, never your `.env`. In-memory SQLite, which a new project uses, needs nothing; any other database needs your written confirmation that it is not production.
+- **A server is optional.** Add a `serve` block to the `review` block of `.relevo/stacks/laravel.md` ([Stacks and platforms](stacks.md)) and, with `precheck` or `verify`, the agent can start it on a free local port for the lines that need requests. Without it, no server is started.
+- **Missing dependencies stop it**: when there is no `vendor/`, the review gives the `composer install` command for you to run and installs nothing.
 
 ## Letting the agent help with the review
 

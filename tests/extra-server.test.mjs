@@ -50,6 +50,14 @@ test('Scenario: Missing variable - a free port starts the command without the va
   assert.deepEqual(w.records, [{ port: 5174, pgid: 4242, command: 'npx vite --port 5174 --strictPort', set: ['VITE_ENV'], unset: ['VITE_REGION'] }]);
 });
 
+test('Scenario: Server configured - {port} in the command of a serve block is the port that was free', () => {
+  const w = world();
+  const r = startServer({ port: 8123, set: { APP_ENV: 'testing' }, command: ['php', 'artisan', 'serve', '--port={port}'] }, w.deps);
+  assert.equal(r.code, 0);
+  assert.deepEqual(w.spawned[0].command, ['php', 'artisan', 'serve', '--port=8123']);
+  assert.equal(w.records[0].command, 'php artisan serve --port=8123');
+});
+
 test('Scenario: Busy port - nothing starts, and the server there is not touched', () => {
   const w = world({ ports: { 5173: [777] } });
   const r = startServer({ port: 5173, command: ['npx', 'vite'] }, w.deps);

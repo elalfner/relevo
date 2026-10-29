@@ -114,6 +114,7 @@ gh issue edit 1 --add-label relevo:ready
 
 Connect the phone or start the emulator, and start the app (`flutter run`). The agent shows a short brief, the screenshots worth taking and a checklist with one line per scenario. You test the app and write `ok 1`, `fail 2 <what happened>`, `capture <name>` or `done`. When you are done it audits the log, and with your agreement it opens the pull request.
 
+- **A Laravel backend has no device**: you run `php artisan test` yourself and write `ran <exit code>`, or set `review.autopilot` and the agent runs the test of each line; see [Reviewing a Laravel backend](commands.md#reviewing-a-laravel-backend).
 - **You should see**: the checklist; after `done`, a verdict `REVIEW PASSED`; then your question whether to open the pull request, and the issue ending as `relevo:pr-open`.
 - **If not**: no device means it tells you what to connect. If a line fails, write `fail <number> <what happened>`, then run `/relevo:fix 1 <what happened>` and review again. An inconclusive verdict means the log had nothing of your app: start it again and repeat the steps. See [Commands](commands.md) and the [Guide](guide.md).
 
