@@ -4,6 +4,20 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-28
+
+### Fixed
+
+- **The ship by label no longer stops with "Resource not accessible by integration" when it reads the protection of the base branch.** To know whether the base branch requires checks, the run read the classic protection from `branches/<b>/protection`. That endpoint needs an administration permission that the workflow token can never have, so the run stopped on a private repository on the free plan (where 0.9.2 had only taught it to accept the plan refusal of a personal token) and on any repository whose rulesets answered normally. When the rulesets endpoint refuses because of the plan, the run now does not read the classic protection at all. Any other failure to read either still stops the run before anything is archived: checks that exist are never skipped because they could not be read. `/relevo:ship <n>` was not affected.
+
+### Added
+
+- **The ship by label learns the required checks with the workflow token alone.** It reads the summary of the classic protection on the branch itself (`branches/<b>`), which anyone who can read the branch gets, and counts its checks as required unless their enforcement is `off`. To adopt it, set `RELEVO_VERSION` to `0.11.1` in `.github/workflows/relevo-ship.yml`. The permissions of the workflow do not change, and the App needs no new permission.
+
+### Known limits
+
+- Reading the summary with a real workflow token was checked on public repositories without a token, not yet in a workflow run on a branch whose classic protection requires checks. If GitHub left the summary empty for that token, the run would see no classic checks and GitHub would still refuse the merge of the archive commit, which the ship reports; nothing is merged around a protection.
+
 ## [0.11.0] - 2026-10-28
 
 ### Added
