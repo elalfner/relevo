@@ -18,11 +18,22 @@ The cloud build of each supported agent SHALL receive the restricted files as re
 - **THEN** the rendered workflow does not claim a control it lacks and the run relies only on the other levels, which the security page lists
 
 ### Requirement: Claude Code gets both read controls
-For Claude Code the denials SHALL be `Read` rules and sandbox read denials together, because a `Read` rule does not reach a shell command and a sandbox denial does not reach the `Read` tool.
+For Claude Code the denials SHALL be `Read` rules and sandbox read denials together, because a `Read` rule does not reach a process that opens files itself and a sandbox denial does not reach the `Read` tool.
 
-#### Scenario: A shell command reads the file
-- **WHEN** the agent runs `cat .env` in a shell
-- **THEN** the sandbox denial refuses it, and the security page lists the shell as partial where the sandbox is not available
+#### Scenario: A script reads the file
+- **WHEN** the agent runs a script that opens `.env` itself
+- **THEN** the sandbox denial refuses it, and the security page lists such a process as not covered where the sandbox is not available
+
+#### Scenario: A file command in a shell
+- **WHEN** the agent runs `cat .env`
+- **THEN** the `Read` rule refuses it, with or without the sandbox
+
+### Requirement: Antigravity gets exact-path read denials
+For Antigravity the denials SHALL be one `read_file` rule for each restricted path that exists in the tree, because the tool documents no globs, and the security page SHALL list the control as partial because the tool does not say that it reaches the shell.
+
+#### Scenario: Two environment files exist
+- **WHEN** the tree has `.env` and `api/.env.production`
+- **THEN** the rendered settings carry a `read_file` denial for each of them, and none for `.env.example`
 
 ### Requirement: An ignore file is not a control
 The rendered settings and the documentation SHALL NOT rely on a `.gitignore` entry or on an ignore file that the tool does not document (for example `.claudeignore` or `.claudecode.json`) to hide a file from an agent.

@@ -64,4 +64,4 @@ The documentation SHALL describe three levels and SHALL NOT promise a "no such f
 
 #### Scenario: Reading the page for restricted files
 - **WHEN** a person reads the security page
-- **THEN** for each agent the read of a restricted file by the file tools and the scripts of Relevo are listed as enforced, a read by a shell command is listed as partial, and the content that already reached a transcript or a log, and a restricted file committed by mistake, are listed as not covered
+- **THEN** for each agent the read of a restricted file by the file tools and the scripts of Relevo are listed as enforced, a read by a process that opens the file itself, or by a shell that reads without naming it, is listed as partial, and the content that already reached a transcript or a log, and a restricted file committed by mistake, are listed as not covered

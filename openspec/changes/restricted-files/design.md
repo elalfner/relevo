@@ -9,11 +9,22 @@ See proposal.md for the motivation. What exists today:
 - `go` in local use builds in a git worktree (`scripts/lib/go-worktree.mjs`), which holds only versioned files.
 - The rule "never read `.env`" exists only as prose in `skills/review/SKILL.md` and `stacks/laravel.md`.
 
-Facts taken from the official Claude Code documentation, and what is not yet confirmed:
+Facts taken from the official documentation (Claude Code: permissions, sandboxing and settings reference; Antigravity: its permissions page), and what is still not confirmed:
 
-- `permissions.deny` with `Read(...)` rules blocks the `Read` tool. The documentation says Claude applies them to Grep and Glob on a best-effort basis, and that a `Read` deny also blocks Edit and Write on the path.
-- A `Read` rule does not stop `cat` in a shell. `sandbox.filesystem.denyRead` does, and it does not stop the `Read` tool. Both are needed.
-- Not confirmed: the wildcard syntax of `denyRead`; whether `claude-code-action` accepts sandbox settings through its `settings` input; what Antigravity offers to deny a file read (its known rules are `command(...)`, `read_url(...)`, `execute_url(...)`).
+**Claude Code**
+- `permissions.deny` with `Read(...)` rules blocks the `Read` tool, Grep and Glob (best-effort, in the documentation's words) and the file commands Claude Code recognizes in Bash (`cat`, `head`, `tail`, `sed`, `tee` and redirections). It does **not** cover a command that reads files without naming them (`grep -r pattern .`) or a script that opens files itself (Python, Node). A `Read` deny also blocks Edit and Write on the path.
+- `sandbox.filesystem.denyRead` is OS-level and covers every process, but does not stop the `Read` tool. The two are merged into one sandbox configuration, so both are rendered.
+- `denyRead` paths resolve by prefix: `//path` or `/path` absolute, `~/` the home folder, `./` or none the project root for project settings. The documented glob form is `~/**/.env`. Whether `**/.env` matches at any depth in `denyRead` is not documented (it is, in the permissions grammar, where `Read(.env)` and `Read(**/.env)` are equivalent), so the renderer writes the documented form and a test checks it.
+- `claude-code-action` has a `settings` input ("Claude Code settings as JSON string or path to settings JSON file") and `claude_args`. It has no input for allowed or disallowed tools. Whether `settings` reaches the CLI as `--settings` is not stated.
+- On Linux the sandbox needs `bubblewrap` and `socat`; `sandbox.failIfUnavailable` makes a missing dependency stop the run instead of running unsandboxed. In a container `bwrap` fails to start, which is documented. Headless `claude -p` is not covered by the pages read.
+- `Read(./.env)` is in the permission grammar that `--disallowedTools` takes; an explicit `--disallowedTools` example was not found.
+- `.claudeignore` "has no effect" according to the permissions page; `.claudecode.json` is not documented.
+
+**Antigravity**
+- `permissions.deny` in `~/.gemini/antigravity-cli/settings.json` accepts `read_file(/path)`, `read_file(dir)` and `read_file(*)`, with Deny over Ask over Allow. A directory covers what is under it; no globs are documented. A `read_file` deny also blocks `write_file` on the path.
+- The documentation does not say whether `read_file` rules reach shell commands; `cat` goes through `command`, whose prefix rules are easy to bypass. The sandbox (`--sandbox`) allows the workspace by default and has no documented way to carve a file out of it.
+- No ignore file was found. Project-level rules are reported (by a third party) as not versionable in the repository.
+- Not confirmed: that a `read_file` deny stops the agent's own file tool on a workspace file; filename-only matching; behavior under `--dangerously-skip-permissions`. A local test with `agy` and a throwaway file settles them.
 
 ## Goals / Non-Goals
 
@@ -63,8 +74,9 @@ Level 1 needs no setting: it is a property of the worktree plus a check that fai
 ## Risks / Trade-offs
 
 - [A shell command that reads a restricted file where the sandbox is not available] → documented as partial; level 1 removes the file from the tree where Relevo builds it, and the security page says so.
-- [`claude-code-action` may not accept sandbox settings] → verify before writing the spec scenario into the template; if it does not, the cloud relies on level 1 (the file is not in the checkout) plus `Read` denials, and the page lists the shell as partial.
-- [Antigravity may have no file-read denial] → the renderer says so in the file and the page lists the control as not enforced; no claim is made.
+- [The `settings` input of `claude-code-action` may not be forwarded as `--settings`] → read the action's source at the pinned version, or pass `--settings` in `claude_args`, and confirm with a run in the sandbox repository before the template promises the sandbox denials; if neither works, the cloud relies on level 1 (the file is not in the checkout) plus `Read` denials, which already cover the file tools and `cat`, and the page lists arbitrary processes as not covered.
+- [The sandbox may not start on the runner (a container, or a restricted user namespace)] → set `sandbox.failIfUnavailable` so a run stops instead of running unsandboxed, and say so in `doctor` for a self-hosted runner.
+- [Antigravity denies by exact path only, with no documented globs and no stated reach into the shell] → the renderer writes one `read_file(...)` entry for each restricted path that exists in the tree, and the page lists the control as partial; level 1 does the real work there.
 - [A false positive on a name such as `key.json` that is not a secret] → the extension in `relevo.yml` only adds, so a project that finds the base too wide reports it; the base list stays conservative and the exception is by explicit name (`.env.example`), not by pattern.
 - [Content already in a transcript or a log] → out of scope; the page lists it as not covered.
 
