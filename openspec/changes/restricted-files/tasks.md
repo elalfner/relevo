@@ -46,8 +46,9 @@ The documentation answers are recorded in design.md; 1.1 to 1.3 were settled by 
 ## 8. Integration
 
 - [x] 8.1 Run `npm test` and `openspec validate --all` and verify both pass.
-- [ ] 8.2 Test in the sandbox repository from `dev` that a run with a restricted file in the diff ends in `qa-failed` with the new reason and that a `Read` of `.env` in the cloud is refused. Also try the sandbox enabled on the runner (Linux, `**` globs honoured in the user-level file, `git`, `gh`, `npm` and the issue file in the temp folder still work, with `allowedDomains` and `excludedCommands` if needed) and decide whether to turn it on.
+- [x] 8.2 Tested in the sandbox repository at `c1bb814` of `dev` (cloud build, Linux, subscription token): an issue that asks for `.env.production` ended in `qa-failed` with "restricted file in the diff" and nothing was pushed; the `settings` input of `claude-code-action` was applied (the log shows the merge and the 13 `Read(...)` rules and the `denyRead` entries); and a normal build ran to `built` with the sandbox not enabled, so `git`, `gh` and Flutter keep working. Results are in design.md.
 - [x] 8.3 Rendered workflow: render `sandbox.enabled` unset in the cloud (as decided in design.md) and update the security page and the changelog to say a process that opens files itself is not covered in the cloud; verify with `tests/agent-workflow.test.mjs` and `tests/docs-claims.test.mjs`.
+- [ ] 8.4 Prove in a cloud run that a `Read` of `.env` is refused (the issue of 8.2 never made the agent open the file: the log showed `permission_denials_count: 0`), and try the sandbox enabled on the runner (`**` globs honoured in the user-level file, `git`, `gh`, `npm` and the issue file in the temp folder still work, with `allowedDomains` and `excludedCommands` if needed); decide whether to turn the sandbox on, and record the result in design.md.
 
 ## Workflow follow-up
 
