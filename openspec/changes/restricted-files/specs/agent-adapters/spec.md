@@ -29,7 +29,15 @@ For Claude Code the denials SHALL be `Read` rules and sandbox read denials toget
 - **THEN** the `Read` rule refuses it, with or without the sandbox
 
 ### Requirement: Antigravity gets exact-path read denials
-For Antigravity the denials SHALL be one `read_file` rule for each restricted path that exists in the tree, because the tool documents no globs, and the security page SHALL list the control as partial because the tool does not say that it reaches the shell.
+For Antigravity the denials SHALL be one `read_file` rule for each restricted path that exists in the tree, because the tool documents no globs, and the security page SHALL list the file tool as enforced for those paths and the shell as not covered, because the denial does not reach a command.
+
+#### Scenario: A glob is never written
+- **WHEN** the rendered settings are read
+- **THEN** every `read_file` denial names a path and none uses `**`, because the tool does not match globs
+
+#### Scenario: The shell reads the file
+- **WHEN** an allowed command such as `cat` reads a restricted file
+- **THEN** the denial does not stop it, and the security page lists the shell as not covered for this agent
 
 #### Scenario: Two environment files exist
 - **WHEN** the tree has `.env` and `api/.env.production`
