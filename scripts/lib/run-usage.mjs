@@ -120,7 +120,25 @@ export function sumUsage(runs) {
 // comment on a run that already failed.
 const LIMIT_RE = /usage limit|limit reached|rate[ _-]?limit|credit balance is too low|exceeded your (current )?quota|quota exceeded|resource[ _]exhausted|insufficient[ _]quota/i;
 
-/** Does the log show that a usage limit, a quota or the credit was reached? */
+/**
+ * Does the log show that a usage limit, a quota or the credit was reached? In a structured log only what a real limit
+ * looks like counts: the text of a final result that is an error, or a rate-limit event whose status is not
+ * "allowed" (the runner writes those events all through a healthy run, with status "allowed" and a tiny utilization,
+ * so their mere name says nothing). A log that is not structured is plain text and is read as a whole.
+ */
 export function reachedUsageLimit(text) {
-  return LIMIT_RE.test(String(text ?? ''));
+  const all = entries(text).filter((e) => e && typeof e === 'object');
+  if (all.length === 0) return LIMIT_RE.test(String(text ?? ''));
+  return all.some((e) => {
+    if (e.type === 'rate_limit_event') {
+      const status = e.rate_limit_info?.status;
+      return typeof status === 'string' && !status.startsWith('allowed');
+    }
+    // The summary of the guard for the other agent runner is a result too: it has no is_error, but a failed exit code
+    // and the tail of the standard error where the provider's message lands.
+    if (e.type === 'result' && (e.is_error === true || (typeof e.exit_code === 'number' && e.exit_code !== 0))) {
+      return LIMIT_RE.test([e.result, e.error, e.stderr_tail].map((v) => (typeof v === 'string' ? v : JSON.stringify(v ?? ''))).join('\n'));
+    }
+    return false;
+  });
 }

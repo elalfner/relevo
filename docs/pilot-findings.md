@@ -119,6 +119,7 @@ Not run in the cloud: a dependency that cannot be read (no token), a repository 
 - With the repository variable `RELEVO_CLOUD_GO` set to `off`, the `go` run for a `relevo:ready` issue ended `skipped` in 1 second. The issue stayed `ready`, with no comment and no `building` label.
 - After deleting the variable, `ready` had to be applied again (remove the label and add it back) for the build to start: the event that was skipped is not replayed. It then built to `relevo:built` in about 7 minutes.
 - The agent runner's `execution_file` is a list of events whose `result` entry carries the turns, the cost and a `usage` object. The comment read "14 turns, about $0.43 (notional: a subscription is not billed per run), 5,207 tokens". The token count excludes tokens served from the prompt cache, which are reported apart.
+- **A false usage limit**: the `execution_file` carries `rate_limit_event` entries all through a healthy run (`rate_limit_info.status` `allowed`, a utilization of 1 to 2 percent). A run whose agent stopped after its shell failed (final result with `is_error: false`) got the usage-limit comment because the detector matched the event name. It now reads only a final `result` that is an error (or ends with a failed exit code) and a rate-limit event whose status is not `allowed`.
 - Not seen: a real usage-limit failure, the no-credential comment in the cloud, and a real `/relevo:go --local` run.
 
 ## `fix` and `ship` checks (task 3.3 of `fix-and-ship-hardening`)
