@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-29
+
 ### Added
 
 - **`/relevo:review` works for a Laravel backend.** A Laravel platform defines no target, so the review used to stop before the pull request with "names no target to review" and nothing to do next. It now has an `api` adapter with no device, no browser and no screenshot: the checklist still comes from the scenarios and you still confirm every line. With `review.autopilot` `off` you run the project's tests and write `ran <exit code>`; with `precheck` or `verify` the agent runs the existing test of each line and never writes one, and a filter that matches no test proves nothing. The audit reads the log since the review started (by default `storage/logs`, never emptied or deleted), and a recorded test run is what shows that a clean run with a quiet log did exercise the code. The review reads the database that `phpunit.xml` declares, never `.env`, and asks for your written confirmation when it is not in-memory SQLite. The pull request says which runs were yours and which were the agent's.
@@ -18,6 +20,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **Restricted files: no agent and no script of Relevo reads a file that holds a secret.** A built-in list (`.env` and `.env.*` except the example files `.env.example`, `.env.sample`, `.env.template` and `.env.dist`, private keys and certificates, credential files such as `.npmrc` and `.netrc`, mobile service configuration, `secrets/`) plus `restricted_paths` in `relevo.yml`, which only adds: it cannot remove an entry and a stack profile cannot weaken it. The cloud workflow of Claude carries `Read` denials and sandbox read denials (the sandbox itself is not enabled in the cloud, so a process that opens files itself is not covered there; the denial applies where a person enables Claude's sandbox) between `# relevo:restricted` markers, written by `/relevo:init` from the list and kept current when `restricted_paths` changes; the Antigravity run gets one `read_file` denial for each restricted file that exists in the tree, by exact path. A restricted file in the diff, or versioned on the base branch, ends the run in `qa-failed` with the reason "restricted file in the diff" and nothing is pushed. Every script that is handed a path refuses a restricted one, and `intent-to-add.mjs` and `design-fetch.mjs` leave one out and say so. `/relevo:init` proposes the matching deny entries for your own settings (only after a yes) and `/relevo:doctor` warns, by path name and without opening any file, for each restricted file that no denial covers, and fails for a versioned one. The security page says what each agent enforces, what is partial and what is not covered, and that no ignore file is a control.
 
 - **A stack the plugin does not ship can be defined with guidance.** When a platform's stack has no profile in the plugin (Go, Python...), `/relevo:init` proposes a full `.relevo/stacks/<stack>.md` with the commands `analyze`, `test` and `format` as commented examples, so nothing passes without checking. `/relevo:doctor` warns when such a profile has no `analyze` or `test`, and when the go workflow has no step guarded by the name of that stack. `checks` accepts `analyze`, `test` and `format` for a profile that only the repository defines. The stacks page walks through a Go example.
+
+- **The ship by label learns the required checks with the workflow token alone.** It reads the summary of the classic protection on the branch itself (`branches/<b>`), which anyone who can read the branch gets, and counts its checks as required unless their enforcement is `off`. To adopt it, set `RELEVO_VERSION` to this release in `.github/workflows/relevo-ship.yml`. The permissions of the workflow do not change, and the App needs no new permission.
 
 ### Changed
 
@@ -36,10 +40,15 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Fixed
 
+- **The ship by label no longer stops with "Resource not accessible by integration" when it reads the protection of the base branch.** To know whether the base branch requires checks, the run read the classic protection from `branches/<b>/protection`. That endpoint needs an administration permission that the workflow token can never have, so the run stopped on a private repository on the free plan (where 0.9.2 had only taught it to accept the plan refusal of a personal token) and on any repository whose rulesets answered normally. When the rulesets endpoint refuses because of the plan, the run now does not read the classic protection at all. Any other failure to read either still stops the run before anything is archived: checks that exist are never skipped because they could not be read. `/relevo:ship <n>` was not affected.
+- **The last step of the ship workflow no longer fails on every run.** "Report a run that ended without an outcome" runs outside the checkout, so `gh` could not tell the repository and stopped with `not a git repository`. A ship that merged was then marked as a failed run, and a run that really ended without an outcome kept its label with nobody told. The step now names the repository with `GH_REPO`. Copy the change into your `.github/workflows/relevo-ship.yml` together with the new `RELEVO_VERSION`.
+
 - **A design reference to a private linked repository no longer sends the issue back with a 404 when `RELEVO_LINKS_TOKEN` can read it.** The agent fetched the references itself, inside a job that never gets that token, so it read with the workflow token, which sees only the current repository. A step before the agent now fetches them with the token, which the agent still never holds. A file that cannot be read now says why: that `RELEVO_LINKS_TOKEN` cannot read that repository, that a private repository needs it, or that your `gh` login cannot read it, and the reason reaches the issue word for word. To adopt it, give `RELEVO_LINKS_TOKEN` read access to the contents of the linked repositories (Contents: read) and copy `.github/workflows/relevo-go.yml` again.
 
 - **A false "usage limit" comment is no longer posted.** The runner writes rate-limit events all through a healthy run, with status `allowed`, and their name alone was read as a limit. A usage limit is now read in a structured log only from the text of a final result that is an error, or from a rate-limit event whose status is not `allowed`.
 - **The count printed by `checklist` is plain text when the terminal forces color.**
+- **`doctor` warns when the denials of restricted files in `relevo-go.yml` are stale or missing,** and `/relevo:init` refuses a merge that drops the `relevo:restricted` markers. A restricted file that the base branch versions is now reported as "versioned on the base branch" in the failure of `go`.
+- **`.env.sample`, `.env.template` and `.env.dist` are example files and are not restricted,** like `.env.example`.
 
 ### Known limits
 
@@ -54,6 +63,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - The community Vue skills are unofficial and an early experiment by their author's own words. `vue-best-practices` tells the agent to read four reference files (about 34 KB) in every Vue task, so it adds about 44 KB of reading per run; it can be switched off with `skills.disable`.
 - `boost:install --no-interaction` installs for the agents it finds on the machine, so on a machine with none that Boost detects it may install nothing; `doctor` then shows Boost present with no skill committed.
 
+- Reading the summary with a real workflow token was checked on public repositories without a token, not yet in a workflow run on a branch whose classic protection requires checks. If GitHub left the summary empty for that token, the run would see no classic checks and GitHub would still refuse the merge of the archive commit, which the ship reports; nothing is merged around a protection.
+
 ### Upgrading
 
 - **A repository that versions a restricted file stops every run.** Any file on the base branch that matches the built-in list (`.env` and every `.env.*` except `.env.example`, `*.pem`, `*.key` and the other keys and certificates, `.npmrc` and the other credential files, `google-services.json`, `GoogleService-Info.plist`, `key.properties`, `secrets/`) ends `go` in `qa-failed` with "restricted file in the diff", even when the file is not part of the change, and `/relevo:doctor` fails for it. Common cases are a Vite `.env.production`, a Laravel `.env.testing`, a test `.pem` and a mobile configuration file. Run `/relevo:doctor` before you move the pin, and untrack the file or accept that runs stop; the list has no exception besides `.env.example`.
@@ -61,21 +72,6 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - After you change `restricted_paths` in `relevo.yml`, run `/relevo:init` again: only `init` rewrites the denials in the cloud workflow, and `doctor` does not yet compare them.
 - Give `RELEVO_LINKS_TOKEN` read access to Contents (as well as issues and pull requests) when `links` lists a private repository.
 - Set `RELEVO_VERSION` to this release in every workflow; the stamp and the pin move together with `/relevo:init`.
-
-## [0.11.1] - 2026-10-28
-
-### Fixed
-
-- **The ship by label no longer stops with "Resource not accessible by integration" when it reads the protection of the base branch.** To know whether the base branch requires checks, the run read the classic protection from `branches/<b>/protection`. That endpoint needs an administration permission that the workflow token can never have, so the run stopped on a private repository on the free plan (where 0.9.2 had only taught it to accept the plan refusal of a personal token) and on any repository whose rulesets answered normally. When the rulesets endpoint refuses because of the plan, the run now does not read the classic protection at all. Any other failure to read either still stops the run before anything is archived: checks that exist are never skipped because they could not be read. `/relevo:ship <n>` was not affected.
-- **The last step of the ship workflow no longer fails on every run.** "Report a run that ended without an outcome" runs outside the checkout, so `gh` could not tell the repository and stopped with `not a git repository`. A ship that merged was then marked as a failed run, and a run that really ended without an outcome kept its label with nobody told. The step now names the repository with `GH_REPO`. Copy the change into your `.github/workflows/relevo-ship.yml` together with the new `RELEVO_VERSION`.
-
-### Added
-
-- **The ship by label learns the required checks with the workflow token alone.** It reads the summary of the classic protection on the branch itself (`branches/<b>`), which anyone who can read the branch gets, and counts its checks as required unless their enforcement is `off`. To adopt it, set `RELEVO_VERSION` to `0.11.1` in `.github/workflows/relevo-ship.yml`. The permissions of the workflow do not change, and the App needs no new permission.
-
-### Known limits
-
-- Reading the summary with a real workflow token was checked on public repositories without a token, not yet in a workflow run on a branch whose classic protection requires checks. If GitHub left the summary empty for that token, the run would see no classic checks and GitHub would still refuse the merge of the archive commit, which the ship reports; nothing is merged around a protection.
 
 ## [0.11.0] - 2026-10-28
 
