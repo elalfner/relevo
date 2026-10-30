@@ -179,3 +179,11 @@ test('Scenario: The list changes - a workflow with the old restricted block is u
   const same = planUpgrades({ files: ['relevo-go.yml'], ours: { 'relevo-go.yml': withRestricted(go, after) }, templates: { 'relevo-go.yml': go }, agentBlocks: null, labels: undefined, build: 'claude', source, restricted: after })['relevo-go.yml'];
   assert.equal(same.status, 'current');
 });
+
+test('a merge that drops the relevo:restricted block is not safe to write', async () => {
+  const { upgradeWorkflow } = await import('../scripts/lib/workflow-upgrade.mjs');
+  const tpl = '# relevo-template: 0.1.0\nenv:\n  RELEVO_VERSION: \'0.1.0\'\n# relevo:restricted begin\nsettings: x\n# relevo:restricted end\n';
+  const dropped = '# relevo-template: 0.1.0\nenv:\n  RELEVO_VERSION: \'0.1.0\'\n';
+  const r = upgradeWorkflow({ ours: dropped, current: { version: '0.2.0', template: tpl, blocks: null }, candidates: [{ version: '0.1.0', template: dropped, blocks: null }], render: (t) => t, merge: () => ({ ok: true, text: dropped }) });
+  assert.notEqual(r.status, 'update');
+});

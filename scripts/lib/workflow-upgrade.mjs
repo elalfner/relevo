@@ -21,7 +21,7 @@ import { runnerLine } from './init.mjs';
 
 const PIN_RE = /^(\s*RELEVO_VERSION:\s*)(['"]?)([\w.+-]+)\2[ \t]*$/m;
 const STAMP_RE = /^# relevo-template: (\d+\.\d+\.\d+)[ \t]*$/m;
-const MARKERS = ['credential', 'agent-step'];
+const MARKERS = ['credential', 'agent-step', 'restricted'];
 
 export const pinOf = (text) => PIN_RE.exec(text)?.[3] ?? null;
 export const stampOf = (text) => STAMP_RE.exec(text)?.[1] ?? null;
