@@ -14,7 +14,7 @@ if (!dir || dir.startsWith('--') || !existsSync(dir)) {
   process.exit(2);
 }
 const items = checklistFromChange(dir);
-if (process.argv.includes('--count')) console.log(items.length);
+if (process.argv.includes('--count')) console.log(String(items.length));
 else if (process.argv.includes('--json')) console.log(JSON.stringify(items, null, 2));
 else {
   const si = process.argv.indexOf('--state');
