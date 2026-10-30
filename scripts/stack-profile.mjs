@@ -3,15 +3,18 @@
 //   node scripts/stack-profile.mjs --platform <name> [--config relevo.yml] [--plugin-root <dir>] [--role issue]
 // With `--role issue` it prints only the questions the stack has for the issue writer ({ platform, stack, questions });
 // without it the questions are not part of the output, so dev and qa never receive them.
+// With `--role review` it prints the review block, the keys the repository replaced, the section Review and the lines
+// that ask for what a review never changes ({ platform, stack, review, review_replaced, notes, warnings }).
 // The profile is the plugin's stacks/<stack>.md plus the repository's .relevo/stacks/<stack>.md, with the
 // `platforms.<name>.checks` of relevo.yml applied. The agents receive this output; they do not look for profiles.
 //   exit 0: printed   exit 1: the stack has no profile (or a profile is invalid)   exit 2: bad usage or invalid relevo.yml
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,7 +51,11 @@ if (arg('role') === 'issue') {
   console.log(JSON.stringify({ platform: name, stack: profile.stack, questions: profile.questions }, null, 2));
   process.exit(0);
 }
-if (arg('role') !== undefined) fail('--role can only be "issue"', 2);
+if (arg('role') === 'review') {
+  console.log(JSON.stringify({ platform: name, stack: profile.stack, review: profile.review, review_replaced: profile.reviewReplaced ?? [], notes: profile.reviewBody, warnings: profile.reviewWarnings }, null, 2));
+  process.exit(0);
+}
+if (arg('role') !== undefined) fail('--role can only be "issue" or "review"', 2);
 console.log(JSON.stringify({
   platform: name,
   stack: profile.stack,
@@ -60,6 +67,11 @@ console.log(JSON.stringify({
   tools: profile.tools,
   requires_skills: profile.requires_skills,
   skills: profile.skills,
+  plugin_skills: profile.pluginSkills,
+  skills_when_installed: profile.skillsWhenInstalled,
+  plugin_skills_when_installed: profile.pluginSkillsWhenInstalled,
+  skills_disabled: profile.skillsDisabled,
+  skills_disable_ignored: profile.skillsDisableIgnored,
   layers: profile.layers,
   ignored: profile.ignored,
   overridden: profile.overridden,

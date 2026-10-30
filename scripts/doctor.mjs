@@ -5,10 +5,12 @@
 // exit 0: no check failed (warnings allowed)   exit 1: at least one check failed
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { adapterFacts } from './lib/adapters/install.mjs';
 import { exitCode, gatherFacts, readOnlyGh, renderReport, reportHeader, runChecks } from './lib/doctor.mjs';
+import { findRestrictedFiles } from './lib/restricted-paths.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -50,6 +52,11 @@ const facts = gatherFacts({
   listDir: (p) => readdirSync(p),
   skillDirs: ['.claude/skills', '.agents/skills', `${homedir()}/.claude/skills`],
   git: (args) => tool('git', args),
+  // The restricted files that exist here, found by listing folders: no file is opened. The settings of the person are
+  // read from the home folder, by name.
+  root: process.cwd(),
+  restrictedFiles: (list) => findRestrictedFiles(process.cwd(), list),
+  readUser: (path) => (existsSync(`${homedir()}/${path}`) ? readFileSync(`${homedir()}/${path}`, 'utf8') : null),
   readFolder,
   repo,
 });

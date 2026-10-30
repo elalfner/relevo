@@ -18,12 +18,13 @@
 //   the script was refused, Playwright is missing, the browser could not start, or the script failed outside a line
 //   exit 2: bad arguments
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { format } from 'node:util';
 import { assertDriving, recordCapture, scriptHash } from './lib/review-state.mjs';
 import { formatBrowserLog, isAllowedOrigin, loadPlaywright, makeCapture, probableCause, redact, scanReviewScript } from './lib/web-review.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const RUN_LIMIT_MS = 120000;
 // The runner's own output. The script's console is taken over while it runs, so these are kept apart.

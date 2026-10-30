@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BASE_PROGRAMS, DENIED, EXIT, Tracker, agySettings, logLine, runGuard } from '../scripts/lib/agent-guard.mjs';
 import { readUsage, reachedUsageLimit } from '../scripts/lib/run-usage.mjs';
 import { readSource } from '../scripts/lib/adapters/source.mjs';
+import { agyReadDenials, restrictedList } from '../scripts/lib/restricted-paths.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const step = (conv, index, type, extra = {}) => JSON.stringify({ event: 'step_update', step_update: { conversation_id: conv, step_index: index, state: 'DONE', step_type: type, ...extra } });
@@ -217,4 +218,29 @@ test('the command: run takes its limits from relevo.yml, and a flag can only low
   const higher = run('--max-turns', '50');
   assert.match(higher.stderr, /limit of 2 turns/, 'a flag cannot raise the limit of relevo.yml');
   assert.equal(JSON.parse(readFileSync(join(dir, 's.json'), 'utf8')).stopped_by, 'turns');
+});
+
+test('Scenario: Two environment files exist - the settings carry a read_file denial for each, by absolute path, and none for .env.example', () => {
+  const rules = agyReadDenials(['.env', 'api/.env.production', '.env.example', 'lib/a.php'], restrictedList(), '/work/repo');
+  const s = agySettings({ restricted: rules });
+  assert.deepEqual(s.permissions.deny.slice(0, DENIED.length), DENIED, 'the denials of the web stay first');
+  assert.deepEqual(s.permissions.deny.slice(DENIED.length), ['read_file(/work/repo/.env)', 'read_file(/work/repo/api/.env.production)']);
+  assert.ok(s.permissions.deny.every((d) => !d.includes('**') && !d.includes('*') || DENIED.includes(d)), 'no glob is ever written: the tool matches none');
+  assert.deepEqual(agySettings().permissions.deny, DENIED, 'with no restricted file nothing else is denied');
+});
+
+test('Scenario: The list changes - the command finds the files of the tree by name, from the base list and restricted_paths', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-guard-restricted-'));
+  writeFileSync(join(dir, 'relevo.yml'), 'agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nrestricted_paths:\n  - infra/prod.tfvars\nplatform: flutter-android\n');
+  mkdirSync(join(dir, 'api'));
+  mkdirSync(join(dir, 'infra'));
+  ['.env', '.env.example', 'api/.env.production', 'infra/prod.tfvars', 'README.md'].forEach((f) => writeFileSync(join(dir, f), 'x\n'));
+  const out = join(dir, 'home', 'settings.json');
+  const r = spawnSync(process.execPath, [cli, 'settings', '--out', out, '--config', join(dir, 'relevo.yml')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /read denied for 3 restricted files, by exact path/);
+  const { deny } = JSON.parse(readFileSync(out, 'utf8')).permissions;
+  [`read_file(${dir}/.env)`, `read_file(${dir}/api/.env.production)`, `read_file(${dir}/infra/prod.tfvars)`].forEach((rule) => assert.ok(deny.includes(rule), rule));
+  assert.ok(!deny.some((d) => d.includes('.env.example') || d.includes('README')));
+  assert.ok(!r.stdout.includes('x\n'), 'no content is read or printed');
 });

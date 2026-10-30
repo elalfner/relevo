@@ -4,8 +4,8 @@
 // Prints a table (id, issue, section), the discarded ids and the ids without a destination.
 // exit 0: every id has a destination or was discarded   exit 1: some id has none   exit 2: bad arguments
 
-import { readFileSync } from 'node:fs';
 import { coverage } from './lib/issue-coverage.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const values = (name) => process.argv.flatMap((a, i, all) => (a === `--${name}` ? [all[i + 1]] : []));
 const [agreementFile] = values('agreement');

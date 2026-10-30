@@ -14,9 +14,9 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 
 | Setting | What it controls | In the template |
 |---|---|---|
-| `branches.base` | integration branch: feature pull requests target it | `dev` |
+| `branches.base` | integration branch: every build branch starts from it and its pull request targets it, whatever the default branch of the repository is | `dev` |
 | `branches.release` | release branch, promoted from the base in a separate pull request | `main` |
-| `links` | repositories an issue may depend on with `Depends-on: owner/repo#N` (a closed list); a private one is read with the read-only secret `RELEVO_LINKS_TOKEN` | none |
+| `links` | repositories an issue may depend on with `Depends-on: owner/repo#N`, or point to with `owner/repo:path` in `Design reference` and `Code pointers` (a closed list); a private one is read with the secret `RELEVO_LINKS_TOKEN`, a fine-grained token with read access to issues, pull requests and contents | none |
 | `tracker`, `git_provider`, `platforms` | where the issues and pull requests live, and the platforms that are built ([Stacks and platforms](stacks.md)); the older `platform: flutter-android` still works | `github`, `github`, one Flutter platform for Android |
 | `team.members` | GitHub usernames of the people who build and review | empty |
 | `team.spec_writer` | who writes the specs; never reviews or merges | none |
@@ -26,6 +26,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `review.autopilot` | how much of the review the agent may drive: `off` (the person does everything), `precheck` (the agent walks the lines and records its result; the person confirms every line) or `verify` (the agent may also mark lines it proved with an assertion, a semantic finder, the log or the exit code of a project command; the person confirms the rest and agrees). A web target needs `precheck` or `verify`, and the review recommends `verify`; commit the setting to the base branch | `off` |
 | `review.ship_without_ci` | `true` lets the `relevo:ship` label merge a pull request on which no check ran; `/relevo:ship` asks the person instead | `false` |
 | `review.allowed_origins` | web origins a driven review may visit besides `localhost`, for example `https://staging.example.com` | `[]` |
+| `restricted_paths` | paths or globs, relative to the repository, that no agent or script of Relevo reads, added to the built-in list (`.env` and `.env.*` except the example files (`.env.example`, `.env.sample`, `.env.template`, `.env.dist`), private keys and certificates, credential files such as `.npmrc` and `.netrc`, mobile service configuration, `secrets/`). It only adds: it cannot remove a built-in entry, a profile cannot weaken it, and an absolute path or one that leaves the repository is rejected ([Security](security.md)) | `[]` |
 | `skills.allow_scripts` | names of the extra skills that have scripts and may be used; a skill with scripts that is not listed is left out, and `/relevo:doctor` says so | empty |
 | `limits.built_unreviewed_per_person` | built issues one person may have waiting; an issue with a valid `relevo:urgent` label starts anyway | 2 |
 | `limits.concurrent_agents` | unattended runs at the same time | 3 |

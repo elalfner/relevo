@@ -8,8 +8,8 @@ generated: ['*.g.dart', '*.freezed.dart', '*.mocks.dart']
 tools: [flutter]
 requires_skills: []
 skills:
-  dev: []
-  qa: []
+  dev: [flutter-add-widget-test, dart-add-unit-test]
+  qa: [flutter-add-widget-test, dart-add-unit-test]
   issue: []
   review: []
 targets:

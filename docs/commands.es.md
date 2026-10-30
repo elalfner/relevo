@@ -46,11 +46,24 @@ Qué construir, la ruta de un acuerdo guardado, o el número de un issue que ree
 
 ### `/relevo:go [issue-number] [--local] [--decision <base64>]`
 
-El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina en un worktree propio (así pueden correr dos a la vez), y `--local` hace lo mismo en un proceso aparte con las listas cerradas de herramientas del workflow. `--decision` lo pasa el workflow, no se escribe. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `qa-failed` y el comentario dice que es código que QA no aprobó ([Falló QA](guide.es.md#falló-qa)).
+El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina en un worktree propio (así pueden correr dos a la vez), y `--local` construye en un proceso aparte con las listas cerradas de herramientas y los límites del workflow (el worktree es el mismo; el resto difiere, ver abajo). `--decision` lo pasa el workflow, no se escribe. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `qa-failed` y el comentario dice que es código que QA no aprobó ([Falló QA](guide.es.md#falló-qa)).
 
 ```text
 /relevo:go 42 --local
 ```
+
+#### En la sesión o por separado
+
+| | `/relevo:go 42` en una sesión | `/relevo:go 42 --local` |
+|---|---|---|
+| Quién construye | tu propia sesión de Claude Code | un proceso `claude -p` nuevo (`agy -p` con Antigravity) |
+| Herramientas | las de tu sesión | las listas cerradas del workflow |
+| Límites | ninguno de `relevo.yml` | los límites de turnos y coste de `relevo.yml` |
+| Lo que ves | la construcción, en vivo; puedes intervenir | la salida cuando termina |
+| Contexto | usa el contexto de tu sesión | no lo toca |
+| Worktree | propio, en `.relevo-worktrees/` | el mismo lugar |
+
+Usa la sesión cuando quieras mirar e intervenir; usa `--local` para dejarlo corriendo con los mismos límites que la nube.
 
 ### `/relevo:review [issue-number]`
 
@@ -120,6 +133,17 @@ El informe empieza con una línea que dice qué juzgó: el repositorio, y si los
 - **Un micro-fix es un commit** antes de que se abra el pull request.
 - **Prueba el código actual**: trae la rama remota antes de fusionar la base, y te pide confirmar por escrito si no eres la persona asignada.
 - **Sin un segundo pull request**: se reutiliza el que ya exista para la rama, y un push rechazado se detiene con el motivo.
+
+## Revisar un backend Laravel
+
+Una plataforma Laravel no tiene pantalla, así que su revisión no tiene dispositivo, navegador ni capturas. La lista de comprobación sigue teniendo una línea por escenario, y tú sigues confirmando cada línea.
+
+- **Con `review.autopilot` en `off`** (el valor por defecto) corres los tests del proyecto en tu terminal y le dices el resultado a la revisión: `ran <código de salida>`, con `--tests <n>` cuando sepas cuántos corrieron. Después escribes `ok` o `fail` por cada línea, como en cualquier revisión.
+- **Con `precheck` o `verify`** el agente corre el test de feature que ya cubre cada línea y registra el test y su código de salida. Nunca escribe un test, un filtro que no encuentra ningún test no demuestra nada, y una línea sin test se queda para ti. El pull request dice qué corridas fueron tuyas y cuáles del agente.
+- **La auditoría lee el log desde que empezó la revisión**, por defecto `storage/logs`, y nunca lo vacía ni lo borra. Una corrida de tests que pasa no escribe nada ahí, así que lo que demuestra que el código se ejercitó es la corrida registrada: una corrida limpia con el log en silencio es `REVIEW PASSED`, y ninguna corrida es `REVIEW INCONCLUSIVE`.
+- **La base de datos importa.** Antes de correr un test la revisión lee la base de datos que declara `phpunit.xml`, nunca tu `.env`. SQLite en memoria, que usa un proyecto nuevo, no necesita nada; cualquier otra base necesita tu confirmación por escrito de que no es de producción.
+- **Un servidor es opcional.** Añade un bloque `serve` al bloque `review` de `.relevo/stacks/laravel.md` ([Stacks y plataformas](stacks.md)) y, con `precheck` o `verify`, el agente puede arrancarlo en un puerto local libre para las líneas que necesitan peticiones. Sin él, no se arranca ningún servidor.
+- **Faltan dependencias y se detiene**: cuando no hay `vendor/`, la revisión te da el comando `composer install` para que lo corras tú y no instala nada.
 
 ## Dejar que el agente ayude con la revisión
 

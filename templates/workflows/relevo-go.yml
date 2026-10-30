@@ -1,4 +1,4 @@
-# relevo-template: 0.11.0
+# relevo-template: 0.12.0
 # Relevo: builds an issue when someone with write access labels it `relevo:ready`.
 # Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
 #
@@ -20,7 +20,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.11.0'
+  RELEVO_VERSION: '0.12.0'
   # The version of OpenSpec that the job installs for itself.
   OPENSPEC_VERSION: '1.14.3'
 
@@ -83,9 +83,10 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          # Only needed when `links` in relevo.yml lists a private repository: a read-only token (issues and pull
-          # requests) stored as the secret RELEVO_LINKS_TOKEN. It is used only to read the issues the dependencies
-          # name, never to write, and an empty value is fine (public repositories are read without it).
+          # Only needed when `links` in relevo.yml lists a private repository: a read-only token (issues, pull
+          # requests and contents) stored as the secret RELEVO_LINKS_TOKEN. Here it reads the issues the dependencies
+          # name; the step "Fetch the references of the issue" of the build reads files with it. It is used only to
+          # read, never to write, and an empty value is fine (public repositories are read without it).
           GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
@@ -167,7 +168,8 @@ jobs:
       #       node-version: 22
       #       cache: npm
       #       cache-dependency-path: ${{ needs.decide.outputs.path }}/package-lock.json
-      # Another stack: add a step guarded by its name, and its dependencies below.
+      # Another stack, including one of your own (Go, Python...): add a step guarded by its name, and its dependencies
+      # below. `/relevo:doctor` warns when a stack that only your repository defines has no such step.
       # Installing the dependencies is the project's choice, because the package manager and the lockfile vary. Do it
       # from the folder of the platform, for example:
       #   - if: needs.decide.outputs.stack == 'vue'
@@ -200,7 +202,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/relevo"
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo"
-          for f in scripts/toolchain-check.mjs scripts/render-message.mjs .claude-plugin/plugin.json; do
+          for f in scripts/toolchain-check.mjs scripts/render-message.mjs scripts/design-fetch.mjs .claude-plugin/plugin.json; do
             [ -f "$RUNNER_TEMP/relevo/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
           if result=$(node "$RUNNER_TEMP/relevo/scripts/toolchain-check.mjs" --platform "$PLATFORM" --plugin-root "$RUNNER_TEMP/relevo"); then
@@ -240,6 +242,24 @@ jobs:
           RELEVO_PROGRESS_DIR="$dir" nohup node "$script" watch --issue "$ISSUE" --decision "$DECISION" --max-minutes 65 > "$dir/watch.log" 2>&1 &
           exit 0
 
+      # Fetches what the issue points to (its Design reference, and the Code pointers that name a file of a linked
+      # repository) before the agent starts, into .relevo-design/, which git ignores. This is the only step of this job
+      # that gets RELEVO_LINKS_TOKEN: a read-only token (issues, pull requests and contents) that reads the files of
+      # the private repositories in `links`, never writes, and never reaches the agent. An empty value is fine (public
+      # repositories are read without it). A refused reference does not fail the step: the manifest lists it and the
+      # agent sends the issue back to needs-spec with the reason. Any other failure stops the job here.
+      - name: Fetch the references of the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: |
+          code=0
+          node "$RUNNER_TEMP/relevo/scripts/design-fetch.mjs" --issue "$ISSUE" --repo "$GITHUB_REPOSITORY" || code=$?
+          [ "$code" -le 1 ] || exit "$code"
+          echo "RELEVO_REFERENCES=$GITHUB_WORKSPACE/.relevo-design/manifest.json" >> "$GITHUB_ENV"
+
       # relevo:agent-step begin
       - id: agent
         uses: anthropics/claude-code-action@v1
@@ -271,6 +291,96 @@ jobs:
           # The decision the `decide` job already made travels with the prompt, encoded so that the issue title in it
           # is never read as an instruction. The skill decodes it and skips its own planning step.
           prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }} --decision ${{ needs.decide.outputs.decision_b64 }}
+          # relevo:restricted begin
+          # Files that no agent reads (docs/security.md): Read denials for the file tools, and the sandbox read denials, which apply
+          # only where a person enables the sandbox: it is NOT enabled here. Written from the base list and `restricted_paths` of
+          # relevo.yml by /relevo:init, so do not edit this block by hand.
+          # The action merges this input into the user-level settings of the runner, outside the repository, one top-level key
+          # at a time: that is why it carries the whole `permissions` and `sandbox` objects.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Read(**/.env)",
+                  "Read(**/.env.*.local)",
+                  "Read(**/.env.local)",
+                  "Read(**/.env.development)",
+                  "Read(**/.env.production)",
+                  "Read(**/.env.staging)",
+                  "Read(**/.env.test)",
+                  "Read(**/.env.testing)",
+                  "Read(**/.env.dev)",
+                  "Read(**/.env.prod)",
+                  "Read(**/.env.qa)",
+                  "Read(**/.env.ci)",
+                  "Read(**/.env.preview)",
+                  "Read(**/*.pem)",
+                  "Read(**/*.key)",
+                  "Read(**/*.p12)",
+                  "Read(**/*.pfx)",
+                  "Read(**/*.p8)",
+                  "Read(**/*.ppk)",
+                  "Read(**/*.keystore)",
+                  "Read(**/*.jks)",
+                  "Read(**/id_rsa)",
+                  "Read(**/id_dsa)",
+                  "Read(**/id_ecdsa)",
+                  "Read(**/id_ed25519)",
+                  "Read(**/.npmrc)",
+                  "Read(**/.netrc)",
+                  "Read(**/.pypirc)",
+                  "Read(**/.git-credentials)",
+                  "Read(**/.pgpass)",
+                  "Read(**/.htpasswd)",
+                  "Read(**/google-services.json)",
+                  "Read(**/GoogleService-Info.plist)",
+                  "Read(**/key.properties)",
+                  "Read(/${{ github.workspace }}/secrets/**)"
+                ]
+              },
+              "sandbox": {
+                "filesystem": {
+                  "denyRead": [
+                    "**/.env",
+                    "**/.env.*.local",
+                    "**/.env.local",
+                    "**/.env.development",
+                    "**/.env.production",
+                    "**/.env.staging",
+                    "**/.env.test",
+                    "**/.env.testing",
+                    "**/.env.dev",
+                    "**/.env.prod",
+                    "**/.env.qa",
+                    "**/.env.ci",
+                    "**/.env.preview",
+                    "**/*.pem",
+                    "**/*.key",
+                    "**/*.p12",
+                    "**/*.pfx",
+                    "**/*.p8",
+                    "**/*.ppk",
+                    "**/*.keystore",
+                    "**/*.jks",
+                    "**/id_rsa",
+                    "**/id_dsa",
+                    "**/id_ecdsa",
+                    "**/id_ed25519",
+                    "**/.npmrc",
+                    "**/.netrc",
+                    "**/.pypirc",
+                    "**/.git-credentials",
+                    "**/.pgpass",
+                    "**/.htpasswd",
+                    "**/google-services.json",
+                    "**/GoogleService-Info.plist",
+                    "**/key.properties",
+                    "/${{ github.workspace }}/secrets"
+                  ]
+                }
+              }
+            }
+          # relevo:restricted end
           claude_args: >-
             --max-turns 100
             --max-budget-usd 5

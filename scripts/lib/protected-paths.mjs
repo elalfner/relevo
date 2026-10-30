@@ -52,8 +52,19 @@ export function matchesGlob(path, pattern) {
 /** The rules file setting is one name or a list (`qa.rules_from`); both give a list of cleaned names. */
 const ruleFiles = (rulesFile) => [].concat(rulesFile ?? []).filter(Boolean).map(clean);
 
-function hardPatterns(rulesFile) {
-  return [...HARD_PATTERNS, ...ruleFiles(rulesFile)];
+// The skills a run hands to an agent are protected inside the folder of every platform too, not only at the root.
+const PLATFORM_PROTECTED = ['.claude/skills/', '.agents/', 'skills-lock.json'];
+
+/** The folders of the declared platforms below the root (`path: .` adds nothing): `platforms` is the map of relevo.yml. */
+export function platformFolders(platforms) {
+  const folders = Object.values(platforms ?? {}).map((p) => clean(p?.path).replace(/\/+$/, '')).filter((f) => f && f !== '.');
+  return [...new Set(folders)];
+}
+
+const platformPatterns = (folders) => (folders ?? []).flatMap((f) => PLATFORM_PROTECTED.map((rule) => `${clean(f).replace(/\/+$/, '')}/${rule}`));
+
+function hardPatterns(rulesFile, platformPaths) {
+  return [...HARD_PATTERNS, ...ruleFiles(rulesFile), ...platformPatterns(platformPaths)];
 }
 
 // Hard patterns are anchored at the root of the repository; `relevo.yml` and the rules file are exact files.
@@ -64,22 +75,23 @@ const matchesHard = (path, pattern) => {
 };
 
 /** The hard rule a path breaks, or null. */
-export function hardRule(path, { rulesFile = null } = {}) {
+export function hardRule(path, { rulesFile = null, platformPaths = [] } = {}) {
   const name = clean(path).split('/').pop();
-  return hardPatterns(rulesFile).find((pattern) => matchesHard(path, pattern)) ?? HARD_ANY_DEPTH.find((f) => f === name) ?? null;
+  return hardPatterns(rulesFile, platformPaths).find((pattern) => matchesHard(path, pattern)) ?? HARD_ANY_DEPTH.find((f) => f === name) ?? null;
 }
 
 /** Is the file a dependency manifest or lock file (soft tier)? */
 export const isSoftProtected = (path) => SOFT_FILES.includes(clean(path).split('/').pop());
 
 /**
- * Check the paths of a diff. `allow` is the list of globs from the issue's `Allow-paths:` line.
+ * Check the paths of a diff. `allow` is the list of globs from the issue's `Allow-paths:` line, and `platformPaths` the
+ * folders of the platforms (`platformFolders`), whose skill folders are protected like the root ones.
  * Returns { ok, violations: [{ path, tier: 'hard' | 'soft', rule }] }.
  */
-export function checkProtected(paths, { allow = [], rulesFile = null } = {}) {
+export function checkProtected(paths, { allow = [], rulesFile = null, platformPaths = [] } = {}) {
   const violations = [];
   [...new Set((paths ?? []).map(clean).filter(Boolean))].forEach((path) => {
-    const hard = hardRule(path, { rulesFile });
+    const hard = hardRule(path, { rulesFile, platformPaths });
     if (hard) {
       violations.push({ path, tier: 'hard', rule: hard });
       return;
@@ -92,9 +104,10 @@ export function checkProtected(paths, { allow = [], rulesFile = null } = {}) {
 }
 
 /** Entries of an `Allow-paths:` list that name (or would cover) a hard-protected path: they can never be allowed. */
-export function hardPathsInAllow(allow, { rulesFile = null } = {}) {
-  const probes = [...HARD_PATTERNS.map((pattern) => (pattern.endsWith('/') ? `${pattern}x` : pattern)), ...HARD_ANY_DEPTH, ...ruleFiles(rulesFile)].filter(Boolean);
-  return (allow ?? []).filter((entry) => hardRule(entry, { rulesFile }) || probes.some((probe) => matchesGlob(probe, entry)));
+export function hardPathsInAllow(allow, { rulesFile = null, platformPaths = [] } = {}) {
+  const patterns = [...HARD_PATTERNS, ...platformPatterns(platformPaths)];
+  const probes = [...patterns.map((pattern) => (pattern.endsWith('/') ? `${pattern}x` : pattern)), ...HARD_ANY_DEPTH, ...ruleFiles(rulesFile)].filter(Boolean);
+  return (allow ?? []).filter((entry) => hardRule(entry, { rulesFile, platformPaths }) || probes.some((probe) => matchesGlob(probe, entry)));
 }
 
 export function formatViolations(violations) {

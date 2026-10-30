@@ -5,12 +5,13 @@
 //   node scripts/digest.mjs --input state.json [--now ISO]     (never writes; the file may hold `usage`, the parsed runs, and `stages`, the samples of the stages)
 // Prints the digest text, or nothing.   exit 0: done   exit 2: invalid configuration or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { realGh, realGhLinks } from './lib/github.mjs';
 import { buildStatus, renderDigest } from './lib/status.mjs';
 import { gatherStatus } from './lib/status-data.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

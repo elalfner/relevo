@@ -6,8 +6,8 @@
 // --rules-file is the project rules file or files, comma separated (`qa.rules_from`), which an `Allow-paths:` line can never list.
 // Prints the counts and every problem. exit 0: ready to create   exit 1: problems   exit 2: bad arguments
 
-import { readFileSync } from 'node:fs';
 import { checkIssueDraft } from './lib/issue-check.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

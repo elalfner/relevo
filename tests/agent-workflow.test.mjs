@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { BLOCKS, agentWorkflow, blockRange, blocksOf } from '../scripts/lib/agent-workflow.mjs';
+import { BLOCKS, agentWorkflow, blockRange, blocksOf, restrictedLines, withRestricted } from '../scripts/lib/agent-workflow.mjs';
+import { BASE_PATTERNS, restrictedList } from '../scripts/lib/restricted-paths.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (p) => readFileSync(`${root}${p}`, 'utf8');
@@ -77,4 +78,61 @@ test('Scenario: Antigravity settings - the CLI, the plugin and the settings live
   assert.match(step, /echo "HOME=\$RUNNER_TEMP\/home" >> "\$GITHUB_ENV"/);
   assert.match(step, /install -m 0755 "\$RUNNER_TEMP\/antigravity" "\$RUNNER_TEMP\/bin\/agy"/);
   assert.doesNotMatch(step.replace(/^\s*#.*$/gm, ''), /\$HOME\/\.local/, 'nothing is installed in the home folder of the runner user');
+});
+
+// ---------- restricted files
+
+/** The `settings` input between the `relevo:restricted` markers, parsed. */
+function restrictedSettings(text) {
+  const lines = text.split('\n');
+  const r = blockRange(lines, 'restricted');
+  assert.ok(r, 'the workflow marks the restricted block');
+  const body = lines.slice(r.begin + 1, r.end);
+  const at = body.findIndex((l) => /^\s+settings: \|$/.test(l));
+  assert.ok(at !== -1, 'the block carries the settings input');
+  const indent = /^\s*/.exec(body[at + 1])[0].length;
+  return JSON.parse(body.slice(at + 1).map((l) => l.slice(indent)).join('\n'));
+}
+
+test('Scenario: The cloud sandbox is not enabled by default - the Read denials and the sandbox read denials are written, sandbox.enabled is not, and the example file is not among them', () => {
+  const settings = restrictedSettings(agentWorkflow(go, 'claude', blocks));
+  const deny = settings.permissions.deny;
+  assert.ok(deny.includes('Read(**/.env)') && deny.includes('Read(**/.env.production)') && deny.includes('Read(**/*.pem)'));
+  const read = settings.sandbox.filesystem.denyRead;
+  assert.ok(read.includes('**/.env') && read.includes('**/*.pem'));
+  assert.equal(settings.sandbox.enabled, undefined, 'the sandbox is not switched on in the cloud');
+  assert.equal(settings.sandbox.failIfUnavailable, undefined);
+  assert.ok(!/^\s*sandbox:\s*$/m.test(go.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')), 'no sandbox key outside the settings input');
+  [...deny, ...read].forEach((rule) => assert.ok(!rule.includes('example'), `${rule} does not name the example file`));
+  assert.ok(![...deny, ...read].some((rule) => /\.env\.\*(?!\.local)/.test(rule)), 'no glob that would cover .env.example');
+});
+
+test('the template carries the block as the renderer writes it from the base list', () => {
+  assert.equal(withRestricted(go, BASE_PATTERNS), go, 'the committed block is the rendering of the base list');
+  assert.equal(withRestricted(go), go);
+  assert.equal(withRestricted(queue, BASE_PATTERNS), queue, 'a workflow without the markers is left as it is');
+});
+
+test('Scenario: The list changes - an entry of restricted_paths shows in the next render of the Claude workflow, and goes away with it', () => {
+  const list = restrictedList({ restricted_paths: ['infra/prod.tfvars', '*.secret'] });
+  const out = withRestricted(go, list);
+  const settings = restrictedSettings(out);
+  assert.ok(settings.permissions.deny.includes('Read(/${{ github.workspace }}/infra/prod.tfvars)'));
+  assert.ok(settings.permissions.deny.includes('Read(**/*.secret)'));
+  assert.ok(settings.sandbox.filesystem.denyRead.includes('**/*.secret'));
+  assert.equal(withRestricted(out, BASE_PATTERNS), go, 'rendering again from the base list restores the template: the block is written, not merged');
+  assert.deepEqual(out.split('\n').filter((l) => !restrictedLines(list).includes(l)).join('\n'), withRestricted(go, []).split('\n').filter((l) => !restrictedLines([]).includes(l)).join('\n'), 'nothing outside the block changes');
+});
+
+test('Scenario: Reading the Antigravity workflow - it has no Claude settings, and its denials come from the settings file the run writes', () => {
+  const out = agentWorkflow(go, 'antigravity', blocks);
+  assert.ok(!out.includes('relevo:restricted') && !out.includes('Read(**/'), 'the Claude block is gone with the Claude step');
+  assert.equal(withRestricted(out, restrictedList({ restricted_paths: ['x.secret'] })), out, 'rendering the list changes nothing for this agent');
+  assert.match(blocks, /read_file for each restricted file that exists in the tree, by exact path/, 'the step says what its denial is, and what it is not');
+  assert.match(blocks, /the shell is not covered for this agent/);
+});
+
+test('the denials are written outside the repository (the settings input of the action) and no ignore file is relied on', () => {
+  const active = go.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.doesNotMatch(`${active}${blocks}`, /\.claudeignore|\.claudecode\.json/);
 });

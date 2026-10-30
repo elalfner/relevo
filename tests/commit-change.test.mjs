@@ -80,6 +80,31 @@ test('the Relevo configuration and the folders of skills are refused as well', (
   assert.equal(run(dir, '--message', 'm', '--', '.claude/skills/x/SKILL.md').status, 1);
 });
 
+const APP_CONFIG = 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: flutter\n    path: app\n    targets: [web]\n';
+
+test('Scenario: Skill of a platform edited - refused from the folders of relevo.yml, before anything is staged', () => {
+  const dir = repo({ 'relevo.yml': APP_CONFIG });
+  put(dir, 'app/.claude/skills/dart-add-unit-test/SKILL.md', 'x\n');
+  put(dir, 'app/skills-lock.json', '{}\n');
+  put(dir, 'app/lib/main.dart', 'void main() {}\n');
+  const skill = run(dir, '--message', 'm', '--', 'app/.claude/skills/dart-add-unit-test/SKILL.md');
+  assert.equal(skill.status, 1);
+  assert.match(skill.stderr, /app\/\.claude\/skills\/dart-add-unit-test\/SKILL\.md {2}protected path/);
+  assert.equal(run(dir, '--message', 'm', '--', 'app/skills-lock.json').status, 1);
+  assert.deepEqual(staged(dir), []);
+  assert.equal(run(dir, '--message', 'feat: main', '--', 'app/lib/main.dart').status, 0, 'the code of the platform is committed');
+});
+
+test('a folder named as a whole is checked for the skills of a platform inside it', () => {
+  const dir = repo({ 'relevo.yml': APP_CONFIG });
+  put(dir, 'app/lib/main.dart', 'void main() {}\n');
+  put(dir, 'app/.agents/skills/new/SKILL.md', 'x\n');
+  const r = run(dir, '--message', 'm', '--', 'app');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /app\/\.agents\/skills\/new\/SKILL\.md {2}protected path/);
+  assert.deepEqual(staged(dir), [], 'the named paths are unstaged again');
+});
+
 test('Scenario: Lock file without permission - refused; with --allow it is committed', () => {
   const dir = repo({ 'pubspec.lock': 'a\n' });
   put(dir, 'pubspec.lock', 'b\n');
@@ -186,4 +211,42 @@ test('without --within nothing is restricted by folder', () => {
   const dir = repo({ 'apps/api/b.php': 'b\n' });
   put(dir, 'apps/api/b.php', 'b2\n');
   assert.equal(run(dir, '--message', 'feat: x', '--', 'apps/api/b.php').status, 0);
+});
+
+test('Scenario: A restricted file in the diff - a named .pem is refused with the reason, before anything is staged', () => {
+  const dir = repo();
+  put(dir, 'config/private.pem', 'not a real key\n');
+  const before = head(dir);
+  const r = run(dir, '--message', 'feat: tls', '--', 'config/private.pem');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /config\/private\.pem {2}restricted file in the diff \(\*\.pem\)/);
+  assert.equal(head(dir), before);
+  assert.deepEqual(staged(dir), []);
+});
+
+test('a restricted file inside a folder that was named is found after staging, and the whole folder is unstaged', () => {
+  const dir = repo();
+  put(dir, 'deploy/run.sh', 'echo hi\n');
+  put(dir, 'deploy/.env.production', 'A=1\n');
+  const r = run(dir, '--message', 'feat: deploy', '--', 'deploy');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /deploy\/\.env\.production {2}restricted file in the diff/);
+  assert.ok(!r.stderr.includes('A=1') && !r.stdout.includes('A=1'), 'its content is never printed');
+  assert.deepEqual(staged(dir), []);
+});
+
+test('a project entry of restricted_paths is refused too, and the example file is committed', () => {
+  const dir = repo({ 'relevo.yml': 'limits:\n  run_max_cost: 5\nrestricted_paths:\n  - infra/prod.tfvars\n' });
+  put(dir, 'infra/prod.tfvars', 'x = 1\n');
+  const r = run(dir, '--message', 'chore: infra', '--', 'infra/prod.tfvars');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /infra\/prod\.tfvars {2}restricted file in the diff \(infra\/prod\.tfvars\)/);
+  put(dir, '.env.example', 'API_URL=\n');
+  assert.equal(run(dir, '--message', 'docs: env names', '--', '.env.example').status, 0, 'the example file is not restricted');
+});
+
+test('Scenario: Clean diff - with no restricted file the commit goes through', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  assert.equal(run(dir, '--message', 'feat: a', '--', 'lib/a.dart').status, 0);
 });

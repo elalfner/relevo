@@ -96,33 +96,55 @@ test('commitRollup asks GraphQL for the commit and returns its nodes', () => {
   assert.ok(args.includes('owner=o') && args.includes('name=r') && args.includes('oid=aaa1111'));
 });
 
+// The summary of classic protection that `branches/<b>` gives to anyone who can read the branch.
+const branchSummary = (level, contexts = [], checks = []) => ({ name: 'dev', protected: level !== 'off', protection: { enabled: level !== 'off', required_status_checks: { enforcement_level: level, contexts, checks } } });
+const RULE_TEST = { type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'test' }] } };
+const ghError = (text) => Object.assign(new Error(`Command failed: gh api\n${text}`), { stderr: text });
+
 test('required checks: a ruleset, classic protection, or none', () => {
-  const ruleset = fakeGh({
-    'repos/o/r/rules/branches/dev': [{ type: 'pull_request' }, { type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'test' }] } }],
-    'repos/o/r/branches/dev/protection': new Error('HTTP 404: Branch not protected (Not Found)'),
-  });
+  const ruleset = fakeGh({ 'repos/o/r/rules/branches/dev': [{ type: 'pull_request' }, RULE_TEST], 'repos/o/r/branches/dev': branchSummary('off') });
   assert.deepEqual(requiredChecks(ruleset, 'o/r', 'dev'), { required: true, contexts: ['test'] });
 
-  const classic = fakeGh({
-    'repos/o/r/rules/branches/dev': [],
-    'repos/o/r/branches/dev/protection': { required_status_checks: { contexts: ['build'], checks: [{ context: 'lint' }] } },
-  });
-  assert.deepEqual(requiredChecks(classic, 'o/r', 'dev'), { required: true, contexts: ['build', 'lint'] });
-
-  const none = fakeGh({ 'repos/o/r/rules/branches/dev': [{ type: 'pull_request' }], 'repos/o/r/branches/dev/protection': new Error('HTTP 404 Not Found') });
+  const none = fakeGh({ 'repos/o/r/rules/branches/dev': [{ type: 'pull_request' }], 'repos/o/r/branches/dev': branchSummary('off') });
   assert.deepEqual(requiredChecks(none, 'o/r', 'dev'), { required: false, contexts: [] });
 });
 
-test('an error reading protection that is not a 404 is not taken for "no checks"', () => {
-  const gh = fakeGh({ 'repos/o/r/rules/branches/dev': [], 'repos/o/r/branches/dev/protection': new Error('HTTP 403: Resource not accessible') });
-  assert.throws(() => requiredChecks(gh, 'o/r', 'dev'), /403/);
+test('Scenario: Classic protection that requires checks - read from the branch summary, contexts and checks', () => {
+  const gh = fakeGh({ 'repos/o/r/rules/branches/dev': [], 'repos/o/r/branches/dev': branchSummary('everyone', ['build'], [{ context: 'lint', app_id: null }]) });
+  assert.deepEqual(requiredChecks(gh, 'o/r', 'dev'), { required: true, contexts: ['build', 'lint'] });
+  assert.ok(!gh.calls.some((a) => a[1].endsWith('/protection')), 'the admin-only protection endpoint is not called');
+});
+
+test('classic protection enforced only for non-admins still requires its checks', () => {
+  const gh = fakeGh({ 'repos/o/r/rules/branches/dev': [], 'repos/o/r/branches/dev': branchSummary('non_admins', ['build']) });
+  assert.deepEqual(requiredChecks(gh, 'o/r', 'dev'), { required: true, contexts: ['build'] });
+});
+
+test('Scenario: Classic protection that requires no checks - an unprotected branch or a summary without one', () => {
+  const unprotected = fakeGh({ 'repos/o/r/rules/branches/dev': [], 'repos/o/r/branches/dev': { name: 'dev', protected: false } });
+  assert.deepEqual(requiredChecks(unprotected, 'o/r', 'dev'), { required: false, contexts: [] });
+  const noChecks = fakeGh({ 'repos/o/r/rules/branches/dev': [], 'repos/o/r/branches/dev': { name: 'dev', protected: true, protection: { enabled: true } } });
+  assert.deepEqual(requiredChecks(noChecks, 'o/r', 'dev'), { required: false, contexts: [] });
+});
+
+test('Scenario: Rulesets and classic protection together - both sets count', () => {
+  const gh = fakeGh({ 'repos/o/r/rules/branches/dev': [RULE_TEST], 'repos/o/r/branches/dev': branchSummary('everyone', ['build']) });
+  assert.deepEqual(requiredChecks(gh, 'o/r', 'dev'), { required: true, contexts: ['test', 'build'] });
+});
+
+test('Scenario: The branch cannot be read - any error is thrown, never taken for "no checks"', () => {
+  for (const text of ['gh: Resource not accessible by integration (HTTP 403)', 'gh: Branch not found (HTTP 404)', 'gh: Server Error (HTTP 500)']) {
+    const gh = fakeGh({ 'repos/o/r/rules/branches/dev': [], 'repos/o/r/branches/dev': ghError(text) });
+    assert.throws(() => requiredChecks(gh, 'o/r', 'dev'), (err) => err.stderr === text);
+  }
 });
 
 const PLAN_403 = () => Object.assign(new Error('Command failed: gh api'), { stderr: 'gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)' });
 
-test('Scenario: Private repository on a free plan - the plan refusal on both endpoints means no required checks', () => {
-  const gh = fakeGh({ 'repos/o/r/rules/branches/dev': PLAN_403(), 'repos/o/r/branches/dev/protection': PLAN_403() });
+test('Scenario: Private repository on a free plan - the plan refusal of the rules means no required checks, and the branch is not read', () => {
+  const gh = fakeGh({ 'repos/o/r/rules/branches/dev': PLAN_403(), 'repos/o/r/branches/dev': ghError('gh: Resource not accessible by integration (HTTP 403)') });
   assert.deepEqual(requiredChecks(gh, 'o/r', 'dev'), { required: false, contexts: [] });
+  assert.equal(gh.calls.length, 1);
 });
 
 test('Scenario: Refusal for permissions - a 403 that is not the plan is not taken for "no checks"', () => {

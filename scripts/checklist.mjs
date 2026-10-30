@@ -4,8 +4,9 @@
 // Default output is a Markdown checklist, one line per scenario of the change's specs.
 // --state <file> ticks the lines the person confirmed in an on-device review (see review-state.mjs).
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { checklistFromChange, checklistMarkdown } from './lib/checklist.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const dir = process.argv[2];
 if (!dir || dir.startsWith('--') || !existsSync(dir)) {
@@ -13,7 +14,7 @@ if (!dir || dir.startsWith('--') || !existsSync(dir)) {
   process.exit(2);
 }
 const items = checklistFromChange(dir);
-if (process.argv.includes('--count')) console.log(items.length);
+if (process.argv.includes('--count')) console.log(String(items.length));
 else if (process.argv.includes('--json')) console.log(JSON.stringify(items, null, 2));
 else {
   const si = process.argv.indexOf('--state');

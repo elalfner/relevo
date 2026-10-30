@@ -14,9 +14,9 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 
 | Ajuste | Qué controla | En la plantilla |
 |---|---|---|
-| `branches.base` | rama de integración: los pull requests de las features apuntan a ella | `dev` |
+| `branches.base` | rama de integración: toda rama de construcción sale de ella y su pull request apunta a ella, sea cual sea la rama por defecto del repositorio | `dev` |
 | `branches.release` | rama de publicación, que se promueve desde la base en un pull request aparte | `main` |
-| `links` | repositorios de los que un issue puede depender con `Depends-on: owner/repo#N` (una lista cerrada); uno privado se lee con el secreto de solo lectura `RELEVO_LINKS_TOKEN` | ninguno |
+| `links` | repositorios de los que un issue puede depender con `Depends-on: owner/repo#N`, o a los que puede apuntar con `owner/repo:path` en `Design reference` y `Code pointers` (una lista cerrada); uno privado se lee con el secreto `RELEVO_LINKS_TOKEN`, un token fine-grained con acceso de lectura a issues, pull requests y contenido | ninguno |
 | `tracker`, `git_provider`, `platforms` | dónde viven los issues y los pull requests, y las plataformas que se construyen ([Stacks y plataformas](stacks.es.md)); la línea anterior `platform: flutter-android` sigue funcionando | `github`, `github`, una plataforma Flutter para Android |
 | `team.members` | usuarios de GitHub de las personas que construyen y revisan | vacío |
 | `team.spec_writer` | quién escribe las specs; nunca revisa ni mergea | ninguno |
@@ -26,6 +26,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `review.autopilot` | cuánto de la revisión puede conducir el agente: `off` (la persona lo hace todo), `precheck` (el agente recorre las líneas y anota su resultado; la persona confirma cada línea) o `verify` (el agente también puede marcar las líneas que probó con una aserción, un finder semántico, el log o el código de salida de un comando del proyecto; la persona confirma el resto y da el acuerdo). Un destino web necesita `precheck` o `verify`, y la revisión recomienda `verify`; haz commit del ajuste en la rama base | `off` |
 | `review.ship_without_ci` | `true` deja que la etiqueta `relevo:ship` fusione un pull request sobre el que no corrió ningún check; `/relevo:ship` se lo pregunta a la persona | `false` |
 | `review.allowed_origins` | orígenes web que una revisión conducida puede visitar además de `localhost`, por ejemplo `https://staging.example.com` | `[]` |
+| `restricted_paths` | rutas o globs, relativos al repositorio, que ningún agente ni script de Relevo lee, y que se suman a la lista incorporada (`.env` y `.env.*` salvo los archivos de ejemplo (`.env.example`, `.env.sample`, `.env.template`, `.env.dist`), llaves privadas y certificados, archivos de credenciales como `.npmrc` y `.netrc`, configuración de servicios móviles, `secrets/`). Solo suma: no puede quitar una entrada incorporada, un perfil no puede debilitarla, y se rechaza una ruta absoluta o una que salga del repositorio ([Seguridad](security.es.md)) | `[]` |
 | `skills.allow_scripts` | nombres de las skills extra que tienen scripts y pueden usarse; una skill con scripts que no está en la lista se deja fuera, y `/relevo:doctor` lo dice | vacío |
 | `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando; un issue con una etiqueta `relevo:urgent` válida empieza igualmente | 2 |
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |

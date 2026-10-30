@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RECOMMENDED, REQUIRED_SKILLS, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
+import { folderHash } from '../scripts/lib/role-skills.mjs';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -401,9 +402,11 @@ test('a plugin_marketplaces URL that carries a credential is not reported as unr
   assert.equal(byId(runChecks({ ...healthy(), ...f, config: healthy().config }), 'automation.plugin-clone'), undefined);
 });
 
-function probes({ localFiles, remote, files = {} }) {
+function probes({ localFiles, remote, files = {}, defaultBranch = 'main', configs = {}, calls = [] }) {
   const api = {
-    'repos/o/r': { default_branch: 'main' },
+    'repos/o/r': { default_branch: defaultBranch },
+    // relevo.yml on each branch: a text, or an Error to throw for that read.
+    ...Object.fromEntries(Object.entries(configs).map(([b, t]) => [`repos/o/r/contents/relevo.yml?ref=${b}`, t instanceof Error ? t : { content: Buffer.from(t).toString('base64') }])),
     'repos/o/r/contents/.github/workflows?ref=main': remote === null ? null : Object.keys(remote).map((name) => ({ name })),
     ...Object.fromEntries(Object.entries(remote ?? {}).map(([n, t]) => [`repos/o/r/contents/.github/workflows/${n}?ref=main`, { content: Buffer.from(t).toString('base64') }])),
     'repos/o/relevo': { private: true },
@@ -413,12 +416,58 @@ function probes({ localFiles, remote, files = {} }) {
     tool: () => 'ok',
     gh: (args) => {
       const path = args[args.length - 1];
+      calls.push(path);
       if (!(path in api) || api[path] === null) throw new Error(`HTTP 404 ${path}`);
+      if (api[path] instanceof Error) throw api[path];
       return JSON.stringify(api[path]);
     },
     exists: (p) => p in all, read: (p) => all[p], listDir: () => Object.keys(localFiles), skillDirs: [], repo: 'o/r',
   };
 }
+const BASE_CONFIG = '# the base branch\nbranches:\n  base: dev\nlimits:\n  run_max_turns: 100\n';
+
+test('Scenario: Only a comment differs - the copies on the default and the base branch give the same settings', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG, main: 'branches:\n    base: dev   # promoted\nlimits:\n    run_max_turns: 100\n' } }));
+  assert.deepEqual(f.configOnBranches, { defaultBranch: 'main', base: 'dev', same: true, missingOnDefault: false });
+});
+
+test('Scenario: A limit changed only on the base branch - the copies differ', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG, main: BASE_CONFIG.replace('100', '60') } }));
+  assert.deepEqual(f.configOnBranches, { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: false });
+});
+
+test('Scenario: No configuration on the default branch - a missing file is reported as missing', () => {
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG } }));
+  assert.deepEqual(f.configOnBranches, { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: true });
+});
+
+test('Scenario: A branch cannot be read - nothing to compare', () => {
+  assert.equal(gatherFacts(probes({ localFiles: {}, remote: {}, configs: { dev: BASE_CONFIG, main: new Error('HTTP 502 Bad Gateway') } })).configOnBranches, null);
+  assert.equal(gatherFacts(probes({ localFiles: {}, remote: {}, configs: { main: BASE_CONFIG } })).configOnBranches, null);
+});
+
+test('Scenario: The base branch is the default branch - no comparison and no read of relevo.yml', () => {
+  const calls = [];
+  const f = gatherFacts(probes({ localFiles: {}, remote: {}, defaultBranch: 'dev', configs: { dev: BASE_CONFIG }, calls }));
+  assert.equal(f.configOnBranches, null);
+  assert.deepEqual(calls.filter((c) => c.includes('contents/relevo.yml')), []);
+});
+
+test('the comparison of relevo.yml between branches: nothing without the fact, a pass when the same, a warning with the fix otherwise', () => {
+  assert.equal(byId(runChecks(healthy()), 'repo.config-default-branch'), undefined);
+  const check = (over) => byId(runChecks(healthy({ configOnBranches: { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: false, ...over } })), 'repo.config-default-branch');
+  assert.equal(check({ same: true }).status, 'pass');
+  const differs = check({});
+  assert.equal(differs.status, 'warn');
+  assert.match(differs.message, /the cloud reads relevo\.yml from the default branch main, and it differs from the one on dev/);
+  assert.equal(differs.fix, 'promote dev to main through a pull request, or make dev the default branch');
+  const missing = check({ missingOnDefault: true });
+  assert.equal(missing.status, 'warn');
+  assert.match(missing.message, /main, which has none while dev has one/);
+  assert.equal(missing.fix, differs.fix);
+  assert.equal(exitCode(runChecks(healthy({ configOnBranches: { defaultBranch: 'main', base: 'dev', same: false, missingOnDefault: false } }))), 0);
+});
+
 const CHECKOUT = (token) => `      - uses: actions/checkout@v4\n        with:\n          repository: o/relevo\n          ref: main\n          path: .relevo-plugin\n${token ? '          token: ${{ secrets.RELEVO_PLUGIN_TOKEN }}\n' : ''}\n`;
 
 test('Scenario: Workflow fixed only in the working copy - doctor judges what is on the default branch, not the local file (the old layout is judged by the checkout)', () => {
@@ -525,11 +574,145 @@ test('gatherFacts resolves the role skills from the base branch and compares the
   });
   assert.deepEqual(f.platformFacts[0].profile.layers, ['plugin', 'repository']);
   assert.deepEqual(f.platformFacts[0].targetTools.map((t) => t.target), ['android', 'web']);
-  const dev = f.roleSkills.app.dev;
-  assert.equal(dev[0].path, '.agents/skills/good/SKILL.md');
-  assert.ok(dev[0].bytes > 0);
-  assert.deepEqual(dev[1], { name: 'mine', left_out: true, reason: 'not on the base branch' });
+  const dev = Object.fromEntries(f.roleSkills.app.dev.map((s) => [s.name, s]));
+  assert.equal(dev.good.path, '.agents/skills/good/SKILL.md');
+  assert.ok(dev.good.bytes > 0);
+  assert.deepEqual(dev.mine, { name: 'mine', left_out: true, reason: 'not on the base branch' });
+  assert.deepEqual(dev['dart-add-unit-test'], { name: 'dart-add-unit-test', left_out: true, reason: 'not on the base branch', default: true }, 'a default skill of the plugin that is not installed');
   assert.deepEqual(f.skillLockDifferences, ['good']);
+});
+
+/** The facts of a repository whose Flutter platform lives in `app`, with `files` on disk and on the base branch. */
+function platformFolderFacts(files) {
+  const config = 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: flutter\n    path: app\n    targets: [web]\n';
+  const all = { 'relevo.yml': config, ...files };
+  const folders = Object.keys(all).filter((n) => /\/skills\/[^/]+\/SKILL\.md$/.test(n)).map((n) => n.replace(/\/SKILL\.md$/, ''));
+  return gatherFacts({
+    tool: () => 'ok',
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in all || folders.includes(p),
+    read: (p) => all[p], listDir: () => [], skillDirs: [],
+    git: (args) => {
+      if (args[0] === 'rev-parse') return 'abc\n';
+      if (args[0] === 'ls-tree') { const f = args[4]; return folders.includes(f) ? Object.keys(all).filter((n) => n.startsWith(`${f}/`)).map((n) => `100644 blob abc\t${n}`).join('\n') : ''; }
+      if (args[0] === 'show') return all[args[1].split(':')[1]];
+      throw new Error(`unexpected ${args.join(' ')}`);
+    },
+    readFolder: () => [{ path: 'SKILL.md', content: Buffer.from('body\n') }],
+    repo: 'o/r',
+  });
+}
+
+test('Scenario: Lock file in the folder of a platform - a skill that differs from app/skills-lock.json is named with that file', () => {
+  const f = platformFolderFacts({
+    'app/.claude/skills/dart-add-unit-test/SKILL.md': 'body\n',
+    'app/skills-lock.json': JSON.stringify({ version: 1, skills: { 'dart-add-unit-test': { computedHash: 'not-the-real-hash' } } }),
+  });
+  assert.deepEqual(f.skillLockDifferences, [{ name: 'dart-add-unit-test', folder: 'app', lock: 'app/skills-lock.json' }]);
+  const r = byId(runChecks(healthy({ skillLockDifferences: f.skillLockDifferences })), 'skills.lock.app.dart-add-unit-test');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /dart-add-unit-test differs from the hash in app\/skills-lock\.json/);
+});
+
+const checksOf = (files, { stackNote = true } = {}) => {
+  const f = platformFolderFacts(files);
+  return runChecks(healthy({ platformFacts: f.platformFacts, roleSkills: f.roleSkills, recommendedSkills: stackNote ? f.recommendedSkills : null }));
+};
+const SKILL_FILE = 'body\n';
+
+test('Scenario: Default skill missing - no warning and no note of its own: the note of the stack names the skill with its command', () => {
+  const r = checksOf({ 'app/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL_FILE });
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.default.')), [], 'the one missing skill is not reported a second time');
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.role.')), [], 'no warning for a default skill');
+  const stack = byId(r, 'recommended.flutter.claude');
+  assert.equal(stack.status, 'note');
+  assert.match(stack.message, /\(dart-add-unit-test\)/);
+  assert.match(stack.message, /cd app && npx skills add flutter\/agent-plugins --skill dart-add-unit-test --agent claude-code --copy --yes/);
+  assert.equal(exitCode(r), 0, 'a missing default skill does not change the exit status');
+});
+
+test('Scenario: One note for a monorepo - the Flutter platform is in app/ and nothing is installed: one note for the stack that names both, and none for each skill', () => {
+  const r = checksOf({});
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.default.')), []);
+  const notes = r.filter((x) => x.status === 'note' && /flutter-add-widget-test|dart-add-unit-test/.test(x.message));
+  assert.deepEqual(notes.map((x) => x.id), ['recommended.flutter.claude']);
+  assert.match(notes[0].message, /flutter-add-widget-test, dart-add-unit-test/);
+  assert.equal(exitCode(r), 0);
+});
+
+test('Scenario: Stack with no note of its own - one note for each missing skill with its install command, and no warning', () => {
+  const r = checksOf({}, { stackNote: false });
+  ['flutter-add-widget-test', 'dart-add-unit-test'].forEach((name) => {
+    const n = r.filter((x) => x.id === `skills.default.app.${name}`);
+    assert.equal(n.length, 1, `${name}: once, not once per role`);
+    assert.equal(n[0].status, 'note');
+    assert.match(n[0].message, new RegExp(`cd app && npx skills add flutter/agent-plugins --skill ${name} --agent claude-code --copy --yes`));
+  });
+  assert.deepEqual(r.filter((x) => x.id.startsWith('skills.role.')), []);
+  assert.equal(exitCode(r), 0);
+});
+
+test('a skill that is present in the working tree but not on the base branch is still reported once, because the note of the stack does not name it', () => {
+  const f = platformFolderFacts({ 'app/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL_FILE, 'app/.claude/skills/dart-add-unit-test/SKILL.md': SKILL_FILE });
+  const r = runChecks(healthy({ platformFacts: f.platformFacts, roleSkills: { app: { dev: [{ name: 'dart-add-unit-test', left_out: true, reason: 'not on the base branch', default: true }], qa: [] } }, recommendedSkills: f.recommendedSkills }));
+  assert.equal(byId(r, 'recommended.flutter.claude').status, 'pass');
+  assert.equal(byId(r, 'skills.default.app.dart-add-unit-test').status, 'note');
+});
+
+test('Scenario: Skill the repository listed is missing - a warning, as before', () => {
+  const r = checksOf({ '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills:\n  dev: [mine]\n---\n' });
+  const w = r.find((x) => x.id === 'skills.role.app.dev.mine');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /not on the base branch/);
+});
+
+test('Scenario: Default skill switched off - no note and no warning, and doctor says it was switched off', () => {
+  const r = checksOf({
+    '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills:\n  disable: [dart-add-unit-test]\n---\n',
+    'app/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL_FILE,
+  });
+  assert.equal(r.find((x) => x.id === 'skills.default.app.dart-add-unit-test'), undefined);
+  assert.equal(r.find((x) => x.id === 'skills.default.app.flutter-add-widget-test'), undefined, 'installed: nothing to say');
+  assert.equal(r.find((x) => x.id === 'skills.disabled.app.dart-add-unit-test').status, 'pass');
+  assert.match(r.find((x) => x.id === 'skills.disabled.app.dart-add-unit-test').message, /switched off by \.relevo\/stacks\/flutter\.md/);
+});
+
+test('an entry of skills.disable that the profile cannot honour is reported: a note when it matches nothing, a warning when it is required', () => {
+  const r = checksOf({ '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills:\n  disable: [nothing]\n---\n' });
+  assert.equal(r.find((x) => x.id === 'skills.disable.app.nothing').status, 'note');
+});
+
+test('Scenario: Absent - a skill used only when installed gives no note and no warning', () => {
+  const r = checksOf({ '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills_when_installed:\n  dev: [laravel-best-practices]\n---\n' });
+  assert.deepEqual(r.filter((x) => /laravel-best-practices/.test(x.id) || /laravel-best-practices/.test(x.message ?? '')), []);
+});
+
+test('Scenario: Present with scripts - a skill used only when installed is warned about as any skill left out for that reason', () => {
+  const r = checksOf({
+    '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills_when_installed:\n  dev: [x]\n---\n',
+    'app/.claude/skills/x/SKILL.md': SKILL_FILE,
+    'app/.claude/skills/x/scripts/run.sh': 'x',
+  });
+  const w = r.find((x) => x.id === 'skills.role.app.dev.x');
+  assert.equal(w?.status, 'warn');
+  assert.match(w.message, /has scripts and is not allowed/);
+});
+
+test('the install command names each skill, runs from the platform folder, and copies real files', () => {
+  assert.equal(recommendedInstallCommand({ stack: 'flutter', skills: ['a', 'b'], path: 'app' }), 'cd app && npx skills add flutter/agent-plugins --skill a --skill b --agent claude-code --copy --yes');
+  assert.equal(recommendedInstallCommand({ stack: 'flutter', skills: ['a'], path: '.' }), 'npx skills add flutter/agent-plugins --skill a --agent claude-code --copy --yes');
+  assert.match(recommendedInstallCommand({ stack: 'flutter', skills: ['a'], agent: 'universal' }), /--agent universal --copy --yes$/);
+});
+
+test('Scenario: Skills at the root - the lock at the root is compared as before, and a lock of a platform that matches says nothing', () => {
+  const sameHash = folderHash([{ path: 'SKILL.md', content: Buffer.from('body\n') }]);
+  const f = platformFolderFacts({
+    'app/.claude/skills/dart-add-unit-test/SKILL.md': 'body\n',
+    'app/skills-lock.json': JSON.stringify({ version: 1, skills: { 'dart-add-unit-test': { computedHash: sameHash } } }),
+  });
+  assert.deepEqual(f.skillLockDifferences, []);
+  const found = f.roleSkills.app.dev.find((s) => s.name === 'dart-add-unit-test');
+  assert.equal(found.path, 'app/.claude/skills/dart-add-unit-test/SKILL.md', 'doctor resolves the skills of a platform the way go does');
 });
 
 test('gatherFacts reports an invalid target of the profile and skips the skills when the base branch is unknown', () => {
@@ -550,7 +733,7 @@ test('Scenario: Private linked repository without the secret - doctor fails and 
   const r = byId(results, 'links.secret');
   assert.equal(r.status, 'fail');
   assert.match(r.message, /acme\/api is private and there is no RELEVO_LINKS_TOKEN/);
-  assert.match(r.fix, /read access to issues and pull requests.*RELEVO_LINKS_TOKEN/);
+  assert.match(r.fix, /read access to issues, pull requests and contents.*RELEVO_LINKS_TOKEN/);
   assert.equal(byId(results, 'links.acme/api').status, 'pass');
 });
 
@@ -717,9 +900,15 @@ test('Scenario: Vue without Playwright - doctor warns, names /relevo:init and gi
 });
 
 test('a stack without a driven review says so instead of staying silent', () => {
-  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  api:\n    stack: laravel\n    path: apps/api\n' }));
+  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  db:\n    stack: supabase\n    path: supabase\n' }));
   assert.equal(r[0].status, 'warn');
-  assert.match(r[0].message, /driven review of the stack laravel .* is not available/);
+  assert.match(r[0].message, /driven review of the stack supabase .* is not available/);
+});
+
+test('Laravel has an api adapter: with an autopilot doctor says the agent runs the tests, and does not warn', () => {
+  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  api:\n    stack: laravel\n    path: apps/api\n' }));
+  assert.equal(r[0].status, 'pass');
+  assert.match(r[0].message, /running the test that covers it/);
 });
 
 test('Scenario: Autopilot off - doctor adds no autopilot check', () => {
@@ -1434,64 +1623,122 @@ test('the facts say no marketplace for the current go template and one for the o
   assert.equal(gatherFacts(probes({ localFiles: {}, remote: { 'relevo-go.yml': old } })).pluginMarketplace, 'https://github.com/o/relevo.git');
 });
 
-// ---------- recommended skills (flutter-recommended-skills)
+// ---------- recommended skills (flutter-recommended-skills, recommended-skills-in-project)
 
 const PLUGINS = (...rows) => () => JSON.stringify(rows);
 const DART_FLUTTER = { id: 'dart-flutter@dart-flutter', version: '1.0.7', scope: 'user', enabled: true };
-const recFacts = ({ plugins = PLUGINS(), folders = {}, adapters = [], agentBuild = 'claude', repoTop = '/repo' } = {}) => recommendedSkillFacts({
+const SET = ['flutter-add-widget-test', 'dart-add-unit-test'];
+const recFacts = ({ plugins = PLUGINS(), files = [], platforms = [{ path: '.', skills: SET }], adapters = [], agentBuild = 'claude', repoTop = '/repo' } = {}) => recommendedSkillFacts({
   stack: 'flutter',
+  platforms,
+  exists: (p) => files.includes(p),
   tool: (name, args) => { if (name !== 'claude') throw new Error('unexpected tool'); return plugins(args); },
-  listDir: (d) => { if (!(d in folders)) throw new Error('no such folder'); return folders[d]; },
-  skillDirs: ['.claude/skills', '.agents/skills'],
   repoTop, adapters, agentBuild,
 });
+const inDir = (dir, names = SET) => names.map((n) => `${dir}/${n}`);
 const withRec = (recommendedSkills) => runChecks(healthy({ recommendedSkills }));
 
-test('Scenario: Plugin missing in Claude Code - a note with the two commands, and the exit status is untouched', () => {
+test('Scenario: Plugin missing in Claude Code - a note with the install command and the cloud runner, and the exit status is untouched', () => {
   const results = withRec(recFacts());
   const rec = byId(results, 'recommended.flutter.claude');
   assert.equal(rec.status, 'note');
-  assert.ok(rec.message.includes(RECOMMENDED.flutter.claude.commands[0]) && rec.message.includes('claude plugin install dart-flutter@dart-flutter'));
+  assert.ok(rec.message.includes('npx skills add flutter/agent-plugins --skill flutter-add-widget-test --skill dart-add-unit-test --agent claude-code --copy --yes'));
+  assert.match(rec.message, /cloud runner reads only what is committed/);
+  assert.match(rec.message, /commit the folder and skills-lock\.json/);
   assert.equal(exitCode(results), 0);
   assert.deepEqual(results.filter((r) => r.status === 'warn'), []);
   assert.equal(byId(results, 'recommended.flutter.antigravity'), undefined);
 });
 
-test('Scenario: Plugin installed - a pass, at the user scope or at the project scope of this repository', () => {
-  assert.equal(byId(withRec(recFacts({ plugins: PLUGINS(DART_FLUTTER) })), 'recommended.flutter.claude').status, 'pass');
+test('Scenario: Plugin installed - still a note: it works on this machine and does not reach the cloud runner', () => {
+  const rec = byId(withRec(recFacts({ plugins: PLUGINS(DART_FLUTTER) })), 'recommended.flutter.claude');
+  assert.equal(rec.status, 'note');
+  assert.match(rec.message, /installed on this machine, which works here and does not reach the cloud runner/);
   const project = { ...DART_FLUTTER, scope: 'project', projectPath: '/repo' };
-  assert.equal(recFacts({ plugins: PLUGINS(project) }).claude, 'present');
-  assert.equal(recFacts({ plugins: PLUGINS({ ...project, projectPath: '/other' }) }).claude, 'missing', 'a project install of another repository does not count');
+  assert.equal(recFacts({ plugins: PLUGINS(project) }).plugin, true);
+  assert.equal(recFacts({ plugins: PLUGINS({ ...project, projectPath: '/other' }) }).plugin, false, 'a project install of another repository is not this one');
 });
 
-test('Scenario: Skills committed to the repository - a pass for each agent it applies to, and no note', () => {
-  const folders = { '.agents/skills': ['flutter-fix-layout-issues', 'dart-add-unit-test'] };
-  const facts = recFacts({ folders, adapters: [{ scope: 'project' }] });
-  assert.deepEqual(facts, { stack: 'flutter', claude: 'present', antigravity: 'present' });
-  const results = withRec(facts);
+test('Scenario: Skills committed to the repository - a pass, at the root or in the folder of the platform, and no note', () => {
+  assert.equal(recFacts({ files: inDir('.claude/skills') }).claude, 'present');
+  const app = [{ path: 'app', skills: SET }];
+  assert.equal(recFacts({ platforms: app, files: inDir('app/.claude/skills') }).claude, 'present');
+  assert.equal(recFacts({ platforms: app, files: inDir('.claude/skills') }).claude, 'present', 'the root is the fallback');
+  const results = withRec(recFacts({ files: inDir('.claude/skills') }));
   assert.equal(results.filter((r) => r.status === 'note').length, 0);
-  assert.equal(byId(results, 'recommended.flutter.antigravity').status, 'pass');
-  assert.equal(recFacts({ folders: { '.claude/skills': ['flutter-add-widget-test'] } }).claude, 'present');
+  assert.equal(byId(results, 'recommended.flutter.claude').status, 'pass');
 });
 
-test('Scenario: Claude Code cannot list its plugins - no check, unless the folder is there', () => {
+test('a skill that is only partly committed is still missing, and the note names what is missing', () => {
+  const facts = recFacts({ files: ['.claude/skills/dart-add-unit-test'] });
+  assert.equal(facts.claude, 'missing');
+  assert.deepEqual(facts.claudeMissing, [{ path: '.', skills: ['flutter-add-widget-test'] }]);
+  const rec = byId(withRec(facts), 'recommended.flutter.claude');
+  assert.match(rec.message, /\(flutter-add-widget-test\)/);
+  assert.ok(!rec.message.includes('--skill dart-add-unit-test'));
+});
+
+test('Scenario: Two Flutter platforms - each one is checked and the command runs from its folder', () => {
+  const two = [{ path: 'app', skills: SET }, { path: 'admin', skills: SET }];
+  const facts = recFacts({ platforms: two, files: inDir('app/.claude/skills') });
+  assert.equal(facts.claude, 'missing');
+  assert.deepEqual(facts.claudeMissing.map((m) => m.path), ['admin']);
+  assert.match(byId(withRec(facts), 'recommended.flutter.claude').message, /cd admin && npx skills add/);
+});
+
+test('Scenario: Claude Code cannot list its plugins - the note is still reported, without the sentence about the plugin', () => {
   const broken = () => { throw new Error('claude: command not found'); };
-  assert.equal(recFacts({ plugins: broken }).claude, null);
-  assert.equal(byId(withRec(recFacts({ plugins: broken })), 'recommended.flutter.claude'), undefined);
-  assert.equal(recFacts({ plugins: broken, folders: { '.agents/skills': ['flutter-use-http-package'] } }).claude, 'present');
+  const facts = recFacts({ plugins: broken });
+  assert.equal(facts.plugin, null);
+  const rec = byId(withRec(facts), 'recommended.flutter.claude');
+  assert.equal(rec.status, 'note');
+  assert.doesNotMatch(rec.message, /installed on this machine/);
 });
 
-test('Scenario: Antigravity in use and skills missing - a note with the npx command and the IDE route', () => {
+test('Scenario: Only .agents/skills and Claude Code - a pass for Claude Code, because go hands the paths from that folder, and a pass for Antigravity', () => {
+  const facts = recFacts({ files: inDir('.agents/skills'), adapters: [{ scope: 'project' }] });
+  assert.equal(facts.claude, 'present');
+  assert.equal(facts.antigravity, 'present');
+  const results = withRec(facts);
+  assert.equal(byId(results, 'recommended.flutter.claude').status, 'pass');
+  assert.equal(byId(results, 'recommended.flutter.antigravity').status, 'pass');
+  assert.equal(results.filter((r) => r.status === 'note').length, 0);
+});
+
+test('Scenario: Only .agents/skills in the folder of the platform - the same pass, and the folder of Claude Code is not needed', () => {
+  const app = [{ path: 'app', skills: SET }];
+  assert.equal(recFacts({ platforms: app, files: inDir('app/.agents/skills') }).claude, 'present');
+  assert.equal(recFacts({ platforms: app, files: inDir('.agents/skills') }).claude, 'present', 'the root is the fallback');
+});
+
+test('Scenario: Skills split between the two folders - a pass for Claude Code, and the missing one still counts for Antigravity', () => {
+  const split = ['.claude/skills/flutter-add-widget-test', '.agents/skills/dart-add-unit-test'];
+  const facts = recFacts({ files: split, adapters: [{ scope: 'project' }] });
+  assert.equal(facts.claude, 'present');
+  assert.equal(facts.antigravity, 'missing', 'Antigravity reads only .agents/skills');
+  assert.deepEqual(facts.antigravityMissing, [{ path: '.', skills: ['flutter-add-widget-test'] }]);
+});
+
+test('Scenario: Skills only under .claude/skills with Antigravity in use - a pass for Claude Code and a note for Antigravity', () => {
+  const facts = recFacts({ files: inDir('.claude/skills'), adapters: [{ scope: 'project' }] });
+  assert.equal(facts.claude, 'present');
+  assert.equal(facts.antigravity, 'missing');
+});
+
+test('Scenario: Skills in the home folder - they are treated as missing', () => {
+  assert.equal(recFacts({ files: inDir('/home/me/.claude/skills') }).claude, 'missing');
+});
+
+test('Scenario: Antigravity in use and skills missing - a note with the universal command and the IDE route', () => {
   const byPlugin = recFacts({ adapters: [{ scope: 'project' }] });
   const byBuild = recFacts({ agentBuild: 'antigravity' });
   assert.equal(byPlugin.antigravity, 'missing');
   assert.equal(byBuild.antigravity, 'missing');
   const note = byId(withRec(byBuild), 'recommended.flutter.antigravity');
   assert.equal(note.status, 'note');
-  assert.ok(note.message.includes("npx skills add flutter/agent-plugins --skill '*' --agent universal --yes"));
+  assert.ok(note.message.includes('npx skills add flutter/agent-plugins --skill flutter-add-widget-test --skill dart-add-unit-test --agent universal --copy --yes'));
   assert.match(note.message, /Antigravity IDE/);
   assert.match(note.message, /doctor cannot check/);
-  assert.ok(!note.message.includes('dart-lang/skills'), 'the second command adds nothing');
 });
 
 test('Scenario: Antigravity not in use - no antigravity check', () => {
@@ -1502,26 +1749,372 @@ test('Scenario: Antigravity not in use - no antigravity check', () => {
 
 test('Scenario: No Flutter platform - no recommended check, and gatherFacts reads none', () => {
   assert.deepEqual(runChecks(healthy({ recommendedSkills: null })).filter((r) => r.id.startsWith('recommended.')), []);
-  const f = stackFacts(TS, ['supabase']);
-  assert.equal(f.recommendedSkills, null);
+  assert.equal(stackFacts(TS, ['supabase']).recommendedSkills, null);
+  assert.equal(recFacts({ platforms: [{ path: '.', skills: [] }] }), null, 'every default skill switched off: nothing to recommend');
 });
 
-test('Scenario: Everything else passes and the recommended skills are missing - exit 0 and one note', () => {
+test('Scenario: Everything else passes and the default skills are missing - exit 0 and one note', () => {
   const results = withRec(recFacts());
   assert.equal(exitCode(results), 0);
   assert.equal(results.filter((r) => r.status === 'note' && r.id.startsWith('recommended.')).length, 1);
-  assert.match(renderReport(results), /recommended\.flutter\.claude|works better with the official Dart and Flutter skills/);
+  assert.match(renderReport(results), /works better with the default Dart and Flutter skills/);
 });
 
-test('Scenario: gatherFacts reads the recommended skills for a Flutter platform and for none other', () => {
-  const read = (agent) => gatherFacts({
-    tool: (name, args) => (name === 'claude' ? JSON.stringify([]) : 'ok'),
+test('Scenario: gatherFacts reads the default skills of the profile for a Flutter platform, in its folder', () => {
+  const read = (agent, path, present) => gatherFacts({
+    tool: (name) => (name === 'claude' ? JSON.stringify([]) : 'ok'),
     gh: () => { throw new Error('no network'); },
-    exists: (p) => p === 'relevo.yml',
-    read: () => `limits:\n  run_max_cost: 5\nagent:\n  build: ${agent}\nplatforms:\n  app:\n    stack: flutter\n    path: .\n`.replace(/limits:\n {2}run_max_cost: 5\n/, agent === 'antigravity' ? 'limits:\n  run_max_tokens: 200000\n' : 'limits:\n  run_max_cost: 5\n'),
-    listDir: (d) => { if (d === '.agents/skills') return ['flutter-add-widget-test']; throw new Error('missing'); },
-    skillDirs: ['.claude/skills', '.agents/skills'], repo: null,
+    exists: (p) => p === 'relevo.yml' || present.includes(p),
+    read: () => `${agent === 'antigravity' ? 'limits:\n  run_max_tokens: 200000\n' : 'limits:\n  run_max_cost: 5\n'}agent:\n  build: ${agent}\nplatforms:\n  app:\n    stack: flutter\n    path: ${path}\n`,
+    skillDirs: [], repo: null,
   });
-  assert.deepEqual(read('claude').recommendedSkills, { stack: 'flutter', claude: 'present', antigravity: null });
-  assert.deepEqual(read('antigravity').recommendedSkills, { stack: 'flutter', claude: 'present', antigravity: 'present' });
+  assert.deepEqual(read('claude', '.', []).recommendedSkills.claudeMissing, [{ path: '.', skills: SET }]);
+  assert.equal(read('claude', 'app', inDir('app/.claude/skills')).recommendedSkills.claude, 'present');
+  const ag = read('antigravity', '.', inDir('.agents/skills')).recommendedSkills;
+  assert.equal(ag.antigravity, 'present');
+  assert.equal(ag.claude, 'present', 'go gives the agents the path from .agents/skills too, so it counts for Claude Code');
+  assert.equal(read('claude', '.', []).recommendedSkills.antigravity, null);
+});
+
+// ---------- sources of skills for Laravel and Vue, and skill folders that git ignores (laravel-vue-skills)
+
+/** gatherFacts for a repository with one platform of `stack` in `path`, with `files` on disk and an optional `tool`. */
+function sourceFacts({ stack, path = 'api', files = {}, dirs = [], tool = () => 'ok' }) {
+  const all = { 'relevo.yml': `limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    stack: ${stack}\n    path: ${path}\n${stack === 'vue' ? '    targets: [web]\n' : ''}`, ...files };
+  return gatherFacts({
+    tool, gh: () => { throw new Error('no network'); },
+    exists: (p) => p in all || dirs.includes(p) || Object.keys(all).some((k) => k.startsWith(`${p}/`)),
+    read: (p) => all[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const COMPOSER = (boost) => JSON.stringify({ require: { 'laravel/framework': '^13.0' }, 'require-dev': boost ? { 'laravel/boost': '^2.10' } : {} });
+const sourceChecks = (facts) => runChecks(healthy({ laravelBoost: facts.laravelBoost, ignoredSkillFolders: facts.ignoredSkillFolders }));
+
+test('Scenario: Boost missing - a note with the two commands from the folder of the platform, and the exit status is untouched', () => {
+  const facts = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(false) } });
+  assert.deepEqual(facts.laravelBoost.map((x) => [x.name, x.boost]), [['app', false]]);
+  const results = sourceChecks(facts);
+  const rec = byId(results, 'recommended.laravel.boost');
+  assert.equal(rec.status, 'note');
+  assert.ok(rec.message.includes('cd api && composer require laravel/boost --dev'));
+  assert.ok(rec.message.includes('cd api && php artisan boost:install --skills --no-interaction'));
+  assert.equal(exitCode(results), 0);
+});
+
+test('Scenario: Boost present and no skills committed - a note to run the install and commit the result', () => {
+  const facts = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(true) } });
+  assert.equal(facts.laravelBoost[0].boost, true);
+  assert.equal(facts.laravelBoost[0].skillsCommitted, false);
+  const results = sourceChecks(facts);
+  assert.equal(byId(results, 'recommended.laravel.boost'), undefined);
+  const note = byId(results, 'recommended.laravel.skills');
+  assert.equal(note.status, 'note');
+  assert.match(note.message, /boost:install --skills --no-interaction/);
+});
+
+test('Scenario: Both in place - a pass when Boost is required and a skill of the profile is committed', () => {
+  const facts = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(true), 'api/.claude/skills/laravel-best-practices/SKILL.md': 'x' } });
+  assert.equal(facts.laravelBoost[0].skillsCommitted, true);
+  assert.equal(byId(sourceChecks(facts), 'recommended.laravel.boost').status, 'pass');
+  const atRoot = sourceFacts({ stack: 'laravel', files: { 'api/composer.json': COMPOSER(true), '.claude/skills/testing-best-practices/SKILL.md': 'x' } });
+  assert.equal(atRoot.laravelBoost[0].skillsCommitted, true, 'the root counts too');
+});
+
+test('Scenario: No composer file, and Not Laravel - no Laravel check', () => {
+  assert.deepEqual(sourceFacts({ stack: 'laravel' }).laravelBoost, []);
+  assert.deepEqual(sourceFacts({ stack: 'vue', path: 'web' }).laravelBoost, []);
+  assert.deepEqual(sourceChecks(sourceFacts({ stack: 'laravel' })).filter((r) => r.id.startsWith('recommended.laravel')), []);
+});
+
+test('the Boost commands run from the folder of the platform, and at the root with no folder', () => {
+  assert.deepEqual(boostInstallCommands('api'), ['cd api && composer require laravel/boost --dev', 'cd api && php artisan boost:install --skills --no-interaction']);
+  assert.deepEqual(boostInstallCommands('.'), ['composer require laravel/boost --dev', 'php artisan boost:install --skills --no-interaction']);
+});
+
+const IGNORING = (ignored) => (name, args) => {
+  if (name === 'git' && args[0] === 'check-ignore') {
+    if (ignored) return '';
+    const err = new Error('not ignored');
+    err.status = 1;
+    throw err;
+  }
+  return 'ok';
+};
+
+test('Scenario: Ignored - a skill folder that git ignores is a warning that names the folder and says what to do', () => {
+  const facts = sourceFacts({ stack: 'laravel', dirs: ['api/.claude/skills'], tool: IGNORING(true) });
+  assert.deepEqual(facts.ignoredSkillFolders, ['api/.claude/skills']);
+  const w = byId(sourceChecks(facts), 'skills.ignored.api/.claude/skills');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /ignored by git, so the cloud runner will not see/);
+  assert.match(w.fix, /remove the ignore rule/);
+});
+
+test('Scenario: Tracked and Git cannot tell - nothing is said, and a folder that does not exist is not asked about', () => {
+  assert.deepEqual(sourceFacts({ stack: 'laravel', dirs: ['api/.claude/skills'], tool: IGNORING(false) }).ignoredSkillFolders, []);
+  const cannot = (name, args) => { if (name === 'git' && args[0] === 'check-ignore') { const e = new Error('fatal: not a git repository'); e.status = 128; throw e; } return 'ok'; };
+  assert.deepEqual(sourceFacts({ stack: 'laravel', dirs: ['api/.claude/skills'], tool: cannot }).ignoredSkillFolders, []);
+  assert.deepEqual(sourceFacts({ stack: 'laravel', tool: IGNORING(true) }).ignoredSkillFolders, [], 'no folder, nothing to ignore');
+});
+
+test('Scenario: Doctor says nothing - the Vue skills that are offered are not reported when absent', () => {
+  const facts = sourceFacts({ stack: 'vue', path: 'web' });
+  assert.deepEqual(facts.offeredSkills.map((x) => [x.stack, x.path, x.missing]), [['vue', 'web', ['vue-best-practices', 'vue-testing-best-practices']]]);
+  const results = runChecks(healthy({ offeredSkills: facts.offeredSkills }));
+  assert.deepEqual(results.filter((r) => /vue-/.test(r.id) || /vue-(best|testing)/.test(r.message ?? '')), []);
+  assert.equal(recommendedInstallCommand({ stack: 'vue', skills: ['vue-best-practices', 'vue-testing-best-practices'], path: 'web' }), 'cd web && npx skills add vuejs-ai/skills --skill vue-best-practices --skill vue-testing-best-practices --agent claude-code --copy --yes');
+});
+
+// ---------- api review (laravel-review-adapter)
+
+const LV = '  api:\n    stack: laravel\n    path: apps/api\n';
+const SQLITE_XML = '<phpunit><php><env name="DB_CONNECTION" value="sqlite"/><env name="DB_DATABASE" value=":memory:"/></php></phpunit>';
+function apiFacts({ files = {}, platforms = LV, mode = 'off', tracked = true } = {}) {
+  const text = `limits:\n  run_max_cost: 5\nreview:\n  autopilot: ${mode}\nplatforms:\n${platforms}`;
+  const all = { 'relevo.yml': text, ...files };
+  return gatherFacts({
+    tool: (name, args) => {
+      if (name === 'git' && args[0] === 'ls-files') { if (!tracked) throw new Error('not tracked'); return 'ok'; }
+      return 'ok';
+    },
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in all || Object.keys(all).some((k) => k.startsWith(`${p}/`)), read: (p) => all[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const idIn = (list, id) => list.find((r) => r.id === id);
+const apiChecks = (f) => runChecks({ ...healthy(), ...f, config: f.config }).filter((r) => r.id.startsWith('review.'));
+
+test('Scenario: Laravel without dependencies - doctor warns and gives the Composer command', () => {
+  const r = apiChecks(apiFacts({ files: { 'apps/api/phpunit.xml': SQLITE_XML } }));
+  assert.equal(idIn(r, 'review.api.api.vendor').status, 'warn');
+  assert.match(idIn(r, 'review.api.api.vendor').fix, /cd apps\/api && composer install/);
+  assert.equal(idIn(r, 'review.api.api.database').status, 'pass');
+});
+
+test('Scenario: Database in the test configuration - doctor notes a database that is not in-memory SQLite', () => {
+  const r = apiChecks(apiFacts({ files: { 'apps/api/vendor/autoload.php': '', 'apps/api/phpunit.xml': '<phpunit><php><env name="DB_CONNECTION" value="mysql"/></php></phpunit>' } }));
+  assert.equal(idIn(r, 'review.api.api.vendor').status, 'pass');
+  const db = idIn(r, 'review.api.api.database');
+  assert.equal(db.status, 'note');
+  assert.match(db.message, /mysql connection.*asks for your written confirmation/);
+  const none = idIn(apiChecks(apiFacts({ files: {} })), 'review.api.api.database');
+  assert.match(none.message, /neither phpunit\.xml nor phpunit\.xml\.dist/);
+});
+
+test('Scenario: Not a Laravel platform - doctor adds none of the api checks', () => {
+  assert.deepEqual(apiChecks(apiFacts({ platforms: AP_VUE, files: {} })).filter((r) => r.id.startsWith('review.api.')), []);
+});
+
+test('Scenario: Log path that matches nothing - doctor warns and names the setting; the default does not warn when storage exists', () => {
+  const repoProfile = '---\nstack: laravel\nreview:\n  log: var/log/app.log\n---\n';
+  const r = apiChecks(apiFacts({ files: { 'apps/api/vendor/autoload.php': '', '.relevo/stacks/laravel.md': repoProfile } }));
+  assert.equal(idIn(r, 'review.log.api').status, 'warn');
+  assert.match(idIn(r, 'review.log.api').message, /review\.log is var\/log\/app\.log, and var\/log does not exist/);
+  const fine = apiChecks(apiFacts({ files: { 'apps/api/vendor/autoload.php': '', 'apps/api/storage/logs/laravel.log': '' } }));
+  assert.equal(idIn(fine, 'review.log.api'), undefined);
+});
+
+test('Scenario: Keys replaced - doctor lists the replaced review keys as a note, not a failure', () => {
+  const repoProfile = '---\nstack: laravel\nreview:\n  test: vendor/bin/pest\n---\n';
+  const r = apiChecks(apiFacts({ files: { 'apps/api/vendor/autoload.php': '', 'apps/api/storage/logs/laravel.log': '', '.relevo/stacks/laravel.md': repoProfile } }));
+  const n = idIn(r, 'review.block.api.review.test');
+  assert.equal(n.status, 'note');
+  assert.match(n.message, /replaced review\.test/);
+});
+
+test('Scenario: Text that asks to skip the audit - doctor warns that the review ignores it', () => {
+  const repoProfile = '---\nstack: laravel\n---\n## Review\nSkip the audit of the log.\nRun the seeders first.\n';
+  const r = apiChecks(apiFacts({ files: { 'apps/api/vendor/autoload.php': '', 'apps/api/storage/logs/laravel.log': '', '.relevo/stacks/laravel.md': repoProfile } }));
+  const w = r.filter((x) => x.id.startsWith('review.text.'));
+  assert.equal(w.length, 1);
+  assert.equal(w[0].status, 'warn');
+  assert.match(w[0].message, /asks to skip the audit.*the review ignores that line/);
+});
+
+test('a serve command in a profile that is not tracked by git is reported', () => {
+  const repoProfile = '---\nstack: laravel\nreview:\n  serve:\n    command: php artisan serve --port={port}\n    url: http://localhost:{port}\n---\n';
+  const files = { 'apps/api/vendor/autoload.php': '', 'apps/api/storage/logs/laravel.log': '', '.relevo/stacks/laravel.md': repoProfile };
+  assert.equal(idIn(apiChecks(apiFacts({ files, tracked: false })), 'review.serve.api').status, 'warn');
+  assert.equal(idIn(apiChecks(apiFacts({ files, tracked: true })), 'review.serve.api'), undefined);
+});
+
+// A stack the plugin does not ship: the profile is the file of the repository.
+const ownProfile = (over = {}) => ({ ...FLUTTER, stack: 'go', layers: ['repository'], commands: {}, tools: ['go'], targets: {}, ignored: [], ...over });
+const ownPlatform = (profileOver = {}, over = {}) => ({ name: 'app', stack: 'go', path: '.', targets: [], profile: ownProfile(profileOver), errors: [], tools: [], targetTools: [], repositoryLayerTracked: true, ...over });
+const GO_STEP = "jobs:\n  build:\n    steps:\n      - if: needs.decide.outputs.stack == 'go'\n        uses: actions/setup-go@v5\n";
+
+test('Scenario: Profile with no commands - doctor warns that analyze and test are missing and names the file', () => {
+  const w = byId(runChecks(healthy({ platformFacts: [ownPlatform()] })), 'platform.app.commands');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /platform app: the profile of go defines no analyze and no test/);
+  assert.match(w.fix, /\.relevo\/stacks\/go\.md.*platforms\.app\.checks/);
+});
+
+test('Scenario: Command given by checks - no warning about the commands', () => {
+  const results = runChecks(healthy({ platformFacts: [ownPlatform({ commands: { test: 'go test ./...', analyze: 'go vet ./...' } })] }));
+  assert.equal(byId(results, 'platform.app.commands'), undefined);
+  const one = byId(runChecks(healthy({ platformFacts: [ownPlatform({ commands: { test: 'go test ./...' } })] })), 'platform.app.commands');
+  assert.match(one.message, /defines no analyze, so/);
+});
+
+test('Scenario: A stack of the plugin - no warning about the commands', () => {
+  const profile = { ...FLUTTER, commands: {}, layers: ['plugin', 'repository'] };
+  assert.equal(byId(runChecks(healthy({ platformFacts: [flutterPlatform({ profile })] })), 'platform.app.commands'), undefined);
+});
+
+test('Scenario: An own stack with no step - doctor warns, names the platform and the line to add', () => {
+  const w = toolchain(withGo(GO_TEMPLATE, [ownPlatform()]));
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /no step guarded by needs\.decide\.outputs\.stack == 'go'.*platform app \(go\).*no go/);
+  assert.match(w.fix, /- if: needs\.decide\.outputs\.stack == 'go'/);
+  assert.match(w.fix, /or, if you install it another way, ignore this/);
+});
+
+test('Scenario: An own stack with its step - the toolchain is reported as installed; a commented step does not count', () => {
+  assert.equal(toolchain(withGo(GO_STEP, [ownPlatform()])).status, 'pass');
+  const commented = GO_STEP.split('\n').map((l) => (l.trim() ? `      # ${l.trim()}` : l)).join('\n');
+  assert.equal(toolchain(withGo(commented, [ownPlatform()])).status, 'warn');
+});
+
+test('Scenario: An own stack that needs only Node - its toolchain is not judged', () => {
+  assert.equal(toolchain(withGo(GO_TEMPLATE, [ownPlatform({ stack: 'svelte', tools: ['node', 'npm'] }, { stack: 'svelte' })])), undefined);
+});
+
+test('Scenario: An own stack and no go workflow - nothing is said about the toolchain', () => {
+  assert.deepEqual(runChecks(healthy({ platformFacts: [ownPlatform()] })).filter((r) => r.id.startsWith('automation.toolchain')), []);
+});
+
+// ---------- restricted files
+
+import { claudeProposal } from '../scripts/lib/restricted-settings.mjs';
+import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
+
+const RLIST = restrictedList();
+const settingsWithDenials = JSON.stringify({ permissions: { deny: claudeProposal(RLIST).deny } });
+/** Probes of a repository with the given files: `read` records every path it is asked for, so a test can say what was opened. */
+function restrictedProbes({ files = {}, present = [], tracked = [], user = {} } = {}) {
+  const opened = [];
+  const all = { 'relevo.yml': CONFIG_TEXT, ...files };
+  return {
+    opened,
+    probes: {
+      tool: (name, args) => (name === 'git' && args[0] === 'ls-files' ? `${tracked.join('\0')}\0` : 'ok'),
+      gh: () => { throw new Error('HTTP 404'); },
+      exists: (p) => p in all,
+      read: (p) => { opened.push(p); return all[p]; },
+      listDir: () => [],
+      skillDirs: [],
+      root: '/work/repo',
+      restrictedFiles: () => present,
+      readUser: (p) => { opened.push(`~/${p}`); return user[p] ?? null; },
+    },
+  };
+}
+const restrictedResults = (over) => {
+  const { opened, probes } = restrictedProbes(over);
+  const f = gatherFacts(probes);
+  return { results: runChecks({ ...healthy(), restricted: f.restricted }), opened, f };
+};
+
+test('Scenario: Denials present - the settings deny the read of every restricted file that exists, and the check passes', () => {
+  const { results } = restrictedResults({ files: { '.claude/settings.json': settingsWithDenials }, present: ['.env', 'api/.env.production'] });
+  assert.equal(byId(results, 'restricted.denials').status, 'pass');
+  assert.match(byId(results, 'restricted.denials').message, /\.env, api\/\.env\.production/);
+  assert.equal(byId(results, 'restricted.versioned').status, 'pass');
+  assert.deepEqual(results.filter((r) => r.id.startsWith('restricted.') && r.status !== 'pass'), []);
+});
+
+test('Scenario: Denial missing - .env exists and no Read denial covers it: a warning that names the path and says init proposes the entries', () => {
+  const { results } = restrictedResults({ present: ['.env'] });
+  const w = byId(results, 'restricted.denial..env');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /\.env exists and no Read denial/);
+  assert.match(w.fix, /\/relevo:init: it proposes the entries/);
+  assert.deepEqual(failing(results), [], 'a missing denial is never a failure');
+  assert.equal(exitCode(results), 0);
+});
+
+test('the user settings of the person count, and a rule in .claude/settings.local.json counts too', () => {
+  const user = restrictedResults({ present: ['.env'], user: { '.claude/settings.json': settingsWithDenials } });
+  assert.equal(byId(user.results, 'restricted.denials').status, 'pass');
+  const local = restrictedResults({ present: ['.env'], files: { '.claude/settings.local.json': JSON.stringify({ permissions: { deny: ['Read(./.env)'] } }) } });
+  assert.equal(byId(local.results, 'restricted.denials').status, 'pass');
+});
+
+test('Scenario: A versioned restricted file - doctor reports a failure that names the path', () => {
+  const { results } = restrictedResults({ tracked: ['README.md', 'config/private.pem', '.env.example'] });
+  const f = byId(results, 'restricted.versioned');
+  assert.equal(f.status, 'fail');
+  assert.match(f.message, /git versions config\/private\.pem/);
+  assert.ok(!f.message.includes('.env.example'), 'the example file is not restricted');
+  assert.match(f.fix, /rotate the secret/);
+  assert.equal(exitCode(results), 1);
+});
+
+test('Scenario: Doctor stays read-only - no restricted file is opened, only the settings files, and nothing is written', () => {
+  const { opened } = restrictedResults({ present: ['.env', 'secrets/a.txt'], tracked: ['config/private.pem'], files: { '.env': 'A=canary', 'secrets/a.txt': 'canary' } });
+  const allowed = new Set(['relevo.yml', '.claude/settings.json', '.claude/settings.local.json', '~/.claude/settings.json', '~/.gemini/antigravity-cli/settings.json']);
+  assert.ok(opened.every((p) => allowed.has(p) || p.startsWith('.github/') || p.startsWith('.relevo/') || p === '.gitignore'), `unexpected read: ${[...new Set(opened)].join(', ')}`);
+  ['.env', 'secrets/a.txt', 'config/private.pem'].forEach((path) => assert.ok(!opened.includes(path), `${path} was opened`));
+});
+
+test('an invalid settings file is a warning, not a failure, and the check with no restricted file has nothing to deny', () => {
+  const broken = restrictedResults({ present: ['.env'], files: { '.claude/settings.json': '{ nope' } });
+  assert.equal(byId(broken.results, 'restricted.settings').status, 'warn');
+  assert.deepEqual(failing(broken.results), []);
+  const none = restrictedResults({});
+  assert.equal(byId(none.results, 'restricted.denials').status, 'pass');
+  assert.match(byId(none.results, 'restricted.denials').message, /nothing to deny/);
+});
+
+test('Antigravity: for a repository that builds with it, a missing read_file rule warns by path, and the exact rule satisfies it', () => {
+  const agy = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\n').config;
+  const probesFor = (user) => ({ ...restrictedProbes({ files: { 'relevo.yml': 'agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\n', '.claude/settings.json': settingsWithDenials }, present: ['.env'], user }).probes });
+  const missing = runChecks({ ...healthy({ config: agy }), restricted: gatherFacts(probesFor({})).restricted });
+  assert.equal(byId(missing, 'restricted.antigravity..env').status, 'warn');
+  assert.match(byId(missing, 'restricted.antigravity..env').message, /not a command such as cat/);
+  const covered = runChecks({ ...healthy({ config: agy }), restricted: gatherFacts(probesFor({ '.gemini/antigravity-cli/settings.json': JSON.stringify({ permissions: { deny: ['read_file(/work/repo/.env)'] } }) })).restricted });
+  assert.equal(byId(covered, 'restricted.antigravity..env'), undefined);
+});
+
+test('without the fact (an older caller) the restricted checks are absent and a healthy repository stays green', () => {
+  assert.deepEqual(runChecks(healthy()).filter((r) => r.id.startsWith('restricted.')), []);
+});
+
+// ---------- the denials of the cloud workflow follow the list
+import { readFileSync as readTemplate } from 'node:fs';
+import { restrictedBlockState } from '../scripts/lib/agent-workflow.mjs';
+
+const GO_TPL_R = readTemplate(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+const restrictedWorkflowResult = (goText, config = CONFIG_TEXT) => {
+  const { probes } = restrictedProbes({ files: { 'relevo.yml': config, '.github/workflows/relevo-go.yml': goText } });
+  const f = gatherFacts(probes);
+  return { f, results: runChecks({ ...healthy(), restricted: f.restricted, restrictedWorkflow: f.restrictedWorkflow }) };
+};
+
+test('Scenario: The workflow carries the denials of the list - the check passes', () => {
+  assert.equal(restrictedBlockState(GO_TPL_R), 'current');
+  assert.equal(byId(restrictedWorkflowResult(GO_TPL_R).results, 'restricted.workflow').status, 'pass');
+});
+
+test('Scenario: restricted_paths changed and init was not run - the check warns and names the fix', () => {
+  const { f, results } = restrictedWorkflowResult(GO_TPL_R, `${CONFIG_TEXT}\nrestricted_paths:\n  - key.json\n`);
+  assert.equal(f.restrictedWorkflow, 'stale');
+  const w = byId(results, 'restricted.workflow');
+  assert.equal(w.status, 'warn');
+  assert.match(w.fix, /\/relevo:init/);
+});
+
+test('Scenario: A workflow copied before the denials existed has no block - the check warns', () => {
+  const old = GO_TPL_R.split('\n').filter((l, i, all) => {
+    const begin = all.findIndex((x) => /# relevo:restricted begin/.test(x));
+    const end = all.findIndex((x) => /# relevo:restricted end/.test(x));
+    return i < begin || i > end;
+  }).join('\n');
+  assert.equal(restrictedBlockState(old), 'missing');
+});
+
+test('Scenario: A workflow for another agent has no Claude step - nothing is judged', () => {
+  assert.equal(restrictedBlockState('name: x\njobs: {}\n'), null);
+  assert.equal(restrictedBlockState(''), null);
 });

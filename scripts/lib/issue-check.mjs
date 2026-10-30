@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { MAX_REFERENCES, parseIssueBody } from './issue-parse.mjs';
 import { resolvePlatform } from './platform-of.mjs';
-import { hardPathsInAllow } from './protected-paths.mjs';
+import { hardPathsInAllow, platformFolders } from './protected-paths.mjs';
 import { findCredentials } from './scan.mjs';
 
 export const TITLE_MAX = 72;
@@ -35,7 +35,16 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
   if (parsed.needsClarification) problems.push('the body contains NEEDS CLARIFICATION: resolve it before the issue can be built');
   parsed.idProblems.forEach((p) => problems.push(p));
   parsed.design.problems.forEach((p) => problems.push(`Design reference: ${p}`));
-  if (parsed.design.references.length > MAX_REFERENCES) problems.push(`Design reference has ${parsed.design.references.length} references; the most Relevo takes is ${MAX_REFERENCES}, so split the issue or keep the ones that matter`);
+  parsed.codePointers.problems.forEach((p) => problems.push(`Code pointers: ${p}`));
+  const pointers = parsed.codePointers.references.length;
+  const total = parsed.design.references.length + pointers;
+  if (total > MAX_REFERENCES) {
+    const counted = pointers > 0 ? `Design reference and the linked Code pointers have ${total} references together` : `Design reference has ${total} references`;
+    problems.push(`${counted}; the most Relevo takes is ${MAX_REFERENCES}, so split the issue or keep the ones that matter`);
+  }
+  parsed.codePointers.references.forEach((ref) => {
+    if (!links.includes(ref.repo)) problems.push(`Code pointers: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
+  });
   parsed.design.references.forEach((ref) => {
     if (ref.kind === 'path' && repoRoot && !existsSync(join(repoRoot, ref.path))) problems.push(`Design reference: "${ref.target}" does not exist in the repository`);
     if (ref.kind === 'repo-file' && !links.includes(ref.repo)) problems.push(`Design reference: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
@@ -47,7 +56,7 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
   const left = PLACEHOLDERS.filter((p) => String(body ?? '').includes(p));
   if (left.length) problems.push(`the body still contains template text: ${left.join(', ')}`);
   findCredentials(String(body ?? '')).forEach(({ name }) => problems.push(`the body contains something that looks like a credential (${name}); issues are readable by everyone with access`));
-  hardPathsInAllow(parsed.allowPaths, { rulesFile }).forEach((entry) => problems.push(`Allow-paths lists "${entry}", which can never be allowed: workflows, the Relevo configuration, skills and the project rules are not changed by an unattended run`));
+  hardPathsInAllow(parsed.allowPaths, { rulesFile, platformPaths: platformFolders(platforms) }).forEach((entry) => problems.push(`Allow-paths lists "${entry}", which can never be allowed: workflows, the Relevo configuration, skills and the project rules are not changed by an unattended run`));
 
   parsed.dependsOnInvalid.forEach((token) => problems.push(`Depends-on has "${token}", which is not a reference; write #12 for an issue of this repository or owner/repo#12 for one of a linked repository`));
   [...new Set(parsed.dependsOnExternal.map((d) => d.repo))].filter((repo) => !links.includes(repo)).forEach((repo) => {

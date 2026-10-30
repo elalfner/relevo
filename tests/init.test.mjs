@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES, recommendedSkillFacts } from '../scripts/lib/doctor.mjs';
 import { mergeWebHook, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
+import { claudeProposal, mergeAgyDenials, mergeClaudeDenials, missingClaudeEntries, restrictedFacts } from '../scripts/lib/restricted-settings.mjs';
+import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
 const template = readFileSync(`${root}templates/relevo.yml`, 'utf8');
@@ -283,6 +285,7 @@ test('init reminds about the read-only secret by name only, and only when there 
   assert.equal(asked.status, 'manual');
   assert.match(asked.description, /RELEVO_LINKS_TOKEN/);
   assert.match(asked.description, /init never reads or writes it/);
+  assert.match(asked.description, /read access to issues, pull requests and contents/);
   assert.doesNotMatch(asked.description, /ghp_|github_pat_/);
   const done = planInit({ facts: { ...facts, secrets: ['RELEVO_LINKS_TOKEN'] }, answers: { ...ANSWERS, links: ['acme/api'] }, templates, current: empty(), admin: true }).find((i) => i.id === 'manual.links-token');
   assert.equal(done.status, 'ok');
@@ -657,24 +660,33 @@ const recItems = (recommendedSkills) => {
   const answers = { ...ANSWERS, platforms: { app: { stack: 'flutter', path: 'app', targets: ['android'] } } };
   return planInit({ facts, answers, templates, current: empty(), admin: true });
 };
-const REC = (claude, antigravity = null) => ({ stack: 'flutter', claude, antigravity });
+const SET = ['flutter-add-widget-test', 'dart-add-unit-test'];
+const missingAt = (...paths) => paths.map((path) => ({ path, skills: SET }));
+const REC = (claude, antigravity = null, { claudeMissing = claude === 'missing' ? missingAt('app') : [], antigravityMissing = antigravity === 'missing' ? missingAt('app') : [] } = {}) => ({ stack: 'flutter', claude, plugin: false, claudeMissing, antigravity, antigravityMissing });
 const recIds = (items) => items.filter((i) => i.id.includes('recommended.')).map((i) => i.id);
 
-test('Scenario: Offered for Claude Code - two optional installs with their exact commands, nothing written', () => {
+test('Scenario: Offered for Claude Code - one optional install for the platform folder, with its exact command, nothing written', () => {
   const items = recItems(REC('missing'));
-  const market = get(items, 'install.recommended.flutter.claude.marketplace');
-  const plugin = get(items, 'install.recommended.flutter.claude.plugin');
-  assert.deepEqual([market.command, plugin.command], ['claude plugin marketplace add flutter/agent-plugins', 'claude plugin install dart-flutter@dart-flutter']);
-  [market, plugin].forEach((i) => assert.deepEqual([i.status, i.install, i.optional], ['todo', true, true]));
-  assert.match(market.description, /^Optional:/);
-  assert.match(market.detail, /nothing else changes/);
-  assert.ok(items.indexOf(market) < items.indexOf(plugin), 'the marketplace comes first');
+  const install = get(items, 'install.recommended.flutter.claude.app');
+  assert.equal(install.command, 'cd app && npx skills add flutter/agent-plugins --skill flutter-add-widget-test --skill dart-add-unit-test --agent claude-code --copy --yes');
+  assert.deepEqual([install.status, install.install, install.optional], ['todo', true, true]);
+  assert.match(install.description, /^Optional: install the default Dart and Flutter skills \(flutter-add-widget-test, dart-add-unit-test\) for Claude Code into app/);
+  assert.match(install.description, /commit both/);
+  assert.match(install.detail, /nothing else changes/);
+  assert.equal(items.filter((i) => i.id.startsWith('install.recommended.') && i.command?.includes('claude plugin')).length, 0, 'the plugin is not offered');
 });
 
-test('Scenario: Offered for the Antigravity CLI - one optional install, and the manual steps', () => {
+test('Scenario: Two Flutter platforms - one optional install per folder, and a platform at the root installs at the root', () => {
+  const items = recItems(REC('missing', null, { claudeMissing: missingAt('app', 'admin', '.') }));
+  assert.deepEqual(recIds(items).filter((id) => id.startsWith('install.')), ['install.recommended.flutter.claude.app', 'install.recommended.flutter.claude.admin', 'install.recommended.flutter.claude.root']);
+  assert.match(get(items, 'install.recommended.flutter.claude.admin').command, /^cd admin && npx skills add/);
+  assert.match(get(items, 'install.recommended.flutter.claude.root').command, /^npx skills add/);
+});
+
+test('Scenario: Offered for the Antigravity CLI - one more install with the universal agent, and the manual steps', () => {
   const items = recItems(REC('present', 'missing'));
-  const cli = get(items, 'install.recommended.flutter.antigravity');
-  assert.equal(cli.command, "npx skills add flutter/agent-plugins --skill '*' --agent universal --yes");
+  const cli = get(items, 'install.recommended.flutter.antigravity.app');
+  assert.equal(cli.command, 'cd app && npx skills add flutter/agent-plugins --skill flutter-add-widget-test --skill dart-add-unit-test --agent universal --copy --yes');
   assert.deepEqual([cli.status, cli.install, cli.optional], ['todo', true, true]);
   assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
   assert.match(get(items, 'manual.recommended.flutter.antigravity-ide').description, /Settings > Customizations > Build with Google Plugins/);
@@ -685,8 +697,8 @@ test('Scenario: Offered for the Antigravity CLI - one optional install, and the 
 
 test('Scenario: Declined - skipping an optional install changes nothing else', () => {
   const items = recItems(REC('missing'));
-  const skipped = skipItems(items, ['install.recommended.flutter.claude.marketplace', 'install.recommended.flutter.claude.plugin']);
-  assert.equal(get(skipped, 'install.recommended.flutter.claude.plugin').status, 'skipped');
+  const skipped = skipItems(items, ['install.recommended.flutter.claude.app']);
+  assert.equal(get(skipped, 'install.recommended.flutter.claude.app').status, 'skipped');
   assert.equal(get(skipped, 'config').status, get(items, 'config').status);
 });
 
@@ -698,7 +710,16 @@ test('Scenario: Already installed - ok lines, no install and no manual steps', (
 
 test('Scenario: Not applicable - no recommendation without facts, and the Antigravity steps only when it is in use', () => {
   assert.deepEqual(recIds(recItems(null)), []);
-  assert.deepEqual(recIds(recItems(REC('missing', null))).sort(), ['install.recommended.flutter.claude.marketplace', 'install.recommended.flutter.claude.plugin', 'manual.recommended.flutter.rules']);
+  assert.deepEqual(recIds(recItems(REC('missing', null))).sort(), ['install.recommended.flutter.claude.app', 'manual.recommended.flutter.commit', 'manual.recommended.flutter.rules']);
+});
+
+test('Scenario: Steps that are not commands - committing, the rules, the IDE and the MCP entry are manual steps that carry nothing to write', () => {
+  const items = recItems(REC('missing', 'missing')).filter((i) => i.id.includes('recommended.'));
+  assert.match(get(items, 'manual.recommended.flutter.commit').description, /Commit the new skills folder and skills-lock\.json/);
+  items.filter((i) => i.id.startsWith('manual.')).forEach((i) => {
+    assert.equal(i.status, 'manual', i.id);
+    assert.ok(!('path' in i) && !('content' in i) && !('command' in i), `${i.id} writes and runs nothing`);
+  });
 });
 
 test('Scenario: Steps that are not commands - applyPlan runs none of them and writes no file for them', () => {
@@ -712,5 +733,220 @@ test('Scenario: Steps that are not commands - applyPlan runs none of them and wr
 
 test('a recommended install is shown in the plan with its command', () => {
   const text = renderPlan(recItems(REC('missing')));
-  assert.match(text, /Optional: install the official Dart and Flutter plugin for Claude Code \(1 of 2\) \(claude plugin marketplace add flutter\/agent-plugins\)/);
+  assert.match(text, /Optional: install the default Dart and Flutter skills \(flutter-add-widget-test, dart-add-unit-test\) for Claude Code into app.*\(cd app && npx skills add flutter\/agent-plugins/);
+});
+
+// A stack the plugin does not ship: the file of the repository is the whole profile.
+const SHIPPED = ['flutter', 'vue', 'laravel', 'supabase'];
+const ownFacts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: {} };
+const goAnswers = (extra = {}) => ({ ...ANSWERS, platform: undefined, platforms: { app: { stack: 'go', path: '.' } }, ...extra });
+const profileOf = (items, stack) => items.find((i) => i.id === `stack-profile.${stack}`);
+
+test('Scenario: A Go platform - the plan proposes the whole profile, with its commands commented, and it parses', async () => {
+  const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
+  const item = profileOf(planInit({ facts: ownFacts, answers: goAnswers(), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true }), 'go');
+  assert.equal(item.status, 'todo');
+  assert.equal(item.path, '.relevo/stacks/go.md');
+  assert.match(item.description, /left for you to commit/);
+  assert.match(item.description, /the plugin does not ship/);
+  const parsed = parseProfile(item.content);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.profile.stack, 'go');
+  assert.deepEqual(parsed.profile.commands, {}, 'no command is written for the person');
+  ['analyze', 'test', 'format'].forEach((c) => assert.match(item.content, new RegExp(`^#   ${c}: `, 'm')));
+  assert.match(item.content, /^## Hygiene for the developer$/m);
+  assert.match(item.content, /^## What the auditor looks for in the diff$/m);
+});
+
+test('Scenario: A stack the plugin ships - no profile file is proposed and the form that adds to the plugin stays', () => {
+  const plan = planInit({ facts: ownFacts, answers: goAnswers({ platforms: { app: { stack: 'vue', path: '.', targets: ['web'] } } }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true });
+  assert.equal(profileOf(plan, 'vue'), undefined);
+  const asked = profileOf(planInit({ facts: ownFacts, answers: goAnswers({ platforms: { app: { stack: 'vue', path: '.', targets: ['web'] } }, stackProfiles: ['vue'] }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true }), 'vue');
+  assert.match(asked.description, /adds to the plugin's/);
+  assert.match(asked.content, /Lists are added to the plugin's profile/);
+  assert.doesNotMatch(asked.content, /# commands:/);
+});
+
+test('Scenario: The person declines the profile of a stack the plugin does not ship - none is planned', () => {
+  const plan = planInit({ facts: ownFacts, answers: goAnswers({ declinedStackProfiles: ['go'] }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true });
+  assert.equal(profileOf(plan, 'go'), undefined);
+  assert.equal(plan.find((i) => i.id === 'config').status, 'todo');
+});
+
+test('Scenario: The file of an own stack already exists - it is left as it is', () => {
+  const plan = planInit({ facts: ownFacts, answers: goAnswers(), templates: { ...templates, shippedStacks: SHIPPED }, current: { ...empty(), stackProfiles: { go: true } }, admin: true });
+  const item = profileOf(plan, 'go');
+  assert.equal(item.status, 'ok');
+  assert.equal(item.content, undefined);
+});
+
+test('Scenario: Without the list of shipped stacks nothing is proposed on its own', () => {
+  assert.equal(profileOf(planInit({ facts: ownFacts, answers: goAnswers(), templates, current: empty(), admin: true }), 'go'), undefined);
+});
+
+// ---------- Laravel Boost and the community Vue skills (laravel-vue-skills)
+
+const sourceItems = (extra) => {
+  const facts = {
+    configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true },
+    skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: [], ...extra,
+  };
+  return planInit({ facts, answers: { ...ANSWERS, platforms: { api: { stack: 'laravel', path: 'api', targets: [] } } }, templates, current: empty(), admin: true });
+};
+const LV = (over = {}) => ({ name: 'api', path: 'api', boost: false, skillsCommitted: false, ...over });
+const ids = (items, prefix) => items.filter((i) => i.id.startsWith(prefix)).map((i) => i.id);
+
+test('Scenario: Offered - two optional installs for the Laravel folder, the second asking nothing, and nothing written', () => {
+  const items = sourceItems({ laravelBoost: [LV()] });
+  const require = get(items, 'install.recommended.laravel.boost.api');
+  const install = get(items, 'install.recommended.laravel.skills.api');
+  assert.equal(require.command, 'cd api && composer require laravel/boost --dev');
+  assert.equal(install.command, 'cd api && php artisan boost:install --skills --no-interaction');
+  [require, install].forEach((i) => assert.deepEqual([i.status, i.install, i.optional], ['todo', true, true]));
+  assert.ok(items.indexOf(require) < items.indexOf(install), 'the package first');
+});
+
+test('Scenario: Commit what Boost wrote - a manual step names the files, the other agents and the cloud runner', () => {
+  const step = get(sourceItems({ laravelBoost: [LV()] }), 'manual.recommended.laravel.commit');
+  assert.equal(step.status, 'manual');
+  assert.match(step.description, /\.claude\/skills, boost\.json, composer\.json and composer\.lock/);
+  assert.match(step.description, /\.agents\/ or \.kiro\//);
+  assert.match(step.description, /Laravel says they can be kept out of git/);
+  assert.match(step.description, /cloud runner reads only what is committed/);
+});
+
+test('Scenario: Declined - skipping an install of Boost changes nothing else', () => {
+  const items = sourceItems({ laravelBoost: [LV()] });
+  const skipped = skipItems(items, ['install.recommended.laravel.boost.api', 'install.recommended.laravel.skills.api']);
+  assert.equal(get(skipped, 'install.recommended.laravel.skills.api').status, 'skipped');
+  assert.equal(get(skipped, 'config').status, get(items, 'config').status);
+});
+
+test('Scenario: Already installed - one ok line and no install; with Boost required and no skills only the second install is offered', () => {
+  const done = sourceItems({ laravelBoost: [LV({ boost: true, skillsCommitted: true })] });
+  assert.deepEqual(ids(done, 'install.recommended.laravel'), ['install.recommended.laravel']);
+  assert.equal(get(done, 'install.recommended.laravel').status, 'ok');
+  assert.equal(get(done, 'manual.recommended.laravel.commit'), undefined);
+  const half = sourceItems({ laravelBoost: [LV({ boost: true })] });
+  assert.deepEqual(ids(half, 'install.recommended.laravel'), ['install.recommended.laravel.skills.api']);
+});
+
+test('Scenario: No composer file - nothing is offered for Laravel', () => {
+  assert.deepEqual(ids(sourceItems({ laravelBoost: [] }), 'install.recommended.laravel'), []);
+  assert.deepEqual(ids(sourceItems({}), 'install.recommended.laravel'), []);
+});
+
+const VUE_OFFER = (over = {}) => ({ stack: 'vue', name: 'web', path: 'web', skills: ['vue-best-practices', 'vue-testing-best-practices'], missing: ['vue-best-practices', 'vue-testing-best-practices'], ...over });
+
+test('Scenario: Offered with the label - an optional install for the Vue folder that says not official and an early experiment', () => {
+  const item = get(sourceItems({ offeredSkills: [VUE_OFFER()] }), 'install.offered.vue.web');
+  assert.equal(item.command, 'cd web && npx skills add vuejs-ai/skills --skill vue-best-practices --skill vue-testing-best-practices --agent claude-code --copy --yes');
+  assert.deepEqual([item.status, item.install, item.optional], ['todo', true, true]);
+  assert.match(item.description, /not official/);
+  assert.match(item.description, /early experiment/);
+  assert.match(item.description, /commit both/);
+});
+
+test('Scenario: Installed - the line is done, and only the missing skill is offered when one is there', () => {
+  assert.equal(get(sourceItems({ offeredSkills: [VUE_OFFER({ missing: [] })] }), 'install.offered.vue.web').status, 'ok');
+  const one = get(sourceItems({ offeredSkills: [VUE_OFFER({ missing: ['vue-testing-best-practices'] })] }), 'install.offered.vue.web');
+  assert.match(one.command, /--skill vue-testing-best-practices --agent/);
+  assert.ok(!one.command.includes('--skill vue-best-practices'));
+});
+
+// ---- read denials of the restricted files
+
+
+const LIST = restrictedList();
+const denialFacts = (settingsText, extra = {}) => ({ restricted: restrictedFacts({ list: LIST, root: '/work/repo', read: (p) => (p === '.claude/settings.json' ? settingsText : null), present: ['.env'], ...extra }) });
+
+test('Scenario: Offered for Claude Code - one optional item shows the Read entries and the sandbox entries, and nothing is written by the script', () => {
+  const it = get(plan(bare(denialFacts(null))), 'install.restricted-deny');
+  assert.equal(it.status, 'todo');
+  assert.equal(it.install, true);
+  assert.equal(it.optional, true);
+  const shown = JSON.parse(it.entries);
+  assert.ok(shown.permissions.deny.includes('Read(**/.env)'));
+  assert.ok(shown.sandbox.filesystem.denyRead.includes('**/.env'));
+  assert.ok(![...shown.permissions.deny, ...shown.sandbox.filesystem.denyRead].some((e) => e.includes('example')), 'the example file is not among them');
+  assert.match(it.detail, /switches nothing on/);
+  assert.match(renderPlan([it]), /\[will do\] Optional: deny the read of the restricted files/);
+  const calls = [];
+  applyPlan([it], { repo: 'o/r', io: { gh: (a) => calls.push(a), write: (p) => calls.push(p), append: (p) => calls.push(p) } });
+  assert.deepEqual(calls, [], 'nothing is written before the person says yes');
+});
+
+test('Scenario: Existing settings are kept - the accepted item adds the missing denials after the entries the person wrote', () => {
+  const before = JSON.stringify({ attribution: { commit: '' }, permissions: { allow: ['Bash(git status)'], deny: ['Bash(curl:*)', 'Read(**/.env)'] }, sandbox: { enabled: true, filesystem: { allowWrite: ['/tmp'] } } }, null, 2);
+  const after = JSON.parse(mergeClaudeDenials(before, LIST));
+  assert.deepEqual(after.attribution, { commit: '' });
+  assert.deepEqual(after.permissions.allow, ['Bash(git status)']);
+  assert.deepEqual(after.permissions.deny.slice(0, 2), ['Bash(curl:*)', 'Read(**/.env)'], 'the entries of the person keep their place');
+  assert.equal(after.permissions.deny.filter((r) => r === 'Read(**/.env)').length, 1, 'an entry that was there is not repeated');
+  assert.ok(after.permissions.deny.includes('Read(**/*.pem)'));
+  assert.equal(after.sandbox.enabled, true);
+  assert.deepEqual(after.sandbox.filesystem.allowWrite, ['/tmp']);
+  assert.ok(after.sandbox.filesystem.denyRead.includes('**/.env'));
+  assert.equal(mergeClaudeDenials(JSON.stringify(after), LIST), JSON.stringify(after), 'a file that has everything is returned as it is');
+});
+
+test('a new file gets the entries and the sandbox is not switched on; a broken file is never rewritten', () => {
+  const made = JSON.parse(mergeClaudeDenials(null, LIST));
+  assert.deepEqual(made.permissions.deny, claudeProposal(LIST).deny);
+  assert.equal(made.sandbox.enabled, undefined);
+  assert.throws(() => mergeClaudeDenials('{ not json', LIST));
+  assert.throws(() => mergeClaudeDenials('[]', LIST), /not a JSON object/);
+  assert.throws(() => mergeClaudeDenials('{"permissions":{"deny":"x"}}', LIST), /not a list/);
+});
+
+test('Scenario: Declined - the item is left as todo with nothing applied, and the plan goes on', () => {
+  const items = skipItems(plan(bare(denialFacts(null))), ['install.restricted-deny']);
+  assert.equal(get(items, 'install.restricted-deny').status, 'skipped');
+  assert.equal(get(items, 'config').status, 'todo', 'the rest of the plan is as it was');
+  const results = applyPlan(items.filter((i) => i.id === 'install.restricted-deny'), { repo: 'o/r', io: { gh: () => '', write: () => assert.fail('nothing is written'), append: () => assert.fail('nothing is appended') } });
+  assert.deepEqual(results, [], 'a declined item is not applied and makes no later step fail');
+});
+
+test('a repository whose settings already deny the files shows the item as in place, and a broken file as manual', () => {
+  const have = JSON.stringify({ permissions: { deny: claudeProposal(LIST).deny }, sandbox: { filesystem: { denyRead: claudeProposal(LIST).denyRead } } });
+  assert.equal(get(plan(bare(denialFacts(have))), 'install.restricted-deny').status, 'ok');
+  assert.equal(get(plan(bare(denialFacts('{ nope'))), 'install.restricted-deny').status, 'manual');
+  assert.equal(get(plan(bare()), 'install.restricted-deny'), undefined, 'without the fact there is no item');
+  assert.deepEqual(missingClaudeEntries(JSON.parse(have), LIST), { deny: [], denyRead: [] });
+});
+
+test('a project entry of restricted_paths is in the proposal, and Antigravity gets exact-path rules for the files that exist', () => {
+  const own = restrictedList({ restricted_paths: ['infra/prod.tfvars'] });
+  assert.ok(claudeProposal(own).deny.includes('Read(./infra/prod.tfvars)'));
+  const facts = denialFacts(null, { list: own, present: ['.env', 'infra/prod.tfvars'], antigravity: true });
+  const it = get(plan(bare(facts)), 'install.restricted-deny.antigravity');
+  assert.equal(it.status, 'todo');
+  assert.deepEqual(JSON.parse(it.entries).permissions.deny, ['read_file(/work/repo/.env)', 'read_file(/work/repo/infra/prod.tfvars)']);
+  assert.match(it.detail, /matches no glob/);
+  const merged = JSON.parse(mergeAgyDenials('{"modelProvider":"gemini","permissions":{"deny":["read_url(*)"],"allow":["command(git)"]}}', JSON.parse(it.entries).permissions.deny));
+  assert.deepEqual(merged.permissions.deny, ['read_url(*)', 'read_file(/work/repo/.env)', 'read_file(/work/repo/infra/prod.tfvars)']);
+  assert.deepEqual(merged.permissions.allow, ['command(git)']);
+  assert.equal(get(plan(bare(denialFacts(null))), 'install.restricted-deny.antigravity'), undefined, 'not offered when the repository does not use it');
+});
+
+// ---------- the same facts as doctor (doctor-agents-skills)
+
+const skillFactsFor = (files, adapters = []) => recommendedSkillFacts({ stack: 'flutter', platforms: [{ path: 'app', skills: SET }], exists: (p) => files.includes(p), tool: () => { throw new Error('claude is not installed'); }, adapters });
+
+test('Scenario: Skills under .agents/skills - init lists the Claude Code line as done and offers no install', () => {
+  const items = recItems(skillFactsFor(SET.map((n) => `app/.agents/skills/${n}`)));
+  assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
+  assert.deepEqual(recIds(items).filter((id) => id.startsWith('install.') && id !== 'install.recommended.flutter.claude'), []);
+  assert.equal(get(items, 'manual.recommended.flutter.commit'), undefined, 'nothing to commit when nothing is offered');
+});
+
+test('Scenario: Skills under neither folder - init still offers the install for Claude Code from the folder of the platform', () => {
+  const items = recItems(skillFactsFor([]));
+  assert.match(get(items, 'install.recommended.flutter.claude.app').command, /^cd app && npx skills add flutter\/agent-plugins .* --agent claude-code --copy --yes$/);
+});
+
+test('Scenario: Antigravity in use with the skills only under .claude/skills - the install for Antigravity is offered', () => {
+  const items = recItems(skillFactsFor(SET.map((n) => `app/.claude/skills/${n}`), [{ scope: 'project' }]));
+  assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
+  assert.match(get(items, 'install.recommended.flutter.antigravity.app').command, /--agent universal/);
 });

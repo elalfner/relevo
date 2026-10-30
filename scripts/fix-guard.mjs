@@ -4,8 +4,9 @@
 //   exit 0: the developer may run   exit 1: the specification is not ready (reasons printed)
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { checkSpecFirst } from './lib/fix-guard.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const changeDir = (process.argv[2] ?? '').replace(/\/+$/, '');
 if (!changeDir || !existsSync(changeDir)) {

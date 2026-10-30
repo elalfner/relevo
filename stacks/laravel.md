@@ -12,6 +12,12 @@ skills:
   qa: []
   issue: []
   review: []
+skills_when_installed:
+  dev: [laravel-best-practices, testing-best-practices]
+  qa: [laravel-best-practices, testing-best-practices]
+review:
+  log: storage/logs/*.log
+  test: php artisan test
 ---
 
 # Laravel
@@ -49,9 +55,17 @@ Run on a fresh project, `analyze` fails on a style problem and `test` fails on a
 - **Responses**: a changed response shape that breaks existing callers; an exception message leaking internals.
 - **Generated code**: leave `bootstrap/cache/`, `storage/` and IDE helper files out of the review.
 
+## Review
+
+A Laravel review has no device and no browser: the checklist comes from the scenarios and each line is proved by the feature test of its scenario. With `review.autopilot` `off` the person runs `php artisan test` and says so (`ran <exit code>`); with `precheck` or `verify` you run the test of a line with the base command and `--filter`, and a filter that matches no test is a failed proof, never a pass. A passing run writes nothing to `storage/logs`, so the recorded run, not the log, is the evidence that the code was exercised; the log slice is still audited for unhandled exceptions, server errors and database errors. Never write or edit a test in a review.
+
+The tests run against the database that `phpunit.xml` declares (in-memory SQLite in a new project). Do not start a test, or a server, against any other database before the person confirmed in writing that it is not production, and never read a restricted file (the list is in `docs/security.md`): the names of the variables come from `.env.example`.
+
+A repository tunes this in its own `.relevo/stacks/laravel.md`: a `review` block in the header (`log`, `test`, and a `serve` with a `command` and a `url` on localhost that you start on a free port through the script that records and stops it) and a section `Review` in the body. They add steps and ask for more evidence; they never change that the person confirms every line, that the log is audited, that `decide` gates the pull request or that no waiver is suggested.
+
 ## Targets
 
-None. A Laravel platform is the back of a feature: the front depends on it with `Depends-on:`. `review` has no adapter for a backend yet and says so.
+None. A Laravel platform is the back of a feature: the front depends on it with `Depends-on:`. `review` reviews a backend with the `api` adapter (the tests and the log, see Review above), so a Laravel platform needs no target.
 
 ## Questions for the issue writer
 

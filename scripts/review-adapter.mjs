@@ -5,10 +5,11 @@
 // `advice` is what to tell the person, in the language of relevo.yml, when a browser review cannot start with review.autopilot off.
 //   exit 0: supported   exit 1: no adapter for this platform and target (the reason is in the output)   exit 2: bad usage or invalid relevo.yml
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { adapterFor, autopilotAdvice, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

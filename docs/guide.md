@@ -38,7 +38,7 @@ When a reviewer requested changes on the pull request, the issue becomes `change
 
 ### QA failed
 
-The issue becomes `qa-failed` and the assignee is told, with the first finding. When the cloud build was rejected after the retries (or left tasks unfinished), the work is not lost: the branch holds it as a commit `wip: rejected by QA`, and the comment says it is code that QA did not approve. Run `/relevo:fix <n>`: it takes the finding from that comment as the defect, so you do not have to describe it, and runs the checks QA could not run. To rethink the issue instead, use `/relevo:think` and then `/relevo:issue <n>`. If the comment instead says the build was not built because the runner has no tool (for example `flutter`), the build job stopped before the agent and no model turn was spent: enable the toolchain step in `relevo-go.yml`, remove `relevo:qa-failed` and apply `ready` again. If the safe commit refused the work (a protected path, a file outside the platform, a marker or a possible credential), nothing is pushed and the comment says so. If the branch has code that you wrote, run `/relevo:fix <n>` and describe what QA found. If it has only the specification (the build failed before any code), delete the remote branch and apply `ready` again.
+The issue becomes `qa-failed` and the assignee is told, with the first finding. When the cloud build was rejected after the retries (or left tasks unfinished), the work is not lost: the branch holds it as a commit `wip: rejected by QA`, and the comment says it is code that QA did not approve. Run `/relevo:fix <n>`: it takes the finding from that comment as the defect, so you do not have to describe it, and runs the checks QA could not run. To rethink the issue instead, use `/relevo:think` and then `/relevo:issue <n>`. If the comment instead says the build was not built because the runner has no tool (for example `flutter`), the build job stopped before the agent and no model turn was spent: enable the toolchain step in `relevo-go.yml`, remove `relevo:qa-failed` and apply `ready` again. If the safe commit refused the work (a protected path, a restricted file, a file outside the platform, a marker or a possible credential), nothing is pushed and the comment says so. If the branch has code that you wrote, run `/relevo:fix <n>` and describe what QA found. If it has only the specification (the build failed before any code), delete the remote branch and apply `ready` again.
 
 ### The quota ran out
 
@@ -67,6 +67,7 @@ Read the last comment: it says what is missing. If information is missing, run `
 ## Cloud, local or both
 
 - **Both** (the default) builds in the cloud when `ready` is applied, and you can still build by hand.
+- To build by hand, run `/relevo:go <n>` in your session to watch and step in, or add `--local` to leave it running under the limits of the cloud: [the difference](commands.md#in-the-session-or-on-its-own).
 - **Cloud only** is for building without anyone waiting; **machines only** has no model secret in the repository and each person uses their own session.
 - To switch without a pull request, set the repository variable `RELEVO_CLOUD_GO` to `off` and the cloud stops; delete it to resume, then apply `ready` again to the issues that waited. The details are in [Where `go` runs](execution.md).
 

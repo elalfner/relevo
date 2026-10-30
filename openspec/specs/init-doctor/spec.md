@@ -241,11 +241,11 @@ For each platform, `doctor` SHALL check the tools the profile requires, the tool
 - **THEN** `doctor` shows it as left out with the reason
 
 ### Requirement: Doctor checks the linked repositories
-When `links` is not empty, `doctor` SHALL check that each linked repository can be read, and that the secret `RELEVO_LINKS_TOKEN` exists (its name only, never its value); a missing secret is a warning when every linked repository is public and a failure when one is private. When `links` is empty, none of this is checked.
+When `links` is not empty, `doctor` SHALL check that each linked repository can be read, and that the secret `RELEVO_LINKS_TOKEN` exists (its name only, never its value); a missing secret is a warning when every linked repository is public and a failure when one is private. The fix SHALL ask for a token with read access to issues, pull requests and contents. When `links` is empty, none of this is checked.
 
 #### Scenario: Private linked repository without the secret
 - **WHEN** `links` lists a private repository and the secret does not exist
-- **THEN** `doctor` fails that check and says to create a read-only token and store it as `RELEVO_LINKS_TOKEN`
+- **THEN** `doctor` fails that check and says to create a token with read access to issues, pull requests and contents and store it as `RELEVO_LINKS_TOKEN`
 
 #### Scenario: Public linked repositories
 - **WHEN** every linked repository is public and no secret exists
@@ -256,11 +256,11 @@ When `links` is not empty, `doctor` SHALL check that each linked repository can 
 - **THEN** `doctor` does not mention the secret
 
 ### Requirement: Init asks for the linked repositories
-`init` SHALL ask which repositories this one depends on, write `links`, and remind the person to create the read-only secret, without reading or writing it.
+`init` SHALL ask which repositories this one depends on, write `links`, and remind the person to create the read-only secret with read access to issues, pull requests and contents, without reading or writing it.
 
 #### Scenario: Front and back
 - **WHEN** the person names `acme/api`
-- **THEN** `relevo.yml` has `links: [acme/api]` and `init` shows what token to create
+- **THEN** `relevo.yml` has `links: [acme/api]` and `init` shows what token to create, with read access to issues, pull requests and contents
 
 ### Requirement: Doctor reports the execution mode
 `doctor` SHALL report the credential mode deduced from the secret names (`api_key`, `subscription`, both as a warning, none as a warning that only local runs are possible), the state of the repository variable `RELEVO_CLOUD_GO`, a one-line reminder to read the current Anthropic policy on automated use of a subscription when the mode is `subscription`, and a warning when the mode is `subscription` and `limits.concurrent_agents` is more than 1.
@@ -308,7 +308,7 @@ When `review.autopilot` is not `off`, `doctor` SHALL check, for each Flutter pla
 - **THEN** `doctor` adds no autopilot check
 
 ### Requirement: Doctor checks that the build installs the toolchain
-When the go workflow is installed, doctor SHALL fail for each configured platform whose stack needs a toolchain step (Flutter, Laravel, Supabase) that the go workflow does not install in an active, non-comment line, and SHALL say which step to add. It SHALL do nothing when the go workflow is not installed, and SHALL not judge stacks without a step in the template.
+When the go workflow is installed, doctor SHALL fail for each configured platform whose stack needs a toolchain step (Flutter, Laravel, Supabase) that the go workflow does not install in an active, non-comment line, and SHALL say which step to add. For a stack that only the repository defines, it SHALL warn when no active line is guarded by `needs.decide.outputs.stack == '<stack>'`, and SHALL say to add a step guarded by that line; it SHALL NOT judge such a stack whose tools are only `node` and `npm`. It SHALL do nothing when the go workflow is not installed, and SHALL not judge the other stacks without a step in the template.
 
 #### Scenario: A Flutter project whose workflow installs nothing
 - **WHEN** a platform has the stack `flutter` and the go workflow has no active Flutter setup
@@ -325,6 +325,18 @@ When the go workflow is installed, doctor SHALL fail for each configured platfor
 #### Scenario: A project that builds on machines only
 - **WHEN** the go workflow is not installed
 - **THEN** doctor reports nothing about the toolchain
+
+#### Scenario: An own stack with no step
+- **WHEN** a platform has the stack `go`, defined only by the repository with the tool `go`, and the go workflow has no active line guarded by `needs.decide.outputs.stack == 'go'`
+- **THEN** doctor warns, names the platform and says to add a step of the build job guarded by that line that installs Go
+
+#### Scenario: An own stack with its step
+- **WHEN** the go workflow has an active step guarded by `needs.decide.outputs.stack == 'go'`
+- **THEN** doctor reports that the toolchain of the platform is installed
+
+#### Scenario: An own stack that needs only Node
+- **WHEN** the profile of an own stack lists only the tools `node` and `npm`
+- **THEN** doctor does not judge its toolchain
 
 ### Requirement: Init mentions the toolchain of a workflow it leaves alone
 When the go workflow exists and differs from the template, the plan SHALL say that its build job has to install the toolchain of the stacks of the project, and that the template does it for Flutter, Laravel and Supabase (Vue needs only Node, which the job already installs).
@@ -623,27 +635,39 @@ After a merge, `init` SHALL set the pin and the stamp of the workflow to the cur
 - **THEN** the check passes
 
 ### Requirement: Doctor notes the recommended Dart and Flutter skills
-For a repository with a platform of stack `flutter`, `doctor` SHALL report once, for each coding agent the repository uses, whether the official Dart and Flutter skills are available: a pass when they are, a note when they are not, with the install commands. It SHALL report nothing for an agent it cannot check. The agents are Claude Code, and Antigravity when the repository has an Antigravity plugin of Relevo or sets `agent.build: antigravity`.
+For a repository with a platform of stack `flutter`, `doctor` SHALL report once, for each coding agent the repository uses, whether the default set of official skills of the `flutter` profile is in the repository: a pass when it is, a note when it is not, with the install command. Only a skill folder committed to the repository counts, at the root or in the folder of a Flutter platform: `.claude/skills` and `.agents/skills` for Claude Code, because `go` hands the agents the path of each `SKILL.md` from either, and `.agents/skills` for Antigravity. A plugin installed on a machine, and the home folder of the person, SHALL NOT count, because the cloud runner does not see them. The agents are Claude Code, and Antigravity when the repository has an Antigravity plugin of Relevo or sets `agent.build: antigravity`.
 
 #### Scenario: Plugin missing in Claude Code
-- **WHEN** a platform has stack `flutter`, `claude plugin list --json` answers, and neither the plugin `dart-flutter` nor a skill folder starting with `flutter-` is found
-- **THEN** `doctor` reports a note `recommended.flutter.claude` with the commands `claude plugin marketplace add flutter/agent-plugins` and `claude plugin install dart-flutter@dart-flutter`
+- **WHEN** a platform has stack `flutter` and none of the skills of the default set is under `.claude/skills` or `.agents/skills` at the root or in the folder of a Flutter platform
+- **THEN** `doctor` reports a note `recommended.flutter.claude` with the install command for Claude Code, and says that the cloud runner reads only what is committed
 
 #### Scenario: Plugin installed
-- **WHEN** `claude plugin list --json` lists `dart-flutter`, at the user scope or at the project scope of this repository
-- **THEN** `doctor` reports a passed check `recommended.flutter.claude`
-
-#### Scenario: Skills committed to the repository
-- **WHEN** a folder starting with `flutter-` exists under `.agents/skills` or `.claude/skills`
-- **THEN** `doctor` reports a pass for each agent it applies to, and no note
+- **WHEN** `claude plugin list --json` lists `dart-flutter` at the user scope or at the project scope of this repository, and no skill of the default set is committed
+- **THEN** `doctor` reports the note `recommended.flutter.claude` and says that the plugin works on this machine and does not reach the cloud runner
 
 #### Scenario: Claude Code cannot list its plugins
-- **WHEN** `claude plugin list --json` fails or `claude` is not installed, and no folder starting with `flutter-` is found
-- **THEN** `doctor` reports no `recommended.flutter.claude` check
+- **WHEN** `claude plugin list --json` fails or `claude` is not installed, and no skill of the default set is committed
+- **THEN** `doctor` still reports the note `recommended.flutter.claude`, without the sentence about the plugin, because it judges the committed folders and not the plugin
+
+#### Scenario: Skills committed to the repository
+- **WHEN** every skill of the default set is a folder under `.claude/skills` of the root or of a Flutter platform
+- **THEN** `doctor` reports a pass `recommended.flutter.claude`, and no note
+
+#### Scenario: Only `.agents/skills` and Claude Code
+- **WHEN** the skills are under `.agents/skills` and not under `.claude/skills`
+- **THEN** `doctor` reports a pass `recommended.flutter.claude`, because `go` gives `dev` and `qa` the paths from that folder, and a pass for Antigravity when it is in use
+
+#### Scenario: Skills split between the two folders
+- **WHEN** one skill of the set is under `.claude/skills` and the other under `.agents/skills`
+- **THEN** `doctor` reports a pass `recommended.flutter.claude`
+
+#### Scenario: Skills in the home folder
+- **WHEN** the skills are only under `~/.claude/skills`
+- **THEN** `doctor` treats them as missing
 
 #### Scenario: Antigravity in use and skills missing
-- **WHEN** the repository has an Antigravity plugin of Relevo or `agent.build` is `antigravity`, and no folder starting with `flutter-` exists under `.agents/skills`
-- **THEN** `doctor` reports a note `recommended.flutter.antigravity` with the command `npx skills add flutter/agent-plugins --skill '*' --agent universal --yes`, and says that the Antigravity IDE installs them from its settings, which `doctor` cannot check
+- **WHEN** the repository has an Antigravity plugin of Relevo or `agent.build` is `antigravity`, and the default set is not under `.agents/skills`
+- **THEN** `doctor` reports a note `recommended.flutter.antigravity` with the command `npx skills add flutter/agent-plugins` naming each skill of the set with `--agent universal --yes`, and says that the Antigravity IDE installs them from its settings, which `doctor` cannot check
 
 #### Scenario: Antigravity not in use
 - **WHEN** the repository has no Antigravity plugin of Relevo and `agent.build` is not `antigravity`
@@ -654,35 +678,236 @@ For a repository with a platform of stack `flutter`, `doctor` SHALL report once,
 - **THEN** `doctor` reports no `recommended.flutter` check
 
 ### Requirement: A recommended skill never blocks
-A recommended skill SHALL NOT be a failure or a warning of `doctor`, SHALL NOT change its exit status, SHALL NOT be listed under `requires_skills` of the Flutter profile, and SHALL NOT stop `go`, `review` or `ship`. Relevo SHALL NOT hand a recommended skill to the `dev` or `qa` agent.
+A recommended skill SHALL NOT be a failure or a warning of `doctor`, SHALL NOT change its exit status, SHALL NOT be listed under `requires_skills` of the Flutter profile, and SHALL NOT stop `go`, `review` or `ship`. A skill of the default set that the repository lacks SHALL be left out of the run and reported once as a note.
 
 #### Scenario: Everything else passes
-- **WHEN** every other check of a Flutter repository passes and the recommended skills are missing
+- **WHEN** every other check of a Flutter repository passes and the default skills are missing
 - **THEN** `doctor` exits with status 0 and the report shows one note
 
 #### Scenario: The profile of Flutter
 - **WHEN** the profile of `flutter` is resolved
-- **THEN** its `requires_skills` is empty and its `skills` lists for `dev`, `qa`, `issue` and `review` are empty
+- **THEN** its `requires_skills` is empty, its `skills` lists for `dev` and `qa` name the default set, and its lists for `issue` and `review` are empty
+
+#### Scenario: Run without the skills
+- **WHEN** `go` runs on a Flutter repository that has none of the default skills
+- **THEN** the run is not stopped, `dev` and `qa` receive no skill, and the output of the resolution says which skills were left out and why
 
 ### Requirement: Init offers the recommended Dart and Flutter skills as optional installs
-When `init` plans a repository with a platform of stack `flutter` and the skills `doctor` looks for are missing for an agent the repository uses, it SHALL list each install command as an optional install, show its exact text, and run it only after a yes to that command alone. Declining SHALL change nothing else and SHALL NOT make a later step fail. What is not a command SHALL be listed as a manual step. `init` SHALL NOT write the project's rules file or any MCP configuration file.
+When `init` plans a repository with a platform of stack `flutter` and skills of the default set are missing, it SHALL list one optional install per platform folder, run from that folder, naming each missing skill, and run it only after a yes to that command alone. The command writes real files, not links, under `.claude/skills/` for Claude Code and under `.agents/skills/` for Antigravity when it is in use. It SHALL tell the person to commit what was written, with `skills-lock.json`. Declining SHALL change nothing else and SHALL NOT make a later step fail. What is not a command SHALL be a manual step. `init` SHALL NOT write the project's rules file or any MCP configuration file, and SHALL NOT offer the plugin of Claude Code.
 
 #### Scenario: Offered for Claude Code
-- **WHEN** a Flutter platform is planned, `claude` can list its plugins and `dart-flutter` is not installed
-- **THEN** the plan has two optional installs, `claude plugin marketplace add flutter/agent-plugins` and `claude plugin install dart-flutter@dart-flutter`, and nothing runs before the person says yes to each one
+- **WHEN** a Flutter platform with `path: app` is planned and the default skills are not under `app/.claude/skills`
+- **THEN** the plan has an optional install `npx skills add flutter/agent-plugins` with each missing skill, `--agent claude-code --copy` and `--yes`, to run from `app`, and nothing runs before the person says yes to it
+
+#### Scenario: Two Flutter platforms
+- **WHEN** two platforms have stack `flutter` with different paths
+- **THEN** the plan has one optional install per folder, and a platform whose path is `.` installs at the root
 
 #### Scenario: Offered for the Antigravity CLI
-- **WHEN** the repository uses Antigravity and no folder starting with `flutter-` exists under `.agents/skills`
-- **THEN** the plan has one optional install, `npx skills add flutter/agent-plugins --skill '*' --agent universal --yes`
+- **WHEN** the repository uses Antigravity and the default skills are not under `.agents/skills`
+- **THEN** the plan has one more optional install with `--agent universal`
 
 #### Scenario: Declined
 - **WHEN** the person declines an optional install
 - **THEN** `init` continues, says the recommendation stays open, and `doctor` keeps the note
 
 #### Scenario: Already installed
-- **WHEN** the skills are found for an agent
+- **WHEN** the skills are found in the folder
 - **THEN** the plan lists that line as done and offers nothing for it
 
 #### Scenario: Steps that are not commands
 - **WHEN** the plan includes the Flutter recommendation because a skill is missing
-- **THEN** it lists as a manual step copying the official rules into the project's rules file and, when Antigravity is in use, installing the plugin from the settings of the Antigravity IDE ("Customizations", "Build with Google Plugins", "Dart and Flutter") and adding the Dart MCP server to `.agents/mcp_config.json`; and `init` writes none of them
+- **THEN** it lists as manual steps copying the official rules into the project's rules file, committing the new folder and `skills-lock.json`, and, when Antigravity is in use, installing the plugin from the settings of the Antigravity IDE and adding the Dart MCP server to `.agents/mcp_config.json`; and `init` writes none of them
+
+### Requirement: Doctor compares the configuration the cloud reads with the base branch
+When the default branch is not the base branch, `doctor` SHALL read `relevo.yml` from both branches on GitHub and warn when their settings differ or when the default branch has none while the base branch has one, saying that the cloud uses the copy on the default branch and giving the fix of promoting the base branch or making it the default branch. Differences in comments or layout alone SHALL NOT warn.
+
+#### Scenario: A limit changed only on the base branch
+- **WHEN** the default branch is `main`, the base branch is `dev`, and `limits.run_max_turns` differs between their `relevo.yml`
+- **THEN** `doctor` warns that the cloud reads `relevo.yml` from `main`, which differs from `dev`, and the fix says to promote `dev` to `main` or to make `dev` the default branch
+
+#### Scenario: Only a comment differs
+- **WHEN** the two files differ only in comments or whitespace and give the same settings
+- **THEN** `doctor` passes the check
+
+#### Scenario: No configuration on the default branch
+- **WHEN** the base branch has `relevo.yml` and the default branch does not
+- **THEN** `doctor` warns that the cloud finds no `relevo.yml` on the default branch, with the same fix
+
+#### Scenario: The base branch is the default branch
+- **WHEN** the default branch is the base branch
+- **THEN** `doctor` makes no comparison and reports nothing for it
+
+#### Scenario: A branch cannot be read
+- **WHEN** reading `relevo.yml` from either branch fails for a reason other than the file not existing, or the base branch has no `relevo.yml`
+- **THEN** `doctor` reports nothing for the comparison and does not fail
+
+### Requirement: Doctor checks what an api review needs
+For each platform whose stack has the `api` review adapter, `doctor` SHALL check that PHP and Composer can be found, that `vendor/` exists, and the database the test configuration declares, without reading the real environment files. It SHALL warn, with the command to fix it, when one is missing, and SHALL note a test database that is not in-memory SQLite, because the review needs the person's confirmation before it runs a test.
+
+#### Scenario: Laravel without dependencies
+- **WHEN** a Laravel platform has no `vendor/`
+- **THEN** `doctor` warns and gives the Composer command to install them
+
+#### Scenario: Database in the test configuration
+- **WHEN** the test configuration declares a MySQL connection
+- **THEN** `doctor` notes it and says the review asks for confirmation before it runs tests
+
+#### Scenario: Not a Laravel platform
+- **WHEN** no platform has the `api` adapter
+- **THEN** `doctor` adds none of these checks
+
+### Requirement: Doctor checks the review block of a profile
+`doctor` SHALL report, as the failure of an invalid profile, a `review` block that cannot be read, and SHALL warn about a `serve` whose command is not on the base branch, a `log` that matches no file and whose directory does not exist, or text in the section `Review` that asks for what the block cannot change. It SHALL list which `review` keys the repository replaced.
+
+#### Scenario: Log path that matches nothing
+- **WHEN** `review.log` is `var/log/app.log` and neither the file nor `var/log` exists
+- **THEN** `doctor` warns and names the setting
+
+#### Scenario: Keys replaced
+- **WHEN** the repository replaced `review.test`
+- **THEN** `doctor` lists it as a note, not a failure
+
+#### Scenario: Text that asks to skip the audit
+- **WHEN** the section `Review` tells the agent to skip the audit
+- **THEN** `doctor` warns that the review ignores it
+
+### Requirement: Init proposes a full profile for a stack the plugin does not ship
+When a platform's stack has no profile in the plugin, `init` SHALL propose creating `.relevo/stacks/<stack>.md` without being asked and write a profile meant to be the whole of it. It SHALL leave the commented lines `analyze`, `test` and `format` for the person to fill in and SHALL NOT write a command that succeeds without checking anything. It SHALL create the file without committing it and list it among the files to commit.
+
+#### Scenario: A Go platform
+- **WHEN** `init` runs for a platform with stack `go` and the plugin has no profile for `go`
+- **THEN** the plan includes `.relevo/stacks/go.md`, whose header names the stack and has the commented commands `analyze`, `test` and `format`, the tools and the generated files, and whose body asks for the hygiene of the developer and what QA looks for
+
+#### Scenario: A stack the plugin ships
+- **WHEN** `init` runs for a platform with stack `vue` and the person did not ask for a profile file
+- **THEN** the plan does not include `.relevo/stacks/vue.md`
+
+#### Scenario: The person declines
+- **WHEN** the person says no to the proposed profile of a stack the plugin does not ship
+- **THEN** `init` does not create the file, writes `relevo.yml` as usual and says that `doctor` will warn until the profile exists
+
+#### Scenario: The file already exists
+- **WHEN** `.relevo/stacks/go.md` already exists
+- **THEN** `init` leaves it as it is and says it exists
+
+### Requirement: Doctor warns about an own stack without analyze or test
+For a platform whose profile is defined only by the repository, `doctor` SHALL warn when the commands of the resolved profile, after `platforms.<name>.checks`, have no `analyze` or no `test`, naming the missing commands, the file and the `checks` of `relevo.yml` as the other place to set them. It SHALL NOT judge a profile that has a layer from the plugin.
+
+#### Scenario: Profile with no commands
+- **WHEN** the profile of stack `go` is only `.relevo/stacks/go.md` and it defines no command
+- **THEN** `doctor` warns that platform `app` has no `analyze` and no `test`, and says to write them in that file
+
+#### Scenario: Command given by checks
+- **WHEN** the same profile defines `test` and `relevo.yml` sets `platforms.app.checks.analyze`
+- **THEN** `doctor` adds no warning about the commands
+
+#### Scenario: A stack of the plugin
+- **WHEN** the profile has a layer from the plugin
+- **THEN** `doctor` adds no warning about the commands
+
+### Requirement: Init offers the Laravel Boost skills as optional installs
+For a platform of stack `laravel` whose folder has a `composer.json` and no skill of the `laravel` profile committed, `init` SHALL offer two optional installs, run from that folder: `composer require laravel/boost --dev`, then `php artisan boost:install --skills --no-interaction`. It SHALL run each only after a yes to that command alone, SHALL list committing what they write as a manual step, and SHALL NOT run Boost for guidelines or the MCP server nor write the project's rules file.
+
+#### Scenario: Offered
+- **WHEN** a Laravel platform with `path: api` has `api/composer.json` without `laravel/boost` and no committed Boost skills
+- **THEN** the plan has the two optional installs, the second with `--no-interaction` so that it asks nothing, shown with the folder `api`, and nothing runs before the person says yes to each
+
+#### Scenario: Commit what Boost wrote
+- **WHEN** the plan offers the installs
+- **THEN** it lists as a manual step committing `.claude/skills/` of the platform, `boost.json`, `composer.json` and `composer.lock`, says that Boost also writes the folders of the other agents it finds (`.agents/` and `.kiro/`), which a project commits only if it uses them, and says that Laravel suggests keeping generated files out of git and that the cloud runner reads only what is committed
+
+#### Scenario: Declined
+- **WHEN** the person declines an install
+- **THEN** `init` continues, says the recommendation stays open, and `doctor` keeps the note
+
+#### Scenario: Already installed
+- **WHEN** `laravel/boost` is in `composer.json` and the skills are committed
+- **THEN** the plan lists the line as done and offers nothing
+
+#### Scenario: No composer file
+- **WHEN** the folder of the platform has no `composer.json`
+- **THEN** the plan offers nothing for Laravel
+
+### Requirement: Doctor notes when Laravel Boost is missing
+For a platform of stack `laravel` whose folder has a `composer.json`, `doctor` SHALL report a note `recommended.laravel.boost` when `laravel/boost` is in neither `require` nor `require-dev`, with the two install commands, and a note when Boost is there and no skill of the `laravel` profile is committed in the folder of the platform or at the root. It SHALL report a pass when both are in place. The note SHALL NOT change the exit status.
+
+#### Scenario: Boost missing
+- **WHEN** `composer.json` of the platform does not require `laravel/boost`
+- **THEN** `doctor` reports the note with `composer require laravel/boost --dev` and `php artisan boost:install --skills --no-interaction`, and the exit status is untouched
+
+#### Scenario: Boost present and no skills committed
+- **WHEN** `laravel/boost` is in `require-dev` and `.claude/skills/` of the platform and the root hold none of the skills the profile lists
+- **THEN** `doctor` reports a note to run `php artisan boost:install --skills --no-interaction` and commit the result
+
+#### Scenario: Both in place
+- **WHEN** Boost is required and a skill of the profile is committed
+- **THEN** `doctor` reports a pass
+
+#### Scenario: Not Laravel
+- **WHEN** no platform has stack `laravel`
+- **THEN** `doctor` reports no `recommended.laravel` check
+
+### Requirement: Init offers the community Vue skills, labelled as not official
+For a platform of stack `vue`, when neither `vue-best-practices` nor `vue-testing-best-practices` is committed, `init` SHALL offer an optional install run from the folder of the platform, `npx skills add vuejs-ai/skills` naming the two skills with `--agent claude-code --copy --yes`. Its text SHALL say that the skills are not official and are an early experiment. `doctor` SHALL report nothing about their absence.
+
+#### Scenario: Offered with the label
+- **WHEN** a Vue platform with `path: web` has neither skill committed
+- **THEN** the plan has an optional install to run from `web`, whose description says they are not official and an early experiment
+
+#### Scenario: Installed
+- **WHEN** both skills are committed
+- **THEN** the plan lists the line as done
+
+#### Scenario: Doctor says nothing
+- **WHEN** the skills are not installed
+- **THEN** `doctor` reports no note and no warning about them
+
+### Requirement: Doctor warns when a skill folder is ignored by git
+For every platform, `doctor` SHALL warn when a skill folder that exists, `.claude/skills` or `.agents/skills`, in the folder of the platform or at the root, is ignored by git, naming the folder, because the cloud runner reads only what is committed. It SHALL say nothing when git cannot tell.
+
+#### Scenario: Ignored
+- **WHEN** `api/.claude/skills` exists and `.gitignore` excludes it
+- **THEN** `doctor` warns that the folder is ignored by git, that the cloud runner will not see it, and to remove the ignore rule and commit the folder
+
+#### Scenario: Tracked
+- **WHEN** the folder is not ignored
+- **THEN** `doctor` reports nothing about it
+
+#### Scenario: Git cannot tell
+- **WHEN** the working copy is not a git repository
+- **THEN** `doctor` reports nothing about it
+
+### Requirement: Init proposes the read denials for local use
+`init` SHALL include in its plan the read denials for the restricted files in the settings of each agent the repository uses on a person's machine, show their exact text, and write them only after a yes to that item alone. It SHALL add to the settings the person already has and SHALL NOT remove or reorder an existing entry. Declining SHALL change nothing else and SHALL NOT make a later step fail.
+
+#### Scenario: Offered for Claude Code
+- **WHEN** the plan is shown and the project's `.claude/settings.json` has no `Read` denial for `.env`
+- **THEN** the plan lists the `permissions.deny` entries and the `sandbox.filesystem.denyRead` entries as one optional item with their exact text, and nothing is written before the person says yes to it
+
+#### Scenario: Existing settings are kept
+- **WHEN** the settings file already has entries the person wrote
+- **THEN** the accepted item adds the missing denials and leaves every other entry as it was
+
+#### Scenario: Declined
+- **WHEN** the person declines the item
+- **THEN** `init` continues, says the denials stay open, and `doctor` keeps the warning
+
+### Requirement: Doctor checks the read denials by path name
+`doctor` SHALL check, for each agent the repository uses, that the restricted files have a read denial in its settings, and SHALL warn for each restricted path that has none. It SHALL compare path names only and SHALL NOT open a restricted file. A missing denial SHALL be a warning, never a failure, because the settings of a person are theirs.
+
+#### Scenario: Denials present
+- **WHEN** the settings deny the read of every restricted path that exists in the repository
+- **THEN** the check passes
+
+#### Scenario: Denial missing
+- **WHEN** `.env` exists in the working folder and no `Read` denial covers it
+- **THEN** `doctor` warns, names the path and says that `/relevo:init` proposes the entries
+
+#### Scenario: A versioned restricted file
+- **WHEN** a restricted file is tracked by git
+- **THEN** `doctor` reports a failure that names the path, because a versioned secret is already in the history
+
+#### Scenario: Doctor stays read-only
+- **WHEN** the check runs
+- **THEN** no restricted file is opened and nothing is written

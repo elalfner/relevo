@@ -9,10 +9,18 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { loadConfig } from './config.mjs';
+import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
-import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget } from './role-skills.mjs';
+import { platformFolders } from './protected-paths.mjs';
+import { restrictedListFromText } from './restricted-paths.mjs';
+import { restrictedBlockState } from './agent-workflow.mjs';
+import { restrictedFacts } from './restricted-settings.mjs';
+import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
+import { adapterFor, targetOf } from './review-adapters.mjs';
+import { testDatabase } from './api-preflight.mjs';
 import { ROLES, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
@@ -28,11 +36,32 @@ export const SKILL_INSTALL = {
 // against flutter/agent-plugins on 2026-10-28 (the Antigravity command installs the Dart skills too).
 export const RECOMMENDED = {
   flutter: {
+    source: 'flutter/agent-plugins',
     prefix: 'flutter-',
     claude: { plugin: 'dart-flutter@dart-flutter', commands: ['claude plugin marketplace add flutter/agent-plugins', 'claude plugin install dart-flutter@dart-flutter'] },
     antigravity: { commands: ["npx skills add flutter/agent-plugins --skill '*' --agent universal --yes"] },
   },
 };
+// Skills that `init` offers for a stack without recommending them: `doctor` says nothing when they are absent. They come
+// from a community project, not from the people who make the stack.
+export const OFFERED = {
+  vue: { source: 'vuejs-ai/skills', skills: ['vue-best-practices', 'vue-testing-best-practices'] },
+};
+const inFolder = (path) => {
+  const folder = String(path ?? '').replace(/^\.\//, '').replace(/\/+$/, '');
+  return folder === '' || folder === '.' ? '' : `cd ${folder} && `;
+};
+/** The two commands that install Laravel Boost and its skills, run from the folder of the platform (where `artisan` is). */
+export const boostInstallCommands = (path = '.') => [`${inFolder(path)}composer require laravel/boost --dev`, `${inFolder(path)}php artisan boost:install --skills --no-interaction`];
+/**
+ * The command that installs skills of a stack into the project, as real files: `agent` is `claude-code` (writes
+ * `.claude/skills/`) or `universal` (writes `.agents/skills/`). The installer writes in the folder it runs from, so a
+ * platform below the root runs it from its folder.
+ */
+export function recommendedInstallCommand({ stack, skills, agent = 'claude-code', path = '.' }) {
+  const flags = skills.map((s) => `--skill ${s}`).join(' ');
+  return `${inFolder(path)}npx skills add ${(RECOMMENDED[stack] ?? OFFERED[stack]).source} ${flags} --agent ${agent} --copy --yes`;
+}
 const ANTIGRAVITY_IDE = 'in the Antigravity IDE, install "Dart and Flutter" from Settings > Customizations > Build with Google Plugins (doctor cannot check this)';
 export const OPENSPEC_INSTALL ='npm install --global @fission-ai/openspec (needs Node.js 20.19 or newer)';
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'];
@@ -153,12 +182,15 @@ export function vueWebFacts(platforms, deps) {
 }
 
 /**
- * Are the recommended skills of a stack there, for each coding agent the repository uses? 'present', 'missing', or null
- * when it cannot be said (Claude Code cannot list its plugins) or the agent is not used. A skill folder counts for any
- * agent, because it is what `npx skills add` writes and what both tools read. Deps: `tool`, `listDir`, `skillDirs`,
- * `repoTop`, `adapters` (the Antigravity plugins of Relevo), `agentBuild`.
+ * Is the default set of a stack's skills committed to the repository, for each coding agent it uses? A skill counts
+ * only as a folder in the repository, in the folder of the platform or at the root (`.claude/skills` or `.agents/skills`
+ * for Claude Code, because `go` gives the agents the path from either; `.agents/skills` for Antigravity): a plugin
+ * installed on a machine and the home folder do not reach the cloud runner. Returns { stack, claude, plugin, claudeMissing, antigravity, antigravityMissing } (`claude` and `antigravity`
+ * are 'present' or 'missing', `antigravity` is null when the agent is not used, `plugin` says whether the plugin is
+ * installed on this machine, or null when `claude` cannot list), or null when no platform has a default set.
+ * `platforms` is [{ path, skills }]. Deps: `exists`, `tool`, `repoTop`, `adapters`, `agentBuild`.
  */
-export function recommendedSkillFacts({ stack, tool, listDir, skillDirs, repoTop = null, adapters = [], agentBuild = 'claude' }) {
+export function recommendedSkillFacts({ stack, platforms, exists, tool, repoTop = null, adapters = [], agentBuild = 'claude' }) {
   const rec = RECOMMENDED[stack];
   const safe = (fn, fallback) => {
     try {
@@ -167,15 +199,30 @@ export function recommendedSkillFacts({ stack, tool, listDir, skillDirs, repoTop
       return fallback;
     }
   };
-  const hasFolder = (dirs) => dirs.some((d) => safe(() => listDir(d).some((n) => n.startsWith(rec.prefix)), false));
+  const targets = (platforms ?? []).filter((e) => e.skills.length > 0).map((e) => ({ path: String(e.path ?? '.').replace(/^\.\//, '').replace(/\/+$/, '') || '.', skills: e.skills }));
+  if (targets.length === 0) return null;
+  // The folders an agent reads, in the folder of the platform and then at the root; a skill counts from any of them.
+  const missingIn = (agentDirs) => targets
+    .map(({ path, skills }) => {
+      const dirs = path === '.' ? agentDirs : [...agentDirs.map((d) => `${path}/${d}`), ...agentDirs];
+      return { path, skills: skills.filter((name) => !dirs.some((d) => safe(() => exists(`${d}/${name}`), false))) };
+    })
+    .filter((m) => m.skills.length > 0);
+  // `go` hands the agents the path of each SKILL.md from `.claude/skills` or `.agents/skills`, so both count for Claude Code;
+  // only `.agents/skills` counts for Antigravity.
+  const claudeMissing = missingIn(['.claude/skills', '.agents/skills']);
   const plugins = safe(() => JSON.parse(String(tool('claude', ['plugin', 'list', '--json']))), null);
-  const folderForClaude = hasFolder(skillDirs);
-  let claude = null;
-  if (folderForClaude || (Array.isArray(plugins) && plugins.some((e) => e.id === rec.claude.plugin && (e.scope === 'user' || e.projectPath === repoTop)))) claude = 'present';
-  else if (Array.isArray(plugins)) claude = 'missing';
+  const plugin = Array.isArray(plugins) ? plugins.some((e) => e.id === rec.claude.plugin && (e.scope === 'user' || e.projectPath === repoTop)) : null;
   const usesAntigravity = adapters.length > 0 || agentBuild === 'antigravity';
-  const antigravity = !usesAntigravity ? null : hasFolder(['.agents/skills']) ? 'present' : 'missing';
-  return { stack, claude, antigravity };
+  const antigravityMissing = usesAntigravity ? missingIn(['.agents/skills']) : [];
+  return {
+    stack,
+    claude: claudeMissing.length === 0 ? 'present' : 'missing',
+    plugin,
+    claudeMissing,
+    antigravity: !usesAntigravity ? null : antigravityMissing.length === 0 ? 'present' : 'missing',
+    antigravityMissing,
+  };
 }
 
 // ---------- gather
@@ -242,6 +289,16 @@ export function gatherFacts(p) {
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
   f.pluginDeclared = pluginDeclaration(p);
   f.webHook = webHookDeclaration(p);
+  // The restricted files and what the settings of the agents say about them, by path name: no restricted file is opened.
+  f.restricted = restrictedFacts({
+    list: restrictedListFromText(f.configText),
+    root: p.root ?? process.cwd(),
+    read: (path) => (p.exists(path) ? p.read(path) : null),
+    readUser: p.readUser ?? (() => null),
+    present: p.restrictedFiles ? tryRun(() => p.restrictedFiles(restrictedListFromText(f.configText)), []) : [],
+    tracked: tryRun(() => String(p.tool('git', ['ls-files', '-z'])).split('\0').filter(Boolean), []),
+    antigravity: f.config?.agent?.build === 'antigravity',
+  });
   f.remoteSession = process.env.CLAUDE_CODE_REMOTE === 'true';
 
   // Workflows: what runs on GitHub is what is on the default branch, not what is in the working copy, so once the
@@ -272,6 +329,7 @@ export function gatherFacts(p) {
       base: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(base)}`); return true; }, false),
       release: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(release)}`); return true; }, false),
     };
+    f.configOnBranches = configOnBranches((branch) => Buffer.from(api(`repos/${f.repo}/contents/relevo.yml?ref=${encodeURIComponent(branch)}`).content, 'base64').toString('utf8'), f.defaultBranch, base);
 
     let rulesets = [];
     f.protectionUnavailable = null;
@@ -340,6 +398,8 @@ export function gatherFacts(p) {
     f.pluginMarketplace = marketplace;
     // Workflows that check out the plugin repository for its scripts: do they pass a token that can read it?
     WORKFLOW_FILES.forEach((file) => { if (typeof texts[file] === 'string') f.workflows[file].text = texts[file]; });
+    // Do the denials of the cloud workflow match the list of restricted files? Only `init` writes that block.
+    f.restrictedWorkflow = restrictedBlockState(goText, restrictedListFromText(f.configText));
     f.pluginCheckouts = [];
     Object.entries(texts).forEach(([file, text]) => {
       const m = /repository:\s*([\w.-]+\/[\w.-]+)\s*\n([\s\S]*?)path:\s*\.relevo-plugin/.exec(text);
@@ -364,6 +424,35 @@ export function gatherFacts(p) {
  * clones it is offered the plugin: { declared } or, when the file is not valid JSON, { unreadable: true }. Only the
  * shared file counts; the user's and the local settings do not reach anyone else.
  */
+/**
+ * A label event reads relevo.yml from the default branch, while every build starts from the base branch: do the two
+ * copies on GitHub give the same settings? Comments and layout do not count. null when there is nothing to compare:
+ * the default branch is the base, the base has no relevo.yml, or a read failed for another reason than a missing file.
+ */
+export function configOnBranches(readAt, defaultBranch, base) {
+  if (!defaultBranch || defaultBranch === base) return null;
+  const notFound = (err) => /404|Not Found/i.test(String(err?.stderr ?? err?.message ?? err));
+  let baseText;
+  try {
+    baseText = readAt(base);
+  } catch {
+    return null;
+  }
+  let defaultText;
+  try {
+    defaultText = readAt(defaultBranch);
+  } catch (err) {
+    return notFound(err) ? { defaultBranch, base, same: false, missingOnDefault: true } : null;
+  }
+  let same;
+  try {
+    same = isDeepStrictEqual(parseYaml(defaultText), parseYaml(baseText));
+  } catch {
+    same = defaultText === baseText;
+  }
+  return { defaultBranch, base, same, missingOnDefault: false };
+}
+
 export function pluginDeclaration(p) {
   const path = '.claude/settings.json';
   if (!p.exists(path)) return { declared: false };
@@ -449,6 +538,21 @@ function gatherPlatforms(f, p, tryRun) {
         const tool = resolved.profile.targets[target] ?? '';
         return { target, tool, ok: tool === '' ? true : available(tool) };
       });
+      // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
+      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
+      if (adapter.supported && adapter.kind === 'api') {
+        const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
+        const xml = ['phpunit.xml', 'phpunit.xml.dist'].find((n) => p.exists(at(n)));
+        entry.api = { vendor: p.exists(at('vendor/autoload.php')), database: testDatabase(xml ? tryRun(() => p.read(at(xml)), null) : null) };
+      }
+      // The review block of the profile: where the log is, and whether the folder it names exists.
+      const logPattern = resolved.profile.review?.log;
+      if (logPattern) {
+        const segments = logPattern.split('/').filter(Boolean);
+        const literal = segments.findIndex((s) => /[*?]/.test(s));
+        const dir = (literal === -1 ? segments.slice(0, -1) : segments.slice(0, literal)).join('/');
+        entry.reviewLog = { pattern: logPattern, dir, dirExists: dir === '' ? true : p.exists(platform.path === '.' || platform.path === '' ? dir : `${platform.path}/${dir}`) };
+      }
       // The cloud and a fresh clone read the repository's layer from git, not from this working copy. `null` means
       // git could not say (no git, or not a repository).
       if (resolved.profile.layers.includes('repository')) {
@@ -464,8 +568,44 @@ function gatherPlatforms(f, p, tryRun) {
   // The skills a stack works better with: only for a stack that has a recommendation, and only when a platform uses it.
   f.recommendedSkills = null;
   const recommendedStack = Object.keys(RECOMMENDED).find((stack) => f.platformFacts.some((e) => e.stack === stack));
-  if (recommendedStack && p.listDir) {
-    f.recommendedSkills = recommendedSkillFacts({ stack: recommendedStack, tool: p.tool, listDir: p.listDir, skillDirs: p.skillDirs ?? SKILL_DIRS, repoTop: tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null), adapters: f.adapters, agentBuild: f.config?.agent?.build });
+  if (recommendedStack && p.exists) {
+    const platforms = f.platformFacts.filter((e) => e.stack === recommendedStack && e.profile).map((e) => ({ path: e.path, skills: [...new Set([...(e.profile.pluginSkills?.dev ?? []), ...(e.profile.pluginSkills?.qa ?? [])])] }));
+    f.recommendedSkills = recommendedSkillFacts({ stack: recommendedStack, platforms, exists: p.exists, tool: p.tool, repoTop: tryRun(() => String(p.tool('git', ['rev-parse', '--show-toplevel'])).trim() || null, null), adapters: f.adapters, agentBuild: f.config?.agent?.build });
+  }
+
+  // Where skills come from for the stacks that have a source: Laravel Boost (a package of the project), the Vue skills that
+  // are offered, and the skill folders that git ignores (the cloud runner reads only what is committed).
+  f.laravelBoost = [];
+  f.offeredSkills = [];
+  f.ignoredSkillFolders = [];
+  if (p.exists) {
+    const skillFolders = (path) => (path === '.' || path === '' ? ['.claude/skills', '.agents/skills'] : [`${path}/.claude/skills`, `${path}/.agents/skills`, '.claude/skills', '.agents/skills']);
+    const found = (path, name) => skillFolders(path).some((d) => tryRun(() => p.exists(`${d}/${name}`), false));
+    f.platformFacts.filter((e) => e.profile).forEach((e) => {
+      const listed = [...new Set([...(e.profile.skillsWhenInstalled?.dev ?? []), ...(e.profile.skillsWhenInstalled?.qa ?? [])])];
+      if (e.stack === 'laravel') {
+        const composerPath = e.path === '.' || e.path === '' ? 'composer.json' : `${e.path}/composer.json`;
+        if (!tryRun(() => p.exists(composerPath), false)) return;
+        const composer = tryRun(() => JSON.parse(p.read(composerPath)), null);
+        const boost = Boolean(composer && (composer.require?.['laravel/boost'] || composer['require-dev']?.['laravel/boost']));
+        f.laravelBoost.push({ name: e.name, path: e.path, boost, skillsCommitted: listed.some((name) => found(e.path, name)) });
+      } else if (OFFERED[e.stack]) {
+        const missing = OFFERED[e.stack].skills.filter((name) => !found(e.path, name));
+        f.offeredSkills.push({ stack: e.stack, name: e.name, path: e.path, skills: OFFERED[e.stack].skills, missing });
+      }
+    });
+    if (f.git) {
+      const folders = [...new Set(['.', ...Object.values(f.config?.platforms ?? {}).map((pl) => pl.path)].flatMap((path) => skillFolders(path ?? '.')))];
+      folders.filter((d) => tryRun(() => p.exists(d), false)).forEach((d) => {
+        // `git check-ignore` succeeds when the path is ignored, exits 1 when it is not, and fails otherwise (it cannot tell).
+        try {
+          p.tool('git', ['check-ignore', '-q', `${d}/probe`]);
+          f.ignoredSkillFolders.push(d);
+        } catch {
+          /* not ignored, or git cannot tell: nothing to say */
+        }
+      });
+    }
   }
 
   // What the Autopilot of `review` needs, only when the repository asks for it.
@@ -475,7 +615,7 @@ function gatherPlatforms(f, p, tryRun) {
     f.autopilot = {
       mode,
       platforms: Object.entries(f.config.platforms).map(([name, platform]) => {
-        const entry = { name, stack: platform.stack, path: platform.path };
+        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets };
         if (platform.stack === 'flutter') {
           entry.driverEntry = p.exists(join(platform.path, 'lib/main_driver.dart'));
           const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
@@ -496,7 +636,7 @@ function gatherPlatforms(f, p, tryRun) {
       f.platformFacts.filter((e) => e.profile).forEach((e) => {
         f.roleSkills[e.name] = {};
         ROLES.forEach((role) => {
-          const skills = resolveRoleSkills({ role, profile: e.profile, git: p.git, baseRef, allowScripts: f.config.skills.allow_scripts });
+          const skills = resolveRoleSkills({ role, profile: e.profile, git: p.git, baseRef, allowScripts: f.config.skills.allow_scripts, dirs: skillDirsFor(e.path) });
           skills.forEach((s) => { if (s.path) s.bytes = tryRun(() => Buffer.byteLength(String(read(s.path) ?? '')), 0); });
           f.roleSkills[e.name][role] = skills;
         });
@@ -504,15 +644,19 @@ function gatherPlatforms(f, p, tryRun) {
     }
   }
 
-  // The skills lock: each skill folder must still have the hash it was installed with.
-  if (p.exists('skills-lock.json') && p.readFolder) {
-    const lock = tryRun(() => JSON.parse(p.read('skills-lock.json')), null);
-    const hashes = {};
-    Object.keys(lock?.skills ?? {}).forEach((name) => {
-      const dir = SKILL_DIRS.find((d) => p.exists(`${d}/${name}`));
-      hashes[name] = dir ? tryRun(() => folderHash(p.readFolder(`${dir}/${name}`)), null) : null;
+  // The skills lock: each skill folder must still have the hash it was installed with, in the lock file of the folder
+  // that holds it (the root, or a platform: the installer writes the lock where it runs).
+  if (p.readFolder) {
+    const locks = [{ folder: '', lock: 'skills-lock.json', dirs: SKILL_DIRS }, ...platformFolders(f.config.platforms).map((folder) => ({ folder, lock: `${folder}/skills-lock.json`, dirs: SKILL_DIRS.map((d) => `${folder}/${d}`) }))];
+    locks.filter((l) => p.exists(l.lock)).forEach((l) => {
+      const lock = tryRun(() => JSON.parse(p.read(l.lock)), null);
+      const hashes = {};
+      Object.keys(lock?.skills ?? {}).forEach((name) => {
+        const dir = l.dirs.find((d) => p.exists(`${d}/${name}`));
+        hashes[name] = dir ? tryRun(() => folderHash(p.readFolder(`${dir}/${name}`)), null) : null;
+      });
+      lockDifferences(lock, hashes).forEach((name) => f.skillLockDifferences.push(l.folder === '' ? name : { name, folder: l.folder, lock: l.lock }));
     });
-    f.skillLockDifferences = lockDifferences(lock, hashes);
   }
 }
 
@@ -582,12 +726,15 @@ function linkChecks(f) {
   } else if (f.secrets.includes('RELEVO_LINKS_TOKEN')) {
     r.push(pass('links.secret', 'the RELEVO_LINKS_TOKEN secret exists for reading linked repositories'));
   } else if (anyPrivate) {
-    r.push(fail('links.secret', `${links.filter((l) => l.private).map((l) => l.repo).join(', ')} is private and there is no RELEVO_LINKS_TOKEN secret, so a dependency on it can never be read`, 'create a fine-grained token with read access to issues and pull requests of that repository and store it as the secret RELEVO_LINKS_TOKEN (Relevo only reads with it)'));
+    r.push(fail('links.secret', `${links.filter((l) => l.private).map((l) => l.repo).join(', ')} is private and there is no RELEVO_LINKS_TOKEN secret, so a dependency on it can never be read`, 'create a fine-grained token with read access to issues, pull requests and contents of that repository and store it as the secret RELEVO_LINKS_TOKEN (Relevo only reads with it)'));
   } else {
     r.push(warn('links.secret', 'every linked repository is public, so no RELEVO_LINKS_TOKEN is needed now, but a private one added later would not be readable', 'create the secret RELEVO_LINKS_TOKEN (read-only) before linking a private repository'));
   }
   return r;
 }
+
+/** Is the profile only the repository's (the plugin ships none for the stack)? */
+const isOwnProfile = (e) => e.profile?.layers?.length === 1 && e.profile.layers[0] === 'repository';
 
 /** What the profile of each platform asks for: tools, targets, layers, skills. */
 function platformChecks(f) {
@@ -605,9 +752,35 @@ function platformChecks(f) {
       const effect = e.profile.layers.includes('plugin') ? `use only the plugin's profile for ${e.stack}, without your rules` : `have no profile for ${e.stack}`;
       r.push(warn(`platform.${e.name}.profile.tracked`, `platform ${e.name}: ${path} is not tracked by git, so the cloud run and a fresh clone ${effect}`, `commit ${path} and push it with the rest of the repository's Relevo files`));
     }
+    // A stack the plugin does not ship is whatever its file says: without analyze and test QA has nothing to run.
+    if (isOwnProfile(e)) {
+      const missing = ['analyze', 'test'].filter((c) => !e.profile.commands?.[c]);
+      if (missing.length > 0) r.push(warn(`platform.${e.name}.commands`, `platform ${e.name}: the profile of ${e.stack} defines no ${missing.join(' and no ')}, so QA has no command to run for it`, `write ${missing.join(' and ')} in .relevo/stacks/${e.stack}.md, or set platforms.${e.name}.checks in relevo.yml`));
+    }
     (e.profile.ignored ?? []).forEach((x) => {
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
+    // What an api review needs, and what the review block of the profile says.
+    if (e.api) {
+      const inDir = e.path && e.path !== '.' ? `cd ${e.path} && ` : '';
+      if (!e.api.vendor) r.push(warn(`review.api.${e.name}.vendor`, `platform ${e.name} has no vendor/ folder, so the review cannot run its tests`, `run \`${inDir}composer install\``));
+      else r.push(pass(`review.api.${e.name}.vendor`, `platform ${e.name}: the dependencies are installed`));
+      const db = e.api.database;
+      if (db.safe) r.push(pass(`review.api.${e.name}.database`, `platform ${e.name}: the tests use in-memory SQLite`));
+      else r.push(note(`review.api.${e.name}.database`, `platform ${e.name}: ${db.reason}; the review asks for your written confirmation that it is not production before it runs a test`));
+    }
+    (e.profile.reviewReplaced ?? []).forEach((key) => {
+      r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));
+    });
+    (e.profile.reviewWarnings ?? []).forEach((w, i) => {
+      r.push(warn(`review.text.${e.name}.${i}`, `platform ${e.name}: the section Review of .relevo/stacks/${e.stack}.md asks to ${w.rule} ("${w.text}"), which a review never changes: the review ignores that line`, 'remove the line; the section can add steps and ask for more evidence, not loosen a rule'));
+    });
+    if (e.reviewLog && !e.reviewLog.dirExists) {
+      r.push(warn(`review.log.${e.name}`, `platform ${e.name}: review.log is ${e.reviewLog.pattern}, and ${e.reviewLog.dir} does not exist, so the audit would read no log`, 'point review.log at the folder where the app writes its log'));
+    }
+    if (e.profile.review?.serve && e.repositoryLayerTracked === false) {
+      r.push(warn(`review.serve.${e.name}`, `platform ${e.name}: the serve command of the review comes from .relevo/stacks/${e.stack}.md, which is not on the base branch, so the review ignores it in a fresh clone`, `commit .relevo/stacks/${e.stack}.md on the base branch`));
+    }
     e.tools.forEach(({ tool, ok, cliOk }) => {
       if (seen.has(`tool:${tool}`)) return;
       seen.add(`tool:${tool}`);
@@ -631,9 +804,34 @@ function platformChecks(f) {
     });
   });
 
+  // A skill the plugin's profile lists and the repository lacks is one note per platform, with its install command, and
+  // never a warning: the profile works without it. What the repository switched off is not missing. When the note of the
+  // stack (`recommended.<stack>.claude`) already names a missing skill, it is not reported a second time.
+  const norm = (path) => String(path ?? '.').replace(/^\.\//, '').replace(/\/+$/, '') || '.';
+  const namedByStack = (e) => {
+    const rec = f.recommendedSkills;
+    if (!rec || rec.stack !== e.stack || rec.claude !== 'missing') return new Set();
+    return new Set(rec.claudeMissing.filter((m) => norm(m.path) === norm(e.path)).flatMap((m) => m.skills));
+  };
+  (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
+    const covered = namedByStack(e);
+    const missing = [...new Set(Object.values(f.roleSkills?.[e.name] ?? {}).flatMap((skills) => skills.filter((s) => s.left_out && s.default && s.reason === 'not on the base branch').map((s) => s.name)))].filter((name) => !covered.has(name));
+    missing.forEach((name) => {
+      const command = RECOMMENDED[e.stack] ? recommendedInstallCommand({ stack: e.stack, skills: [name], path: e.path }) : null;
+      r.push(note(`skills.default.${e.name}.${name}`, `platform ${e.name}: the plugin lists the skill ${name} for ${e.stack}, and it is not on the base branch, so it is left out${command ? `; install it with ${command}, commit it, or switch it off with skills.disable in .relevo/stacks/${e.stack}.md` : ''}`));
+    });
+    (e.profile.skillsDisabled ?? []).forEach((name) => {
+      r.push(pass(`skills.disabled.${e.name}.${name}`, `platform ${e.name}: the skill ${name} is switched off by .relevo/stacks/${e.stack}.md`));
+    });
+    (e.profile.skillsDisableIgnored ?? []).forEach((x) => {
+      if (x.reason === 'required') r.push(warn(`skills.disable.${e.name}.${x.name}`, `platform ${e.name}: skills.disable names ${x.name}, which the profile requires, so it stays`, 'remove it from skills.disable'));
+      else r.push(note(`skills.disable.${e.name}.${x.name}`, `platform ${e.name}: skills.disable names ${x.name}, which no list of the plugin has, so it matches nothing`));
+    });
+  });
+
   Object.entries(f.roleSkills ?? {}).forEach(([platform, roles]) => {
     Object.entries(roles).forEach(([role, skills]) => {
-      skills.filter((s) => s.left_out).forEach((s) => {
+      skills.filter((s) => s.left_out && !(s.default && s.reason === 'not on the base branch')).forEach((s) => {
         r.push(warn(`skills.role.${platform}.${role}.${s.name}`, `skill ${s.name} (${role}, ${platform}) is left out: ${s.reason}`, 'fix the reason, or remove the skill from the profile'));
       });
       skills.filter((s) => s.path && s.scripts).forEach((s) => {
@@ -652,12 +850,16 @@ function platformChecks(f) {
     } else if (e.stack === 'vue') {
       if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, `run /relevo:init, which offers it, or \`${e.path && e.path !== '.' ? `cd ${e.path} && ` : ''}npm install -D playwright && npx playwright install chromium\` and commit package.json and the lock file`));
       else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
+    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }) }).kind === 'api') {
+      r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
     } else {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
     }
   });
-  (f.skillLockDifferences ?? []).forEach((name) => {
-    r.push(warn(`skills.lock.${name}`, `the skill ${name} differs from the hash in skills-lock.json`, 'review the change to the skill, then run `npx skills` to refresh the lock, or restore the skill'));
+  (f.skillLockDifferences ?? []).forEach((d) => {
+    const name = typeof d === 'string' ? d : d.name;
+    const lock = typeof d === 'string' ? 'skills-lock.json' : d.lock;
+    r.push(warn(typeof d === 'string' ? `skills.lock.${name}` : `skills.lock.${d.folder}.${name}`, `the skill ${name} differs from the hash in ${lock}`, 'review the change to the skill, then run `npx skills` to refresh the lock, or restore the skill'));
   });
   return r;
 }
@@ -674,6 +876,8 @@ export function runChecks(f) {
   if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
   r.push(...platformChecks(f));
   r.push(...recommendedSkillChecks(f));
+  r.push(...laravelBoostChecks(f));
+  r.push(...ignoredSkillChecks(f));
   r.push(...adapterChecks(f));
 
   // skills that think invokes
@@ -696,6 +900,7 @@ export function runChecks(f) {
   r.push(f.evidenceIgnored ? pass('evidence.ignored', 'evidence/ is ignored by git') : fail('evidence.ignored', 'evidence/ is not in .gitignore; `review` would put screenshots in git', 'add the line `evidence/` to .gitignore (or run /relevo:init)'));
   r.push(...pluginDeclaredChecks(f));
   r.push(...webHookChecks(f));
+  r.push(...restrictedChecks(f));
 
   // GitHub side
   if (!f.repo || !f.ghAuth) {
@@ -709,6 +914,13 @@ export function runChecks(f) {
     else if (missing.length === 0) r.push(pass('repo.labels', 'all lifecycle labels exist'));
     else r.push(fail('repo.labels', `missing labels: ${missing.join(', ')}`, 'run /relevo:init to create them'));
     r.push(f.branches.base ? pass('repo.base-branch', `base branch ${f.config.branches.base} exists`) : fail('repo.base-branch', `base branch ${f.config.branches.base} does not exist`, `create it from ${f.config.branches.release}, or run /relevo:init`));
+  }
+  const cb = f.configOnBranches;
+  if (cb) {
+    const fix = `promote ${cb.base} to ${cb.defaultBranch} through a pull request, or make ${cb.base} the default branch`;
+    if (cb.same) r.push(pass('repo.config-default-branch', `relevo.yml on ${cb.defaultBranch}, which the cloud reads, gives the same settings as on ${cb.base}`));
+    else if (cb.missingOnDefault) r.push(warn('repo.config-default-branch', `the cloud reads relevo.yml from the default branch ${cb.defaultBranch}, which has none while ${cb.base} has one`, fix));
+    else r.push(warn('repo.config-default-branch', `the cloud reads relevo.yml from the default branch ${cb.defaultBranch}, and it differs from the one on ${cb.base}`, fix));
   }
 
   if (f.protectionError) {
@@ -822,13 +1034,26 @@ function toolchainChecks(f) {
   const go = f.workflows?.['relevo-go.yml'];
   if (!go?.present || typeof go.text !== 'string') return [];
   const active = go.text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  return (f.platformFacts ?? []).filter((e) => TOOLCHAIN_ACTIONS[e.stack]).map((e) => {
+  const known = (f.platformFacts ?? []).filter((e) => TOOLCHAIN_ACTIONS[e.stack]).map((e) => {
     const { action, step } = TOOLCHAIN_ACTIONS[e.stack];
     return active.includes(action)
       ? pass(`automation.toolchain.${e.name}`, `the go workflow installs the toolchain of platform ${e.name} (${e.stack})`)
       : fail(`automation.toolchain.${e.name}`, `the go workflow installs no toolchain for platform ${e.name} (${e.stack}), so every cloud build would fail QA after spending the run`, `enable ${step} of the build job in relevo-go.yml (the template has it active; compare with /relevo:init), or, if you install it another way, ignore this`);
   });
+  // A stack of the repository has no step in the template: the convention is a step guarded by the name of the stack.
+  // Only a warning, because the toolchain may come another way (an image, a runner that has it). A stack that needs only
+  // Node is not judged: the job installs Node for Relevo itself.
+  const own = (f.platformFacts ?? []).filter((e) => !TOOLCHAIN_ACTIONS[e.stack] && isOwnProfile(e) && (e.profile.tools ?? []).some((t) => !NODE_TOOLS.includes(t))).map((e) => {
+    const guard = `needs.decide.outputs.stack == '${e.stack}'`;
+    return active.includes(guard)
+      ? pass(`automation.toolchain.${e.name}`, `the go workflow has a step for the stack of platform ${e.name} (${e.stack})`)
+      : warn(`automation.toolchain.${e.name}`, `the go workflow has no step guarded by ${guard}, so a cloud build for platform ${e.name} (${e.stack}) may find no ${e.profile.tools.filter((t) => !NODE_TOOLS.includes(t)).join(', ')} and fail QA after spending the run`, `add a step to the build job of relevo-go.yml that installs it, guarded by "- if: ${guard}" (see the comment in the template), or, if you install it another way, ignore this`);
+  });
+  return [...known, ...own];
 }
+
+// The tools that the build job already has: it installs Node for Relevo itself.
+const NODE_TOOLS = ['node', 'npm'];
 
 const HOSTED_RUNNER = ['ubuntu-latest'];
 
@@ -877,6 +1102,36 @@ function pluginDeclaredChecks(f) {
   if (f.pluginDeclared?.unreadable) r.push(warn('plugin.declared', '.claude/settings.json is not valid JSON, so it cannot be checked whether the repository declares the Relevo plugin', 'fix the file; /relevo:init then offers to declare the plugin'));
   else if (f.pluginDeclared?.declared) r.push(pass('plugin.declared', 'the repository declares the Relevo plugin in .claude/settings.json, so a teammate who opens it is offered it'));
   else if (f.pluginDeclared) r.push(warn('plugin.declared', 'the repository does not declare the Relevo plugin in .claude/settings.json: a teammate who clones it is not offered the plugin and finds no /relevo: commands', 'run /relevo:init, or claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin and claude plugin install relevo@relevo --scope project, and commit .claude/settings.json'));
+  return r;
+}
+
+/**
+ * The restricted files (docs/security.md). A versioned one fails: the secret is already in the history. A missing read
+ * denial warns, never fails, because the settings of a person are theirs; it is found by name, for each restricted file
+ * that exists in the working folder, in the settings of each agent the repository uses. No restricted file is opened.
+ */
+function restrictedChecks(f) {
+  const x = f.restricted;
+  if (!x) return [];
+  const r = [];
+  if (x.tracked.length > 0) {
+    r.push(fail('restricted.versioned', `git versions ${x.tracked.join(', ')}, which ${x.tracked.length === 1 ? 'is a restricted file' : 'are restricted files'}: the secret is already in the history and a run of go would stop on it`, 'rotate the secret, remove the file from the repository (git rm --cached) and keep it ignored'));
+  } else r.push(pass('restricted.versioned', 'no restricted file is versioned'));
+
+  if (x.claude.unreadable.length > 0) r.push(warn('restricted.settings', `${x.claude.unreadable.join(', ')} is not valid JSON, so it cannot be checked whether it denies the read of the restricted files`, 'fix the file; /relevo:init then offers the denials'));
+  const uncovered = x.claude.uncovered;
+  if (x.present.length === 0) r.push(pass('restricted.denials', 'no restricted file exists in this working folder, so there is nothing to deny'));
+  else if (uncovered.length === 0 && x.claude.unreadable.length === 0) r.push(pass('restricted.denials', `the settings of Claude Code deny the read of ${x.present.join(', ')}`));
+  uncovered.forEach((path) => r.push(warn(`restricted.denial.${path}`, `${path} exists and no Read denial of the settings of Claude Code covers it, so an agent in this folder can read it`, 'run /relevo:init: it proposes the entries and writes them only after a yes')));
+
+  if (f.restrictedWorkflow === 'stale') r.push(warn('restricted.workflow', 'the denials between the relevo:restricted markers of relevo-go.yml are not the ones the list of restricted files gives (restricted_paths changed, or the block was edited), so the cloud agent runs with other denials', 'run /relevo:init and merge the workflow: it rewrites the block from the list'));
+  else if (f.restrictedWorkflow === 'missing') r.push(warn('restricted.workflow', 'relevo-go.yml has no relevo:restricted block, so the cloud agent runs without the Read denials of the restricted files', 'run /relevo:init and merge the workflow: it adds the block'));
+  else if (f.restrictedWorkflow === 'current') r.push(pass('restricted.workflow', 'the denials in relevo-go.yml match the list of restricted files'));
+
+  if (x.antigravity.used) {
+    if (x.antigravity.unreadable) r.push(warn('restricted.antigravity.settings', 'the settings of Antigravity are not valid JSON, so it cannot be checked whether they deny the read of the restricted files', 'fix the file; /relevo:init then offers the denials'));
+    x.antigravity.uncovered.forEach((path) => r.push(warn(`restricted.antigravity.${path}`, `${path} exists and no read_file denial of the settings of Antigravity covers it (the denial stops its file tool, not a command such as cat)`, 'run /relevo:init: it proposes the entries and writes them only after a yes')));
+  }
   return r;
 }
 
@@ -955,19 +1210,50 @@ function workflowTextChecks(f) {
 }
 
 /**
- * The skills a stack works better with. Never a warning or a failure: the stack works without them, so a missing one
- * is a note with the commands, and the Antigravity IDE route, which cannot be checked, is said and not guessed.
+ * Laravel Boost, which installs the skills of the packages a project uses. Only a note: the profile works without it.
+ * One result for all the Laravel platforms.
+ */
+function laravelBoostChecks(f) {
+  const platforms = f.laravelBoost ?? [];
+  if (platforms.length === 0) return [];
+  const missing = platforms.filter((x) => !x.boost);
+  const uncommitted = platforms.filter((x) => x.boost && !x.skillsCommitted);
+  const r = [];
+  if (missing.length > 0) {
+    r.push(note('recommended.laravel.boost', `laravel works better with Laravel Boost, which installs skills for the packages the project uses, and it is not in composer.json of ${missing.map((x) => x.name).join(', ')}; it is optional. Install it: ${missing.flatMap((x) => boostInstallCommands(x.path)).join('; then ')}, then commit .claude/skills, boost.json, composer.json and composer.lock`));
+  }
+  if (uncommitted.length > 0) {
+    r.push(note('recommended.laravel.skills', `Laravel Boost is installed in ${uncommitted.map((x) => x.name).join(', ')} but none of the skills the laravel profile uses is committed there; run ${uncommitted.map((x) => boostInstallCommands(x.path)[1]).join('; ')}, then commit .claude/skills`));
+  }
+  if (missing.length === 0 && uncommitted.length === 0) r.push(pass('recommended.laravel.boost', 'Laravel Boost is installed and its skills are committed to the repository'));
+  return r;
+}
+
+/** A skill folder that git ignores is invisible to the cloud runner, which reads only what is committed. */
+function ignoredSkillChecks(f) {
+  return (f.ignoredSkillFolders ?? []).map((d) => warn(`skills.ignored.${d}`, `${d} exists and is ignored by git, so the cloud runner will not see the skills in it`, `remove the ignore rule that covers ${d} from .gitignore and commit the folder`));
+}
+
+/**
+ * The default skills of a stack. Never a warning or a failure: the stack works without them, so a missing one is a
+ * note with the commands. It judges what is committed, because the cloud runner reads only that; a plugin installed on
+ * this machine is said and not counted. The Antigravity IDE route cannot be checked, so it is said and not guessed.
  */
 function recommendedSkillChecks(f) {
   const rec = f.recommendedSkills;
   if (!rec) return [];
-  const route = RECOMMENDED[rec.stack];
   const label = rec.stack === 'flutter' ? 'Dart and Flutter' : rec.stack;
+  const commands = (missing, agent) => missing.map((m) => recommendedInstallCommand({ stack: rec.stack, skills: m.skills, agent, path: m.path })).join('; then ');
+  const names = (missing) => [...new Set(missing.flatMap((m) => m.skills))].join(', ');
+  const commit = 'then commit the folder and skills-lock.json';
   const r = [];
-  if (rec.claude === 'present') r.push(pass(`recommended.${rec.stack}.claude`, `the official ${label} skills are available to Claude Code`));
-  else if (rec.claude === 'missing') r.push(note(`recommended.${rec.stack}.claude`, `${rec.stack} works better with the official ${label} skills, which Claude Code does not have; they are optional. Install the plugin: ${route.claude.commands.join(', then ')}`));
-  if (rec.antigravity === 'present') r.push(pass(`recommended.${rec.stack}.antigravity`, `the official ${label} skills are in .agents/skills (Antigravity)`));
-  else if (rec.antigravity === 'missing') r.push(note(`recommended.${rec.stack}.antigravity`, `${rec.stack} works better with the official ${label} skills, which are not in .agents/skills; they are optional. For the Antigravity CLI run ${route.antigravity.commands.join(', then ')}; ${ANTIGRAVITY_IDE}`));
+  if (rec.claude === 'present') r.push(pass(`recommended.${rec.stack}.claude`, `the default ${label} skills are committed to the repository (Claude Code)`));
+  else {
+    const here = rec.plugin === true ? `; the plugin ${RECOMMENDED[rec.stack].claude.plugin} is installed on this machine, which works here and does not reach the cloud runner` : '';
+    r.push(note(`recommended.${rec.stack}.claude`, `${rec.stack} works better with the default ${label} skills (${names(rec.claudeMissing)}), which are not committed to the repository, and the cloud runner reads only what is committed${here}; they are optional. Install them: ${commands(rec.claudeMissing, 'claude-code')}, ${commit}`));
+  }
+  if (rec.antigravity === 'present') r.push(pass(`recommended.${rec.stack}.antigravity`, `the default ${label} skills are in .agents/skills (Antigravity)`));
+  else if (rec.antigravity === 'missing') r.push(note(`recommended.${rec.stack}.antigravity`, `${rec.stack} works better with the default ${label} skills (${names(rec.antigravityMissing)}), which are not in .agents/skills; they are optional. For the Antigravity CLI run ${commands(rec.antigravityMissing, 'universal')}, ${commit}; ${ANTIGRAVITY_IDE}`));
   return r;
 }
 
