@@ -57,7 +57,7 @@ Solo escribe bajo `.github/workflows/`, y necesita `npm` y una conexión de red 
 
 Un repositorio que versiona un archivo de la lista restringida detiene todas las ejecuciones al pasar a una versión con [archivos restringidos](security.es.md). `go` termina en `qa-failed` con "restricted file in the diff", aunque el archivo no sea parte del cambio, porque la comprobación también lee lo que la rama base versiona, y `/relevo:doctor` falla por él.
 
-La lista coincide por nombre, así que los casos que sorprenden no son solo secretos: un `.env.production` o `.env.testing` con valores que no son secretos, un `.env.sample`, un `.pem` o `.key` guardado como dato de prueba, y la configuración móvil (`google-services.json`, `GoogleService-Info.plist`, `key.properties`). Solo `.env.example` está exento.
+La lista coincide por nombre, así que los casos que sorprenden no son solo secretos: un `.env.production` o `.env.testing` con valores que no son secretos, un `.pem` o `.key` guardado como dato de prueba, y la configuración móvil (`google-services.json`, `GoogleService-Info.plist`, `key.properties`). Solo los archivos de ejemplo `.env.example`, `.env.sample`, `.env.template` y `.env.dist` están exentos.
 
 Antes de subir la versión fijada, ejecuta `/relevo:doctor` en la versión nueva y lee los archivos que nombra. Deja de versionar cada uno y manténlo fuera de git, o acepta que las ejecuciones se detengan. Después de cambiar `restricted_paths` en `relevo.yml`, ejecuta `/relevo:init` otra vez: reescribe las denegaciones entre los marcadores `# relevo:restricted` de `relevo-go.yml`, y nada más lo hace. Si tu workflow ya tiene su propia entrada `settings:` en el paso del agente, fusiona las dos a mano.
 
