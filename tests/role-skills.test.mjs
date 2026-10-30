@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { SIZE_BUDGET_BYTES, folderHash, hasScripts, lockDifferences, reservedForPerson, resolveRoleSkills, resolveSkill, skillBudget } from '../scripts/lib/role-skills.mjs';
+import { SIZE_BUDGET_BYTES, folderHash, hasScripts, lockDifferences, reservedForPerson, resolveRoleSkills, resolveSkill, skillBudget, skillDirsFor } from '../scripts/lib/role-skills.mjs';
 
 const CLI = new URL('../scripts/role-skills.mjs', import.meta.url).pathname;
 const PLUGIN_ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
@@ -93,6 +93,69 @@ test('roles: fix uses the lists of dev and qa, each skill once; an unknown role 
   assert.throws(() => names('boss'), /unknown role "boss"/);
 });
 
+test('the folders to look in: the platform\'s own first, then the root; a platform at the root looks only at the root', () => {
+  assert.deepEqual(skillDirsFor('app'), ['app/.agents/skills', 'app/.claude/skills', '.agents/skills', '.claude/skills']);
+  assert.deepEqual(skillDirsFor('./apps/web/'), ['apps/web/.agents/skills', 'apps/web/.claude/skills', '.agents/skills', '.claude/skills']);
+  ['.', '', './', undefined].forEach((p) => assert.deepEqual(skillDirsFor(p), ['.agents/skills', '.claude/skills'], String(p)));
+});
+
+test('Scenario: Skill in the folder of the platform - go gives the path inside the platform', () => {
+  const dir = repo({ 'app/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL() });
+  assert.equal(one(dir, 'flutter-add-widget-test', { dirs: skillDirsFor('app') }).path, 'app/.claude/skills/flutter-add-widget-test/SKILL.md');
+});
+
+test('Scenario: Skill at the root only - the path at the root is given when the platform folder has none', () => {
+  const dir = repo({ '.claude/skills/flutter-add-widget-test/SKILL.md': SKILL() });
+  assert.equal(one(dir, 'flutter-add-widget-test', { dirs: skillDirsFor('app') }).path, '.claude/skills/flutter-add-widget-test/SKILL.md');
+});
+
+test('Scenario: Another platform\'s skills - a platform does not look in the folder of another', () => {
+  const dir = repo({ 'app/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL() });
+  const r = one(dir, 'flutter-add-widget-test', { dirs: skillDirsFor('backend') });
+  assert.equal(r.left_out, true);
+  assert.equal(r.reason, 'not on the base branch');
+});
+
+test('a skill of the platform folder meets the same conditions: a script leaves it out', () => {
+  const dir = repo({ 'app/.claude/skills/x/SKILL.md': SKILL(), 'app/.claude/skills/x/scripts/run.sh': 'x' });
+  assert.equal(one(dir, 'x', { dirs: skillDirsFor('app') }).reason, 'has scripts and is not allowed');
+});
+
+test('the skills of the plugin\'s profile are marked as default, the repository\'s own are not', () => {
+  const dir = repo({ '.agents/skills/a/SKILL.md': SKILL(), '.agents/skills/mine/SKILL.md': SKILL() });
+  const profile = { skills: { dev: ['a', 'mine', 'gone'], qa: [], issue: [], review: [] }, pluginSkills: { dev: ['a', 'gone'], qa: [], issue: [], review: [] } };
+  const out = resolveRoleSkills({ role: 'dev', profile, git: runner(dir), baseRef: 'origin/dev' });
+  assert.deepEqual(out.map((s) => [s.name, s.default === true, s.left_out === true]), [['a', true, false], ['mine', false, false], ['gone', true, true]]);
+});
+
+const WHEN = (dev, plugin = dev) => ({ skills: { dev: [], qa: [], issue: [], review: [] }, skillsWhenInstalled: { dev, qa: [], issue: [], review: [] }, pluginSkillsWhenInstalled: { dev: plugin, qa: [], issue: [], review: [] } });
+const resolved = (dir, profile, extra = {}) => resolveRoleSkills({ role: 'dev', profile, git: runner(dir), baseRef: 'origin/dev', ...extra });
+
+test('Scenario: Absent - a skill used only when installed leaves no entry in the output', () => {
+  const dir = repo({ 'README.md': 'x' });
+  assert.deepEqual(resolved(dir, WHEN(['laravel-best-practices'])), []);
+});
+
+test('Scenario: Present - it is given with its path, marked as a default, in the folder of the platform or at the root', () => {
+  const dir = repo({ '.claude/skills/laravel-best-practices/SKILL.md': SKILL(), 'api/.claude/skills/testing-best-practices/SKILL.md': SKILL() });
+  const out = resolved(dir, WHEN(['laravel-best-practices', 'testing-best-practices', 'absent']), { dirs: skillDirsFor('api') });
+  assert.deepEqual(out.map((s) => [s.name, s.path, s.default]), [['laravel-best-practices', '.claude/skills/laravel-best-practices/SKILL.md', true], ['testing-best-practices', 'api/.claude/skills/testing-best-practices/SKILL.md', true]]);
+});
+
+test('Scenario: Present with scripts - it is left out with the reason, and not silently', () => {
+  const dir = repo({ '.claude/skills/x/SKILL.md': SKILL(), '.claude/skills/x/scripts/run.sh': 'x', '.claude/skills/y/SKILL.md': SKILL('disable-model-invocation: true\n') });
+  const out = resolved(dir, WHEN(['x', 'y']));
+  assert.deepEqual(out.map((s) => [s.name, s.reason]), [['x', 'has scripts and is not allowed'], ['y', 'reserved for the person']]);
+  assert.equal(resolved(dir, WHEN(['x']), { allowScripts: ['x'] })[0].path, '.claude/skills/x/SKILL.md');
+});
+
+test('a skill of the repository is not marked as a default, and a name in both lists is the listed one', () => {
+  const dir = repo({ '.claude/skills/mine/SKILL.md': SKILL(), '.claude/skills/both/SKILL.md': SKILL() });
+  const profile = { skills: { dev: ['both'], qa: [], issue: [], review: [] }, skillsWhenInstalled: { dev: ['mine', 'both', 'gone'], qa: [], issue: [], review: [] }, pluginSkillsWhenInstalled: { dev: [], qa: [], issue: [], review: [] } };
+  const out = resolved(dir, profile);
+  assert.deepEqual(out.map((s) => [s.name, s.default === true]), [['both', false], ['mine', false]], 'gone leaves no trace, and both is resolved once');
+});
+
 test('Scenario: Large skill set - 30 KB is over the budget, 10 KB is not', () => {
   assert.equal(SIZE_BUDGET_BYTES, 20480);
   assert.deepEqual(skillBudget([10 * 1024, 20 * 1024]), { bytes: 30720, over: true });
@@ -134,6 +197,23 @@ test('the command lists each skill with its path or the reason it was left out',
   assert.equal(out.base, 'origin/dev');
   assert.deepEqual(out.skills.map((s) => s.left_out ?? s.path), ['.agents/skills/good/SKILL.md', '.agents/skills/with-scripts/SKILL.md', true]);
   assert.equal(out.skills[2].reason, 'not on the base branch');
+});
+
+test('the command finds a skill in the folder of the platform and marks the default ones', () => {
+  const dir = repo({
+    'relevo.yml': CONFIG.replace('stack: vue', 'stack: flutter').replace('apps/web', 'apps/web'),
+    '.relevo/stacks/flutter.md': '---\nstack: flutter\nskills:\n  dev: [mine]\n---\n',
+    'apps/web/.claude/skills/flutter-add-widget-test/SKILL.md': SKILL(),
+    'apps/web/.claude/skills/mine/SKILL.md': SKILL(),
+  });
+  const r = spawnSync('node', [CLI, '--role', 'dev', '--platform', 'web'], { encoding: 'utf8', cwd: dir });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  const by = Object.fromEntries(out.skills.map((s) => [s.name, s]));
+  assert.equal(by['flutter-add-widget-test'].path, 'apps/web/.claude/skills/flutter-add-widget-test/SKILL.md');
+  assert.equal(by['flutter-add-widget-test'].default, true);
+  assert.equal(by['dart-add-unit-test'].left_out, true, 'a default skill that is not installed is left out');
+  assert.equal(by['mine'].default, undefined);
 });
 
 test('the command exits 2 without a role or with a platform it does not know, and 1 without a profile', () => {

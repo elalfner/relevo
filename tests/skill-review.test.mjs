@@ -310,7 +310,7 @@ test('Scenario: Run with another configuration / Audit of the normal run - extra
 });
 
 test('Scenario: An environment file exists - environment files are never read', () => {
-  assert.match(body, /Never read the project's environment files/);
+  assert.match(body, /Never read a restricted file \(the list is in `docs\/security\.md`/);
   assert.match(autopilot, /refuses `--unset` while an environment file exists/);
 });
 
@@ -344,4 +344,20 @@ test('Scenario: Autopilot set for this review - an uncommitted relevo.yml is nam
   assert.match(body, /`git status --porcelain -- relevo\.yml` prints anything/);
   assert.match(body, /Never stage or commit `relevo\.yml` in this review/);
   assert.match(body, /stop and show its `advice` as it is/);
+});
+
+test('Scenario: Autopilot off / Capture asked for - the api review names its preflight, its commands and what it never does', () => {
+  ['api-preflight.mjs', 'stack-profile.mjs --platform <platform> --role review'].forEach((x) => assert.ok(body.includes(x), `the skill never names ${x}`));
+  ['--adapter api', 'review-state.mjs ran', 'runs-list', 'reset-log', '--by agent --line'].forEach((x) => assert.ok(body.includes(x), `the skill never uses ${x}`));
+  assert.match(body, /takes no capture/);
+  assert.match(body, /Never write or edit a test/);
+  const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
+  ['ran', 'runs-list', 'reset-log'].forEach((c) => assert.ok(source.includes(`case '${c}'`), `review-state has no "${c}" command`));
+});
+
+test('Scenario: A failed go left its worktree - review asks who holds the branch before it switches, and leaves the issue built', () => {
+  const step1 = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('git switch <branch>'));
+  assert.match(step1, /scripts\/branch-worktree\.mjs --branch <branch>/);
+  assert.match(step1, /If it exits 1 it prints the path of that worktree/);
+  assert.match(step1, /leave the issue as `built`, change nothing/);
 });

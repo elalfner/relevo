@@ -8,7 +8,8 @@ import { listeners } from './dev-server-guard.mjs';
 
 export const EXIT = { refused: 1, busy: 3, envFiles: 4, noLsof: 5 };
 
-// Example files hold no values the app loads.
+// Example files hold no values the app loads. This is about what a dev server loads, not the restricted list, which
+// leaves out only `.env.example`.
 const EXAMPLES = new Set(['.env.example', '.env.sample', '.env.template']);
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -52,8 +53,10 @@ export function startServer({ port, set = {}, unset = [], command }, deps) {
   }
   const records = deps.load();
   const log = join(deps.dir ?? 'evidence', 'servers', `${port}.log`);
-  const pgid = deps.spawn(command, serverEnv(deps.baseEnv, { set, unset }), log);
-  records.push({ port, pgid, command: command.join(' '), set: Object.keys(set), unset });
+  // `{port}` stands for the port that was checked free: the `serve` command of a profile is written with it.
+  const argv = command.map((token) => token.replaceAll('{port}', String(port)));
+  const pgid = deps.spawn(argv, serverEnv(deps.baseEnv, { set, unset }), log);
+  records.push({ port, pgid, command: argv.join(' '), set: Object.keys(set), unset });
   deps.save(records);
   return { code: 0, message: `started on port ${port} (process group ${pgid}); log in ${log}`, pgid };
 }

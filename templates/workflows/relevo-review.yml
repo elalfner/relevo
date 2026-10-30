@@ -1,4 +1,4 @@
-# relevo-template: 0.11.0
+# relevo-template: 0.12.0
 # Relevo: keeps the issue label in step with its pull request.
 # A review that requests changes sets `relevo:changes-requested` and mentions the author; a new push returns the
 # issue to `relevo:pr-open`; an approval mentions the person who will run /relevo:ship.
@@ -15,7 +15,7 @@ name: relevo-review
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.11.0'
+  RELEVO_VERSION: '0.12.0'
 
 on:
   pull_request_review:

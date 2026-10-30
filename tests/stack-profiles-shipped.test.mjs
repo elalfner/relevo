@@ -22,6 +22,15 @@ test('Scenario: Vue profile - analyze type-checks and lints without a fix option
   assert.deepEqual(p.tools, ['node', 'npm']);
 });
 
+test('Scenario: Defaults of Laravel - the review block has the log under storage/logs, php artisan test and no serve; the section Review is not in the body of dev and qa', () => {
+  const p = profile('laravel');
+  assert.deepEqual(p.review, { log: 'storage/logs/*.log', test: 'php artisan test' });
+  assert.equal(p.review.serve, undefined);
+  assert.match(p.reviewBody, /never read a restricted file/);
+  assert.doesNotMatch(p.body, /feature test of its scenario/);
+  assert.deepEqual(p.targets, {}, 'Targets: None is unchanged');
+});
+
 test('Scenario: Laravel profile - analyze is Pint in test mode, test is php artisan test, format is Pint, no targets', () => {
   const p = profile('laravel');
   assert.equal(p.commands.analyze, 'vendor/bin/pint --test');
@@ -42,12 +51,96 @@ test('the commands QA runs write nothing: no fix, write or update option in anal
   });
 });
 
-test('a profile of the plugin requires no skill that the plugin does not ship, and lists none by default', () => {
+test('a profile of the plugin requires no skill, and only Flutter lists skills by default', () => {
   ['vue', 'laravel', 'flutter'].forEach((stack) => {
-    const p = profile(stack);
-    assert.deepEqual(p.requires_skills, [], stack);
-    Object.values(p.skills).forEach((list) => assert.deepEqual(list, [], stack));
+    assert.deepEqual(profile(stack).requires_skills, [], stack);
   });
+  ['vue', 'laravel'].forEach((stack) => {
+    Object.values(profile(stack).skills).forEach((list) => assert.deepEqual(list, [], stack));
+  });
+});
+
+// Sizes in bytes of the SKILL.md files of flutter/agent-plugins, read on 2026-10-29 (the full set is 211 KB).
+const DEFAULT_SKILL_BYTES = { 'flutter-add-widget-test': 6381, 'dart-add-unit-test': 4709 };
+
+test('Scenario: The set - Flutter lists the same short set for dev and qa, and none for issue and review', () => {
+  const { skills } = profile('flutter');
+  const set = ['flutter-add-widget-test', 'dart-add-unit-test'];
+  assert.deepEqual(skills.dev, set);
+  assert.deepEqual(skills.qa, set);
+  assert.deepEqual(skills.issue, []);
+  assert.deepEqual(skills.review, []);
+});
+
+test('Scenario: Budget - the default set of each role is under 20 KB', () => {
+  const { skills } = profile('flutter');
+  ['dev', 'qa'].forEach((role) => {
+    const bytes = skills[role].reduce((sum, name) => sum + DEFAULT_SKILL_BYTES[name], 0);
+    assert.ok(bytes < 20 * 1024, `${role}: ${bytes} bytes`);
+  });
+});
+
+test('Scenario: No imposed architecture - the set holds no skill that prescribes an architecture or a package', () => {
+  const { skills } = profile('flutter');
+  const imposing = ['flutter-apply-architecture-best-practices', 'flutter-use-http-package', 'flutter-setup-declarative-routing', 'flutter-implement-json-serialization', 'dart-generate-test-mocks', 'dart-run-static-analysis', 'flutter-fix-layout-issues'];
+  imposing.forEach((name) => ['dev', 'qa'].forEach((role) => assert.ok(!skills[role].includes(name), `${role} lists ${name}`)));
+});
+
+// Sizes in bytes of the SKILL.md files, read on 2026-10-29: Laravel Boost 2.10 on a fresh Laravel 13 project, and vuejs-ai/skills.
+const WHEN_INSTALLED_BYTES = { 'laravel-best-practices': 4644, 'testing-best-practices': 4225, 'vue-best-practices': 10475, 'vue-testing-best-practices': 2129 };
+// The length of the body of the Vue profile before the checklist of the official documentation was added.
+const VUE_BODY_BEFORE = 4057;
+
+test('Scenario: The set - Laravel uses two Boost skills for dev and qa when installed, and requires or lists none', () => {
+  const p = profile('laravel');
+  const set = ['laravel-best-practices', 'testing-best-practices'];
+  assert.deepEqual(p.skillsWhenInstalled.dev, set);
+  assert.deepEqual(p.skillsWhenInstalled.qa, set);
+  assert.deepEqual(p.skillsWhenInstalled.issue, []);
+  assert.deepEqual(p.requires_skills, []);
+  Object.values(p.skills).forEach((list) => assert.deepEqual(list, []));
+  assert.ok(!JSON.stringify(p.skillsWhenInstalled).includes('livewire'), 'a skill that applies only when a package is used is not listed');
+});
+
+test('Scenario: The set - Vue uses two community skills for dev and qa when installed, and requires or lists none', () => {
+  const p = profile('vue');
+  const set = ['vue-best-practices', 'vue-testing-best-practices'];
+  assert.deepEqual(p.skillsWhenInstalled.dev, set);
+  assert.deepEqual(p.skillsWhenInstalled.qa, set);
+  assert.deepEqual(p.requires_skills, []);
+  Object.values(p.skills).forEach((list) => assert.deepEqual(list, []));
+  assert.doesNotMatch(p.body, /official skills? of Vue/i, 'the profile does not call them official');
+});
+
+test('Scenario: Budget - the skills used when installed of each role are under 20 KB', () => {
+  ['laravel', 'vue'].forEach((stack) => {
+    const { skillsWhenInstalled } = profile(stack);
+    ['dev', 'qa'].forEach((role) => {
+      const bytes = skillsWhenInstalled[role].reduce((sum, name) => sum + WHEN_INSTALLED_BYTES[name], 0);
+      assert.ok(bytes < 20 * 1024, `${stack} ${role}: ${bytes} bytes`);
+    });
+  });
+});
+
+test('Scenario: Security, performance and tests in the diff - the body of Vue names the points of the official documentation', () => {
+  const body = profile('vue').body;
+  const has = (re, what) => assert.match(body, re, what);
+  has(/template.{0,60}user text/i, 'a template built from user text');
+  has(/innerHTML/, 'innerHTML in a render function');
+  has(/javascript:/, 'a javascript: URL');
+  has(/:style/, ':style from a CSS string a user wrote');
+  has(/:active-id/, 'a shared prop that changes for every item');
+  has(/virtualiz/i, 'a long list that is not virtualized');
+  has(/shallowRef/, 'shallowRef for large data');
+  has(/snapshot/i, 'a snapshot as the only assertion');
+  has(/host component/i, 'a composable tested through a host component');
+  has(/not how|calling its methods/i, 'test what a component does, not how');
+});
+
+test('Scenario: Size - the checklist grew the body of Vue by less than 2 KB, and the rule not to repeat analyze stays', () => {
+  const p = profile('vue');
+  assert.ok(p.body.length - VUE_BODY_BEFORE < 2048, `grew by ${p.body.length - VUE_BODY_BEFORE}`);
+  assert.match(p.body, /Do not spend time re-checking what `analyze` already enforces/);
 });
 
 test('every profile has the three parts of the body and a section of questions that is not in the body', () => {

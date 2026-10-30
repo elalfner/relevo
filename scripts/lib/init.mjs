@@ -8,8 +8,10 @@
 import { loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
-import { agentWorkflow } from './agent-workflow.mjs';
-import { isVueWeb, OPENSPEC_INSTALL, RECOMMENDED, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES } from './doctor.mjs';
+import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
+import { restrictedList } from './restricted-paths.mjs';
+import { claudeProposalText } from './restricted-settings.mjs';
+import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -27,6 +29,9 @@ const TOKEN_LINE = '          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE
 // The two official commands that install the plugin at the project scope; the person confirms this exact line.
 export const PLUGIN_PROJECT_COMMAND = 'claude plugin marketplace add elalfner/relevo --scope project --sparse .claude-plugin && claude plugin install relevo@relevo --scope project';
 const PLUGIN_PROJECT_DETAIL = 'It writes the marketplace and the enabled plugin into .claude/settings.json of this repository. It works even if the plugin is already installed for your machine, and nothing is committed for you.';
+
+const RESTRICTED_DETAIL = 'It adds the entries shown to permissions.deny and sandbox.filesystem.denyRead of .claude/settings.json of this repository, after the ones the file already has, and switches nothing on: a Read rule stops the file tools and the file commands Claude Code recognizes in a shell, and the sandbox denial applies only where you enable the sandbox. A command that reads without naming the file (grep -r) is not covered. The file is left for you to commit. If you decline, /relevo:doctor keeps warning.';
+const RESTRICTED_AGY_DETAIL = 'It adds the rules shown to permissions.deny in ~/.gemini/antigravity-cli/settings.json, after the ones the file already has. The tool matches no glob, so each rule is the exact path of a file that exists now; a file created later needs another run. A read_file rule stops its file tool and does not reach a command such as cat. If you decline, /relevo:doctor keeps warning.';
 
 const WEB_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it installs OpenSpec when it is missing (npm install --global @fission-ai/openspec); on a terminal it does nothing. The file is left for you to commit.';
 
@@ -82,9 +87,14 @@ function setPlatforms(text, platforms) {
   return text.replace(re, platformsBlock(platforms));
 }
 
-/** A commented `.relevo/stacks/<stack>.md` that adds to the plugin's profile. It adds; it never replaces. */
-export function stackProfileTemplate(stack) {
-  return `---
+/**
+ * A commented `.relevo/stacks/<stack>.md`. For a stack the plugin ships it adds to the plugin's profile and never
+ * replaces it. For a stack the plugin does not ship (`own`) it is the whole profile: the commands are left commented
+ * because one that passes without checking anything would be worse than none, and `doctor` warns until they exist.
+ */
+export function stackProfileTemplate(stack, { own = false } = {}) {
+  if (!own) {
+    return `---
 stack: ${stack}
 # Lists are added to the plugin's profile; a command that the plugin sets cannot be replaced here (use
 # platforms.<name>.checks in relevo.yml for that).
@@ -97,6 +107,35 @@ stack: ${stack}
 
 <!-- Hygiene of this project for ${stack}, in plain sentences. The developer follows it and QA audits against it.
      It is added after the plugin's text for the stack. -->
+`;
+  }
+  return `---
+stack: ${stack}
+# The plugin has no profile for ${stack}, so this file is the whole profile. Write the commands QA runs, from the
+# folder of the platform. analyze and test must not rewrite your code; only format may. Until analyze and test are
+# written (here or in platforms.<name>.checks of relevo.yml), /relevo:doctor warns.
+# commands:
+#   analyze: <a command that fails on a type, lint or vet error>
+#   test: <a command that runs the tests once>
+#   format: <a command that formats the code>
+# The tools the job needs on the runner (each is checked with \`<tool> --version\`).
+# tools: []
+# Generated files that are left out of the diff QA reviews.
+# generated: []
+# skills:
+#   dev: []
+#   qa: []
+---
+
+# ${stack}
+
+## Hygiene for the developer
+
+<!-- What the developer does and avoids in ${stack} code, in plain sentences that can be checked by reading the diff. -->
+
+## What the auditor looks for in the diff
+
+<!-- The bugs of ${stack} that analyze and test do not catch, so QA looks for them by reading. -->
 `;
 }
 
@@ -206,23 +245,65 @@ const item = (id, status, description, extra = {}) => ({ id, status, description
 const OPTIONAL = 'It is optional: if you decline, nothing else changes and /relevo:doctor keeps a note about it.';
 const MCP_ENTRY = '{ "mcpServers": { "dart": { "command": "dart", "args": ["mcp-server"] } } }';
 
-/** The optional installs and the manual steps for the recommended skills of a stack (see RECOMMENDED in doctor.mjs). */
+/**
+ * The optional installs and the manual steps for the default skills of a stack (see RECOMMENDED in doctor.mjs): one
+ * install per platform folder that lacks them, run from that folder, because the installer writes where it runs.
+ * Declining changes nothing else; init never runs them (the skill does, after a yes to each) and never writes the
+ * project's rules file or an MCP configuration file.
+ */
 function recommendedSkillItems(rec) {
-  const route = RECOMMENDED[rec.stack];
   const label = rec.stack === 'flutter' ? 'Dart and Flutter' : rec.stack;
   const items = [];
-  if (rec.claude === 'present') items.push(item(`install.recommended.${rec.stack}.claude`, 'ok', `The official ${label} skills are available to Claude Code`));
-  else if (rec.claude === 'missing') {
-    route.claude.commands.forEach((command, i) => items.push(item(`install.recommended.${rec.stack}.claude.${i === 0 ? 'marketplace' : 'plugin'}`, 'todo', `Optional: install the official ${label} plugin for Claude Code (${i + 1} of ${route.claude.commands.length})`, { install: true, optional: true, command, detail: OPTIONAL })));
-  }
-  if (rec.antigravity === 'present') items.push(item(`install.recommended.${rec.stack}.antigravity`, 'ok', `The official ${label} skills are in .agents/skills`));
+  const where = (path) => (path === '.' ? 'the root' : path);
+  const installs = (agent, missing, writes) => missing.forEach((m) => {
+    const id = `install.recommended.${rec.stack}.${agent === 'claude-code' ? 'claude' : 'antigravity'}.${m.path === '.' ? 'root' : m.path}`;
+    const tool = agent === 'claude-code' ? 'Claude Code' : 'the Antigravity CLI';
+    items.push(item(id, 'todo', `Optional: install the default ${label} skills (${m.skills.join(', ')}) for ${tool} into ${where(m.path)}; it writes ${writes} and skills-lock.json there: commit both`, { install: true, optional: true, command: recommendedInstallCommand({ stack: rec.stack, skills: m.skills, agent, path: m.path }), detail: OPTIONAL }));
+  });
+  if (rec.claude === 'present') items.push(item(`install.recommended.${rec.stack}.claude`, 'ok', `The default ${label} skills are committed to the repository (Claude Code)`));
+  else installs('claude-code', rec.claudeMissing, '.claude/skills');
+  if (rec.antigravity === 'present') items.push(item(`install.recommended.${rec.stack}.antigravity`, 'ok', `The default ${label} skills are in .agents/skills`));
   else if (rec.antigravity === 'missing') {
-    route.antigravity.commands.forEach((command) => items.push(item(`install.recommended.${rec.stack}.antigravity`, 'todo', `Optional: install the official ${label} skills for the Antigravity CLI (it also writes skills-lock.json: commit both)`, { install: true, optional: true, command, detail: OPTIONAL })));
+    installs('universal', rec.antigravityMissing, '.agents/skills');
     items.push(item(`manual.recommended.${rec.stack}.antigravity-ide`, 'manual', `Optional, Antigravity IDE: install "${label}" from Settings > Customizations > Build with Google Plugins`));
     items.push(item(`manual.recommended.${rec.stack}.mcp`, 'manual', `Optional, Antigravity CLI: add the ${label} MCP server to .agents/mcp_config.json (or ~/.gemini/config/mcp_config.json)`, { checklist: [MCP_ENTRY] }));
   }
-  if (rec.claude === 'missing' || rec.antigravity === 'missing') items.push(item(`manual.recommended.${rec.stack}.rules`, 'manual', `Optional: plugins do not load the official ${label} rules; copy the ones you want from https://github.com/flutter/agent-plugins/tree/main/rules into the rules file of the project`));
+  if (rec.claude === 'missing' || rec.antigravity === 'missing') {
+    items.push(item(`manual.recommended.${rec.stack}.commit`, 'manual', `Commit the new skills folder and skills-lock.json with the other files Relevo wrote: the cloud runner reads only what is committed`));
+    items.push(item(`manual.recommended.${rec.stack}.rules`, 'manual', `Optional: the official ${label} rules are not installed with the skills; copy the ones you want from https://github.com/flutter/agent-plugins/tree/main/rules into the rules file of the project`));
+  }
   return items;
+}
+
+/**
+ * The optional installs for Laravel Boost, one per Laravel platform that lacks it or lacks its skills committed. The
+ * install runs from the folder of the platform (where `artisan` is). Boost may write the folders of other agents too,
+ * so the person is told to commit what they use. `init` runs none of it and never writes the rules file.
+ */
+function laravelBoostItems(platforms) {
+  if (platforms.length === 0) return [];
+  const items = [];
+  platforms.forEach((x) => {
+    const [require, install] = boostInstallCommands(x.path);
+    const where = x.path === '.' || x.path === '' ? 'the root' : x.path;
+    if (!x.boost) items.push(item(`install.recommended.laravel.boost.${x.name}`, 'todo', `Optional: install Laravel Boost in ${where}, which installs skills for the packages the project uses (composer require laravel/boost --dev)`, { install: true, optional: true, command: require, detail: OPTIONAL }));
+    if (!x.skillsCommitted) items.push(item(`install.recommended.laravel.skills.${x.name}`, 'todo', `Optional: install the skills of Laravel Boost in ${where} (boost:install --skills); it writes .claude/skills, boost.json and the folders of the other agents it finds`, { install: true, optional: true, command: install, detail: OPTIONAL }));
+  });
+  if (items.length === 0) return [item('install.recommended.laravel', 'ok', 'Laravel Boost is installed and its skills are committed to the repository')];
+  items.push(item('manual.recommended.laravel.commit', 'manual', 'Commit .claude/skills, boost.json, composer.json and composer.lock (and the folders of the other agents you use, such as .agents/ or .kiro/): Boost may write them, Laravel says they can be kept out of git, and the cloud runner reads only what is committed'));
+  return items;
+}
+
+/**
+ * The optional install of the Vue skills of a community project. Offered, not recommended: they are not official and
+ * their author calls them an early experiment, so `doctor` says nothing when they are absent.
+ */
+function offeredSkillItems(offered) {
+  return offered.map((x) => {
+    const where = x.path === '.' || x.path === '' ? 'the root' : x.path;
+    if (x.missing.length === 0) return item(`install.offered.${x.stack}.${x.name}`, 'ok', `The ${x.stack} skills of the community project are committed in ${where}`);
+    return item(`install.offered.${x.stack}.${x.name}`, 'todo', `Optional, not official: install ${x.skills.join(' and ')} for ${x.stack} into ${where}, from the community project vuejs-ai/skills, which calls itself an early experiment; it writes .claude/skills and skills-lock.json there: commit both`, { install: true, optional: true, command: recommendedInstallCommand({ stack: x.stack, skills: x.missing, path: x.path }), detail: OPTIONAL });
+  });
 }
 
 /**
@@ -266,6 +347,8 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   // Skills a stack works better with: optional installs (declining changes nothing), and the steps init never does itself.
   const rec = facts.recommendedSkills;
   if (rec) items.push(...recommendedSkillItems(rec));
+  items.push(...laravelBoostItems(facts.laravelBoost ?? []));
+  items.push(...offeredSkillItems(facts.offeredSkills ?? []));
 
   // What a browser review of each Vue platform needs: Playwright in its development dependencies, and its Chromium.
   Object.entries(configuredPlatforms).filter(([, p]) => isVueWeb(p)).forEach(([name, p]) => {
@@ -291,15 +374,33 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   else if (facts.webHook?.unreadable) items.push(item('install.web-hook', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the hook that installs OpenSpec in web sessions'));
   else if (facts.webHook) items.push(item('install.web-hook', 'todo', 'Add a hook that installs OpenSpec at the start of a web session of Claude Code, where it is missing (the changed .claude/settings.json is left for you to commit)', { install: true, command: `node \${CLAUDE_PLUGIN_ROOT}/scripts/web-hook.mjs`, hook: WEB_HOOK_COMMAND, detail: WEB_HOOK_DETAIL }));
 
+  // The read denials of restricted files, for a person's own agents: shown with their exact text, written only after a yes.
+  const restricted = facts.restricted;
+  if (restricted) {
+    const missing = restricted.claude.missing;
+    if (restricted.claude.unreadable.includes('.claude/settings.json')) items.push(item('install.restricted-deny', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the read denials for the restricted files'));
+    else if (missing.deny.length === 0 && missing.denyRead.length === 0) items.push(item('install.restricted-deny', 'ok', 'The Claude Code settings of this repository deny the read of the restricted files (.claude/settings.json)'));
+    else items.push(item('install.restricted-deny', 'todo', 'Optional: deny the read of the restricted files (environment files, private keys, credential files, secrets/ and restricted_paths) in .claude/settings.json, as Read rules and as sandbox read denials; your other entries are kept', { install: true, optional: true, command: 'node ${CLAUDE_PLUGIN_ROOT}/scripts/restricted-settings.mjs', entries: claudeProposalText(missing), detail: RESTRICTED_DETAIL }));
+    if (restricted.antigravity.used && restricted.antigravity.rules.length > 0) {
+      items.push(item('install.restricted-deny.antigravity', 'todo', 'Optional: deny the read_file of the restricted files that exist in this folder in the Antigravity settings of your user, one rule for each, by exact path', { install: true, optional: true, command: 'node ${CLAUDE_PLUGIN_ROOT}/scripts/restricted-settings.mjs --agent antigravity', entries: JSON.stringify({ permissions: { deny: restricted.antigravity.rules } }, null, 2), detail: RESTRICTED_AGY_DETAIL }));
+    }
+  }
+
   // relevo.yml
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));
   else items.push(item('config', 'todo', 'Create relevo.yml from the answers', { content: renderConfig(templates.config, { base, release, ...answers }) }));
 
-  // optional stack profiles of the repository (created only when asked for; init never commits them, the person does)
-  (answers.stackProfiles ?? []).forEach((stack) => {
+  // profile files of the repository (init never commits them, the person does): the ones asked for, and one for each
+  // stack the plugin does not ship, where the file is the whole profile, unless the person declined it
+  const shipped = templates.shippedStacks ?? null;
+  const isOwn = (stack) => shipped !== null && !shipped.includes(stack);
+  const declined = answers.declinedStackProfiles ?? [];
+  const ownStacks = [...new Set(Object.values(configuredPlatforms).map((p) => p?.stack).filter((stack) => stack && isOwn(stack) && !declined.includes(stack)))];
+  [...new Set([...(answers.stackProfiles ?? []), ...ownStacks])].forEach((stack) => {
     const path = `.relevo/stacks/${stack}.md`;
+    const own = isOwn(stack);
     if ((current.stackProfiles ?? {})[stack]) items.push(item(`stack-profile.${stack}`, 'ok', `${path} exists`));
-    else items.push(item(`stack-profile.${stack}`, 'todo', `Create ${path}, a commented profile that adds to the plugin's (left for you to commit)`, { path, content: stackProfileTemplate(stack) }));
+    else items.push(item(`stack-profile.${stack}`, 'todo', own ? `Create ${path}, the profile of ${stack}, which the plugin does not ship: write its commands, then commit it (left for you to commit; /relevo:doctor warns until analyze and test exist)` : `Create ${path}, a commented profile that adds to the plugin's (left for you to commit)`, { path, content: stackProfileTemplate(stack, { own }) }));
   });
 
   // labels
@@ -341,7 +442,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   WORKFLOW_FILES.forEach((file) => {
     if (runs === 'local' && cloudFiles.includes(file)) return;
     const shared = file === 'relevo-go.yml' ? credentialLine(templates.workflows[file], credential) : templates.workflows[file];
-    const wanted = runnerLine(agentWorkflow(shared, build, templates.agentBlocks), runnerLabels);
+    const wanted = runnerLine(withRestricted(agentWorkflow(shared, build, templates.agentBlocks), restrictedList(facts.config)), runnerLabels);
     const have = current.workflows[file] ?? null;
     // The state of the update is asked for only when the file exists and differs: it may need the network.
     const upgrade = () => (typeof upgrades === 'function' ? upgrades(file) : upgrades[file]);
@@ -386,7 +487,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   const links = facts.config?.links ?? answers.links ?? [];
   if (links.length > 0) {
     if ((facts.secrets ?? []).includes('RELEVO_LINKS_TOKEN')) items.push(item('manual.links-token', 'ok', 'The RELEVO_LINKS_TOKEN secret exists (init never reads it)'));
-    else items.push(item('manual.links-token', 'manual', `If ${links.join(', ')} ${links.length > 1 ? 'are' : 'is'} private, create a fine-grained token with read access to issues and pull requests and store it yourself as the secret RELEVO_LINKS_TOKEN (init never reads or writes it; Relevo only reads with it, and public repositories need none)`));
+    else items.push(item('manual.links-token', 'manual', `If ${links.join(', ')} ${links.length > 1 ? 'are' : 'is'} private, create a fine-grained token with read access to issues, pull requests and contents and store it yourself as the secret RELEVO_LINKS_TOKEN (init never reads or writes it; Relevo only reads with it, and public repositories need none)`));
   }
   if (hasSupabase) {
     items.push(item('manual.supabase-mcp', 'manual', 'To explore your Supabase database in Claude Code or Antigravity during /relevo:think, consider connecting the Supabase MCP server (see https://supabase.com/docs/guides/ai-tools)'));

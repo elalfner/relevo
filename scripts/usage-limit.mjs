@@ -4,8 +4,8 @@
 //   exit 0: the log shows it   exit 1: it does not, or the file is missing or unreadable
 // The final step of the build job uses it to say "label the issue ready again later" instead of the generic text.
 
-import { readFileSync } from 'node:fs';
 import { reachedUsageLimit } from './lib/run-usage.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const i = process.argv.indexOf('--file');
 let text = '';

@@ -83,7 +83,7 @@ test('the unattended agent has a closed tool list and no web access', () => {
 
 // ---------- 6.4 action parameters (checked against the action's documentation, see docs/action-parameters.md)
 
-const DOCUMENTED = new Set(['anthropic_api_key', 'claude_code_oauth_token', 'github_token', 'allowed_bots', 'prompt', 'claude_args']);
+const DOCUMENTED = new Set(['anthropic_api_key', 'claude_code_oauth_token', 'github_token', 'allowed_bots', 'prompt', 'claude_args', 'settings']);
 const DEPRECATED = ['mode', 'direct_prompt', 'override_prompt', 'custom_instructions', 'max_turns', 'model', 'fallback_model', 'allowed_tools', 'disallowed_tools', 'mcp_config', 'claude_env'];
 
 test('the go workflow uses only documented inputs of the action and none of the deprecated ones', () => {

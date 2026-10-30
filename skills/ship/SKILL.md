@@ -42,7 +42,7 @@ It prints a decision and exits 0 when the pull request may be merged, 1 when it 
 
 Record the head the approval was given on, to use after the archive: `git fetch origin <branch>` then `git rev-parse origin/<branch>`. Call it `<baseline>`.
 
-Then scan what will be merged. If it reports anything, stop and show the file and line:
+Then scan what will be merged. First ask whether another worktree holds the branch, because `git switch` refuses it with an error that names nothing: `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch>`. If it exits 1 it prints the path of that worktree (a run of `go` that failed keeps its worktree, for example): stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path, and that the person can ship from there or remove it with `git worktree remove` and run ship again. If the scan reports anything, stop and show the file and line:
 
 ```bash
 git fetch origin <base> <branch>
@@ -119,7 +119,13 @@ The subject is the pull request title, which already ends with the issue number.
 
 1. Close the issue explicitly if it is still open: `gh issue view $ARGUMENTS --json state,stateReason`, then `gh issue close $ARGUMENTS --reason completed`. GitHub only closes an issue by itself when the merge goes into the repository's default branch, and the base branch here usually is not.
 2. Remove every Relevo label: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --clear --current "<current labels>"`, applied with `gh issue edit`.
-3. Tidy the local copy: `git switch <base>`, `git pull --ff-only origin <base>`, and `git branch -d <branch>` (ignore it if the branch is already gone).
+3. Tidy the local copy, but only where that is possible: in the main checkout, when no other worktree holds the base branch.
+
+   ```bash
+   [ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ] && ! git worktree list --porcelain | grep -qx "branch refs/heads/<base>"
+   ```
+
+   If it succeeds, run `git switch <base>`, `git pull --ff-only origin <base>`, and `git branch -d <branch>` (ignore it if the branch is already gone). If it does not (a separate worktree, or the base branch is checked out elsewhere), run none of them, because `git branch -d` also fails on the branch the working tree is standing on: say which branch the working tree stays on. If one of the commands fails, say so as a note: the pull request is already merged, so it never changes the outcome or what the report says.
 
 ## Report
 

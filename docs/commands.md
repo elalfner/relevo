@@ -46,15 +46,28 @@ What to build, the path of a saved agreement, or the number of an issue to rewri
 
 ### `/relevo:go [issue-number] [--local] [--decision <base64>]`
 
-The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `/relevo:go` in a Claude Code session builds it on your machine in a worktree of its own (so two can run at once), and `--local` does the same in a separate process with the closed tool lists of the workflow. `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
+The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `/relevo:go` in a Claude Code session builds it on your machine in a worktree of its own (so two can run at once), and `--local` builds in a separate process with the closed tool lists and the limits of the workflow (the worktree is the same; the rest differs, see below). `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
 
 ```text
 /relevo:go 42 --local
 ```
 
+#### In the session or on its own
+
+| | `/relevo:go 42` in a session | `/relevo:go 42 --local` |
+|---|---|---|
+| Who builds | your own Claude Code session | a new `claude -p` process (`agy -p` with Antigravity) |
+| Tools | those of your session | the closed lists of the workflow |
+| Limits | none of `relevo.yml` | the turn and cost limits of `relevo.yml` |
+| What you see | the build, live; you can step in | the output when it ends |
+| Context | uses the context of your session | does not touch it |
+| Worktree | its own, under `.relevo-worktrees/` | the same place |
+
+Use the session when you want to watch and step in; use `--local` to leave it running under the same limits as the cloud.
+
 ### `/relevo:review [issue-number]`
 
-The number of a `built` issue. It starts the review on the device or in a browser, shows a short brief, the shot list and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
+The number of a `built` issue. It starts the review on the device, in a browser or, for a backend such as Laravel, with the project's tests, shows a short brief, the shot list (none for a backend) and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
 
 ```text
 /relevo:review 42
@@ -120,6 +133,17 @@ The report starts with a line that says what it judged: the repository, and whet
 - **A micro-fix is a commit** before the pull request opens.
 - **It tests the current code**: it brings in the remote branch before it merges the base, and it asks you to confirm in writing if you are not the assignee.
 - **No second pull request**: an existing one for the branch is reused, and a rejected push stops with the reason.
+
+## Reviewing a Laravel backend
+
+A Laravel platform has no screen, so its review has no device, no browser and no screenshot. The checklist still has one line per scenario, and you still confirm every line.
+
+- **With `review.autopilot` `off`** (the default) you run the project's tests in your terminal and tell the review the result: `ran <exit code>`, with `--tests <n>` when you know how many ran. Then you write `ok` or `fail` for each line, as in any review.
+- **With `precheck` or `verify`** the agent runs the existing feature test that covers each line and records the test and its exit code. It never writes a test, a filter that matches no test proves nothing, and a line with no test stays for you. The pull request says which runs were yours and which were the agent's.
+- **The audit reads the log since the review started**, by default `storage/logs`, and never empties or deletes it. A test run that passes writes nothing there, so a recorded run is what shows that the code was exercised: a clean run with a quiet log is `REVIEW PASSED`, and no run at all is `REVIEW INCONCLUSIVE`.
+- **The database matters.** Before it runs a test the review reads the database that `phpunit.xml` declares, never your `.env`. In-memory SQLite, which a new project uses, needs nothing; any other database needs your written confirmation that it is not production.
+- **A server is optional.** Add a `serve` block to the `review` block of `.relevo/stacks/laravel.md` ([Stacks and platforms](stacks.md)) and, with `precheck` or `verify`, the agent can start it on a free local port for the lines that need requests. Without it, no server is started.
+- **Missing dependencies stop it**: when there is no `vendor/`, the review gives the `composer install` command for you to run and installs nothing.
 
 ## Letting the agent help with the review
 

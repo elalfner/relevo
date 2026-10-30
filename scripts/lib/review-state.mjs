@@ -9,10 +9,19 @@ const same = (a, b) => a.class === b.class && a.excerpt === b.excerpt;
 
 export const AUTOPILOT_MODES = ['off', 'precheck', 'verify'];
 
-export function newState(items, { autopilot = 'off' } = {}) {
+export const KINDS = ['device', 'browser', 'api'];
+
+/**
+ * `kind` is the kind of the review adapter. An api review also keeps `log` (the snapshot of the log files when it
+ * started) and `runs` (the test runs, by the person or by the agent).
+ */
+export function newState(items, { autopilot = 'off', kind = 'device', log = null } = {}) {
   if (!AUTOPILOT_MODES.includes(autopilot)) throw new Error(`autopilot must be one of ${AUTOPILOT_MODES.join(', ')}`);
+  if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(', ')}`);
   return {
     autopilot,
+    kind,
+    ...(kind === 'api' ? { log, runs: [] } : {}),
     envConfirmed: false,
     items: items.map((i) => ({ id: i.id, title: i.title, status: 'pending', note: null, precheck: null, auto: null })),
     captures: [],
@@ -80,6 +89,8 @@ export function syncState(state, items) {
   state.audit = null;
   state.waivers = [];
   state.agreed = false;
+  // The runs were of the old code: the tests must run again.
+  if (state.kind === 'api') state.runs = [];
   // The code changed, so the review script must be read by QA again.
   state.qaScript = null;
   return state;
@@ -132,12 +143,57 @@ export function confirmEnv(state) {
   return state;
 }
 
+/**
+ * Record a test run of an api review: { exit, by, filter, tests, line, failing }. A run by the agent needs the agent to be
+ * driving (autopilot precheck or verify and the data confirmed); a run by the person is theirs and needs nothing.
+ */
+export function recordRun(state, run) {
+  if (state.kind !== 'api') throw new Error('test runs are recorded only in an api review');
+  const exit = Number(run.exit);
+  if (!Number.isInteger(exit) || exit < 0) throw new Error('say the exit code of the run: ran <exit code> [--by person|agent] [--filter <f>] [--tests <n>] [--line <n>]');
+  const by = run.by ?? 'person';
+  if (!['person', 'agent'].includes(by)) throw new Error('a run is by "person" or "agent"');
+  if (by === 'agent') assertDriving(state);
+  if (run.line !== undefined && !state.items.some((i) => i.id === Number(run.line))) throw new Error(`there is no checklist item ${run.line}`);
+  const tests = run.tests === undefined ? undefined : Number(run.tests);
+  if (tests !== undefined && (!Number.isInteger(tests) || tests < 0)) throw new Error('--tests is the number of tests that ran');
+  state.runs ??= [];
+  state.runs.push({
+    exit, by,
+    ...(run.filter ? { filter: run.filter } : {}),
+    ...(tests !== undefined ? { tests } : {}),
+    ...(run.line !== undefined ? { line: Number(run.line) } : {}),
+    ...(run.failing?.length ? { failing: run.failing } : {}),
+  });
+  return state;
+}
+
+/** The latest run of the agent for a line, or undefined. */
+const agentRunOf = (state, id) => [...(state.runs ?? [])].reverse().find((r) => r.by === 'agent' && r.line === id);
+
+/** An api line is proved only by a run of the agent for that line that exited 0 and ran at least one test. */
+function assertProvedByRun(state, id) {
+  if (state.kind !== 'api') return;
+  const run = agentRunOf(state, id);
+  if (!run) throw new Error(`line ${id} has no test run of the agent: run its test and record it with "ran <exit code> --by agent --line ${id} --tests <n> --filter <name>"`);
+  if (run.exit !== 0) throw new Error(`the last run for line ${id} exited ${run.exit}: it does not prove the line`);
+  if (!(run.tests >= 1)) throw new Error(`the last run for line ${id} ran no test (${run.tests ?? 'count not given'}): a filter that matches nothing proves nothing`);
+}
+
+/** The "Test runs" section of the pull request body: which runs were the person's and which the agent's; empty with none. */
+export function runsSection(state) {
+  const runs = state.runs ?? [];
+  if (runs.length === 0) return '';
+  return ['## Test runs', '', ...runs.map((r) => `- by the ${r.by}${r.line ? ` for line ${r.line}` : ''}${r.filter ? `, filter \`${String(r.filter).replace(/`/g, "'")}\`` : ''}: exit ${r.exit}${r.tests !== undefined ? `, ${r.tests} test(s)` : ''}`), ''].join('\n');
+}
+
 /** The agent's own result for a line, apart from the person's confirmation. Modes precheck and verify only. */
 export function precheckItem(state, id, result, note = null) {
   assertDriving(state);
   if (!['ok', 'fail'].includes(result)) throw new Error('a pre-check result is ok or fail');
   const item = state.items.find((i) => i.id === id);
   if (!item) throw new Error(`there is no checklist item ${id}`);
+  if (result === 'ok') assertProvedByRun(state, id);
   item.precheck = result;
   if (note) item.note = note;
   return state;
@@ -151,6 +207,7 @@ export function autoItem(state, id, how) {
   if (!why) throw new Error('say how the line was verified: auto <number> <the assertion, finder or log that proved it>');
   const item = state.items.find((i) => i.id === id);
   if (!item) throw new Error(`there is no checklist item ${id}`);
+  assertProvedByRun(state, id);
   item.status = 'ok';
   item.precheck = 'ok';
   item.auto = why;

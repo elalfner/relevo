@@ -10,6 +10,14 @@ English · [Español](execution.es.md)
 - **Cloud only** is the same, with people choosing not to build by hand. Use it to build without anyone waiting.
 - **Machines only**: `/relevo:init` does not add the `go` and queue workflows. Each person builds with their own Claude session and quota, with no model secret in the repository.
 
+## Which branch the cloud reads
+
+A label event runs the workflows of the repository's default branch, and those workflows check out that branch, so the cloud also reads `relevo.yml` from the default branch. A build on your machine reads the `relevo.yml` of your working copy instead.
+
+Where a build starts does not depend on the default branch: the branch of an issue always starts from `origin/<branches.base>`, in the cloud and on a machine, and its pull request targets the base branch.
+
+With `main` as the default branch and `dev` as the base, a build still branches from `dev`, but a change to `relevo.yml` or to a workflow on `dev` reaches the cloud only after `dev` is promoted to `main`. Making the base branch the default branch makes those changes apply as soon as they are merged into it, and a pull request body with `Closes #<n>` then closes the issue too. `/relevo:doctor` warns when `relevo.yml` on the default branch differs from the one on the base branch.
+
 ## Pause the cloud without a pull request
 
 Set the repository variable `RELEVO_CLOUD_GO` to `off` (Settings > Secrets and variables > Actions > Variables). A `ready` label then starts nothing and the queue dispatches nothing, and the issue stays `ready` for a local run. Delete the variable, or set anything else, to resume, then apply `relevo:ready` again to each issue: the label events that were skipped are not replayed. It has to be a variable and not a file because a label event runs the workflows of the default branch, so a change to a file would need a pull request first.
@@ -56,6 +64,23 @@ What Relevo assumes of the runner:
 - **Antigravity needs x86-64 Linux.** The pinned binary is `linux-x64`.
 
 A runner with `limits.concurrent_agents: 1` is the same machine that runs your pull request checks, so a build of up to 60 minutes holds them up. Add runners with the same labels rather than raising the limit.
+
+### Several runners on one machine
+
+Each runner process runs one job at a time, so several runners on one machine are how builds run in parallel there. What they keep apart and what they share:
+
+| Kept apart by each runner | Shared by every runner of the machine |
+|---|---|
+| The workspace (its own `_work` folder) | The home of the runner's user (`~/.claude` and the files the tools keep there) |
+| `$RUNNER_TEMP`, where each job installs OpenSpec and the plugin | The package caches of the tools (pub, composer, gradle, npm) |
+| The tool cache of the toolchain actions | The Docker daemon |
+| The branch of the issue (one build per issue) | The ports of the machine |
+
+A runner registered under your own user also shares `~/.claude` with your interactive Claude Code sessions. Concurrent writes to a shared cache or settings file can collide; this was not tried here. Registering each runner under its own user of the machine, or in its own container, removes the shared home and caches. It does not remove the Docker daemon or the ports.
+
+- **Builds that can run at once** are at most the smaller of `limits.concurrent_agents` and the free runners. Every Relevo workflow (`go`, `review`, `ship`, `queue`, `sla`, `digest`) runs on the same labels, so register more runners than `limits.concurrent_agents`: with three runners and a limit of 3, three builds take every runner and hold up the checks of your pull requests and the other workflows.
+- **The Supabase stack does not parallelise on one machine.** Its checks start containers on the machine (see [Stacks](stacks.md)), and two such builds at the same time can collide on the ports and the containers. Do not let two builds for a Supabase platform run together on one machine, or give each runner its own machine.
+- **`limits.concurrent_agents` is not exact when gates overlap.** The gate of an issue counts the issues labelled `relevo:building`, and the gate of one issue does not wait for another's. With a single runner the gates queue behind the running job and the limit holds. With two or more runners, or on the runners of GitHub, two issues labelled together can both find a free slot and start, so the limit can be exceeded by the number of gates that overlap. The next evaluation of the queue sees the real count and starts nothing more until a slot frees. This is a known limit, not a setting to tune.
 
 The agent's code runs with the permissions of the runner's user, which on your own machine can reach your network. An ephemeral runner, or a container, is the barrier; see [Security](security.md#what-it-does-not-protect). Checked on one self-hosted runner: `$RUNNER_TEMP` is emptied between jobs, but `claude-code-action` keeps its state in the home of the runner's user (settings, caches and the transcripts of its sessions under `~/.claude/projects`), which Relevo does not remove; clean it yourself if the transcripts, which hold what the agent read and wrote, should not stay.
 
@@ -107,11 +132,45 @@ It shows the phase and the attempt, not what a subagent is doing inside them. A 
 
 It runs `scripts/go-local.mjs` of the plugin, which runs `claude -p "/relevo:go 42"` (or `agy -p` when `agent.build: antigravity`) in a separate git worktree next to your repository, so your uncommitted changes do not matter, with the same turn and cost limits and the same closed tool lists as the workflow. The worktree is removed when the run ends cleanly and kept, with its path printed, when it does not. `--dry-run` shows what it would do.
 
-In a Claude Code session, running `/relevo:go <issue>` without `--local` builds in a worktree of its own too, so you can run two at once and keep working in your checkout. The skill makes it with `scripts/go-worktree.mjs` (next to your repository, in `.relevo-worktrees/`, from `origin/<base>`, the same place as `--local`), enters it, and builds there; you see the build in your session. When the issue ends `built`, or a gate stops it before anything is built, the worktree is removed; after a failed run it stays and its path is printed. If the worktree of that issue already exists (another run is building it, or a failed one left it) the run stops and tells you the command that removes it. Inside a worktree that already exists, such as one made by `--local`, it builds where it is. Use `--local` when you want the build in its own process with the closed tool lists of the workflow. `/relevo:review` still runs in your main checkout.
+In a Claude Code session, running `/relevo:go <issue>` without `--local` builds in a worktree of its own too, so you can run two at once and keep working in your checkout. The skill makes it with `scripts/go-worktree.mjs` (next to your repository, in `.relevo-worktrees/`, from `origin/<base>`, the same place as `--local`), enters it, and builds there; you see the build in your session. When the issue ends `built`, or a gate stops it before anything is built, the worktree is removed; after a failed run it stays and its path is printed. If the worktree of that issue already exists (another run is building it, or a failed one left it) the run stops and tells you the command that removes it. Inside a worktree that already exists, such as one made by `--local`, it builds where it is. When to use each is in [In the session or on its own](commands.md#in-the-session-or-on-its-own). `/relevo:review` still runs in your main checkout; the review of a Laravel backend needs no device, only the project's tests and its `vendor/`.
 
 In Antigravity interactive chat sessions, running `/relevo:go <issue>` automatically runs the build inside an isolated subagent with `Workspace: 'share'`. This creates an ephemeral worktree automatically, allowing multiple chat tabs to build different issues concurrently without branch or OpenSpec collisions. The main repository root remains clean on the base branch, reserved for the developer and interactive `/relevo:review` sessions with connected devices. Upon opening a pull request, `review` restores the root workspace to the base branch, only in the main checkout and only when no other worktree holds that branch; it never fails the review for it.
 
 `/relevo:status` lists the `ready` issues assigned to you with the command to run when the cloud is not building, and alerts about an issue that has been `building` with no activity for `limits.building_alert_hours` hours, with how to restart it.
+
+`/relevo:review`, `/relevo:ship` and `/relevo:fix` run where you start them, in your main checkout or in a worktree you opened (for example with the Worktree button of Claude Code). In a worktree, `review` and `ship` do not switch back to the base branch afterwards, and `ship` does not delete the local branch: the worktree stays on its branch and the report says so. If another worktree holds the branch of the issue (a failed `go` keeps its worktree), they stop before changing anything and name that worktree and its path.
+
+### Worktrees from your base branch
+
+The Worktree button of Claude Code branches from the default branch of the remote (`origin/HEAD`) and cannot be given a branch name. If you work on `dev` and the default branch is `main`, every worktree it makes starts from `main`. `go` is not affected: it always builds from `origin/<branches.base>`. Setting `worktree.baseRef` to `"head"` starts from your local `HEAD` instead, which is stale unless the main checkout sits on the base branch and is up to date, so it is not the answer here.
+
+If you want the button to start from your base branch, a `WorktreeCreate` hook can create the worktree itself. This is optional and Relevo does not install it. Save this script (change `dev` to your `branches.base`) as `~/.claude/hooks/worktree-from-base.sh` and make it executable:
+
+```bash
+#!/bin/bash
+in=$(cat)
+name=$(echo "$in" | jq -r .name)
+cwd=$(echo "$in" | jq -r .cwd)
+common=$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir) || exit 1
+root=$(dirname "$common")
+git -C "$root" fetch -q origin dev >&2 || exit 1
+git -C "$root" worktree add -q -b "worktree-$name" "$root/.claude/worktrees/$name" origin/dev >&2 || exit 1
+echo "$root/.claude/worktrees/$name"
+```
+
+Then register it in `.claude/settings.local.json` (a new session is needed for a hook to load):
+
+```json
+{
+  "hooks": {
+    "WorktreeCreate": [
+      { "hooks": [{ "type": "command", "command": "$HOME/.claude/hooks/worktree-from-base.sh" }] }
+    ]
+  }
+}
+```
+
+The hook prints only the path of the worktree on stdout; everything else goes to stderr. What it gives up: it replaces the default creation, so `.worktreeinclude` is no longer processed (copy files such as `.env` by hand) and the branch is `worktree-<name>`, not the prefix of the app. Checked with Claude Desktop on one machine: the Worktree button ran the hook with `session_id`, `cwd` and `name` as input and created the worktree from `origin/dev`. The Claude Code documentation describes the same event for the command line, which was not tried here.
 
 ## With Antigravity
 

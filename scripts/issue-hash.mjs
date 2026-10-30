@@ -5,9 +5,9 @@
 //   node scripts/issue-hash.mjs --repo owner/name --issue 42                   prints the hash
 // exit 2: bad arguments or the issue could not be read.
 
-import { readFileSync } from 'node:fs';
 import { realGh } from './lib/github.mjs';
 import { checkIssueHash, issueHash, shortHash } from './lib/issue-hash.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

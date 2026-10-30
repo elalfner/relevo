@@ -5,7 +5,8 @@
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { isRestricted } from '../restricted-paths.mjs';
 import { PLUGIN_NAME, renderAntigravity } from './antigravity.mjs';
 import { readSource } from './source.mjs';
 
@@ -48,8 +49,10 @@ function writeTree(rendered, { packageRoot, dest }) {
     mkdirSync(dirname(join(dest, f.path)), { recursive: true });
     writeFileSync(join(dest, f.path), f.content);
   }
-  for (const d of rendered.copy.dirs) cpSync(join(packageRoot, d), join(dest, d), { recursive: true });
-  for (const f of rendered.copy.files) if (existsSync(join(packageRoot, f))) cpSync(join(packageRoot, f), join(dest, f));
+  // What is copied is the plugin's own folders; a restricted file is never one of them, whatever a package holds.
+  const allowed = (src) => !isRestricted(relative(packageRoot, src));
+  for (const d of rendered.copy.dirs) cpSync(join(packageRoot, d), join(dest, d), { recursive: true, filter: allowed });
+  for (const f of rendered.copy.files) if (existsSync(join(packageRoot, f)) && allowed(join(packageRoot, f))) cpSync(join(packageRoot, f), join(dest, f));
 }
 
 const where = { project: (root) => `.agents/plugins/relevo of ${root}, so commit it to share it`, machine: () => '~/.gemini/config/plugins/relevo, for the IDE, the App and the CLI' };

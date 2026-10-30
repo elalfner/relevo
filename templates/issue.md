@@ -38,7 +38,7 @@ Discarded: <the alternative> (<why not>)
 
 ## Code pointers
 
-<!-- Optional. What the exploration found in the code; the builder checks it before trusting it. -->
+<!-- Optional. What the exploration found in the code; the builder checks it before trusting it. A file of a repository in links is written owner/repo:path and is fetched for the builder; with the design references, at most five. -->
 
 - `<path/to/file>`: <why it matters>
 
@@ -68,7 +68,7 @@ Discarded: <the alternative> (<why not>)
 
 ## Design reference
 
-<!-- Optional. What the screen must look like: one bullet per reference, saying what must match (structure, spacing, typography, colour, states). A file of this repository, a picture pasted into this issue, a file of a linked repository written owner/repo:path, or example code in a fenced block. At most five. -->
+<!-- Optional. What the screen must look like: one bullet per reference, saying what must match (structure, spacing, typography, colour, states). A file of this repository, a picture pasted into this issue, a file of a linked repository written owner/repo:path (text, or a PNG, JPEG, GIF or WebP image), or example code in a fenced block. At most five, counting the linked code pointers. -->
 
 - `<path/to/reference>`: <what must match>
 

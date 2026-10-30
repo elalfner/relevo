@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { downloadAttachment, FILES_MAX, fetchReferences, fetchRepoFile, HOPS_MAX, IMAGE_MAX, isText, sniffImage, TEXT_MAX } from '../scripts/lib/design-fetch.mjs';
+import { downloadAttachment, FILES_MAX, fetchReferences, fetchRepoFile, HOPS_MAX, IMAGE_MAX, isText, sniffImage, TEXT_MAX, unreadableReason } from '../scripts/lib/design-fetch.mjs';
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
 const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(32, 2)]);
@@ -110,22 +110,63 @@ test('a file named .png whose bytes are not an image, an SVG and an error status
   assert.match(boom.reason, /download failed: socket hang up/);
 });
 
-const fileJson = (text, over = {}) => JSON.stringify({ type: 'file', size: Buffer.byteLength(text), encoding: 'base64', content: Buffer.from(text).toString('base64'), ...over });
-
-test('a text file of a linked repository is read through gh and decoded', async () => {
-  const gh = (args) => {
-    assert.deepEqual(args, ['api', 'repos/acme/design/contents/components/Card.vue']);
-    return fileJson('<template><div class="card"/></template>');
+const meta = (size, over = {}) => JSON.stringify({ type: 'file', size, ...over });
+/** A linked repository: the metadata call answers `meta`, the raw call answers `bytes`; every call is recorded. */
+function linked(bytes, over = {}) {
+  const calls = [];
+  const buf = Buffer.from(bytes);
+  return {
+    calls,
+    gh: (args) => { calls.push(['meta', ...args]); return meta(buf.length, over); },
+    ghRaw: (args) => { calls.push(['raw', ...args]); return buf; },
   };
-  const r = await fetchRepoFile({ repo: 'acme/design', path: 'components/Card.vue' }, { gh });
+}
+
+test('a text file of a linked repository is read through gh: metadata first, then the raw bytes', async () => {
+  const l = linked('<template><div class="card"/></template>');
+  const r = await fetchRepoFile({ repo: 'acme/design', path: 'components/Card.vue' }, l);
   assert.deepEqual([r.ok, r.type, r.buf.toString()], [true, 'text', '<template><div class="card"/></template>']);
+  assert.deepEqual(l.calls, [
+    ['meta', 'api', 'repos/acme/design/contents/components/Card.vue'],
+    ['raw', 'api', '-H', 'Accept: application/vnd.github.raw', 'repos/acme/design/contents/components/Card.vue'],
+  ]);
 });
 
-test('a repository file over 200 KB, a binary, a directory and an unreadable repository are refused', async () => {
-  assert.match((await fetchRepoFile({ repo: 'a/b', path: 'x' }, { gh: () => fileJson('x', { size: TEXT_MAX + 1 }) })).reason, /larger than 200 KB/);
-  assert.match((await fetchRepoFile({ repo: 'a/b', path: 'x' }, { gh: () => JSON.stringify({ type: 'file', size: 3, encoding: 'base64', content: Buffer.from([0, 1, 2]).toString('base64') }) })).reason, /not text/);
-  assert.match((await fetchRepoFile({ repo: 'a/b', path: 'x' }, { gh: () => JSON.stringify([{ name: 'f' }]) })).reason, /not a file/);
-  assert.match((await fetchRepoFile({ repo: 'a/b', path: 'x' }, { gh: () => { throw new Error('HTTP 404'); } })).reason, /a\/b could not be read: HTTP 404/);
+test('Scenario: Image of a linked repository - a WebP and a PNG come through the raw path as images', async () => {
+  const webp = await fetchRepoFile({ repo: 'acme/design', path: 'screens/home.webp' }, linked(WEBP));
+  assert.deepEqual([webp.ok, webp.type, webp.buf.equals(WEBP)], [true, 'webp', true]);
+  const png = await fetchRepoFile({ repo: 'acme/design', path: 'screens/home.png' }, linked(PNG));
+  assert.deepEqual([png.ok, png.type], [true, 'png']);
+});
+
+test('Scenario: Linked file over the limit - it is refused without downloading its contents', async () => {
+  const l = linked('x', { size: 6 * 1024 * 1024 });
+  const r = await fetchRepoFile({ repo: 'a/b', path: 'big.webp' }, l);
+  assert.match(r.reason, /larger than 5 MB/);
+  assert.deepEqual(l.calls.map((c) => c[0]), ['meta']);
+});
+
+test('Scenario: Linked binary that is not an image - text over 200 KB, a disguised binary and a directory are refused', async () => {
+  assert.match((await fetchRepoFile({ repo: 'a/b', path: 'x.txt' }, linked('a'.repeat(TEXT_MAX + 1)))).reason, /larger than 200 KB/);
+  assert.match((await fetchRepoFile({ repo: 'a/b', path: 'fake.webp' }, linked(Buffer.from([0, 1, 2, 3])))).reason, /neither a PNG, JPEG, GIF or WebP image nor text/);
+  const dir = { gh: () => JSON.stringify([{ name: 'f' }]), ghRaw: () => assert.fail('no download') };
+  assert.match((await fetchRepoFile({ repo: 'a/b', path: 'x' }, dir)).reason, /not a file/);
+});
+
+const ghError = (stderr) => Object.assign(new Error(`Command failed: gh api repos/acme/design/contents/home.webp\n${stderr}`), { stderr });
+const failing = (stderr) => ({ gh: () => { throw ghError(stderr); }, ghRaw: () => Buffer.alloc(0) });
+
+test('The reason for an unreadable linked file names what to fix', async () => {
+  const ref = { repo: 'acme/design', path: 'home.webp' };
+  const withToken = await fetchRepoFile(ref, { ...failing('gh: Not Found (HTTP 404)'), linksToken: true, cloud: true });
+  assert.equal(withToken.reason, 'the RELEVO_LINKS_TOKEN secret cannot read acme/design (GitHub answered 404): give it read access to the contents of acme/design');
+  const cloud = await fetchRepoFile(ref, { ...failing('gh: Not Found (HTTP 404)'), cloud: true });
+  assert.match(cloud.reason, /^acme\/design could not be read without a token \(GitHub answered 404\).*read access to its contents as the secret RELEVO_LINKS_TOKEN$/);
+  const local = await fetchRepoFile(ref, failing('gh: Resource not accessible (HTTP 403)'));
+  assert.equal(local.reason, 'your gh login cannot read acme/design (GitHub answered 403)');
+  const other = await fetchRepoFile(ref, { ...failing('gh: Server Error (HTTP 500)'), linksToken: true });
+  assert.equal(other.reason, 'acme/design could not be read: gh: Server Error (HTTP 500)');
+  assert.equal(unreadableReason('a/b', new Error('HTTP 404')), 'your gh login cannot read a/b (GitHub answered 404)');
 });
 
 test('references become files: a path is checked, an attachment needs design.images, a repository must be linked', async () => {
@@ -134,7 +175,7 @@ test('references become files: a path is checked, an attachment needs design.ima
     { kind: 'attachment', target: URL1, allowed: true, match: 'empty state' },
     { kind: 'repo-file', target: 'acme/design:Card.vue', repo: 'acme/design', path: 'Card.vue', match: 'the card' },
   ];
-  const common = { exists: (p) => p === 'design/home.png', fetch: fakeFetch({ [URL1]: { body: PNG } }).fetch, gh: () => fileJson('<template/>') };
+  const common = { exists: (p) => p === 'design/home.png', fetch: fakeFetch({ [URL1]: { body: PNG } }).fetch, ...linked('<template/>') };
   const off = await fetchReferences({ references: refs, images: false, links: [], ...common });
   assert.deepEqual(off.files.map((f) => f.kind), ['path']);
   assert.match(off.refused[0].reason, /design\.images is off/);

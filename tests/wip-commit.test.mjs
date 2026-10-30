@@ -29,7 +29,7 @@ test('work is kept for the two reasons that have work, and for no other', () => 
   assert.deepEqual(KEEP_REASONS, ['QA rejected after the retries', 'tasks left unfinished']);
   KEEP_REASONS.forEach((r) => assert.equal(keepsWork(r), true));
   ['branch already exists', 'specification invalid', 'specification incomplete', 'invalid decision', 'profile not resolved', 'issue changed after ready',
-    'protected path in the diff', 'outside the platform', 'possible credential or temporary marker in the diff'].forEach((r) => assert.equal(keepsWork(r), false, r));
+    'protected path in the diff', 'restricted file in the diff', 'outside the platform', 'possible credential or temporary marker in the diff'].forEach((r) => assert.equal(keepsWork(r), false, r));
 });
 
 test('Scenario: QA rejects after the retries - the failure path commits first, through the safe script, then pushes', () => {
@@ -111,4 +111,14 @@ test('the script prints the context through a fake gh, and a failed read still p
   assert.equal(bad.found, false);
   assert.match(bad.error, /HTTP 403|Command failed/);
   assert.equal(spawnSync(process.execPath, [script, '--issue', 'abc'], { env, encoding: 'utf8' }).status, 2);
+});
+
+test('Scenario: A restricted file in the diff - the failure comment names the path and the reason, says nothing was pushed, and the work is not kept', () => {
+  const body = renderMessage('qa_failed', { assignee: 'ana', issue: 37, title: 'T', finding: 'config/private.pem', branch: 'feature/37-t', reason: 'restricted file in the diff', branch_state: 'unsafe' });
+  assert.match(body, /\(restricted file in the diff\)/);
+  assert.match(body, /Finding: config\/private\.pem/);
+  assert.match(body, /was NOT pushed/);
+  const r = failureContext({ comments: [{ body }], subject: 'feat: x (#37)', issue: 37 });
+  assert.deepEqual({ kept: r.kept, found: r.found, finding: r.finding }, { kept: false, found: true, finding: 'config/private.pem' });
+  assert.equal(keepsWork('restricted file in the diff'), false);
 });

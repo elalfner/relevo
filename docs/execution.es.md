@@ -10,6 +10,14 @@
 - **Solo nube** es lo mismo, con personas que eligen no construir a mano. Úsalo para construir sin que nadie espere.
 - **Solo máquinas**: `/relevo:init` no agrega los workflows de `go` ni de la cola. Cada persona construye con su propia sesión de Claude y su cuota, sin ningún secreto del modelo en el repositorio.
 
+## Qué rama lee la nube
+
+Un evento de etiqueta ejecuta los workflows de la rama por defecto del repositorio, y esos workflows hacen checkout de esa rama, así que la nube también lee `relevo.yml` de la rama por defecto. Una construcción en tu máquina lee en cambio el `relevo.yml` de tu copia de trabajo.
+
+Dónde empieza una construcción no depende de la rama por defecto: la rama de un issue siempre sale de `origin/<branches.base>`, en la nube y en una máquina, y su pull request apunta a la rama base.
+
+Con `main` como rama por defecto y `dev` como base, una construcción sigue partiendo de `dev`, pero un cambio a `relevo.yml` o a un workflow en `dev` llega a la nube solo después de promover `dev` a `main`. Si la rama base es la rama por defecto, esos cambios aplican en cuanto se fusionan en ella, y un pull request con `Closes #<n>` en su descripción cierra también el issue. `/relevo:doctor` avisa cuando el `relevo.yml` de la rama por defecto difiere del de la rama base.
+
 ## Pausar la nube sin un pull request
 
 Pon la variable del repositorio `RELEVO_CLOUD_GO` en `off` (Settings > Secrets and variables > Actions > Variables). Entonces una etiqueta `ready` no inicia nada y la cola no despacha nada, y el issue se queda en `ready` para una ejecución local. Borra la variable, o pon otro valor, para reanudar, y vuelve a aplicar `relevo:ready` a cada issue: los eventos de etiqueta que se saltaron no se repiten. Tiene que ser una variable y no un archivo porque un evento de etiqueta ejecuta los workflows de la rama por defecto, así que un cambio en un archivo necesitaría antes un pull request.
@@ -56,6 +64,23 @@ Lo que Relevo asume del runner:
 - **Antigravity necesita Linux x86-64.** El binario fijado es `linux-x64`.
 
 Un runner con `limits.concurrent_agents: 1` es la misma máquina que corre los checks de tus pull requests, así que un build de hasta 60 minutos los retrasa. Agrega runners con las mismas etiquetas en lugar de subir el límite.
+
+### Varios runners en una misma máquina
+
+Cada proceso de runner ejecuta un job a la vez, así que varios runners en una máquina son la forma de correr builds en paralelo allí. Lo que cada uno guarda aparte y lo que comparten:
+
+| Aparte en cada runner | Compartido por todos los runners de la máquina |
+|---|---|
+| El workspace (su propia carpeta `_work`) | El home del usuario del runner (`~/.claude` y los archivos que las herramientas guardan allí) |
+| `$RUNNER_TEMP`, donde cada job instala OpenSpec y el plugin | Las cachés de paquetes de las herramientas (pub, composer, gradle, npm) |
+| La caché de herramientas de las acciones de toolchain | El daemon de Docker |
+| La rama del issue (un build por issue) | Los puertos de la máquina |
+
+Un runner registrado con tu propio usuario también comparte `~/.claude` con tus sesiones interactivas de Claude Code. Las escrituras simultáneas en una caché o un archivo de ajustes compartido pueden chocar; no se ha probado aquí. Registrar cada runner con su propio usuario de la máquina, o en su propio contenedor, quita el home y las cachés compartidos. No quita el daemon de Docker ni los puertos.
+
+- **Los builds que pueden correr a la vez** son, como máximo, el menor entre `limits.concurrent_agents` y los runners libres. Todos los workflows de Relevo (`go`, `review`, `ship`, `queue`, `sla`, `digest`) corren con las mismas etiquetas, así que registra más runners que `limits.concurrent_agents`: con tres runners y un límite de 3, tres builds ocupan todos los runners y retrasan los checks de tus pull requests y los demás workflows.
+- **El stack Supabase no se paraleliza en una máquina.** Sus comprobaciones arrancan contenedores en la máquina (mira [Stacks](stacks.es.md)), y dos builds así a la vez pueden chocar en los puertos y en los contenedores. No dejes que dos builds de una plataforma Supabase corran juntos en una máquina, o da a cada runner su propia máquina.
+- **`limits.concurrent_agents` no es exacto cuando las puertas se solapan.** La puerta de un issue cuenta los issues con la etiqueta `relevo:building`, y la puerta de un issue no espera a la de otro. Con un solo runner las puertas hacen cola detrás del job en curso y el límite se mantiene. Con dos o más runners, o en los runners de GitHub, dos issues etiquetados a la vez pueden encontrar ambos un hueco libre y arrancar, así que el límite puede superarse en tantos como puertas se solapen. La siguiente evaluación de la cola ve la cuenta real y no arranca nada más hasta que se libere un hueco. Es un límite conocido, no un ajuste.
 
 El código del agente corre con los permisos del usuario del runner, que en tu propia máquina puede llegar a tu red. La barrera es un runner efímero o un contenedor; mira [Seguridad](security.es.md#qué-no-protege). Comprobado en un runner self-hosted: `$RUNNER_TEMP` se vacía entre jobs, pero `claude-code-action` guarda su estado en el home del usuario del runner (ajustes, cachés y las transcripciones de sus sesiones en `~/.claude/projects`), y Relevo no lo borra; límpialo tú si las transcripciones, que contienen lo que el agente leyó y escribió, no deben quedarse.
 
@@ -107,11 +132,45 @@ Muestra la fase y el intento, no lo que hace un subagente dentro de ellos. Una e
 
 Ejecuta `scripts/go-local.mjs` del plugin, que ejecuta `claude -p "/relevo:go 42"` (o `agy -p` cuando `agent.build: antigravity`) en un git worktree separado junto a tu repositorio, así que tus cambios sin commitear no importan, con los mismos límites de turnos y costo y las mismas listas cerradas de herramientas que el workflow. El worktree se borra cuando la ejecución termina bien y se conserva, imprimiendo su ruta, cuando no. `--dry-run` muestra lo que haría.
 
-En una sesión de Claude Code, ejecutar `/relevo:go <issue>` sin `--local` también construye en un worktree propio, así que puedes correr dos a la vez y seguir trabajando en tu checkout. La skill lo crea con `scripts/go-worktree.mjs` (junto a tu repositorio, en `.relevo-worktrees/`, desde `origin/<base>`, el mismo lugar que `--local`), entra en él y construye ahí; ves la construcción en tu sesión. Cuando el issue termina `built`, o una compuerta lo detiene antes de construir nada, el worktree se borra; tras una ejecución fallida se conserva y se imprime su ruta. Si el worktree de ese issue ya existe (otra ejecución lo está construyendo, o una fallida lo dejó) la ejecución se detiene y te dice el comando que lo borra. Dentro de un worktree que ya existe, como el de `--local`, construye donde está. Usa `--local` cuando quieras la construcción en su propio proceso con las listas cerradas de herramientas del workflow. `/relevo:review` sigue corriendo en tu checkout principal.
+En una sesión de Claude Code, ejecutar `/relevo:go <issue>` sin `--local` también construye en un worktree propio, así que puedes correr dos a la vez y seguir trabajando en tu checkout. La skill lo crea con `scripts/go-worktree.mjs` (junto a tu repositorio, en `.relevo-worktrees/`, desde `origin/<base>`, el mismo lugar que `--local`), entra en él y construye ahí; ves la construcción en tu sesión. Cuando el issue termina `built`, o una compuerta lo detiene antes de construir nada, el worktree se borra; tras una ejecución fallida se conserva y se imprime su ruta. Si el worktree de ese issue ya existe (otra ejecución lo está construyendo, o una fallida lo dejó) la ejecución se detiene y te dice el comando que lo borra. Dentro de un worktree que ya existe, como el de `--local`, construye donde está. Cuándo usar cada una está en [En la sesión o por separado](commands.es.md#en-la-sesión-o-por-separado). `/relevo:review` sigue corriendo en tu checkout principal; la revisión de un backend Laravel no necesita dispositivo, solo los tests del proyecto y su `vendor/`.
 
 En sesiones interactivas de chat de Antigravity, ejecutar `/relevo:go <issue>` ejecuta la construcción dentro de un subagente aislado con `Workspace: 'share'`. Esto genera un worktree efímero automático, permitiendo que múltiples chats construyan issues concurrentemente sin colisiones de ramas ni de OpenSpec. La raíz del repositorio se mantiene limpia en la rama base, reservada para el desarrollador y para sesiones interactivas de `/relevo:review` con dispositivos conectados. Al abrir el pull request, `review` devuelve la raíz a la rama base, solo en el checkout principal y solo si ningún otro worktree tiene esa rama; nunca hace fallar la review por ello.
 
 `/relevo:status` lista los issues `ready` asignados a ti con el comando a ejecutar cuando la nube no está construyendo, y alerta de un issue que lleva `building` sin actividad `limits.building_alert_hours` horas, con cómo reiniciarlo.
+
+`/relevo:review`, `/relevo:ship` y `/relevo:fix` corren donde los inicias, en tu checkout principal o en un worktree que abriste (por ejemplo con el botón Worktree de Claude Code). En un worktree, `review` y `ship` no vuelven después a la rama base, y `ship` no borra la rama local: el worktree se queda en su rama y el informe lo dice. Si otro worktree tiene la rama del issue (un `go` fallido conserva su worktree), se detienen antes de cambiar nada y nombran ese worktree y su ruta.
+
+### Worktrees desde tu rama base
+
+El botón Worktree de Claude Code crea la rama desde la rama predeterminada del remoto (`origin/HEAD`) y no acepta un nombre de rama. Si trabajas en `dev` y la rama predeterminada es `main`, cada worktree que crea parte de `main`. `go` no se ve afectado: siempre construye desde `origin/<branches.base>`. Poner `worktree.baseRef` en `"head"` parte de tu `HEAD` local, que está desactualizado salvo que el checkout principal esté en la rama base y al día, así que aquí no es la respuesta.
+
+Si quieres que el botón parta de tu rama base, un hook `WorktreeCreate` puede crear el worktree él mismo. Es opcional y Relevo no lo instala. Guarda este script (cambia `dev` por tu `branches.base`) como `~/.claude/hooks/worktree-from-base.sh` y hazlo ejecutable:
+
+```bash
+#!/bin/bash
+in=$(cat)
+name=$(echo "$in" | jq -r .name)
+cwd=$(echo "$in" | jq -r .cwd)
+common=$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir) || exit 1
+root=$(dirname "$common")
+git -C "$root" fetch -q origin dev >&2 || exit 1
+git -C "$root" worktree add -q -b "worktree-$name" "$root/.claude/worktrees/$name" origin/dev >&2 || exit 1
+echo "$root/.claude/worktrees/$name"
+```
+
+Luego regístralo en `.claude/settings.local.json` (hace falta una sesión nueva para que cargue un hook):
+
+```json
+{
+  "hooks": {
+    "WorktreeCreate": [
+      { "hooks": [{ "type": "command", "command": "$HOME/.claude/hooks/worktree-from-base.sh" }] }
+    ]
+  }
+}
+```
+
+El hook imprime en stdout solo la ruta del worktree; todo lo demás va a stderr. Lo que cede: reemplaza la creación por defecto, así que `.worktreeinclude` ya no se procesa (copia a mano archivos como `.env`) y la rama es `worktree-<nombre>`, no el prefijo de la app. Comprobado con Claude Desktop en una máquina: el botón Worktree ejecutó el hook con `session_id`, `cwd` y `name` como entrada y creó el worktree desde `origin/dev`. La documentación de Claude Code describe el mismo evento para la línea de comandos, que aquí no se probó.
 
 ## Con Antigravity
 

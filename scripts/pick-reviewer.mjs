@@ -3,11 +3,12 @@
 //   node scripts/pick-reviewer.mjs --repo owner/name --author login --pr 40 [--config relevo.yml]
 // Prints {"reviewer": "login"} or {"reviewer": null} when nobody is eligible.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { openReviewCounts, realGh } from './lib/github.mjs';
 import { pickReviewer } from './lib/reviewers.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

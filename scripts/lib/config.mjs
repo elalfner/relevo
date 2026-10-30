@@ -6,6 +6,7 @@ import { LABEL_KEYS } from './labels.mjs';
 import { SUPPORTED_LANGUAGES } from './messages.mjs';
 import { findCredentials } from './scan.mjs';
 import { normalizePlatforms } from './platforms.mjs';
+import { invalidRestrictedEntries } from './restricted-paths.mjs';
 
 // One entry per supported setting. `required: true` means there is no default.
 export const SETTINGS = [
@@ -35,6 +36,8 @@ export const SETTINGS = [
   { path: 'runner.labels', type: 'label-list', default: ['ubuntu-latest'] },
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'path-list', default: [] },
+  // Files no agent or script reads, added to the base list of restricted-paths.mjs; it can never take an entry away.
+  { path: 'restricted_paths', type: 'restricted-list', default: [] },
   { path: 'skills.allow_scripts', type: 'string[]', default: [] },
   { path: 'links', type: 'repo-list', default: [] },
   { path: 'evidence.policy', type: 'enum', allowed: ['attach_to_pr', 'local_only'], default: 'attach_to_pr' },
@@ -96,6 +99,13 @@ function checkType(setting, value, errors) {
       if (!Array.isArray(value) || value.length === 0 || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
         errors.push({ path, message: `${path} must be a file name or a list of file names (got ${JSON.stringify(value)})` });
       }
+      break;
+    case 'restricted-list':
+      if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
+        errors.push({ path, message: `${path} must be a list of paths or globs relative to the repository (got ${JSON.stringify(value)})` });
+        break;
+      }
+      invalidRestrictedEntries(value).forEach(({ entry, reason }) => errors.push({ path, message: `${path}: "${entry}" is not accepted: ${reason}` }));
       break;
     case 'repo-list': {
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {

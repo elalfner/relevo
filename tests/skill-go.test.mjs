@@ -228,9 +228,24 @@ test('Scenario: Reference in the repository / Attachment - go fetches what the i
   ['issue', 'repo', 'out', 'config', 'repo-root', 'body-file'].forEach((flag) => assert.ok(script.includes(`arg('${flag}')`), `design-fetch does not implement --${flag}`));
 });
 
+test('Scenario: Refused reference in the cloud / Local run - go reads the manifest of the fetch step, and fetches only when it is not set', () => {
+  assert.match(body, /`RELEVO_REFERENCES` is set: a step before you already fetched them, with a token you do not have\. Do not run the fetcher again\./);
+  assert.match(body, /\*\*Otherwise\*\* \(a local run\) fetch them yourself/);
+  assert.match(body, /a `## Code pointers` bullet that names a file of another repository as `owner\/repo:path`/);
+});
+
+test('Scenario: Reason word for word - the reason of a refused reference reaches the issue unchanged', () => {
+  assert.match(body, /name each refused reference and copy its reason word for word, in English, without rewording or translating it/);
+});
+
+test('Scenario: Linked code pointer - only design references get a scenario', () => {
+  assert.match(body, /the manifest entries with `section` `design`/);
+  assert.match(body, /no scenario for a code pointer/);
+});
+
 test('Scenario: Images turned off - a reference that cannot be fetched is a defect in the specification, and nothing is built', () => {
-  assert.match(body, /If it exits 1 it prints each reference it refused and why\. That is a defect in the specification/);
-  assert.match(body, /take the `needs-spec` path described below with `reason` `missing`, naming each refused reference/);
+  assert.match(body, /If it exits 1 it prints each reference it refused and why; in the cloud the manifest lists them under `refused`\. A refused reference is a defect in the specification/);
+  assert.match(body, /take the `needs-spec` path described below with `reason` `missing`/);
   assert.match(body, /stop without pushing/);
 });
 
@@ -245,4 +260,20 @@ test('Scenario: The agent is tempted to continue - the skill forbids going on wi
   assert.match(body, /failed check is `openspec`[\s\S]*stop there/);
   assert.match(body, /do not go on from memory/);
   assert.match(body, /never write anything under `openspec\/changes\/` by hand/);
+});
+
+test('Scenario: A restricted file that is already versioned - the skill checks the base branch before it branches, and takes the failure path with the new reason', () => {
+  const branch = body.slice(body.indexOf('### 2. Branch'), body.indexOf('### 3. Specification'));
+  assert.match(branch, /scripts\/restricted-check\.mjs --ref origin\/<base>/);
+  assert.ok(branch.indexOf('restricted-check.mjs') < branch.indexOf('git switch -c'), 'the check comes before the branch is made');
+  assert.match(branch, /failure path with the reason `restricted file in the diff`/);
+  assert.match(branch, /`branch_state` `not_pushed`/);
+  assert.match(body, /`restricted file in the diff` \(a file on the restricted list/, 'the safe commit refuses it too');
+  assert.match(body, /Never read a restricted file yourself/);
+  ['restricted file in the diff'].forEach((r) => assert.ok(body.slice(body.indexOf('## Failure path'), body.indexOf('## Steps')).includes(r), `${r} is named in the failure path`));
+});
+
+test('a restricted file versioned on the base branch is reported as that, not as part of the change', () => {
+  const body = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
+  assert.match(body, /versioned on the base branch/);
 });

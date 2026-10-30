@@ -3,12 +3,13 @@
 //   node scripts/needs-reviewer.mjs --repo owner/name --issue 12 --title "Add total" --pr-url <url> [--config relevo.yml] [--dry-run]
 // Prints the decision as JSON.   exit 0: done   exit 2: invalid configuration or bad arguments
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
 import { renderMessage } from './lib/messages.mjs';
 import { noReviewerDecision } from './lib/reviewers.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

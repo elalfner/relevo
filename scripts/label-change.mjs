@@ -4,10 +4,11 @@
 //   node scripts/label-change.mjs --clear --current "relevo:pr-open,bug"   (removes every Relevo label)
 // Output: {"add":[...],"remove":[...]} using the label names from relevo.yml.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { clearAll, transition } from './lib/labels.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);

@@ -139,6 +139,31 @@ test('the security page names the measures by files, settings and labels that ex
   });
 });
 
+test('Scenario: Reading the page for restricted files - the three levels, the rows per agent, the limits and the ignore files that are not a control', () => {
+  const heading = { 'docs/security.md': '## Restricted files', 'docs/security.es.md': '## Archivos restringidos' };
+  Object.entries(heading).filter(([f]) => exists(f)).forEach(([f, h]) => {
+    const page = read(f);
+    assert.ok(page.includes(h), `${f}: the section`);
+    const section = page.slice(page.indexOf(h), page.indexOf('\n## ', page.indexOf(h) + 1));
+    ['restricted_paths', '.env.example', '.claudeignore', '.claudecode.json', '.gitignore', 'grep -r', 'node -e', 'read_file', 'permissions.deny', 'sandbox.filesystem.denyRead', 'no such file', 'Claude Code', 'Antigravity']
+      .forEach((w) => assert.ok(section.includes(w), `${f} does not mention ${w}`));
+    // One row of the table per kind of read, with each agent in its own column.
+    const rows = section.split('\n').filter((l) => l.startsWith('|'));
+    ['cat .env', 'grep -r', 'node -e'].forEach((w) => assert.ok(rows.some((r) => r.includes(w) && r.split('|').length >= 5), `${f}: a row for ${w} with a column per agent`));
+    const process = rows.find((r) => r.includes('node -e'));
+    assert.match(process, /\*\*(not covered in the cloud|no cubierto en la nube)\*\*/, `${f}: a process that opens files itself is not covered in the cloud`);
+    assert.ok(!/failIfUnavailable/.test(section), `${f}: the sandbox is not asked for in the cloud`);
+    assert.ok(rows.some((r) => /\*\*(enforced|se cumple)\*\*/.test(r)), `${f}: enforced`);
+    assert.ok(rows.some((r) => /\*\*(partial|parcial)\*\*/.test(r)), `${f}: partial`);
+    assert.ok(rows.some((r) => /\*\*(not covered|no cubierto)\*\*/.test(r)), `${f}: not covered`);
+  });
+});
+
+test('the security page lists the restricted files in its first table, and the configuration page links the section', () => {
+  ['docs/security.md', 'docs/security.es.md'].filter(exists).forEach((f) => assert.match(read(f), /restricted file in the diff/, `${f}: the failure reason`));
+  ['docs/configuration.md', 'docs/configuration.es.md'].filter(exists).forEach((f) => assert.match(read(f), /`restricted_paths`/, f));
+});
+
 // ---------- get started
 
 const STEPS = {
@@ -291,4 +316,32 @@ test('Scenario: The plugin token - no page tells a new project to store RELEVO_P
   assert.match(read('docs/execution.md'), /needs no `RELEVO_PLUGIN_TOKEN`/);
   assert.match(read('docs/execution.es.md'), /no necesita `RELEVO_PLUGIN_TOKEN`/);
   assert.match(read('docs/install.md'), /no token is needed to read it/);
+});
+
+test('Scenario: The section on your own stack - both pages show the same Go profile, which parses, and name the cloud step', async () => {
+  const { parseProfile } = await import('../scripts/lib/stack-profile.mjs');
+  const profiles = ['docs/stacks.md', 'docs/stacks.es.md'].map((f) => {
+    const page = read(f);
+    assert.match(page, /^## (Your own stack|Tu propio stack)$/m, `${f}: the section`);
+    assert.ok(page.includes("needs.decide.outputs.stack == 'go'"), `${f}: the cloud step is guarded by the name of the stack`);
+    assert.ok(page.includes('.relevo/stacks/go.md'), `${f}: the file`);
+    const block = page.match(/ *```markdown\n( *---\n *stack: go[\s\S]*?)\n *```/)[1].split('\n').map((l) => l.replace(/^ {3}/, '')).join('\n');
+    const parsed = parseProfile(block);
+    assert.deepEqual(parsed.errors, [], `${f}: the example parses`);
+    return parsed.profile.commands;
+  });
+  assert.deepEqual(profiles[0], profiles[1], 'both languages give the same commands');
+  ['analyze', 'test', 'format'].forEach((c) => assert.ok(profiles[0][c], `the example defines ${c}`));
+});
+
+test('Scenario: The stacks page explains the Laravel and Vue skills, with the same commands in both languages', () => {
+  ['docs/stacks.md', 'docs/stacks.es.md'].forEach((f) => {
+    const page = read(f);
+    ['composer require laravel/boost --dev', 'php artisan boost:install --skills --no-interaction', 'laravel-best-practices', 'testing-best-practices', 'boost.json', 'skills: { disable: [testing-best-practices] }'].forEach((s) => assert.ok(page.includes(s), `${f}: ${s}`));
+    ['npx skills add vuejs-ai/skills --skill vue-best-practices --skill vue-testing-best-practices --agent claude-code --copy --yes', 'vue-best-practices', 'vue-testing-best-practices', 'skills: { disable: [vue-best-practices] }'].forEach((s) => assert.ok(page.includes(s), `${f}: ${s}`));
+    assert.match(page, /early experiment|experimento temprano/, `${f}: the Vue skills are an experiment`);
+    assert.match(page, /not official|No es oficial/, `${f}: and not official`);
+    assert.ok(page.includes('skills_when_installed'), `${f}: the key`);
+    assert.ok(page.includes('.claude/skills/'), `${f}: the folder to commit`);
+  });
 });

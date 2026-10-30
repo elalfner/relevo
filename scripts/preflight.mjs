@@ -5,10 +5,10 @@
 // commands that need it. Prints one block per failure with its fix.
 //   exit 0: all passed   exit 1: something failed   exit 2: unknown check
 
-import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { DEFAULT_CHECKS, formatPreflight, runPreflight } from './lib/preflight.mjs';
+import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
