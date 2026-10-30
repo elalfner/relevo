@@ -93,6 +93,15 @@ const TABLE = {
         es: 'la rama solo tiene la especificación: borra la rama remota y vuelve a ponerle ready al issue',
       },
     },
+    // Nothing was built: the base branch versions a file on the restricted list, which no command of Relevo can fix.
+    restricted: {
+      command: null,
+      who: 'assignee',
+      hint: {
+        en: 'a restricted file is versioned on the base branch: rotate any secret in it, remove it from the repository (git rm --cached) and keep it ignored, merge that into the base branch, then remove relevo:qa-failed and label the issue relevo:ready again',
+        es: 'un archivo restringido está versionado en la rama base: rota cualquier secreto que tenga, quítalo del repositorio (git rm --cached) y mantenlo ignorado, fusiona eso en la rama base, luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+      },
+    },
   },
   'changes-requested': {
     command: '/relevo:fix {n}',
@@ -134,7 +143,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous'],
-  'qa-failed': ['fix', 'kept', 'toolchain', 'delete-branch'],
+  'qa-failed': ['fix', 'kept', 'toolchain', 'delete-branch', 'restricted'],
 };
 
 const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
@@ -142,7 +151,7 @@ const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? '')
 /**
  * The next step for an issue in `state`.
  * `reason` picks the variant of `needs-spec` (`missing` by default, or `ambiguous`) and of `qa-failed`
- * (`fix` by default, `kept` when the branch holds the work that QA rejected, or `delete-branch` when the branch holds only the specification).
+ * (`fix` by default, `kept` when the branch holds the work that QA rejected, `delete-branch` when the branch holds only the specification, or `restricted` when the base branch versions a restricted file).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
 export function nextStep({ state, reason = null, issue = null, language = 'en' } = {}) {
