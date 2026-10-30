@@ -245,11 +245,15 @@ A file on the restricted list SHALL NOT be read by an agent that Relevo runs, in
 - **THEN** the worktree does not contain it, and no script of Relevo copies or links it there
 
 ### Requirement: The base list of restricted files
-The base list SHALL cover environment files (`.env` and `.env.*`), private keys and certificates, credential files of package managers and of the shell, the service configuration files of mobile apps, and a `secrets/` folder. `.env.example` SHALL NOT be on it, because the skills and the stacks read it for the names of the variables.
+The base list SHALL cover environment files (`.env` and `.env.*`), private keys and certificates, credential files of package managers and of the shell, the service configuration files of mobile apps, and a `secrets/` folder. The example files `.env.example`, `.env.sample`, `.env.template` and `.env.dist` SHALL NOT be on it, because they hold the names of the variables and the skills and the stacks read them.
 
 #### Scenario: The example file stays readable
 - **WHEN** a skill reads `.env.example` for the names of the variables
 - **THEN** the read is allowed
+
+#### Scenario: The other example files stay readable
+- **WHEN** a skill or a script meets `.env.sample`, `.env.template` or `.env.dist`
+- **THEN** it is not restricted and a versioned one does not fail a run
 
 #### Scenario: A variant of the environment file
 - **WHEN** an agent tries to read `.env.production`
