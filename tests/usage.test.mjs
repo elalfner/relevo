@@ -61,6 +61,29 @@ test('Scenario: Another failure - a log without such text is not a limit', () =>
   assert.equal(reachedUsageLimit(undefined), false);
 });
 
+test('Scenario: Another failure - rate-limit events that report allowed are not a limit', () => {
+  const log = [
+    { type: 'system', subtype: 'init' },
+    { type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.02 } },
+    { type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'five_hour', utilization: 0.01 } },
+    { type: 'result', subtype: 'success', is_error: false, result: 'The shell failed', num_turns: 2 },
+  ];
+  assert.equal(reachedUsageLimit(JSON.stringify(log)), false);
+  assert.equal(reachedUsageLimit(log.map((e) => JSON.stringify(e)).join('\n')), false);
+});
+
+test('Scenario: Limit reached - a rejected rate-limit event or an error result about a limit is recognised', () => {
+  const rejected = [{ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour' } }];
+  assert.equal(reachedUsageLimit(JSON.stringify(rejected)), true);
+  const failed = [
+    { type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } },
+    { type: 'result', is_error: true, result: 'You have reached your usage limit' },
+  ];
+  assert.equal(reachedUsageLimit(JSON.stringify(failed)), true);
+  const notError = [{ type: 'result', is_error: false, result: 'I explained the usage limit of the API' }];
+  assert.equal(reachedUsageLimit(JSON.stringify(notError)), false);
+});
+
 test('usage-limit.mjs exits 0 for a limit and 1 for anything else, including a missing file', () => {
   const run = (...args) => spawnSync('node', [CLI('usage-limit.mjs'), ...args], { encoding: 'utf8' }).status;
   assert.equal(run('--file', write('limit.txt', 'Claude AI usage limit reached')), 0);
