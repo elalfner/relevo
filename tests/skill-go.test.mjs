@@ -272,3 +272,8 @@ test('Scenario: A restricted file that is already versioned - the skill checks t
   assert.match(body, /Never read a restricted file yourself/);
   ['restricted file in the diff'].forEach((r) => assert.ok(body.slice(body.indexOf('## Failure path'), body.indexOf('## Steps')).includes(r), `${r} is named in the failure path`));
 });
+
+test('a restricted file versioned on the base branch is reported as that, not as part of the change', () => {
+  const body = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
+  assert.match(body, /versioned on the base branch/);
+});
