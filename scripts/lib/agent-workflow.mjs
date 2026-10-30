@@ -75,3 +75,19 @@ export function withRestricted(workflow, list = BASE_PATTERNS) {
   lines.splice(r.begin + 1, r.end - r.begin - 1, ...restrictedLines(list, indent));
   return lines.join('\n');
 }
+
+/**
+ * Do the denials in a workflow match the list? 'current' when the block between the markers is what `withRestricted` would
+ * write, 'stale' when it differs (the list changed and `init` was not run again), 'missing' when the Claude step has no
+ * block (a workflow copied before the denials existed), null when there is nothing to judge: no workflow, another agent's
+ * step (its markers are replaced) or a block that is unbalanced.
+ */
+export function restrictedBlockState(workflow, list = BASE_PATTERNS) {
+  if (typeof workflow !== 'string' || workflow === '') return null;
+  try {
+    if (blockRange(workflow.split('\n'), 'restricted') === null) return workflow.includes('anthropics/claude-code-action') ? 'missing' : null;
+    return withRestricted(workflow, list) === workflow ? 'current' : 'stale';
+  } catch {
+    return null;
+  }
+}
