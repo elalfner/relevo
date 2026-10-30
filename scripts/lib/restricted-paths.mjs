@@ -28,9 +28,10 @@ export const BASE_PATTERNS = [
   'secrets/',
 ];
 
-// Files that stay readable although a base pattern covers them: the skills and the stacks read them for the names of
-// the variables. The exception is by name, never by pattern, and it applies to the base list only.
-export const EXEMPT_NAMES = ['.env.example'];
+// Files that stay readable although a base pattern covers them: example files that hold the names of the variables, not
+// their values (the skills and the stacks read `.env.example`; the three others are the same kind of file, and
+// extra-server.mjs already treats all four as examples). The exception is by name, never by pattern, and it applies to the base list only.
+export const EXEMPT_NAMES = ['.env.example', '.env.sample', '.env.template', '.env.dist'];
 
 // Where an agent tool takes a glob but cannot be told "except the example file", `.env.*` is written out as the
 // variants that projects use, so that the example stays readable.

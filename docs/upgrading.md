@@ -57,7 +57,7 @@ It writes only under `.github/workflows/`, and it needs `npm` and a network conn
 
 A repository that versions a file on the restricted list stops every run once it moves to a version with [restricted files](security.md). `go` ends in `qa-failed` with "restricted file in the diff", even when the file is not part of the change, because the check also reads what the base branch versions, and `/relevo:doctor` fails for it.
 
-The list matches by name, so the cases that surprise are not only secrets: a `.env.production` or `.env.testing` with values that are not secret, a `.env.sample`, a `.pem` or `.key` kept as a test fixture, and mobile configuration (`google-services.json`, `GoogleService-Info.plist`, `key.properties`). Only `.env.example` is exempt.
+The list matches by name, so the cases that surprise are not only secrets: a `.env.production` or `.env.testing` with values that are not secret, a `.pem` or `.key` kept as a test fixture, and mobile configuration (`google-services.json`, `GoogleService-Info.plist`, `key.properties`). Only the example files `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are exempt.
 
 Before you raise the pin, run `/relevo:doctor` on the new version and read the files it names. Untrack each one and keep it out of git, or accept that runs stop. After you change `restricted_paths` in `relevo.yml`, run `/relevo:init` again: it rewrites the denials between the `# relevo:restricted` markers of `relevo-go.yml`, and nothing else does. If your workflow already has its own `settings:` input on the agent step, merge the two by hand.
 

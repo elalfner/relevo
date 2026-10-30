@@ -138,3 +138,12 @@ test('findRestrictedFiles lists directories by name and never opens a file', () 
   assert.deepEqual(findRestrictedFiles('/r', BASE_PATTERNS, { readdir }), ['.env', 'api/.env.production']);
   assert.ok(!opened.includes('/r/node_modules'), 'dependencies are not walked');
 });
+
+test('Scenario: The other example files stay readable - .env.sample, .env.template and .env.dist are not restricted, at any depth', () => {
+  ['.env.sample', '.env.template', '.env.dist', 'apps/web/.env.sample'].forEach((name) => {
+    assert.equal(isRestricted(name), false, name);
+    assert.equal(restrictedRule(name), null, name);
+  });
+  assert.equal(isRestricted('.env.production'), true);
+  assert.equal(isRestricted('.env.sample', restrictedList({ restricted_paths: ['.env.sample'] })), true, 'a repository can still add one');
+});
