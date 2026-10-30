@@ -2080,3 +2080,41 @@ test('Antigravity: for a repository that builds with it, a missing read_file rul
 test('without the fact (an older caller) the restricted checks are absent and a healthy repository stays green', () => {
   assert.deepEqual(runChecks(healthy()).filter((r) => r.id.startsWith('restricted.')), []);
 });
+
+// ---------- the denials of the cloud workflow follow the list
+import { readFileSync as readTemplate } from 'node:fs';
+import { restrictedBlockState } from '../scripts/lib/agent-workflow.mjs';
+
+const GO_TPL_R = readTemplate(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+const restrictedWorkflowResult = (goText, config = CONFIG_TEXT) => {
+  const { probes } = restrictedProbes({ files: { 'relevo.yml': config, '.github/workflows/relevo-go.yml': goText } });
+  const f = gatherFacts(probes);
+  return { f, results: runChecks({ ...healthy(), restricted: f.restricted, restrictedWorkflow: f.restrictedWorkflow }) };
+};
+
+test('Scenario: The workflow carries the denials of the list - the check passes', () => {
+  assert.equal(restrictedBlockState(GO_TPL_R), 'current');
+  assert.equal(byId(restrictedWorkflowResult(GO_TPL_R).results, 'restricted.workflow').status, 'pass');
+});
+
+test('Scenario: restricted_paths changed and init was not run - the check warns and names the fix', () => {
+  const { f, results } = restrictedWorkflowResult(GO_TPL_R, `${CONFIG_TEXT}\nrestricted_paths:\n  - key.json\n`);
+  assert.equal(f.restrictedWorkflow, 'stale');
+  const w = byId(results, 'restricted.workflow');
+  assert.equal(w.status, 'warn');
+  assert.match(w.fix, /\/relevo:init/);
+});
+
+test('Scenario: A workflow copied before the denials existed has no block - the check warns', () => {
+  const old = GO_TPL_R.split('\n').filter((l, i, all) => {
+    const begin = all.findIndex((x) => /# relevo:restricted begin/.test(x));
+    const end = all.findIndex((x) => /# relevo:restricted end/.test(x));
+    return i < begin || i > end;
+  }).join('\n');
+  assert.equal(restrictedBlockState(old), 'missing');
+});
+
+test('Scenario: A workflow for another agent has no Claude step - nothing is judged', () => {
+  assert.equal(restrictedBlockState('name: x\njobs: {}\n'), null);
+  assert.equal(restrictedBlockState(''), null);
+});

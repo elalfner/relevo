@@ -135,7 +135,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/restricted-check.mjs --ref origin/<base>
 git switch -c <branch> origin/<base>
 ```
 
-The second command lists the files the base branch versions, by name, and never opens one. If it exits 1 a restricted file (the list in `docs/security.md`: environment files, private keys, credential files, `secrets/` and `restricted_paths` of `relevo.yml`) is versioned: take the failure path with the reason `restricted file in the diff`, naming the path it prints, `branch_state` `not_pushed`, and build nothing, because the secret is already in the history and the person has to rotate it and remove the file. Never read a restricted file yourself, for any reason.
+The second command lists the files the base branch versions, by name, and never opens one. If it exits 1 a restricted file (the list in `docs/security.md`: environment files, private keys, credential files, `secrets/` and `restricted_paths` of `relevo.yml`) is versioned: take the failure path with the reason `restricted file in the diff`, naming the path it prints and saying in the finding that it is versioned on the base branch and not part of the change (`<path> (versioned on the base branch)`), `branch_state` `not_pushed`, and build nothing, because the secret is already in the history and the person has to rotate it and remove the file. Never read a restricted file yourself, for any reason.
 
 If `origin/<branch>` already exists, do not touch it. Find out what it holds, then take the failure path with the reason `branch already exists`, `branch_state` `existing` and the `recovery`:
 

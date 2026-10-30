@@ -16,6 +16,7 @@ import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { platformFolders } from './protected-paths.mjs';
 import { restrictedListFromText } from './restricted-paths.mjs';
+import { restrictedBlockState } from './agent-workflow.mjs';
 import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
@@ -397,6 +398,8 @@ export function gatherFacts(p) {
     f.pluginMarketplace = marketplace;
     // Workflows that check out the plugin repository for its scripts: do they pass a token that can read it?
     WORKFLOW_FILES.forEach((file) => { if (typeof texts[file] === 'string') f.workflows[file].text = texts[file]; });
+    // Do the denials of the cloud workflow match the list of restricted files? Only `init` writes that block.
+    f.restrictedWorkflow = restrictedBlockState(goText, restrictedListFromText(f.configText));
     f.pluginCheckouts = [];
     Object.entries(texts).forEach(([file, text]) => {
       const m = /repository:\s*([\w.-]+\/[\w.-]+)\s*\n([\s\S]*?)path:\s*\.relevo-plugin/.exec(text);
@@ -1120,6 +1123,10 @@ function restrictedChecks(f) {
   if (x.present.length === 0) r.push(pass('restricted.denials', 'no restricted file exists in this working folder, so there is nothing to deny'));
   else if (uncovered.length === 0 && x.claude.unreadable.length === 0) r.push(pass('restricted.denials', `the settings of Claude Code deny the read of ${x.present.join(', ')}`));
   uncovered.forEach((path) => r.push(warn(`restricted.denial.${path}`, `${path} exists and no Read denial of the settings of Claude Code covers it, so an agent in this folder can read it`, 'run /relevo:init: it proposes the entries and writes them only after a yes')));
+
+  if (f.restrictedWorkflow === 'stale') r.push(warn('restricted.workflow', 'the denials between the relevo:restricted markers of relevo-go.yml are not the ones the list of restricted files gives (restricted_paths changed, or the block was edited), so the cloud agent runs with other denials', 'run /relevo:init and merge the workflow: it rewrites the block from the list'));
+  else if (f.restrictedWorkflow === 'missing') r.push(warn('restricted.workflow', 'relevo-go.yml has no relevo:restricted block, so the cloud agent runs without the Read denials of the restricted files', 'run /relevo:init and merge the workflow: it adds the block'));
+  else if (f.restrictedWorkflow === 'current') r.push(pass('restricted.workflow', 'the denials in relevo-go.yml match the list of restricted files'));
 
   if (x.antigravity.used) {
     if (x.antigravity.unreadable) r.push(warn('restricted.antigravity.settings', 'the settings of Antigravity are not valid JSON, so it cannot be checked whether they deny the read of the restricted files', 'fix the file; /relevo:init then offers the denials'));
