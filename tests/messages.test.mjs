@@ -287,3 +287,9 @@ test('the progress messages render in each language, with the minutes as given a
   assert.match(renderMessage('run_progress_closed', { minutes: 3, run_url: 'https://example.invalid/r' }), /ended after 3 min\.[\s\S]*Run: https:\/\/example\.invalid\/r$/);
   assert.match(renderMessage('run_progress_closed', { outcome: 'none' }, 'es'), /terminó sin resultado\./);
 });
+
+test('qa_failed for a restricted file on the base branch does not send the person to /relevo:fix', () => {
+  const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed', recovery: 'restricted', reason: 'restricted file in the diff' });
+  assert.match(text, /versioned on the base branch/);
+  assert.doesNotMatch(text, /\/relevo:fix/);
+});
