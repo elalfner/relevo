@@ -277,3 +277,8 @@ test('a restricted file versioned on the base branch is reported as that, not as
   const body = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
   assert.match(body, /versioned on the base branch/);
 });
+
+test('the failure for a versioned restricted file takes the recovery restricted, which no command fixes', () => {
+  assert.match(text, /`recovery` `restricted`/);
+  assert.match(text, /fix\|delete-branch\|restricted/);
+});

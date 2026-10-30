@@ -91,3 +91,11 @@ test('the command prints the line, the JSON on request, and exits 2 on bad input
   assert.equal(run().status, 2);
   assert.match(run().stderr, /usage: next-step\.mjs/);
 });
+
+test('a restricted file versioned on the base branch has no command: it says to remove the file and label ready again', () => {
+  const step = nextStep({ state: 'qa-failed', reason: 'restricted', issue: 9 });
+  assert.equal(step.command, null);
+  assert.match(step.line, /git rm --cached/);
+  assert.match(step.line, /ready again/);
+  assert.doesNotMatch(step.line, /relevo:fix/);
+});
