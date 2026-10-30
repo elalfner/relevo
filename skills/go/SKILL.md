@@ -135,7 +135,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/restricted-check.mjs --ref origin/<base>
 git switch -c <branch> origin/<base>
 ```
 
-The second command lists the files the base branch versions, by name, and never opens one. If it exits 1 a restricted file (the list in `docs/security.md`: environment files, private keys, credential files, `secrets/` and `restricted_paths` of `relevo.yml`) is versioned: take the failure path with the reason `restricted file in the diff`, naming the path it prints and saying in the finding that it is versioned on the base branch and not part of the change (`<path> (versioned on the base branch)`), `branch_state` `not_pushed`, and build nothing, because the secret is already in the history and the person has to rotate it and remove the file. Never read a restricted file yourself, for any reason.
+The second command lists the files the base branch versions, by name, and never opens one. If it exits 1 a restricted file (the list in `docs/security.md`: environment files, private keys, credential files, `secrets/` and `restricted_paths` of `relevo.yml`) is versioned: take the failure path with the reason `restricted file in the diff`, naming the path it prints and saying in the finding that it is versioned on the base branch and not part of the change (`<path> (versioned on the base branch)`), `branch_state` `not_pushed`, `recovery` `restricted` (no command fixes it: the person removes the file from the base branch), and build nothing, because the secret is already in the history and the person has to rotate it and remove the file. Never read a restricted file yourself, for any reason.
 
 If `origin/<branch>` already exists, do not touch it. Find out what it holds, then take the failure path with the reason `branch already exists`, `branch_state` `existing` and the `recovery`:
 
@@ -287,4 +287,4 @@ End with the next step, from the same table the comments use:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state <built|needs-spec|qa-failed|blocked|queued> --issue <issue>
 ```
 
-Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`) the comment already says what to do.
+Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch|restricted` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`) the comment already says what to do.

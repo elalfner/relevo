@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- **The comment for a restricted file versioned on the base branch no longer sends you to `/relevo:fix`.** Nothing was built and no command fixes it: the next step now says to rotate any secret, remove the file from the repository (`git rm --cached`), keep it ignored, merge that into the base branch and label the issue ready again.
+
 ## [0.12.0] - 2026-10-29
 
 ### Added
