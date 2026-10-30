@@ -53,11 +53,11 @@ A repository SHALL be able to use a Console API key (secret `ANTHROPIC_API_KEY`)
 When a cloud run ends because the usage limit, the quota or the credit was reached, the final step SHALL say so and say to apply `ready` again later, instead of the generic "ended without a result".
 
 #### Scenario: Limit reached
-- **WHEN** the execution log of the failed run shows that a usage limit was reached
+- **WHEN** the execution log of the failed run shows that a usage limit was reached: its final result is an error whose text says so, or a rate-limit event has a status other than `allowed`
 - **THEN** the issue is marked `qa-failed` as for any failure and the comment says the usage limit was reached and to label the issue `ready` again later
 
 #### Scenario: Another failure
-- **WHEN** the run failed for any other reason
+- **WHEN** the run failed for any other reason, including a log whose rate-limit events all report `allowed`
 - **THEN** the comment is the generic one with the link to the run
 
 ### Requirement: The consumption of a run is visible
