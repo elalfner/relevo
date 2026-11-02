@@ -7,7 +7,7 @@ Distributed as a Claude Code plugin named `relevo`:
 | Command | What it does |
 |---|---|
 | `/relevo:init` | Sets up config (including the [platforms and their stacks](stacks.md)), labels, branch protection and workflows (idempotent, shows a plan first) |
-| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `issue`. `grill-with-docs` is published so that only you can launch it, so when it is time `think` asks you to run `/grill-with-docs` in the same conversation. It writes no files: the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
+| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `issue`. `grill-with-docs` is published so that only you can launch it, so when it is time `think` asks you to run `/grill-with-docs` in the same conversation. It writes nothing to the repository (the only files it ever writes are HTML previews, outside it, after your yes): the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
 | `/relevo:issue` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build). With an issue number it rewrites that issue instead, only while it is not queued, being built or built |
 | `/relevo:go` | Builds a ready issue: spec check, build, QA with one retry (runs automatically in the cloud). It verifies the issue text is the one that was approved, refuses protected paths, and says what to do when the branch already exists |
 | `/relevo:review` | Guided on-device review: the person drives, the agent captures and audits logs |
@@ -28,11 +28,26 @@ No arguments. Looks at the repository, proposes the platforms, the settings and 
 
 ### `/relevo:think [idea or #issue]`
 
-An idea, or the number of an issue that came back with an open question. It explores, then interviews you, and ends with the agreement that `/relevo:issue` turns into issues. It writes no file.
+An idea, or the number of an issue that came back with an open question. It explores, then interviews you, and ends with the agreement that `/relevo:issue` turns into issues. It writes nothing to the repository.
 
 ```text
 /relevo:think show who has a birthday today on the home screen
 /relevo:think #42
+```
+
+**When the idea has something you will see** (a screen, a form, a list) and the project has an interface, `think` adds an interface step between the exploration and the interview. It reads your design system from the paths in `design.system` (or asks you to confirm the ones it finds), shows you the table of tokens it read, asks only the appearance questions the conversation has not answered, and shows two or three options as text wireframes with their states: loading with and without data, empty, error, narrow width, long content. Each choice is recorded as a decision with its reason and the discarded options.
+
+For a stack with a web or mobile interface it can then offer HTML previews of the finalists. It asks first, naming a folder outside the repository, and writes nothing without a yes; the files are never committed. Before you see a preview, a script opens it in a headless browser, offline and without scripts, and checks overflow, text contrast and target size. A mobile preview is a labelled approximate sketch, not a render of the app.
+
+```text
+You:    /relevo:think a screen that lists the customer's orders
+Claude: I read the tokens from lib/theme (12 colours, 2 unresolved: the primary colour comes from a seed). What is your primary colour?
+You:    #1d4ed8
+Claude: Two options for the reload while rows are on screen. A: keep the rows and show a thin progress bar … B: dim the rows and show a spinner … (table of states for each)
+You:    A
+Claude: Recorded D4: A, because the rows stay readable; discarded B. May I write two previews to /tmp/relevo-previews/ (not committed)?
+You:    yes
+Claude: Checked both. Preview A: pass. Preview B: fail (the button is 40 dp, needs 48), fixed and checked again: pass.
 ```
 
 ### `/relevo:issue [what to build, the path of a saved agreement, or the number of an issue to update]`
