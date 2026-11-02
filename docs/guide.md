@@ -58,6 +58,17 @@ The label counts only when the person who applied it could mark the issue `ready
 
 Read the last comment: it says what is missing. If information is missing, run `/relevo:issue <n>` and complete it. If a question is open, decide it, with `/relevo:think #<n>` first if you need to explore. Then apply `ready` again.
 
+## How to read the check of a preview
+
+When `think` shows an HTML preview it tells you the result of the automatic check for each item:
+
+- **pass**: the item was measured and is within the threshold.
+- **fail**: it is outside the threshold, and `think` names the element. It fixes the file and checks again, at most twice; if it still fails you see the preview with the failing item named.
+- **not checked**: the check could not decide (text over an image, a gradient or a partly transparent colour). It is not a pass: look at it yourself.
+- **approximate**: a value came from an approximation, such as a colour derived by opacity, so the ratio is not exact.
+
+If the machine has no browser automation, nothing was checked and `think` says so; it never shows a preview as checked when it was not. A mobile preview is an approximate sketch in a phone frame: it checks that text fits, targets are big enough and contrast holds, and says nothing about how the app really renders. The on-device review is where appearance is decided.
+
 ## Fix or a new issue
 
 - Use `/relevo:fix <n>` when the built work does not do what its issue says, or the reviewer asked for a change to the same feature: the defect is in what was built.
