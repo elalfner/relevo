@@ -6,6 +6,7 @@ commands:
   format: vendor/bin/pint
 generated: ['bootstrap/cache/**', 'storage/**', '_ide_helper*.php', '.phpstorm.meta.php']
 tools: [php, composer]
+installed: [vendor]
 requires_skills: []
 skills:
   dev: []

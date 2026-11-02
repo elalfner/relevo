@@ -32,11 +32,11 @@
 
 ## 6. Installed paths in the stack profiles
 
-- [ ] 6.1 `scripts/lib/stack-profile.mjs` and `scripts/stack-profile.mjs`: read the optional `installed:` list of a profile, add the repository profile's paths to the plugin's and never remove one. Verify with the profile tests for each scenario of the `platforms` spec.
+- [x] 6.1 `scripts/lib/stack-profile.mjs` and `scripts/stack-profile.mjs`: read the optional `installed:` list of a profile, add the repository profile's paths to the plugin's and never remove one. Verify with the profile tests for each scenario of the `platforms` spec.
 - [ ] 6.2 Add `installed:` to `stacks/vue.md`, `stacks/laravel.md` and `stacks/flutter.md` (none for `stacks/supabase.md`). Before writing each path, check it in a freshly installed project of that stack, and write down which command created it. Verify with the profile tests and with the command that each path exists after the install step in that project.
-- [ ] 6.3 `scripts/toolchain-check.mjs` and the build job: after the check of the tools, check the installed paths relative to the folder of the platform; a missing one ends with `qa-failed` before the agent and the message of task 2.2. Verify with `tests/` for the toolchain check (missing path, present path, no list) and a workflow test.
-- [ ] 6.4 `scripts/doctor.mjs`: warn when a platform's profile lists installed paths and the `go` workflow has no active step that installs its dependencies, naming the platform and the step; say nothing when the profile lists none. Verify with `tests/doctor.test.mjs` and `tests/skill-init-doctor.test.mjs`.
-- [ ] 6.5 `docs/stacks.md` and `docs/stacks.es.md`: the `installed:` key and what each plugin profile lists. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 6.3 `scripts/toolchain-check.mjs` and the build job: after the check of the tools, check the installed paths relative to the folder of the platform; a missing one ends with `qa-failed` before the agent and the message of task 2.2. Verify with `tests/` for the toolchain check (missing path, present path, no list) and a workflow test.
+- [x] 6.4 `scripts/doctor.mjs`: warn when a platform's profile lists installed paths and the `go` workflow has no active step that installs its dependencies, naming the platform and the step; say nothing when the profile lists none. Verify with `tests/doctor.test.mjs` and `tests/skill-init-doctor.test.mjs`.
+- [x] 6.5 `docs/stacks.md` and `docs/stacks.es.md`: the `installed:` key and what each plugin profile lists. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 7. A conflict with the base branch
 
