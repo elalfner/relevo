@@ -89,6 +89,8 @@ The existing 30-second reader of the announced phase appends a timestamp when th
 
 Reproduce it from the saved hand-off and the QA report, find where the claim and the result diverged, and decide with the evidence. The expected cause is a missing installation, which D5 stops before the agent starts. The guarantee that no `QA PASSED` exists without a verified run of the checks belongs to the receipt of the `specialist-review-lenses` change. If the investigation finds another cause, it becomes a requirement here.
 
+**Result of the investigation.** The reproduction is covered by the preflight tests: a profile that lists an `installed:` path and a platform folder without it now stops the run before the agent, with the missing path named (`tests/toolchain-check.test.mjs`, `tests/workflow-go.test.mjs`). Reading `agents/qa.md`, `skills/go/SKILL.md`, `skills/fix/SKILL.md` and the hand-off, the one remaining path is the rule itself: `agents/qa.md` tells the agent to reject when analysis or tests could not run, but nothing outside the agent's own report checks that it did. A `QA PASSED` that follows a report saying the checks did not run is therefore still possible if the agent contradicts itself. No other script, skill or hand-off turns a rejection into a pass. This is the case the receipt of `specialist-review-lenses` closes, so no requirement is added here.
+
 ### D11. The preflight is never a security control (decided)
 
 Every rule in D1 to D5 is repeated by a guard that already exists and stays in force. A bug in the preflight can cost a build or let one more run reach the guards; it cannot let a protected change through.
