@@ -55,20 +55,20 @@
 
 ## 9. The QA that passed without its checks
 
-- [ ] 9.1 Reproduce the case in a test project: remove the install step, run the build up to the agent, and confirm that the run now stops before the agent (task 6.3). Then look for any other path in which `QA PASSED` can follow a report that says analysis, lint or tests did not run, by reading `agents/qa.md`, the `go` skill and the hand-off script. If one exists, add a requirement and a task here; if none, record the result in `design.md` under D10. Verify by the test and by the note.
+- [x] 9.1 Reproduce the case in a test project: remove the install step, run the build up to the agent, and confirm that the run now stops before the agent (task 6.3). Then look for any other path in which `QA PASSED` can follow a report that says analysis, lint or tests did not run, by reading `agents/qa.md`, the `go` skill and the hand-off script. If one exists, add a requirement and a task here; if none, record the result in `design.md` under D10. Verify by the test and by the note.
 
 ## 10. Documentation
 
-- [ ] 10.1 `docs/guide.md` and `docs/guide.es.md`: what each reason means (`inputs`, `policy`), what to do after each, and how a conflict in `review` is handled. Verify with `node --test tests/docs-claims.test.mjs`.
-- [ ] 10.2 `docs/execution.md` and `docs/execution.es.md`: the checks before the agent, the step that is new in the workflow, how a project takes it through `/relevo:init` and raises `RELEVO_VERSION`, and that an older workflow keeps working. Verify with `node --test tests/docs-claims.test.mjs`.
-- [ ] 10.3 `docs/security.md` and `docs/security.es.md`: the checks are not a security control and the guards remain. Verify with `node --test tests/docs-claims.test.mjs`.
-- [ ] 10.4 `docs/` pages that describe `status` and the digest: the new alert and the summary. Verify with the docs tests.
+- [x] 10.1 `docs/guide.md` and `docs/guide.es.md`: what each reason means (`inputs`, `policy`), what to do after each, and how a conflict in `review` is handled. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 10.2 `docs/execution.md` and `docs/execution.es.md`: the checks before the agent, the step that is new in the workflow, how a project takes it through `/relevo:init` and raises `RELEVO_VERSION`, and that an older workflow keeps working. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 10.3 `docs/security.md` and `docs/security.es.md`: the checks are not a security control and the guards remain. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 10.4 `docs/` pages that describe `status` and the digest: the new alert and the summary. Verify with the docs tests.
 
 ## 11. Integration checks
 
-- [ ] 11.1 Run `npm test` and `openspec validate --all`, the two steps of the CI, and confirm both pass.
+- [x] 11.1 Run `npm test` and `openspec validate --all`, the two steps of the CI, and confirm both pass.
 - [ ] 11.2 Run a local build (`go-local.mjs`) on a throwaway repository with an issue that declares a missing input, one whose task edits a protected file, and one that is valid; each of the first two must stop before the developer agent with the right reason, and the third must build.
-- [ ] 11.3 Search the files of this change and the new documentation for the name of any real project, organisation or customer used as an example during the exploration, and confirm that none appears.
+- [x] 11.3 Search the files of this change and the new documentation for the name of any real project, organisation or customer used as an example during the exploration, and confirm that none appears.
 
 ## Workflow follow-up
 

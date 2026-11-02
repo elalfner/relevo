@@ -58,6 +58,16 @@ The label counts only when the person who applied it could mark the issue `ready
 
 Read the last comment: it says what is missing. If information is missing, run `/relevo:issue <n>` and complete it. If a question is open, decide it, with `/relevo:think #<n>` first if you need to explore. Then apply `ready` again.
 
+The comment names why, and the build stopped before the agent started, so no model turn was spent:
+
+- **`missing`** a reference of the issue could not be read (a design file, a linked repository): fix the reference, or the access of `RELEVO_LINKS_TOKEN`.
+- **`inputs`** the issue declares something in its `External inputs` section that is not there: a file that is not on the base branch, or a variable that is not set. Add it, or write what the issue should do without it. A secret or a manual input that the job cannot check is not a reason to stop: it is listed in the hand-off as `Inputs to confirm before you test`.
+- **`policy`** a task of the specification changes a protected path or a restricted file, or adds a dependency that the issue does not allow. Add the manifest to `Allow-paths:` if the dependency is intended, or change the task. A protected file is never edited by an unattended run.
+
+### A branch that conflicts with the base
+
+`/relevo:review <n>` first merges the base branch into the branch. When files conflict, the conflicts inside the paths the change may touch are handed to the developer agent in its integrate mode; QA then checks the result, and only after that is the merge committed. A conflict in any other file, or one that QA does not accept, ends with the merge aborted and nothing changed, and the review tells you which files to resolve yourself. `/relevo:status` shows, for a branch that has fallen behind the base, whether the merge would conflict and in which files.
+
 ## Fix or a new issue
 
 - Use `/relevo:fix <n>` when the built work does not do what its issue says, or the reviewer asked for a change to the same feature: the defect is in what was built.
