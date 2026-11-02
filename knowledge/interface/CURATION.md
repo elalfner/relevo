@@ -190,5 +190,13 @@ Checked on 2026-11-02. A claim is listed with where it was read and what it foun
 | `viewport-height-units` | dynamic viewport units exist | W3C CSS Values and Units Level 4: `dvh` is 1% of the dynamic viewport height | confirmed |
 | `compact-control-semantics` | a button with `aria-pressed` is a toggle button | W3C WAI-ARIA 1.2, role `button` | confirmed |
 | `live-badge-updates`, `errors-announced` | `status` is advisory, not important enough for an alert; `alert` defaults to `aria-live` assertive | W3C WAI-ARIA 1.2 glossary and role definitions | confirmed |
+| `viewport-meta` | `width=device-width` sets the viewport to the device width | MDN, meta viewport: `device-width` is the physical width of the device screen in CSS pixels | confirmed |
+| `lazy-loading` | `loading="lazy"` defers loading until the image nears the viewport | MDN, `img`: "Defers loading the image until it reaches a calculated distance from the viewport" | confirmed |
+| `font-loading` | `font-display: swap` and `optional` avoid blocking the text | MDN, `font-display`: `swap` has an extremely small block period and an infinite swap period; `optional` an extremely small block period | confirmed |
+| `cheap-animation` | animate `transform` and `opacity` | web.dev, "Stick to compositor-only properties": "Stick to transform and opacity changes for your animations" | confirmed |
+| `mobile-keyboards` | `inputmode="numeric"` gives a digits keyboard | MDN, `inputmode`: numeric "only requires the digits 0 to 9" | confirmed |
+| `autofill-support` | `autocomplete` is a hint to the user agent that takes `off`, `on` or tokens | MDN, `autocomplete`: "a hint to the user agent specifying how to, or indeed whether to, prefill a form control" | confirmed; the text says to declare the right value, not that `off` is forbidden |
+| `long-token-wrapping` | `overflow-wrap: anywhere` exists and breaks long tokens | MDN, `overflow-wrap`: `anywhere` | confirmed |
+| `z-index-scale` | a new stacking context isolates its children | MDN, stacking context: z-index values of child contexts "only have meaning within its parent's stacking context" | confirmed |
 
-Not checked, because the source is outside the network allowed to the session that wrote them (MDN, web.dev, the HTML standard, Material Design): the `viewport` meta tag, `loading="lazy"`, `font-display`, the cost of animating layout properties, `autocomplete` values in HTML, `inputmode` and the stacking order rules. They are the usual practice of the web platform and are kept as written; check them against the current documentation before relying on them in a dispute.
+All the claims above that the rules make about the web platform, the standards and the two mobile platforms were read at their sources on 2026-11-02. Read them again before relying on one in a dispute: documentation changes.
