@@ -158,6 +158,8 @@ The follow-up `parallel-review-lenses` launches the lenses together. It starts o
 
 **Spike S3, answered (2026-11-02).** Same setup as S1, with `--max-turns 2`. A subagent that made 3 tool calls (at least four turns of its own) ran inside a main run limited to 2 turns, and the run ended `success` with `num_turns: 2`: the turns of a subagent are not counted by the turn limit of the run. The cost is counted: `total_cost_usd` and the per-model usage include the tokens of the subagent (the difference between the per-model totals and the top-level `usage` of the main agent equals the subagent's own cache tokens), while the top-level `usage` field leaves them out. Consequence: "every limit counts every subagent" holds for cost, and for turns it needs Relevo's own accounting, so task 9.1 is needed.
 
+**Task 9.1, done.** `readUsage` adds the turns of the subagents, read from their `task_notification` (tool calls + 1 each, an estimate exact when the model makes one call per turn), and `run-usage.mjs --config relevo.yml` makes the comment say when the total went past `limits.run_max_turns` or `limits.run_max_cost`. The limit is not enforced during the run: the runner stops only on the turns of the main agent, and Relevo has no way to stop a run from inside, so the report after the run is what applies the limit to the total. What a run with lenses does against a low limit has not been run with a model.
+
 ## Risks / Trade-offs
 
 - [More lenses cost more] → the evaluation measures it, the defaults are changed on that evidence, and the gate removes the repeated checks.

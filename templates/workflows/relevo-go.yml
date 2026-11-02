@@ -485,6 +485,7 @@ jobs:
           [ -n "$EXECUTION_FILE" ] || exit 0
           flag=""; [ "$ONLY_SUBSCRIPTION" = "true" ] && flag="--subscription"
           [ -n "$RELEVO_PROGRESS_DIR" ] && flag="$flag --progress-dir $RELEVO_PROGRESS_DIR"
+          [ -f relevo.yml ] && flag="$flag --config relevo.yml"
           line=$(node .relevo-plugin/scripts/run-usage.mjs --file "$EXECUTION_FILE" $flag)
           [ -n "$line" ] && gh issue comment "$ISSUE" --body "$line"
           exit 0

@@ -67,7 +67,7 @@
 
 ## 9. The limits of a run
 
-- [ ] 9.1 If task 1.3 found that the runtime does not count the turns or the cost of a subagent, add the accounting from the log of the run in `scripts/lib/run-usage.mjs` and apply `limits.run_max_turns` and `limits.run_max_cost` to the total; if it counts them, record that and add a test that documents it. Verify with the usage tests and a run that exceeds a low limit with lenses.
+- [x] 9.1 If task 1.3 found that the runtime does not count the turns or the cost of a subagent, add the accounting from the log of the run in `scripts/lib/run-usage.mjs` and apply `limits.run_max_turns` and `limits.run_max_cost` to the total; if it counts them, record that and add a test that documents it. Verify with the usage tests and a run that exceeds a low limit with lenses.
 
 ## 10. The evaluation
 
