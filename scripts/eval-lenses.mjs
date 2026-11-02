@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Evaluates the QA lenses on the seeded defects of tests/fixtures/lens-defects. Opt-in: it is not part of npm test.
 //   node scripts/eval-lenses.mjs [--lens spec,code] [--cases <regex>] [--without-rule <text>] [--with-skill <file>]
-//        [--out <dir>] [--price-in <usd per million>] [--price-out <usd per million>] [--yes] [--dry-run]
+//        [--out <dir>] [--max-budget-usd <usd per call, default 1>] [--price-in <usd per million>] [--price-out <usd per million>] [--yes] [--dry-run]
 // Without --dry-run it spends model usage: it prints an estimate and asks before it starts (--yes answers for you).
 // --dry-run uses a stub instead of the model, spends nothing and asks nothing.
 //   exit 0 done   exit 2 bad arguments   exit 3 not confirmed (nothing was spent)
@@ -30,7 +30,7 @@ if (!opts.dryRun && !opts.yes) {
   if (!/^y(es)?$/i.test(answer.trim())) { console.error('Not confirmed. Nothing was spent.'); process.exit(3); }
 }
 
-const runner = opts.dryRun ? stubRunner({ cases }) : claudeRunner(spawnSync);
+const runner = opts.dryRun ? stubRunner({ cases }) : claudeRunner(spawnSync, { maxBudgetUsd: opts.maxBudgetUsd });
 const result = await evaluate(cases, opts, runner);
 const date = new Date().toISOString().slice(0, 10);
 const dir = opts.out ?? mkdtempSync(join(tmpdir(), 'relevo-lens-eval-'));

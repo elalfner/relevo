@@ -8,7 +8,7 @@ const OUTPUT_TOKENS = 1500; // assumed size of one lens report, for the estimate
 const tokensOf = (text) => Math.ceil(text.length / 4);
 
 export function parseArgs(argv) {
-  const o = { lenses: LENSES, cases: null, dryRun: false, yes: false, withoutRule: null, withSkill: null, out: null, priceIn: null, priceOut: null };
+  const o = { lenses: LENSES, cases: null, dryRun: false, yes: false, withoutRule: null, withSkill: null, out: null, priceIn: null, priceOut: null, maxBudgetUsd: 1 };
   const val = (i, name) => { if (i + 1 >= argv.length) throw new Error(`${name} needs a value`); return argv[i + 1]; };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -21,9 +21,11 @@ export function parseArgs(argv) {
     else if (a === '--out') { o.out = val(i, a); i++; }
     else if (a === '--price-in') { o.priceIn = Number(val(i, a)); i++; }
     else if (a === '--price-out') { o.priceOut = Number(val(i, a)); i++; }
+    else if (a === '--max-budget-usd') { o.maxBudgetUsd = Number(val(i, a)); i++; }
     else throw new Error(`unknown option ${a}`);
   }
   for (const l of o.lenses) if (!LENSES.includes(l)) throw new Error(`unknown lens ${l}`);
+  if (!(o.maxBudgetUsd > 0)) throw new Error('--max-budget-usd must be a number greater than zero');
   return o;
 }
 

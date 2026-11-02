@@ -75,3 +75,10 @@ test('a verdict counts as found only with the expected finding', () => {
   assert.deepEqual(judge('QA REJECTED\n1. naming', expected), { rejected: true, matched: false });
   assert.deepEqual(judge('QA PASSED', expected), { rejected: false, matched: false });
 });
+
+test('the budget of each call can be lowered, and must be a number above zero', () => {
+  assert.equal(parseArgs([]).maxBudgetUsd, 1);
+  assert.equal(parseArgs(['--max-budget-usd', '0.2']).maxBudgetUsd, 0.2);
+  assert.throws(() => parseArgs(['--max-budget-usd', '0']), /greater than zero/);
+  assert.equal(run(['--max-budget-usd', 'x', '--dry-run']).status, 2);
+});
