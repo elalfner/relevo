@@ -2,7 +2,7 @@
 
 ## 1. Spikes that decide how the settings and limits are applied
 
-- [ ] 1.1 Spike S1: find out whether the effort of a subagent can be given when it is launched, or only in the frontmatter of its agent file, by launching a subagent both ways in a throwaway session and reading what the runtime reports it used. Record the answer in `design.md` under D11 with the version of the tool. Verify by the recorded note.
+- [x] 1.1 Spike S1: find out whether the effort of a subagent can be given when it is launched, or only in the frontmatter of its agent file, by launching a subagent both ways in a throwaway session and reading what the runtime reports it used. Record the answer in `design.md` under D11 with the version of the tool. Verify by the recorded note.
 - [ ] 1.2 Spike S2: find out whether Antigravity lets a subagent be launched with a model or an effort, by reading its documentation for the installed version and trying it. Record the answer under D11 and in `docs/pilot-findings.md`. Verify by the recorded note.
 - [x] 1.3 Spike S3: find out whether the turn and cost limits of a Claude run count the turns and cost of a subagent, by running a session with a low turn limit that launches a subagent and reading the totals the run reports. Record the answer under D17. Verify by the recorded note; it decides whether task 9.1 is needed.
 - [x] 1.4 Spike S4 (hand-built stream, not recorded: see design D17): replay an event stream with subagent responses through the run guard for Antigravity and check whether its token total includes them. Record the answer under D17. Verify by a test that holds the recorded stream and the expected totals.
