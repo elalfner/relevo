@@ -133,6 +133,16 @@ review:
 - The section `## Review` is free text for the agent, read only in a review. It can add steps and ask for more evidence. It cannot change that you confirm every line, that the log is audited, that `decide` gates the pull request, that restricted files (the list in [Security](security.md)) are never read, that no waiver is suggested or that no code is patched in a review: `/relevo:doctor` warns about a line that asks for one of them, and the review ignores it.
 - A Laravel review has no device and no browser. With `review.autopilot` `off` you run the project's tests and tell the review (`ran <exit code>`); with `precheck` or `verify` the agent runs the existing test of each line and never writes one. A test run that passes writes nothing to `storage/logs`, so the recorded run, and not the log, is what shows that the code was exercised.
 
+## Reading the design tokens
+
+For a stack with an interface, `node scripts/design-tokens.mjs` reads the colours, text styles, spacing and radii of your design system from its code and prints each with the file and line it came from. The interface step of `think` shows you that table before it draws anything.
+
+- **It reads only the paths you declared** under `design.system.tokens` in `relevo.yml`, or the ones you confirmed when it listed what it found by convention (a styling tool configuration, a stylesheet with custom properties on the root, a Dart file named after a theme). It never reads the rest of the repository, never opens a restricted file (it says which it skipped), runs none of your code and uses no network.
+- **Dart:** colour literals, constants followed to their definition, a colour scheme written with explicit colours, the shades of the standard palette from a fixed table, an opacity on a known colour (marked as derived), classes that extend the theme, text styles, spacing and radius constants, and a dark theme as a second set.
+- **Web:** custom properties on the root and in a dark-mode block (a property that refers to another is resolved), and the literal colour, spacing and radius scales of the styling tool configuration.
+- **Never guessed:** a colour scheme derived from a seed, a colour that comes from the device or a server, a swatch that is not in the fixed table, and a reference it cannot follow are listed as unresolved with their file and line. `think` asks you for those colours instead of inventing them.
+- **Several brands or flavours** are listed as separate sets and never merged: you choose one.
+
 ## Your own stack
 
 Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any other stack (Go, Python, Rust...) you write the profile yourself, and the file is the whole profile:
