@@ -368,3 +368,9 @@ test('the Antigravity workflow has the same step, because it is outside the bloc
   assert.ok(rendered.includes('- name: Check the issue before the agent'));
   assert.ok(rendered.indexOf('- name: Check the issue before the agent') < rendered.indexOf('- name: Install the Antigravity CLI'));
 });
+
+test('the usage step gives the run-usage script the folder of the run, so phases and class reach the record', () => {
+  const step = workflow.slice(workflow.indexOf('- name: Report what the run used'), workflow.indexOf('- name: Report a run that ended without an outcome', workflow.indexOf('- name: Report what the run used')));
+  assert.match(step, /--progress-dir "?\$RELEVO_PROGRESS_DIR/);
+  assert.match(step, /continue-on-error: true/);
+});

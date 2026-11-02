@@ -43,7 +43,7 @@ if (arg('input')) {
       return { result: 'unknown', files: [] };
     }
   };
-  data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config, mergeProbe });
+  data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config, withUsage: true, mergeProbe });
 }
 let me = arg('me') ?? null;
 if (!me && !arg('input')) {

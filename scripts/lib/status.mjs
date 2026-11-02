@@ -6,7 +6,7 @@
 // me      login of the person asking (null for the team-level view)
 
 import { resolveLabelNames } from './labels.mjs';
-import { sumUsage, USAGE_DAYS } from './run-usage.mjs';
+import { sumUsage, summarizeOutcomes, USAGE_DAYS } from './run-usage.mjs';
 import { STAGE_DAYS, formatDuration, summarizeStages } from './stages.mjs';
 
 /** Reviews one person can complete per working day; used only for the capacity warning. */
@@ -132,6 +132,8 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     milestones: summaries, alerts, waiting, unread,
     // The runs of the last seven days added up, or null when none left a usage marker. Only the digest shows it.
     usage: usage.length ? sumUsage(usage) : null,
+    // How those runs ended and where their time went; nothing is stored, it is read from the markers each time.
+    outcomes: usage.length ? summarizeOutcomes(usage) : null,
     // The median time of each stage that finished in the last seven days, or null when none did. Only the digest shows it.
     stages: stages.length ? summarizeStages(stages) : null,
     readOnly: true,
@@ -205,6 +207,8 @@ export function renderStatus(report, language = 'en') {
     if (out.length && out[out.length - 1] !== '') out.push('');
     section(t.unreadTitle, unread.map((u) => t.unread[u.what](u)));
   }
+  const outcomes = outcomesLine(report.outcomes, language);
+  if (outcomes) out.push('', outcomes);
   while (out.length && out[out.length - 1] === '') out.pop();
   return out.join('\n');
 }
@@ -224,6 +228,30 @@ function digestUsageLine(usage, es) {
   }
   if (usage.tokens !== null) parts.push(`${n(usage.tokens)} tokens`);
   return `${es ? `Uso, últimos ${USAGE_DAYS} días` : `Usage, last ${USAGE_DAYS} days`}: ${parts.join(', ')}.`;
+}
+
+const CLASS_NAMES = {
+  en: { built: 'built', inputs: 'stopped for missing inputs', policy: 'stopped by policy', 'qa-non-fixable': 'rejected by QA, nothing to fix', 'qa-fixable-after-retries': 'rejected by QA after the retries', conflict: 'conflict', other: 'other' },
+  es: { built: 'construidas', inputs: 'detenidas por entradas faltantes', policy: 'detenidas por política', 'qa-non-fixable': 'rechazadas por QA, nada que corregir', 'qa-fixable-after-retries': 'rechazadas por QA tras los reintentos', conflict: 'conflicto', other: 'otras' },
+};
+const PHASE_NAMES = {
+  en: { planning: 'planning', specification: 'specification', development: 'development', qa: 'QA', delivery: 'delivery' },
+  es: { planning: 'planificación', specification: 'especificación', development: 'desarrollo', qa: 'QA', delivery: 'entrega' },
+};
+
+/** One line: the runs of the window per outcome class, the seconds of each phase, and how many runs have no record. */
+export function outcomesLine(outcomes, language) {
+  if (!outcomes || outcomes.withRecord === 0) return '';
+  const es = String(language).startsWith('es');
+  const names = CLASS_NAMES[es ? 'es' : 'en'];
+  const phases = PHASE_NAMES[es ? 'es' : 'en'];
+  const classes = Object.keys(names).filter((c) => outcomes.byClass[c]).map((c) => `${outcomes.byClass[c]} ${names[c]}`);
+  const seconds = Object.keys(phases).filter((p) => outcomes.phaseSeconds[p] !== undefined).map((p) => `${phases[p]} ${outcomes.phaseSeconds[p]}s`);
+  const parts = [];
+  if (classes.length) parts.push(classes.join(', '));
+  if (seconds.length) parts.push(`${es ? 'segundos por fase' : 'seconds per phase'}: ${seconds.join(', ')}`);
+  if (outcomes.withoutRecord) parts.push(es ? `${outcomes.withoutRecord} sin registro de fases` : `${outcomes.withoutRecord} without a phase record`);
+  return parts.length ? `${es ? `Resultados, últimos ${USAGE_DAYS} días` : `Outcomes, last ${USAGE_DAYS} days`}: ${parts.join('; ')}.` : '';
 }
 
 const STAGE_NAMES = {
@@ -257,6 +285,7 @@ export function renderDigest(report, language = 'en') {
     });
   }
   if (report.usage) lines.push('', digestUsageLine(report.usage, es));
+  if (report.outcomes && outcomesLine(report.outcomes, es ? 'es' : 'en')) lines.push(...(report.usage ? [] : ['']), outcomesLine(report.outcomes, es ? 'es' : 'en'));
   // After the usage when there is one, so that the two lines read as one block.
   if (report.stages?.length) lines.push(...(report.usage ? [] : ['']), digestStagesLine(report.stages, es));
   return lines.join('\n');

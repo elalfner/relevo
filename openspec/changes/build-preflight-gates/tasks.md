@@ -48,10 +48,10 @@
 
 ## 8. Phases and outcome classes in the usage record
 
-- [ ] 8.1 `scripts/progress.mjs` and the progress reader of the workflow: record a timestamp when the announced phase changes, in a file local to the run. Verify with `tests/progress-skill.test.mjs` and a test of the reader with a sequence of phases and attempts.
-- [ ] 8.2 `scripts/lib/run-usage.mjs` and `scripts/run-usage.mjs`: write `phases` (name, attempt, seconds) and `class` into the `relevo:usage` marker, with the classes of the `go` spec, and keep reading comments that lack them. Verify with the usage tests: a built run with a retry, each class, an old comment, and a reader that ignores unknown keys. The visible progress comment must not change.
+- [x] 8.1 `scripts/progress.mjs` and the progress reader of the workflow: record a timestamp when the announced phase changes, in a file local to the run. Verify with `tests/progress-skill.test.mjs` and a test of the reader with a sequence of phases and attempts.
+- [x] 8.2 `scripts/lib/run-usage.mjs` and `scripts/run-usage.mjs`: write `phases` (name, attempt, seconds) and `class` into the `relevo:usage` marker, with the classes of the `go` spec, and keep reading comments that lack them. Verify with the usage tests: a built run with a retry, each class, an old comment, and a reader that ignores unknown keys. The visible progress comment must not change.
 - [ ] 8.3 Set the class at each exit of `go`, the workflow and `go-local.mjs`. Verify with `tests/skill-go.test.mjs` and the workflow tests that every exit writes one class.
-- [ ] 8.4 `scripts/status.mjs` and `scripts/digest.mjs`: print, for a window of days, the count per class and the seconds per phase from the usage records, say how many runs have no record, and store nothing. Verify with the status and digest tests, including runs from before the records.
+- [x] 8.4 `scripts/status.mjs` and `scripts/digest.mjs`: print, for a window of days, the count per class and the seconds per phase from the usage records, say how many runs have no record, and store nothing. Verify with the status and digest tests, including runs from before the records.
 
 ## 9. The QA that passed without its checks
 

@@ -439,3 +439,17 @@ test('Scenario: the alert on a branch behind the base says whether the merge wou
   assert.match(renderStatus(behind(undefined), 'en'), /not known whether merging the base would conflict/);
   assert.match(renderDigest(conflict, 'es'), /el merge tendría conflictos en README\.md/);
 });
+
+test('Scenario: the digest and status print the outcomes and the seconds per phase, and say how many runs have no record', () => {
+  const usage = [
+    { turns: 5, class: 'built', phases: [{ name: 'development', attempt: null, seconds: 120 }, { name: 'qa', attempt: 1, seconds: 40 }] },
+    { turns: 2, class: 'inputs', phases: [{ name: 'planning', attempt: null, seconds: 8 }] },
+    { turns: 9 },
+  ];
+  const report = buildStatus({ config, me: 'ana', now: NOW, issues: [], prs: [], usage });
+  const en = digestWith(usage);
+  assert.match(en, /Outcomes, last 7 days: 1 built, 1 stopped for missing inputs; seconds per phase: planning 8s, development 120s, QA 40s; 1 without a phase record\./);
+  assert.match(digestWith(usage, 'es'), /Resultados, últimos 7 días: 1 construidas, 1 detenidas por entradas faltantes; segundos por fase: planificación 8s, desarrollo 120s, QA 40s; 1 sin registro de fases\./);
+  assert.match(renderStatus(report, 'en'), /Outcomes, last 7 days: 1 built/);
+  assert.doesNotMatch(renderStatus(buildStatus({ config, me: 'ana', now: NOW, issues: [], prs: [] }), 'en'), /Outcomes/);
+});

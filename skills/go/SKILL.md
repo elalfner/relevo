@@ -33,6 +33,14 @@ In the cloud the workflow keeps one comment on the issue that shows how far the 
 node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt <n> --of <m>]
 ```
 
+Every exit of the run also records how it ended, once, with the same best-effort command, just before the final report:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
+```
+
+Use `built` when the issue went to `built`; `inputs` when it went back to `needs-spec` because an input or a reference is missing; `policy` when it went back to `needs-spec` because a task changes a protected path or adds a dependency the issue does not allow; `qa-non-fixable` when the retries were skipped (`QA rejected: nothing the developer agent can fix`); `qa-fixable-after-retries` for `QA rejected after the retries`; `conflict` when the branch could not be integrated with the base; and `other` for every other failure path or gate decision. The class and the seconds of each phase go into the hidden usage record of the run.
+
 This is best effort. It prints nothing and does nothing outside that workflow, and when it cannot write it still exits 0. Never wait for it, never retry it, never take the failure path because of it, and do not mention it in the report.
 
 ## Where it runs
