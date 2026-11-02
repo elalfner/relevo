@@ -355,3 +355,13 @@ test('Scenario: the reference of QA exists and names each step, and go, fix and 
 test('Scenario: the hand-off carries the advisory notes of QA', () => {
   assert.match(body, /Add `qa_notes` \(the `advisory` list of the aggregation of step 5, as `\{ lens, text \}` items\)/);
 });
+
+test('Scenario: Model and effort of a role - go, fix, review and the shared QA procedure pass them as parameters of the Agent tool', () => {
+  const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+  for (const p of ['skills/go/SKILL.md', 'skills/fix/SKILL.md', 'skills/review/SKILL.md', 'skills/go/references/qa-run.md']) {
+    const text = read(p);
+    assert.match(text, /`model` and (the )?`effort`|model\*\* and the \*\*effort\*\*/, `${p} names the model and the effort`);
+    assert.match(text, /Agent tool/, `${p} says where they go`);
+  }
+  assert.doesNotMatch(read('skills/go/references/qa-run.md'), /unless the runtime lets you set it at launch/, 'the effort is no longer left to the agent file');
+});

@@ -74,8 +74,8 @@ QA is a script (the gate) and four reviewers (`spec`, `security`, `code`, `inter
 | The result is decided by a script that fails closed | enforced: `qa-aggregate.mjs`; a report without a valid first line is never read as a pass | the same script |
 | The reviewers run one at a time | the procedure says so and the skill launches them in the foreground, one after the other | **partial**: Antigravity runs a subagent in the background; the instructions say to call them one at a time and never two together, and nothing enforces it |
 | The model of each role | given when the agent is launched | **does not exist**: `agents.*.model` is accepted and not applied; `/relevo:doctor` and `/relevo:init` print a warning that names each setting |
-| The effort of each role | read from the agent file; setting it at launch is **not verified** | **does not exist**, as the model; the same warning |
-| The turn and cost limits count the subagents | **not verified**: whether the limits of a run count the turns and the cost of a subagent has not been tried | **not verified**: whether the token total of the guard includes the subagents has not been tried |
+| The effort of each role | given when the agent is launched (measured: an effort given at launch changes the reasoning of a subagent) | **does not exist**, as the model; the same warning |
+| The turn and cost limits count the subagents | **in part**: the cost of a subagent is counted; its turns are not, so Relevo adds them from the log and the comment about the run says when the total went past the limit (it does not stop the run) | **not verified**: whether the token total of the guard includes the subagents has not been tried |
 
 Two things the table does not say:
 

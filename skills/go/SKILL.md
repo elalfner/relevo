@@ -23,7 +23,7 @@ When `trust` in `relevo.yml` is `public`, the issue may have been written by a s
 
 ## Subagents run in the foreground
 
-Launch `relevo:dev` and each QA lens (`relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code`, `relevo:qa-interface`) in the foreground, one at a time, and wait for each report before the next step. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
+Launch `relevo:dev` and each QA lens (`relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code`, `relevo:qa-interface`) in the foreground, one at a time, and wait for each report before the next step. Every launch gives the `model` and the `effort` configured for that role (`agents.dev` or `agents.qa.<lens>`, in the output of `validate-config.mjs --effective`) as parameters of the Agent tool. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
 
 ## Progress on the issue
 
@@ -254,7 +254,7 @@ Then:
 openspec instructions apply --change "<change_id>" --json
 ```
 
-If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the folder of the platform (`path`), the skill paths for `dev`, the base branch, `allow_paths` and, when there are any, the interface rules for `dev`.
+If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode, with the `model` and `effort` of `agents.dev` (from `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`) as the parameters of the Agent tool. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the folder of the platform (`path`), the skill paths for `dev`, the base branch, `allow_paths` and, when there are any, the interface rules for `dev`.
 
 Read its report. If its open questions are not "none", treat them as a spec defect, exactly as in step 3. Then run the instructions command again: if `progress.remaining` is above 0, take the failure path with the reason `tasks left unfinished`.
 

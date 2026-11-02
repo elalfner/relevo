@@ -32,7 +32,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/lens-plan.mjs --platform <platform> --text-fi
 For each active lens, in the order `spec`, `security`, `code`, `interface`:
 
 1. **Check the receipt first:** `node ${CLAUDE_PLUGIN_ROOT}/scripts/receipt-check.mjs`. If it exits 1 the diff changed since the gate ran (or the receipt is not green): run step 1 again before this lens. A lens never starts on a diff whose checks did not run.
-2. Launch the agent `relevo:qa-<lens>` in the foreground, with the **model** configured for it (`agents.qa.<lens>.model` in the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`; the effort is the one of its agent file unless the runtime lets you set it at launch). Never start two together, and never end your turn while one is running.
+2. Launch the agent `relevo:qa-<lens>` in the foreground, giving the **model** and the **effort** configured for it when you launch it (`agents.qa.<lens>.model` and `agents.qa.<lens>.effort` in the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`): pass them as the `model` and `effort` parameters of the Agent tool. The effort given at launch is applied (measured in spike S1 of the design). Never start two together, and never end your turn while one is running.
 3. Give it only what it reads:
    - `spec`: the change folder, `<issue_file>`, the base branch, the rules files, the folder of the platform and `allow_paths`. It is given no stack section.
    - `security`: the change folder, the base branch, the folder of the platform and the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform> --lens security`.

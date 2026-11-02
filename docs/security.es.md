@@ -74,8 +74,8 @@ QA es un script (la puerta) y cuatro revisores (`spec`, `security`, `code`, `int
 | El resultado lo decide un script que falla cerrado | se cumple: `qa-aggregate.mjs`; un reporte sin primera línea válida nunca se lee como aprobado | el mismo script |
 | Los revisores corren de uno en uno | el procedimiento lo dice y la skill los lanza en primer plano, uno tras otro | **parcial**: Antigravity ejecuta un subagente en segundo plano; las instrucciones dicen llamarlos de uno en uno y nunca dos juntos, y nada lo hace cumplir |
 | El modelo de cada rol | se da al lanzar el agente | **no existe**: `agents.*.model` se acepta y no se aplica; `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada ajuste |
-| El esfuerzo de cada rol | se lee del archivo del agente; darlo al lanzar **no está verificado** | **no existe**, como el modelo; el mismo aviso |
-| Los límites de turnos y costo cuentan a los subagentes | **no verificado**: no se ha probado si los límites de una ejecución cuentan los turnos y el costo de un subagente | **no verificado**: no se ha probado si el total de tokens de la guarda incluye a los subagentes |
+| El esfuerzo de cada rol | se da al lanzar el agente (medido: un esfuerzo dado al lanzar cambia el razonamiento de un subagente) | **no existe**, como el modelo; el mismo aviso |
+| Los límites de turnos y costo cuentan a los subagentes | **en parte**: el costo de un subagente se cuenta; sus turnos no, así que Relevo los suma desde el log y el comentario sobre la ejecución dice cuándo el total pasó el límite (no detiene la ejecución) | **no verificado**: no se ha probado si el total de tokens de la guarda incluye a los subagentes |
 
 Dos cosas que la tabla no dice:
 

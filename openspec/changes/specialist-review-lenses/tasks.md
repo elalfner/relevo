@@ -53,8 +53,8 @@
 
 - [x] 7.1 `scripts/lib/config.mjs`: the keys `agents.dev.*` and `agents.qa.<lens>.*` with the validation of the spec (a non-empty model, an effort from the list, an unknown lens or effort fails, no keys is valid) and the defaults. Verify with `tests/config.test.mjs` for each scenario of the `configuration` and `agent-settings` specs.
 - [x] 7.2 Add the level of validation that warns without failing, mark the agent settings as not applied with Antigravity, and print the warnings from `scripts/validate-config.mjs`. Verify with the config tests: Antigravity warns and passes, a rejected key still fails.
-- [ ] 7.3 Give the model of the role when `go`, `fix` and `review` launch an agent, and the effort in the way that task 1.1 found. Verify with the skill tests.
-- [ ] 7.4 `scripts/doctor.mjs` and `scripts/init.mjs`: warn about the settings that the agent does not apply, say where the effort is not applied, check that the lens agents exist and that profiles resolve for each lens, and report a file that still names `relevo:qa`. Verify with `tests/doctor.test.mjs`, `tests/init.test.mjs` and `tests/skill-init-doctor.test.mjs` for each scenario of the `init-doctor` spec.
+- [x] 7.3 Give the model of the role when `go`, `fix` and `review` launch an agent, and the effort in the way that task 1.1 found. Verify with the skill tests.
+- [x] 7.4 `scripts/doctor.mjs` and `scripts/init.mjs`: warn about the settings that the agent does not apply, say where the effort is not applied, check that the lens agents exist and that profiles resolve for each lens, and report a file that still names `relevo:qa`. Verify with `tests/doctor.test.mjs`, `tests/init.test.mjs` and `tests/skill-init-doctor.test.mjs` for each scenario of the `init-doctor` spec.
 - [x] 7.5 `templates/relevo.yml`: the keys commented out with the defaults. Verify with the test that validates the shipped file.
 - [x] 7.6 `docs/configuration.md` and `docs/configuration.es.md`: the keys, the defaults, the cost of the defaults and how to restore the previous cost. Verify with `node --test tests/docs-claims.test.mjs`.
 
