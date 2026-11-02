@@ -62,6 +62,26 @@ What the table does not say, for Antigravity:
 - **A prefix list is not an operating-system boundary.** The closed list restricts which commands the agent may start, not what an allowed command does. This is the same limit as the one above for Claude.
 - **Not tried:** that the quality of the adversarial QA holds with a Gemini model; a full cloud run on a real runner (see the known limits in the changelog); whether the CLI can update itself during a run.
 
+## The gate, the QA reviewers and their settings
+
+QA is a script (the gate) and four reviewers (`spec`, `security`, `code`, `interface`), each with its own model and effort. This table says, for each control, what holds with each agent, what holds in part and what does not exist. "Not verified" means that Relevo does not claim it: it has not been tried on a real run.
+
+| Control | Claude Code | Antigravity CLI |
+|---|---|---|
+| The gate runs the checks and no agent can skip it | enforced: `validation-gate.mjs` is a script that `go`, `fix` and `review` run | the same script |
+| A reviewer starts only on a diff whose checks ran | enforced by `receipt-check.mjs` before each reviewer, which recomputes the hash of the diff | the same script |
+| A reviewer cannot write or edit a file | enforced by the runner: the four agent files set `disallowedTools: Write, Edit, NotebookEdit` | **partial**: the four agents are rendered with a tool list that has no write or edit tool, but it keeps the command tool, so a command can still change a file; the prefix list of the workflow is the limit |
+| The result is decided by a script that fails closed | enforced: `qa-aggregate.mjs`; a report without a valid first line is never read as a pass | the same script |
+| The reviewers run one at a time | the procedure says so and the skill launches them in the foreground, one after the other | **partial**: Antigravity runs a subagent in the background; the instructions say to call them one at a time and never two together, and nothing enforces it |
+| The model of each role | given when the agent is launched | **does not exist**: `agents.*.model` is accepted and not applied; `/relevo:doctor` and `/relevo:init` print a warning that names each setting |
+| The effort of each role | read from the agent file; setting it at launch is **not verified** | **does not exist**, as the model; the same warning |
+| The turn and cost limits count the subagents | **not verified**: whether the limits of a run count the turns and the cost of a subagent has not been tried | **not verified**: whether the token total of the guard includes the subagents has not been tried |
+
+Two things the table does not say:
+
+- **The receipt is not a security boundary.** It guards against an omission or a mistake: a reviewer cannot start on code whose checks did not run. It does not defend against an agent that writes a false file, because it lives in the working folder. The guards of the commit (the protected paths, the restricted files, the scan of what is staged) remain the enforcement, and they run whatever any receipt says.
+- **A setting never turns a reviewer off.** There is no key to disable `spec`, `security` or `code`, or to lower what they block. A project's exceptions go in its own rules file, which the `spec` reviewer reads.
+
 ## Restricted files
 
 Some files should be read by no agent and by no script of Relevo: environment files, private keys, credential stores. The list is the base list below plus `restricted_paths` in `relevo.yml`, which only adds (a profile cannot weaken it, and `relevo.yml` cannot take an entry away). It is separate from the protected paths, which are about what a diff may write.
