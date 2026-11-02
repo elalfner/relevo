@@ -94,7 +94,7 @@ export async function evaluate(cases, opts, runner, root = process.cwd()) {
     const row = { id: c.id, lens };
     for (const variant of ['bad', 'good']) {
       const r = await runner({ lens, model: lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]) });
-      row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0 };
+      row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0, report: r.report };
     }
     rows.push(row);
   }
@@ -139,6 +139,16 @@ export function renderReport(result, opts, est, date) {
   for (const [lens, p] of Object.entries(result.per)) lines.push(`| ${lens} | ${p.found}/${p.cases} | ${p.falsePositives}/${p.cases} | ${p.cost.toFixed(2)} |`);
   lines.push('', `Total cost: ${result.total.toFixed(2)} USD`, '', '## Cases', '');
   for (const r of result.rows) lines.push(`- ${r.id}: bad ${r.bad.matched ? 'found' : r.bad.rejected ? 'rejected for another reason' : 'missed'}; good ${r.good.rejected ? 'FLAGGED' : 'passed'}`);
+  // What the lens said where the result is not the expected one, to tell a fault of the lens from a fault of the fixture.
+  const cut = (t) => String(t ?? '').trim().slice(0, 1500);
+  const odd = result.rows.flatMap((r) => [
+    ...(r.bad.matched ? [] : [[`${r.id} (bad variant, not found)`, r.bad.report]]),
+    ...(r.good.rejected ? [[`${r.id} (good variant, flagged)`, r.good.report]] : []),
+  ]);
+  if (odd.length) {
+    lines.push('', '## What the lens said where the result was not the expected one', '');
+    for (const [title, text] of odd) lines.push(`### ${title}`, '', '```', cut(text), '```', '');
+  }
   return `${lines.join('\n')}\n`;
 }
 

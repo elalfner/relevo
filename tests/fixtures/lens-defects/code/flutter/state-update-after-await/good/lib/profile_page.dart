@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+class User {
+  const User(this.name);
+  final String name;
+}
+
+Future<User> fetchUser() async => const User('Ana');
+
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
   @override
@@ -8,6 +15,12 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   String name = '';
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
 
   Future<void> load() async {
     final user = await fetchUser();

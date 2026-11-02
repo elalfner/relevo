@@ -82,3 +82,18 @@ test('the budget of each call can be lowered, and must be a number above zero', 
   assert.throws(() => parseArgs(['--max-budget-usd', '0']), /greater than zero/);
   assert.equal(run(['--max-budget-usd', 'x', '--dry-run']).status, 2);
 });
+
+test('the report keeps what the lens said where a good variant was flagged or a defect was missed, and only there', async () => {
+  const opts = parseArgs(['--lens', 'code']);
+  const cases = selectCases(loadCases(), opts);
+  const id = cases[0].id;
+  const clean = await evaluate(cases, opts, stubRunner({ cases }));
+  assert.ok(clean.rows[0].bad.report.startsWith('QA REJECTED'), 'the text is kept in the rows');
+  const { renderReport } = await import('../scripts/lib/lens-eval.mjs');
+  const est = estimate(cases, opts);
+  assert.doesNotMatch(renderReport(clean, opts, est, '2026-11-02'), /What the lens said/);
+  const odd = await evaluate(cases, opts, stubRunner({ cases, falsePositive: [id] }));
+  const md = renderReport(odd, opts, est, '2026-11-02');
+  assert.match(md, /What the lens said where the result was not the expected one/);
+  assert.match(md, new RegExp(`${id} \\(good variant, flagged\\)`));
+});
