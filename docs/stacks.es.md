@@ -33,6 +33,8 @@ Un perfil es el archivo `stacks/<stack>.md` del plugin. Su encabezado lo leen lo
 
 Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` resuelve el perfil de tu plataforma y se lo entrega a los agentes de desarrollo y de QA.
 
+El encabezado también puede decir qué tipo de interfaz construye el stack con `interface: web`, `interface: mobile` o `interface: none`. Sin la clave el stack no tiene interfaz y sus agentes no reciben reglas de interfaz. Flutter es `mobile` (y recibe también las reglas de `web` cuando una plataforma lista el destino `web`), Vue y Laravel son `web`, Supabase es `none`. Un stack que escribes tú en `.relevo/stacks/<stack>.md` declara el suyo con la misma clave. Las reglas y cómo las recibe un agente están en `knowledge/interface/`; un proyecto agrega las suyas en `.relevo/interface.json`, que puede agregar reglas y ejemplos y nunca quitar ni bajar una del plugin (`/relevo:doctor` lo valida y avisa de un intento).
+
 ## Los perfiles que trae Relevo
 
 | Stack | `analyze` | `test` | `format` | Destino |

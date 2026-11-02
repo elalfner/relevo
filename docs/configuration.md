@@ -43,6 +43,9 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `digest.issue` | number of the issue where the daily digest is posted as a comment | none |
 | `language` | language of the hand-off messages (`en`, `es`) | `en` |
 | `design.images` | `true` downloads a picture pasted into an issue and shows it to the model (a screenshot can show customer data); files already in the repository do not depend on it | `false` |
+| `design.system.tokens` | Files or folders inside the repository that hold the colours, spacing and type styles (a theme file, a CSS file of variables). The interface step of `think` reads only these paths, or the ones you confirm. Each must exist and be neither restricted nor protected | `[]` |
+| `design.system.components` | Folders with the reusable components that a new screen should use | `[]` |
+| `design.system.references` | Folders inside the repository with screenshots or sketches to look at | `[]` |
 | `trust` | `private-team` or `public` | `private-team` |
 | `labels` | rename any label; the keys are fixed, the names are yours | `relevo:ready`, `relevo:built`, … |
 

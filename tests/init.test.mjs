@@ -950,3 +950,9 @@ test('Scenario: Antigravity in use with the skills only under .claude/skills - t
   assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
   assert.match(get(items, 'install.recommended.flutter.antigravity.app').command, /--agent universal/);
 });
+
+test('Scenario: A new configuration file - the three design system keys appear commented out with their explanation', () => {
+  assert.match(template, /^ {2}# system: .*interface step/m);
+  ['tokens', 'components', 'references'].forEach((k) => assert.match(template, new RegExp(`#\\s+${k}: \\[\\]\\s+# \\S`)));
+  assert.equal(loadConfig(template).ok, true);
+});

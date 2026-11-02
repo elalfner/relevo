@@ -2118,3 +2118,35 @@ test('Scenario: A workflow for another agent has no Claude step - nothing is jud
   assert.equal(restrictedBlockState('name: x\njobs: {}\n'), null);
   assert.equal(restrictedBlockState(''), null);
 });
+
+// ---- the interface (interface-decisions-upfront)
+test('Scenario: design.system points to a path that does not exist - a failure that names the key and the path', () => {
+  const r = runChecks(healthy({ designSystemMissing: [{ key: 'tokens', entry: 'lib/theme' }] }));
+  const check = byId(r, 'interface.design-system.tokens');
+  assert.equal(check.status, 'fail');
+  assert.match(check.message, /design\.system\.tokens points to "lib\/theme"/);
+  assert.equal(byId(runChecks(healthy({ designSystemMissing: [] })), 'interface.design-system.tokens'), undefined);
+});
+
+const ruleOf = (over = {}) => ({ id: 'brand-logo', category: 'brand', title: 'Logo', principle: 'p', applies: 'all', weight: 'advisory', check: 'person', core: false, touches: ['images'], ask: 'q', build: 'b', review: 'r', examples: [], source: { work: 'this project', numbers: [] }, ...over });
+
+test('Scenario: .relevo/interface.json - valid, with a missing field, or trying to lower a rule', () => {
+  const file = (rules) => JSON.stringify({ rules });
+  assert.equal(byId(runChecks(healthy({ interfaceFile: file([ruleOf()]) })), 'interface.rules-file').status, 'pass');
+  const missing = ruleOf();
+  delete missing.review;
+  const bad = runChecks(healthy({ interfaceFile: file([missing]) })).filter((x) => x.id === 'interface.rules-file');
+  assert.equal(bad[0].status, 'fail');
+  assert.match(bad[0].message, /lacks "review"/);
+  const lowered = runChecks(healthy({ interfaceFile: file([ruleOf({ id: 'color-contrast', weight: 'advisory', applies: 'all', core: true, category: 'accessibility' })]) })).filter((x) => x.id === 'interface.rules-file');
+  assert.equal(lowered[0].status, 'warn');
+  assert.match(lowered[0].message, /lowers the weight/);
+  assert.equal(byId(runChecks(healthy({ interfaceFile: '{nope' })), 'interface.rules-file').status, 'fail');
+  assert.equal(byId(runChecks(healthy({ interfaceFile: null })), 'interface.rules-file'), undefined);
+});
+
+test('Scenario: a platform with an interface and no browser automation - a note, never a failure', () => {
+  const r = runChecks(healthy({ interfaceBrowser: { app: false } }));
+  assert.equal(byId(r, 'interface.browser.app').status, 'warn');
+  assert.equal(byId(runChecks(healthy({ interfaceBrowser: { app: true } })), 'interface.browser.app'), undefined);
+});
