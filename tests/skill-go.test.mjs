@@ -313,3 +313,10 @@ test('the failure for a versioned restricted file takes the recovery restricted,
   assert.match(text, /`recovery` `restricted`/);
   assert.match(text, /fix\|delete-branch\|restricted/);
 });
+
+test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
+  const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
+  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);
+  OUTCOME_CLASSES.forEach((c) => assert.ok(body.includes(`\`${c}\``), `the skill names the class ${c}`));
+  assert.match(body, /best-effort command/);
+});
