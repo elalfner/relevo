@@ -28,6 +28,7 @@ Un perfil es el archivo `stacks/<stack>.md` del plugin. Su encabezado lo leen lo
 - Los comandos que verifican el código: `analyze`, `test` y `format`.
 - Los archivos generados que se dejan fuera del diff que revisa QA.
 - Las herramientas que necesita el stack y la que necesita cada destino (en Flutter: `adb` para Android, `xcrun` para iOS, que solo corre en macOS, y nada para la web).
+- Las rutas que existen una vez instaladas sus dependencias (`installed`): Vue lista `node_modules`, Laravel `vendor` y Flutter `.dart_tool/package_config.json`, y Supabase no lista ninguna. El job de construcción las comprueba antes de que empiece el agente y se detiene, sin gastar un turno del modelo, cuando falta alguna (ver [Instalar las dependencias](#instalar-las-dependencias-antes-del-agente)). Un perfil de tu repositorio agrega rutas y nunca quita una.
 - Las skills que requiere y las skills extra de cada rol.
 - Un texto con la higiene que sigue el desarrollador y lo que QA busca en el diff.
 
@@ -197,9 +198,23 @@ Relevo trae perfiles para `flutter`, `vue`, `laravel` y `supabase`. Para cualqui
        go-version-file: ${{ needs.decide.outputs.path }}/go.mod
    ```
 
-   Instala las dependencias como prefiera tu proyecto, desde `needs.decide.outputs.path`.
+   Instala las dependencias como prefiera tu proyecto, desde `needs.decide.outputs.path`. Si tu perfil lista `installed:` (las rutas que existen después, relativas a la carpeta de la plataforma), la construcción se detiene antes del agente cuando falta alguna, y `/relevo:doctor` avisa cuando ningún paso instala las dependencias.
 
 `/relevo:doctor` avisa cuando el perfil de un stack así no tiene `analyze` o no tiene `test`, y cuando el workflow de go no tiene un paso protegido por el nombre del stack (no avisa para un stack cuyas herramientas son solo `node` y `npm`, porque el job ya instala Node). También avisa mientras el archivo no está en git.
+
+## Instalar las dependencias antes del agente
+
+El agente y QA ejecutan los comandos del perfil, y necesitan que existan las dependencias del proyecto. La plantilla no las instala, porque el gestor de paquetes y el archivo de bloqueo varían: agrega el paso de tu stack al job de construcción de `.github/workflows/relevo-go.yml`, protegido por el nombre del stack y ejecutado desde la carpeta de la plataforma. La plantilla lo muestra, comentado, para cada stack:
+
+```yaml
+- if: needs.decide.outputs.stack == 'vue'
+  working-directory: ${{ needs.decide.outputs.path }}
+  run: npm ci --ignore-scripts
+```
+
+- Instala sin los scripts de los paquetes donde la herramienta lo permita (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` no ejecuta ninguno.
+- El paso "Check the toolchain" busca, cuando las herramientas están, cada ruta que el perfil lista en `installed`. Cuando falta alguna el issue pasa a `relevo:qa-failed`, el comentario nombra la ruta y dice que se active el paso de instalación, y no se gasta ningún turno del modelo.
+- `/relevo:doctor` avisa, por cada plataforma cuyo perfil lista `installed`, cuando el workflow de go no tiene un paso activo que instale sus dependencias. Un ejemplo comentado, y una instalación en otra carpeta (los pasos que instalan OpenSpec y los scripts de Relevo), no cuentan.
 
 ## Skills extra por rol
 

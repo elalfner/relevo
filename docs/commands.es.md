@@ -112,6 +112,8 @@ Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cual
 
 El resumen diario que publica el workflow del resumen tiene el mismo contenido para el equipo, más una línea con el uso de las ejecuciones en la nube de los últimos siete días cuando dejaron un marcador de uso ([qué cuenta](execution.es.md#qué-reporta-una-ejecución-en-la-nube)). `/relevo:status` en sí no la muestra.
 
+`/relevo:status` y el resumen imprimen además, para las ejecuciones de los últimos siete días, cuántas terminaron en cada clase de resultado y los segundos de cada fase de un build, y dicen cuántas ejecuciones no tienen registro ([qué cuenta](execution.es.md#qué-reporta-una-ejecución-en-la-nube)). Para una rama que se atrasó respecto a la base, la alerta dice si mezclar la base tendría conflictos y en qué archivos; lo pregunta al clon donde se ejecuta, no cambia nada, y dice que no lo sabe cuando el git de ese clon no puede saberlo (requiere git 2.38 o posterior).
+
 El resumen termina además con el tiempo de cada etapa de un issue, como la mediana de las etapas que terminaron en los últimos siete días y cuántas fueron, por ejemplo `Etapas, últimos 7 días (mediana): puerta 13 s (4), construcción 6 min (3), esperando por ti 3 h (3), revisión en dispositivo 24 h (2)`. [Qué cuenta](execution.es.md#cuánto-tarda-cada-etapa).
 
 ```text

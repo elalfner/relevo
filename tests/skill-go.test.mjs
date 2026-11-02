@@ -125,6 +125,37 @@ test('every failure reason of the specification is named in the failure path', (
     'possible credential or temporary marker in the diff', 'QA rejected after the retries'].forEach((r) => assert.ok(body.includes(r), r));
 });
 
+test('Scenario: Nothing the developer can fix - the retries are skipped and the class goes to the failure comment', () => {
+  assert.match(body, /node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/qa-findings\.mjs --file <report>/);
+  assert.match(body, /`all_non_fixable` is `true`/);
+  assert.match(body, /\*\*do not retry\*\*/);
+  assert.ok(body.includes('QA rejected: nothing the developer agent can fix'), 'the new reason is named');
+  assert.match(body, /`finding_class`/);
+  assert.match(body, /`retries_skipped`/);
+  assert.match(body, /counts as `fixable`, so the retries run as before/, 'a report without classes retries as before');
+});
+
+test('Scenario: A mixed report - the retries run and the class of the first finding that cannot be fixed is named', () => {
+  assert.match(body, /first_non_fixable_class/);
+  assert.match(body, /Otherwise you may retry up to `qa_retries` times/);
+});
+
+test('the work is kept when the retries were skipped, as it is after the retries', () => {
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix` or `tasks left unfinished`/);
+});
+
+test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
+  assert.match(body, /build-preflight\.mjs --stage spec --issue-file <issue_file> --change-dir openspec\/changes\/<change_id>/);
+  assert.match(body, /with `reason` `policy`/);
+  assert.match(body, /this check only saves cost, and the commit script and QA refuse the same paths later/);
+  assert.ok(body.indexOf('--stage spec') < body.indexOf('### 4. Build'), 'the check runs before the build step');
+  assert.ok(body.indexOf('--stage spec') < body.indexOf('docs: specification for #<issue>'), 'and before the specification is committed');
+});
+
+test('Scenario: An input that a person confirms - the built message receives it from the workflow', () => {
+  assert.match(body, /`inputs_to_confirm` \(the value of the environment variable `RELEVO_INPUTS_TO_CONFIRM`/);
+});
+
 test('Scenario: the profile and the role skills come from scripts, and the skill names no stack', () => {
   assert.match(body, /scripts\/stack-profile\.mjs/);
   assert.match(body, /scripts\/role-skills\.mjs --role dev/);
@@ -231,7 +262,7 @@ test('Scenario: Reference in the repository / Attachment - go fetches what the i
 test('Scenario: Refused reference in the cloud / Local run - go reads the manifest of the fetch step, and fetches only when it is not set', () => {
   assert.match(body, /`RELEVO_REFERENCES` is set: a step before you already fetched them, with a token you do not have\. Do not run the fetcher again\./);
   assert.match(body, /\*\*Otherwise\*\* \(a local run\) fetch them yourself/);
-  assert.match(body, /a `## Code pointers` bullet that names a file of another repository as `owner\/repo:path`/);
+  assert.match(body, /a `## Code pointers` bullet, or a `link` bullet of `## External inputs`, that names a file of another repository as `owner\/repo:path`/);
 });
 
 test('Scenario: Reason word for word - the reason of a refused reference reaches the issue unchanged', () => {
@@ -292,4 +323,11 @@ test('Scenario: the interface rules are selected after the specification and giv
   assert.match(body, /the count of rules left out/);
   assert.match(body, /the interface rules for `dev`/);
   assert.match(body, /the interface rules for `qa`/);
+});
+
+test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
+  const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
+  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);
+  OUTCOME_CLASSES.forEach((c) => assert.ok(body.includes(`\`${c}\``), `the skill names the class ${c}`));
+  assert.match(body, /best-effort command/);
 });

@@ -18,7 +18,7 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | `in-review` | `/relevo:review <n>` para continuar; si algo falla, `/relevo:fix <n>` | la persona asignada |
 | `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub; o pon `relevo:ship` al issue | quien aprueba |
 | `needs-spec` | `/relevo:issue <n>`; si la pregunta necesita explorarse, antes `/relevo:think #<n>` | quien escribe la spec |
-| `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready` | la persona asignada |
+| `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready`; si QA encontró algo que solo una persona puede aportar o decidir, `/relevo:issue <n>` después | la persona asignada |
 | `changes-requested` | `/relevo:fix <n>` | el autor |
 | `needs-reviewer` | ninguno: asigna un revisor, o pide a alguien que lo tome | quien escribe la spec |
 | `ship` | ninguno: el workflow de ship lo está fusionando; si se detiene, su comentario dice por qué y se quita la etiqueta | nadie |
@@ -57,6 +57,16 @@ La etiqueta solo cuenta si quien la puso podía marcar el issue como `ready`: ac
 ### El issue volvió a needs-spec
 
 Lee el último comentario: dice qué falta. Si falta información, ejecuta `/relevo:issue <n>` y complétala. Si hay una pregunta abierta, decídela, antes con `/relevo:think #<n>` si necesitas explorar. Después vuelve a poner `ready`.
+
+El comentario dice por qué, y el build se detuvo antes de que empezara el agente, así que no se gastó ningún turno del modelo:
+
+- **`missing`**: no se pudo leer una referencia del issue (un archivo de diseño, un repositorio enlazado). Corrige la referencia o el acceso de `RELEVO_LINKS_TOKEN`.
+- **`inputs`**: el issue declara en su sección `External inputs` algo que no está: un archivo que no existe en la rama base o una variable que no está definida. Agrégalo, o escribe qué debe hacer el issue sin eso. Un secreto o una entrada manual que el job no puede comprobar no es motivo para detenerse: aparece en el aviso de entrega como `Inputs to confirm before you test`.
+- **`policy`**: una tarea de la especificación cambia una ruta protegida o un archivo restringido, o agrega una dependencia que el issue no permite. Agrega el manifiesto a `Allow-paths:` si la dependencia es intencional, o cambia la tarea. Una ejecución sin supervisión nunca edita un archivo protegido.
+
+### Una rama que tiene conflictos con la base
+
+`/relevo:review <n>` primero mezcla la rama base en la rama. Cuando hay archivos en conflicto, los conflictos dentro de las rutas que el cambio puede tocar se entregan al agente de desarrollo en su modo de integración; luego QA revisa el resultado y solo después se hace el commit del merge. Un conflicto en cualquier otro archivo, o uno que QA no acepta, termina con el merge abortado y sin cambios, y la revisión te dice qué archivos resolver tú. `/relevo:status` muestra, para una rama atrasada respecto a la base, si el merge tendría conflictos y en qué archivos.
 
 ## Cómo leer la revisión de una vista previa
 

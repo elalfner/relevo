@@ -18,7 +18,7 @@ export const BLOCK_FAIL = 32 * 1024;
 export const BLOCKS_WARN = 32 * 1024;
 export const GITHUB_BODY_MAX = 65536;
 // Text that only exists in templates/issue.md; finding it means the template was not filled in.
-export const PLACEHOLDERS = ['<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '<what is deliberately left out', '<dependency files the change may touch', '<name of a platform in relevo.yml>', '#<number>', '**<term>**', '<definition>', '<words to avoid>', '<decision title>', '<what was decided>', '<the reason>', '<the alternative', '<a concrete limit', '<path/to/file>', '<why it matters>', '<what only a person can check', '<an assumption', '<path/to/reference>', '<what must match>'];
+export const PLACEHOLDERS = ['<kind>: <name>: <what it is for>', '<the situation>', '<the result a person can observe>', '<unusual input or state>', '<what must happen>', '<what is deliberately left out', '<dependency files the change may touch', '<name of a platform in relevo.yml>', '#<number>', '**<term>**', '<definition>', '<words to avoid>', '<decision title>', '<what was decided>', '<the reason>', '<the alternative', '<a concrete limit', '<path/to/file>', '<why it matters>', '<what only a person can check', '<an assumption', '<path/to/reference>', '<what must match>'];
 const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
 
 /**
@@ -43,10 +43,16 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
   parsed.idProblems.forEach((p) => problems.push(p));
   parsed.design.problems.forEach((p) => problems.push(`Design reference: ${p}`));
   parsed.codePointers.problems.forEach((p) => problems.push(`Code pointers: ${p}`));
+  parsed.externalInputs.problems.forEach((p) => problems.push(`External inputs: ${p}`));
+  parsed.externalInputs.inputs.filter((input) => input.kind === 'link' && !links.includes(input.repo)).forEach((input) => {
+    problems.push(`External inputs: "${input.name}" names ${input.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'}); add it to links first`);
+  });
   const pointers = parsed.codePointers.references.length;
-  const total = parsed.design.references.length + pointers;
+  const linkInputs = parsed.externalInputs.inputs.filter((input) => input.kind === 'link').length;
+  const total = parsed.design.references.length + pointers + linkInputs;
   if (total > MAX_REFERENCES) {
-    const counted = pointers > 0 ? `Design reference and the linked Code pointers have ${total} references together` : `Design reference has ${total} references`;
+    const together = pointers > 0 && linkInputs > 0 ? 'Design reference, the linked Code pointers and the linked External inputs' : pointers > 0 ? 'Design reference and the linked Code pointers' : linkInputs > 0 ? 'Design reference and the linked External inputs' : null;
+    const counted = together ? `${together} have ${total} references together` : `Design reference has ${total} references`;
     problems.push(`${counted}; the most Relevo takes is ${MAX_REFERENCES}, so split the issue or keep the ones that matter`);
   }
   parsed.codePointers.references.forEach((ref) => {

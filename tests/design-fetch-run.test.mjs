@@ -70,6 +70,24 @@ test('Scenario: Linked code pointer - a linked pointer is fetched beside the des
   ]);
 });
 
+test('Scenario: A link input is fetched like a code pointer, with its own section, and a refusal is in the manifest', () => {
+  const body = `## Summary\n\nx\n\n## External inputs\n\n- link: \`acme/design:components/Card.vue\`: the card to reuse\n- link: \`acme/design:components/Missing.vue\`: not there\n`;
+  const t = repo({ config: 'links: [acme/design]\n', body });
+  const r = t.run();
+  assert.equal(r.status, 1, r.stderr);
+  assert.deepEqual(t.manifest().files.map((f) => [f.section, f.kind, f.reference]), [['external-input', 'repo-file', 'acme/design:components/Card.vue']]);
+  assert.match(t.manifest().refused.map((x) => `${x.reference}: ${x.reason}`).join('\n'), /acme\/design:components\/Missing\.vue/);
+});
+
+test('an issue with only a file input fetches nothing, and a malformed External inputs bullet is refused', () => {
+  const t = repo({ body: `## Summary\n\nx\n\n## External inputs\n\n- file: \`design/home.png\`: the picture\n` });
+  assert.equal(t.run().status, 0);
+  const bad = repo({ body: `## Summary\n\nx\n\n## External inputs\n\n- credential: \`KEY\`: nope\n` });
+  const r = bad.run();
+  assert.equal(r.status, 1);
+  assert.match(bad.manifest().refused.map((x) => x.reference).join(','), /External inputs/);
+});
+
 test('Scenario: Reference in the repository - a file that exists is available where it is, nothing is copied', () => {
   const t = repo({ body: section('- `design/home.png`: the layout') });
   const r = t.run();

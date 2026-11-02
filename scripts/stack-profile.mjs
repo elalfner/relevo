@@ -65,6 +65,7 @@ console.log(JSON.stringify({
   commands: profile.commands,
   generated: profile.generated,
   tools: profile.tools,
+  installed: profile.installed,
   requires_skills: profile.requires_skills,
   skills: profile.skills,
   plugin_skills: profile.pluginSkills,

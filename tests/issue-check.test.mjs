@@ -302,6 +302,7 @@ test('the template with its placeholders filled in and its optional comments kep
     .replace('<the alternative> (<why not>)', 'by date (nobody asked)')
     .replace('<a concrete limit>', 'loads in under one second')
     .replace('`<path/to/file>`: <why it matters>', '`lib/clients.dart`: reads the clients')
+    .replace('<kind>: <name>: <what it is for>', 'manual: the demo account: the person who reviews logs in with it')
     .replace('<what only a person can check, and with which data>', 'scroll with the account demo')
     .replace('<an assumption>', 'birthdays come from the clients table')
     .replace('`<path/to/reference>`: <what must match>', '`design/home.png`: structure and colour of the list')
@@ -314,7 +315,7 @@ test('the template with its placeholders filled in and its optional comments kep
 test('every section heading the format page shows in a code block is one the scripts can read', () => {
   const page = readFileSync(new URL('../docs/issue-format.md', import.meta.url), 'utf8');
   const known = new Set(['Summary', 'Outcome', 'Scenarios', 'Edge cases', 'Out of scope', 'Decisions', 'Constraints', 'Code pointers', 'Verification',
-    'Assumptions', 'Open questions', 'Screens and behaviour', 'Data contract', 'Design reference', 'Documentation']);
+    'Assumptions', 'Open questions', 'Screens and behaviour', 'Data contract', 'Design reference', 'Documentation', 'External inputs']);
   const shown = [...page.matchAll(/^## (.+)$/gm)].map((m) => m[1]).filter((h) => !h.startsWith('What ') && !h.startsWith('Writing'));
   shown.forEach((h) => assert.ok(known.has(h), `docs/issue-format.md shows a section "${h}" that the format does not define`));
   [...known].filter((h) => ['Outcome', 'Decisions', 'Constraints', 'Code pointers', 'Verification', 'Assumptions', 'Open questions'].includes(h))
@@ -514,4 +515,76 @@ test('the command takes the language of relevo.yml', () => {
   const r = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Pedidos', '--body-file', join(dir, 'b.md'), '--language', 'es'], { encoding: 'utf8', cwd: dir });
   assert.equal(r.status, 0);
   assert.match(r.stderr, /"discreto"/);
+});
+
+// --- External inputs (spec: an issue can declare the external inputs of its work)
+const withInputs = (bullets) => `${GOOD}\n## External inputs\n\n${bullets}\n`;
+const inputsCheck = (bullets, extra = {}) => checkIssueDraft({ title: 'Home', body: withInputs(bullets), ...extra });
+
+test('Scenario: A valid section - a file, a file of a linked repository and a secret pass', () => {
+  const r = inputsCheck([
+    '- file: `design/logo.svg`: the logo of the login screen',
+    '- link: `acme/api:schema/schema.graphqls`: the schema the types are generated from',
+    '- secret: `RECAPTCHA_SITE_KEY`: the key of the login screen',
+  ].join('\n'), { links: ['acme/api'] });
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(parseIssueBody(withInputs('- manual: `the terms of use`: the client sends the text')).externalInputs.inputs.map((i) => i.kind), ['manual']);
+});
+
+test('Scenario: An unknown kind - the check fails and names the bullet and the kinds that exist', () => {
+  const r = inputsCheck('- credential: `API_KEY`: the key');
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /External inputs: .*the kind "credential", which does not exist: use file, link, secret, variable, manual/);
+});
+
+test('Scenario: A link outside `links` - the check fails and says to add the repository to links', () => {
+  const r = inputsCheck('- link: `acme/other:schema.graphqls`: the schema', { links: ['acme/api'] });
+  assert.match(r.problems.join('\n'), /External inputs: "acme\/other:schema\.graphqls" names acme\/other, which is not in links of relevo\.yml \(acme\/api\); add it to links first/);
+  assert.match(inputsCheck('- link: `acme/other:schema.graphqls`: the schema').problems.join('\n'), /no repository is linked/);
+});
+
+test('Scenario: No section - the check passes', () => {
+  assert.deepEqual(checkIssueDraft({ title: 'Home', body: GOOD }).problems, []);
+  assert.equal(parseIssueBody(GOOD).externalInputs.present, false);
+});
+
+test('a file that leaves the repository is a problem, and so is a name that is not a variable name', () => {
+  assert.match(inputsCheck('- file: `../secrets/key.pem`: the key').problems.join('\n'), /leaves the repository/);
+  assert.match(inputsCheck('- file: `/etc/passwd`: nothing').problems.join('\n'), /leaves the repository/);
+  assert.match(inputsCheck('- secret: `my key`: the key').problems.join('\n'), /"my key" is not a valid secret name/);
+  assert.match(inputsCheck('- variable: `API-URL`: the address').problems.join('\n'), /"API-URL" is not a valid variable name/);
+});
+
+test('a bullet that is not an input, with no name or with no purpose, is a problem', () => {
+  assert.match(inputsCheck('- just some words').problems.join('\n'), /is not an input: write kind: name: what it is for/);
+  assert.match(inputsCheck('- manual:').problems.join('\n'), /has no name after the kind/);
+  assert.match(inputsCheck('- secret: `API_KEY`').problems.join('\n'), /"API_KEY" does not say what it is for/);
+});
+
+test('a link must be owner/repo:path', () => {
+  assert.match(inputsCheck('- link: `schema.graphqls`: the schema', { links: ['acme/api'] }).problems.join('\n'), /"schema\.graphqls" is not owner\/repo:path/);
+});
+
+test('the value of a secret is never asked for: the section holds names, and a credential in it is still refused', () => {
+  const r = inputsCheck('- secret: `API_KEY`: the key is ghp_abcdefghijklmnopqrstuvwxyz0123456789');
+  assert.match(r.problems.join('\n'), /looks like a credential/);
+});
+
+test('the placeholder of the template is reported as template text and not as an input', () => {
+  const r = inputsCheck('- <kind>: <name>: <what it is for>');
+  assert.match(r.problems.join('\n'), /the body still contains template text/);
+  assert.doesNotMatch(r.problems.join('\n'), /External inputs:/);
+});
+
+test('the name of a secret or a variable must be in backticks, so that it is never taken for a value', () => {
+  assert.match(inputsCheck('- secret: RECAPTCHA_SITE_KEY: the key').problems.join('\n'), /write the name of a secret in backticks/);
+  assert.match(inputsCheck('- variable: API_URL: the address').problems.join('\n'), /write the name of a variable in backticks/);
+  assert.deepEqual(inputsCheck('- variable: `API_URL`: the address').problems, []);
+});
+
+test('a link input is fetched like a code pointer, so it counts with the references and the most is five', () => {
+  const refs = Array.from({ length: 3 }, (_, i) => `- \`design/home.png\`: part ${i}`).join('\n');
+  const links = Array.from({ length: 3 }, (_, i) => `- link: \`acme/api:src/f${i}.ts\`: file ${i}`).join('\n');
+  const body = `${GOOD}\n## Design reference\n\n${refs}\n\n## External inputs\n\n${links}\n`;
+  assert.match(checkIssueDraft({ title: 'Home', body, links: ['acme/api'] }).problems.join('\n'), /Design reference and the linked External inputs have 6 references together; the most Relevo takes is 5/);
 });

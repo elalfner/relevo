@@ -33,6 +33,14 @@ In the cloud the workflow keeps one comment on the issue that shows how far the 
 node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt <n> --of <m>]
 ```
 
+Every exit of the run also records how it ended, once, with the same best-effort command, just before the final report:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
+```
+
+Use `built` when the issue went to `built`; `inputs` when it went back to `needs-spec` because an input or a reference is missing; `policy` when it went back to `needs-spec` because a task changes a protected path or adds a dependency the issue does not allow; `qa-non-fixable` when the retries were skipped (`QA rejected: nothing the developer agent can fix`); `qa-fixable-after-retries` for `QA rejected after the retries`; `conflict` when the branch could not be integrated with the base; and `other` for every other failure path or gate decision. The class and the seconds of each phase go into the hidden usage record of the run.
+
 This is best effort. It prints nothing and does nothing outside that workflow, and when it cannot write it still exits 0. Never wait for it, never retry it, never take the failure path because of it, and do not mention it in the report.
 
 ## Where it runs
@@ -69,9 +77,9 @@ Never run `openspec init`, `archive`, `update` or `sync`, and never create files
 
 ## Failure path
 
-Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `restricted file in the diff`, `outside the platform`, `possible credential or temporary marker in the diff`).
+Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `restricted file in the diff`, `outside the platform`, `possible credential or temporary marker in the diff`).
 
-1. **Keep the work.** When the reason is `QA rejected after the retries` or `tasks left unfinished`, the developer's work exists only in the working tree of this run, so commit it before anything else, through the same script as step 6 and with the files its last report lists (created and modified) plus `tasks.md`:
+1. **Keep the work.** When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix` or `tasks left unfinished`, the developer's work exists only in the working tree of this run, so commit it before anything else, through the same script as step 6 and with the files its last report lists (created and modified) plus `tasks.md`:
 
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "wip: rejected by QA (#<issue>)" --allow "<allow_paths, comma separated>" --within "<path>" --change "<change_id>" -- <paths>
@@ -80,7 +88,7 @@ Anything you cannot recover from ends here. Use it whenever a step below says "t
    The message is that exact subject and never changes: `fix` recognises the work by it. If the script exits 0, the work is on the branch and the `branch_state` is `kept` (with `tasks_done` and `tasks_total` from `openspec instructions apply --change "<change_id>" --json`). If it exits 1 it has refused (a protected path, a file outside the platform, a temporary marker or a possible credential): **do not push**, and the `branch_state` is `unsafe`, naming the file and line. If it fails for any other reason, do not push and use `not_pushed`. For every other reason there is no work to keep: go on.
 2. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, a restricted file in the diff, a path outside the platform, an issue that changed after `ready`, or when the commit of step 1 was refused; and never touch a branch that already existed.
 3. Move the issue to `qa-failed`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to qa-failed --current "<current labels, comma separated>"`, then apply the result with `gh issue edit`.
-4. Post one comment built by `render-message.mjs qa_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow), and `branch_state`:
+4. Post one comment built by `render-message.mjs qa_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `finding_class` (`input`, `spec` or `policy`, only when QA classified the first finding that the developer agent could not fix) and `retries_skipped` (`true` when the retries were skipped for that reason), `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow), and `branch_state`:
    - `kept` when you committed the work that QA rejected and pushed it (step 1);
    - `pushed` (the default) when you pushed the branch and there was no work to keep;
    - `unsafe` when you did not push because of a possible credential, a temporary marker, a protected path, a restricted file or a path outside the platform;
@@ -157,7 +165,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/issue-hash.mjs --repo <owner/name> --issue <i
 
 If it exits 1, the text was edited after `ready`: take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`, and save its body to a file outside the working tree (call it `<issue_file>`): the sections are copied from it by a script, never retyped.
 
-**References.** If the issue has a `## Design reference` section, or a `## Code pointers` bullet that names a file of another repository as `owner/repo:path` (`issue-sections.mjs --body-file <issue_file> --list` names its sections), get what they point to before you write anything.
+**References.** If the issue has a `## Design reference` section, or a `## Code pointers` bullet, or a `link` bullet of `## External inputs`, that names a file of another repository as `owner/repo:path` (`issue-sections.mjs --body-file <issue_file> --list` names its sections), get what they point to before you write anything.
 
 - **In the cloud** the environment variable `RELEVO_REFERENCES` is set: a step before you already fetched them, with a token you do not have. Do not run the fetcher again. Read the manifest at that path; if the file does not exist, the issue had nothing to fetch.
 - **Otherwise** (a local run) fetch them yourself. The script reads the references from the issue itself, downloads pasted attachments only when `design.images` is on, and leaves them in `.relevo-design/`, which git ignores:
@@ -166,7 +174,7 @@ If it exits 1, the text was edited after `ready`: take the failure path with the
 node ${CLAUDE_PLUGIN_ROOT}/scripts/design-fetch.mjs --issue <issue> --repo <owner/name>
 ```
 
-If it exits 1 it prints each reference it refused and why; in the cloud the manifest lists them under `refused`. A refused reference is a defect in the specification, not something to work around: take the `needs-spec` path described below with `reason` `missing`, and stop without pushing. In `missing`, name each refused reference and copy its reason word for word, in English, without rewording or translating it: it names the repository, GitHub's answer and the secret to check, which the person searches for. Otherwise `.relevo-design/manifest.json` says where each file is and which section it came from (`section`: `design` or `code-pointer`); give its path to `relevo:dev` and `relevo:qa`.
+If it exits 1 it prints each reference it refused and why; in the cloud the manifest lists them under `refused`. A refused reference is a defect in the specification, not something to work around: take the `needs-spec` path described below with `reason` `missing`, and stop without pushing. In `missing`, name each refused reference and copy its reason word for word, in English, without rewording or translating it: it names the repository, GitHub's answer and the secret to check, which the person searches for. Otherwise `.relevo-design/manifest.json` says where each file is and which section it came from (`section`: `design`, `code-pointer` or `external-input`); give its path to `relevo:dev` and `relevo:qa`.
 
 Write the change specification from the issue, with the OpenSpec command line, without the pauses of the interactive `propose` workflow (it asks questions and stops after planning; you must not). The issue is the source of truth.
 
@@ -202,6 +210,14 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/spec-ready.mjs --change "<change_id>"
 If it exits 1 it names the artifacts that are not done: write them and run it once more. If one is still missing, take the failure path with the reason `specification incomplete`.
 
 Then `openspec validate "<change_id>"`. If it fails, fix the artifacts and validate again, at most twice. If it still fails, take the failure path with the reason `specification invalid`.
+
+Check, with no model, what the tasks ask for before the developer agent spends a turn on it:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/build-preflight.mjs --stage spec --issue-file <issue_file> --change-dir openspec/changes/<change_id>
+```
+
+It prints JSON. If it exits 1, a task changes a protected path or a restricted file, or adds a dependency that the issue does not allow with `Allow-paths:`. Do not build: take the same path as for an issue that is ambiguous (move it to `needs-spec` with `label-change.mjs --to needs-spec`, post `render-message.mjs needs_spec`, assign it to `team.spec_writer`, and stop without pushing), with `reason` `policy` and, in `missing`, the `missing` text of the output, which names each task and path. If the script is not in this version of the plugin or cannot run, go on: this check only saves cost, and the commit script and QA refuse the same paths later.
 
 Commit the specification on its own:
 
@@ -260,9 +276,17 @@ git diff origin/<base> -- . ':(exclude)<pattern>' ...
 
 The first line of its answer is `QA PASSED` or `QA REJECTED`.
 
-On `QA REJECTED`, you may retry up to `qa_retries` times. Before each retry number `<k>` (1 for the first), announce `phase development --attempt <k> --of <qa_retries>`, and before the QA that follows it `phase qa --attempt <k + 1> --of <qa_retries + 1>`. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, runs `intent-to-add.mjs` on the files of its new report, then launches `relevo:qa` again with the previous report and those files, so it checks each earlier finding and reviews only what changed.
+On `QA REJECTED`, first read the classes of the findings. Save the report to a file in the scratch folder of the run (never in the repository) and run:
 
-If QA still rejects after the retries, take the failure path with the reason `QA rejected after the retries`, and the first finding of the last report.
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/qa-findings.mjs --file <report>
+```
+
+It prints JSON. When `all_non_fixable` is `true`, every finding needs something that the developer agent cannot supply (an input the issue depends on, a decision of the specification, or something an unattended run may not do), so a retry cannot succeed: **do not retry**. Take the failure path at once with the reason `QA rejected: nothing the developer agent can fix`, with `finding_class` set to `first_non_fixable_class` and `retries_skipped` set to `true`. A report with no class, or with a class it does not know, counts as `fixable`, so the retries run as before.
+
+Otherwise you may retry up to `qa_retries` times. Before each retry number `<k>` (1 for the first), announce `phase development --attempt <k> --of <qa_retries>`, and before the QA that follows it `phase qa --attempt <k + 1> --of <qa_retries + 1>`. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, runs `intent-to-add.mjs` on the files of its new report, then launches `relevo:qa` again with the previous report and those files, so it checks each earlier finding and reviews only what changed.
+
+If QA still rejects after the retries, take the failure path with the reason `QA rejected after the retries`, and the first finding of the last report. Run `qa-findings.mjs` on the last report too: when `first_non_fixable_class` is not null, pass it as `finding_class` (and no `retries_skipped`), so the comment names the class of the first finding that the developer agent could not fix.
 
 ### 6. Commit
 
@@ -282,7 +306,7 @@ Do not add links to this session or attribution lines to the message.
 
 1. `git push -u origin <branch>` (a normal push, never forced).
 2. Move the issue to `built`: `label-change.mjs --to built --current "..."`, applied with `gh issue edit`.
-3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (`progress.complete` and `progress.total` of `openspec instructions apply --change "<change_id>" --json`), `branch`, `issue_hash`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, `urgent` and `built_waiting` copied from the decision when it has them (they add the line that says the issue started ahead of the queue; leave both out otherwise), and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
+3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (`progress.complete` and `progress.total` of `openspec instructions apply --change "<change_id>" --json`), `branch`, `issue_hash`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, `urgent` and `built_waiting` copied from the decision when it has them (they add the line that says the issue started ahead of the queue; leave both out otherwise), `inputs_to_confirm` (the value of the environment variable `RELEVO_INPUTS_TO_CONFIRM` when it is set: the inputs of the issue that a script could not check and that a person has to confirm; leave it out otherwise), and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
 
 The comment tells the assignee the next command (`/relevo:review <issue>`).
 

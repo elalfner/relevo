@@ -6,6 +6,7 @@ commands:
   format: dart format
 generated: ['*.g.dart', '*.freezed.dart', '*.mocks.dart']
 tools: [flutter]
+installed: ['.dart_tool/package_config.json']
 requires_skills: []
 skills:
   dev: [flutter-add-widget-test, dart-add-unit-test]

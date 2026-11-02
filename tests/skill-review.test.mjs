@@ -361,3 +361,32 @@ test('Scenario: A failed go left its worktree - review asks who holds the branch
   assert.match(step1, /If it exits 1 it prints the path of that worktree/);
   assert.match(step1, /leave the issue as `built`, change nothing/);
 });
+
+// --- a conflict with the base branch (spec: review, "Synchronise with the base branch first")
+const sync = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('### 2.'));
+
+test('Scenario: The agent resolves a conflict - review asks whether it may, hands it over in integrate mode, stages the result and runs QA before committing the merge', () => {
+  assert.match(sync, /If the merge conflicts, do not stop yet/);
+  assert.match(sync, /conflict-scope\.mjs --handoff --within "<path of the platform>" --change "<change_id>" --allow/);
+  assert.match(sync, /launch `relevo:dev` in \*\*integrate\*\* mode with the list of conflicted files/);
+  assert.match(sync, /`git add <the conflicted files and the files it created>`/);
+  assert.match(sync, /run the QA step below on this uncommitted merge/);
+  assert.match(sync, /with the retries of `qa\.retries`/);
+  assert.ok(sync.indexOf('git commit --no-edit') > sync.indexOf('run the QA step below on this uncommitted merge'), 'the merge is committed only after QA passes');
+});
+
+test('Scenario: The conflict cannot be resolved - the merge is aborted, the branch is left as it was and the issue stays built', () => {
+  assert.match(sync, /If QA still rejects after the retries, or no finding could be fixed by the agent, run `git merge --abort` \(it also removes the files that were staged\), leave the issue as `built`/);
+  assert.match(sync, /If a marker remains, or a conflict was left, run `git merge --abort`, leave the issue as `built`/);
+  assert.match(sync, /qa-findings\.mjs/);
+  assert.match(sync, /Nothing is pushed in this step/);
+});
+
+test('Scenario: A conflict outside the folder of the platform - review does not hand it to the agent, aborts and says which files and why', () => {
+  assert.match(sync, /If it exits 1, a conflicted file is outside the folder of the platform and the change, or is a protected path, a restricted file or a dependency file that the issue does not allow: run `git merge --abort`/);
+  assert.match(sync, /tell the person which files conflict and why the script refused each, and stop/);
+});
+
+test('a lock file or a generated file in conflict is regenerated with the tool, never edited by hand', () => {
+  assert.match(sync, /regenerated now with the tool of the project \(for the install of dependencies, ask the person first\), never by hand/);
+});

@@ -179,6 +179,15 @@ jobs:
       # while it is installed: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`,
       # `composer install --no-scripts`. `flutter pub get` and `dart pub get` run no install-time scripts of
       # the packages, so they need no such option.
+      # The profile of each stack lists the path that exists once the dependencies are installed, and the check of the
+      # toolchain stops the build before the agent when it does not exist: add the step of your stack
+      # (/relevo:doctor warns when no step installs the dependencies of a platform). For Flutter and Laravel:
+      #   - if: needs.decide.outputs.stack == 'flutter'
+      #     working-directory: ${{ needs.decide.outputs.path }}
+      #     run: flutter pub get
+      #   - if: needs.decide.outputs.stack == 'laravel'
+      #     working-directory: ${{ needs.decide.outputs.path }}
+      #     run: composer install --no-scripts --no-interaction
 
       - name: Install OpenSpec
         # Under the temporary folder of the job, at the pinned version: nothing global is left on a runner that persists.
@@ -210,14 +219,24 @@ jobs:
           fi
           # No jq here: the tool that is missing may be jq itself, and the comment must still be posted.
           missing=$(printf '%s' "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).missing.join(", "))')
-          [ -n "$missing" ] || { echo "::error::The toolchain check failed: $result"; exit 1; }
+          # The paths that the profile says exist once the dependencies are installed (a folder of packages, for example):
+          # when the tools are there and one of these is not, the install step of this job did not run or did not finish.
+          paths=$(printf '%s' "$result" | node -e 'console.log((JSON.parse(require("fs").readFileSync(0, "utf8")).missing_installed || []).join(", "))')
+          [ -n "$missing" ] || [ -n "$paths" ] || { echo "::error::The toolchain check failed: $result"; exit 1; }
           title=$(gh issue view "$ISSUE" --json title --jq .title)
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
-          body=$(ASSIGNEE="$assignee" TITLE="$title" TOOLS="$missing" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, title: e.TITLE, tools: e.TOOLS, platform: e.PLATFORM}))' \
-            | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" toolchain_missing --config relevo.yml)
+          if [ -n "$missing" ]; then
+            body=$(ASSIGNEE="$assignee" TITLE="$title" TOOLS="$missing" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, title: e.TITLE, tools: e.TOOLS, platform: e.PLATFORM}))' \
+              | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" toolchain_missing --config relevo.yml)
+            what="The runner has no $missing, so nothing was built"
+          else
+            body=$(ASSIGNEE="$assignee" TITLE="$title" PATHS="$paths" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, title: e.TITLE, paths: e.PATHS, platform: e.PLATFORM}))' \
+              | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" installed_missing --config relevo.yml)
+            what="The dependencies are not installed ($paths is missing), so nothing was built"
+          fi
           gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
           gh issue comment "$ISSUE" --body "$body"
-          echo "::error::The runner has no $missing, so nothing was built"
+          echo "::error::$what"
           exit 1
 
       # One comment on the issue shows the phase, the tasks and the minutes of the run, and the Relevo scripts of this
@@ -259,6 +278,55 @@ jobs:
           node "$RUNNER_TEMP/relevo/scripts/design-fetch.mjs" --issue "$ISSUE" --repo "$GITHUB_REPOSITORY" || code=$?
           [ "$code" -le 1 ] || exit "$code"
           echo "RELEVO_REFERENCES=$GITHUB_WORKSPACE/.relevo-design/manifest.json" >> "$GITHUB_ENV"
+
+      # What the build cannot go on without is checked here, with no model, before the agent starts: a reference that the
+      # fetcher refused, and the inputs that the issue declares in its External inputs section. When something is
+      # missing the issue goes back to its writer with the reason, the comment names what is missing, and this step ends
+      # the job, so the agent steps below do not run and no model turn is spent. It also lists, for the hand-off, the
+      # inputs that a person has to confirm. Only the names of the variables of the repository are read, never their
+      # values, and a secret counts only when you expose it to this step. An older package without the script skips this
+      # step and the agent takes the same path itself. This check only saves cost: the guards stay in force.
+      # If you renamed the labels in relevo.yml, change the names below too.
+      - name: Check the issue before the agent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          DECISION: ${{ needs.decide.outputs.decision_b64 }}
+          VARIABLES: ${{ toJSON(vars) }}
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/build-preflight.mjs"
+          [ -f "$script" ] || exit 0
+          fields=$(printf '%s' "$DECISION" | base64 -d | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log([d.base || "", d.assignee || "", d.title || "", d.spec_writer || ""].join("\n"))')
+          base=$(printf '%s\n' "$fields" | sed -n 1p)
+          assignee=$(printf '%s\n' "$fields" | sed -n 2p)
+          title=$(printf '%s\n' "$fields" | sed -n 3p)
+          writer=$(printf '%s\n' "$fields" | sed -n 4p)
+          gh issue view "$ISSUE" --json body --jq .body > "$RUNNER_TEMP/issue.md"
+          printf '%s' "$VARIABLES" > "$RUNNER_TEMP/variables.json"
+          args=(--stage issue --issue-file "$RUNNER_TEMP/issue.md" --variables "$RUNNER_TEMP/variables.json" --config relevo.yml)
+          [ -n "$base" ] && args+=(--base "$base")
+          [ -n "$RELEVO_REFERENCES" ] && args+=(--manifest "$RELEVO_REFERENCES")
+          code=0
+          result=$(node "$script" "${args[@]}") || code=$?
+          if [ "$code" -gt 1 ]; then
+            echo "::warning::The check before the agent could not run (exit $code); the agent will check the issue itself"
+            exit 0
+          fi
+          if [ "$code" -eq 0 ]; then
+            unverified=$(printf '%s' "$result" | node -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(r.unverified.map((u) => u.name + " (" + u.purpose + ")").join("; "))')
+            [ -z "$unverified" ] || echo "RELEVO_INPUTS_TO_CONFIRM=$unverified" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          reason=$(printf '%s' "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).reason)')
+          missing=$(printf '%s' "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).missing)')
+          to="${writer:-${assignee:-$GITHUB_ACTOR}}"
+          body=$(WRITER="$to" TITLE="$title" MISSING="$missing" REASON="$reason" node -e 'const e = process.env; console.log(JSON.stringify({spec_writer: e.WRITER, issue: Number(process.env.ISSUE), title: e.TITLE, missing: e.MISSING, reason: e.REASON}))' \
+            | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" needs_spec --config relevo.yml)
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:needs-spec
+          [ -z "$writer" ] || gh issue edit "$ISSUE" --add-assignee "$writer" || true
+          gh issue comment "$ISSUE" --body "$body"
+          echo "::error::The issue went back to needs-spec ($reason) before the agent started: $missing"
+          exit 1
 
       # relevo:agent-step begin
       - id: agent
@@ -416,6 +484,7 @@ jobs:
         run: |
           [ -n "$EXECUTION_FILE" ] || exit 0
           flag=""; [ "$ONLY_SUBSCRIPTION" = "true" ] && flag="--subscription"
+          [ -n "$RELEVO_PROGRESS_DIR" ] && flag="$flag --progress-dir $RELEVO_PROGRESS_DIR"
           line=$(node .relevo-plugin/scripts/run-usage.mjs --file "$EXECUTION_FILE" $flag)
           [ -n "$line" ] && gh issue comment "$ISSUE" --body "$line"
           exit 0

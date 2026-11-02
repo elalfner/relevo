@@ -993,6 +993,7 @@ export function runChecks(f) {
   r.push(...pluginInstallChecks(f));
   r.push(...toolchainChecks(f));
   r.push(...interfaceChecks(f));
+  r.push(...installStepChecks(f));
   r.push(...runnerChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
@@ -1080,6 +1081,33 @@ function interfaceChecks(f) {
 
 // The tools that the build job already has: it installs Node for Relevo itself.
 const NODE_TOOLS = ['node', 'npm'];
+
+// The commands that install the dependencies of a stack. A stack that is not listed is judged by any of them.
+const INSTALL_COMMANDS = {
+  vue: /\b(?:npm\s+(?:ci|install|i)|pnpm\s+(?:install|i)|yarn(?:\s+install)?|bun\s+install)\b/,
+  laravel: /\bcomposer\s+(?:install|update)\b/,
+  flutter: /\b(?:flutter|dart)\s+pub\s+get\b/,
+};
+const ANY_INSTALL = new RegExp([...Object.values(INSTALL_COMMANDS)].map((re) => re.source).join('|'));
+
+/**
+ * When a profile lists the paths that exist once the dependencies are installed, does the build job of the go workflow
+ * have an active step that installs them? Without one the build stops before the agent, so this is a warning that names
+ * the platform and what to enable. Nothing is said when the profile lists no paths, when the step is there, or when the
+ * go workflow is not installed. Only active lines count: a commented example installs nothing.
+ */
+function installStepChecks(f) {
+  const go = f.workflows?.['relevo-go.yml'];
+  if (!go?.present || typeof go.text !== 'string') return [];
+  // An install into another folder (the steps that install OpenSpec and the Relevo scripts) puts nothing in the folder of the platform.
+  const active = go.text.split('\n').filter((l) => !/^\s*#/.test(l) && !/--global|\s-g\b|--prefix|RUNNER_TEMP/.test(l)).join('\n');
+  return (f.platformFacts ?? []).filter((e) => (e.profile?.installed ?? []).length > 0)
+    .filter((e) => !(INSTALL_COMMANDS[e.stack] ?? ANY_INSTALL).test(active))
+    .map((e) => {
+      const guard = `needs.decide.outputs.stack == '${e.stack}'`;
+      return warn(`automation.install.${e.name}`, `the go workflow has no active step that installs the dependencies of platform ${e.name} (${e.stack}), and its profile expects ${e.profile.installed.join(', ')} before the agent starts, so every cloud build would stop there`, `enable an install step in the build job of relevo-go.yml, guarded by ${guard} and run from the folder of the platform (${e.path ?? '.'}), for example npm ci --ignore-scripts; the template has the example commented`);
+    });
+}
 
 const HOSTED_RUNNER = ['ubuntu-latest'];
 

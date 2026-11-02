@@ -252,6 +252,8 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         change_id: changeId(issue.number, issue.title),
         base: config.branches.base,
         assignee,
+        // Who the issue goes back to when a check before the build finds that it cannot succeed.
+        spec_writer: config.team.spec_writer ?? issue.ready_by ?? null,
         title: issue.title,
         qa_retries: config.qa.retries,
         run_max_turns: config.limits.run_max_turns,

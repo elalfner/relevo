@@ -94,9 +94,11 @@ Read its report. If its open questions are not "none", they mean the specificati
 
 Launch the `relevo:qa` agent on the result, with the same change folder, rules files, profile, folder of the platform, skill paths (for `fix`, those of `dev` and `qa` are in the output of `role-skills.mjs --role fix`) and base branch. Its first line is `QA PASSED` or `QA REJECTED`.
 
-On `QA REJECTED` you may retry up to `qa.retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, then `relevo:qa` again with the previous report, so it checks each earlier finding.
+On `QA REJECTED`, first read the classes of the findings: save the report to a file outside the repository and run `node ${CLAUDE_PLUGIN_ROOT}/scripts/qa-findings.mjs --file <report>`. When `all_non_fixable` is `true`, no finding can be corrected by the developer agent (each needs an input, a decision of the specification, or something an unattended run may not do), so **do not retry**: go on as if QA still rejected after the retries, and tell the person which class each finding has and what it needs (`input`: supply it; `spec`: decide it in the issue; `policy`: allow the manifest in `Allow-paths:` or change the issue so that it does not need the protected path). A report with no class counts as `fixable`.
 
-If QA still rejects after the retries: **make no commit and no push.** Save the work with `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-stash.mjs save --issue <issue> --iteration <K>` (the tree is left clean, so the next `fix` can start), show the person the findings, say that `/relevo:fix <issue>` offers the saved work back, leave the issue's labels untouched, and stop.
+Otherwise you may retry up to `qa.retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, then `relevo:qa` again with the previous report, so it checks each earlier finding.
+
+If QA still rejects after the retries, or you skipped them because no finding was `fixable`: **make no commit and no push.** Save the work with `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-stash.mjs save --issue <issue> --iteration <K>` (the tree is left clean, so the next `fix` can start), show the person the findings, say that `/relevo:fix <issue>` offers the saved work back, leave the issue's labels untouched, and stop.
 
 ### 5. Commit
 

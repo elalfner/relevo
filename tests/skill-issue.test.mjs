@@ -274,3 +274,16 @@ test('Scenario: A vague word / Kept on purpose - each warning is shown and asked
   assert.match(body, /If the person says to keep the word, keep it: the warning never fails the check/);
   assert.match(body, /--language <the language of relevo\.yml>/);
 });
+
+test('Scenario: The work needs a key - issue asks for the external inputs, writes names and never values', () => {
+  assert.match(body, /\*\*External inputs \(when the work needs something that is not in the repository\)\.\*\*/);
+  assert.match(body, /`## External inputs` section/);
+  ['`file`', '`link`', '`secret`', '`variable`', '`manual`'].forEach((k) => assert.ok(body.includes(k), `the kind ${k} is named`));
+  assert.match(body, /Never ask for the value of a secret, never write one, and never invent an input/);
+  assert.match(body, /`needs-spec` with the reason `inputs`/);
+  assert.match(body, /a `manual` input, or one the job cannot check, is listed in the hand-off/);
+});
+
+test('Scenario: Nothing is needed - issue writes no section', () => {
+  assert.match(body, /needs nothing outside the repository, write no section/);
+});

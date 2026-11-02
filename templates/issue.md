@@ -42,6 +42,12 @@ Discarded: <the alternative> (<why not>)
 
 - `<path/to/file>`: <why it matters>
 
+## External inputs
+
+<!-- Optional. What the work needs that is not in the repository: `file` (a path of this repository), `link` (`owner/repo:path` of a linked repository), `secret` or `variable` (its name in backticks, never its value) or `manual` (something a person confirms). A script checks the first four before the build starts. -->
+
+- <kind>: <name>: <what it is for>
+
 ## Verification
 
 <!-- Optional. What only a person can check on a device or in a browser. Test data by name, never secrets. -->
