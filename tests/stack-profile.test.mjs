@@ -397,6 +397,23 @@ test('the command prints the skills used only when installed, and the ones the p
   assert.deepEqual(printed.plugin_skills_when_installed.dev, []);
 });
 
+test('the interface key: a kind, none without the key, and a stack of the repository can declare its own', () => {
+  assert.equal(parseProfile(header()).profile.interface, 'none');
+  assert.equal(parseProfile(header('interface: web\n')).profile.interface, 'web');
+  assert.equal(parseProfile(header('interface: mobile\n')).profile.interface, 'mobile');
+  assert.match(parseProfile(header('interface: desktop\n')).errors.join(' '), /"interface" must be one of/);
+  const plugin = parseProfile(header('interface: web\n')).profile;
+  const repository = parseProfile(header('interface: mobile\n')).profile;
+  assert.equal(mergeProfiles(plugin, repository).interface, 'web');
+  assert.equal(mergeProfiles(plugin, repository).ignored.some((i) => i.key === 'interface'), true);
+  assert.equal(mergeProfiles(parseProfile(header()).profile, repository).interface, 'mobile');
+});
+
+test('the shipped profiles declare the interface kind of their stack', () => {
+  const kind = (s) => parseProfile(readFileSync(`${PLUGIN_ROOT}/stacks/${s}.md`, 'utf8')).profile.interface;
+  assert.deepEqual(['flutter', 'vue', 'laravel', 'supabase'].map(kind), ['mobile', 'web', 'web', 'none']);
+});
+
 // --- installed paths (spec: a profile can list the paths that exist once its dependencies are installed)
 test('Scenario: A repository adds a path - the resolved profile has the plugin paths followed by the added one', () => {
   const base = parseProfile(`${header('installed: [node_modules]\n')}\nPlugin body.\n`).profile;

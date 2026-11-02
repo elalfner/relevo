@@ -1,0 +1,11 @@
+<!-- Proposal: option A. Tokens: --app-primary. -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{--app-surface:#ffffff;--app-ink:#1a1a1a;--app-primary:#1d4ed8}
+@media (prefers-color-scheme: dark){:root{--app-surface:#111111;--app-ink:#f2f2f2;--app-primary:#9db8ff}}
+body{margin:0;background:var(--app-surface);color:var(--app-ink);font:16px/1.4 sans-serif}
+.phone{width:100%;padding:12px;box-sizing:border-box}
+.label{font-size:12px}
+button{min-width:48px;height:48px;background:var(--app-primary);color:#fff;border:0;max-width:100%}
+@media (prefers-color-scheme: dark){button{color:#000}}
+p{overflow-wrap:anywhere}
+</style></head><body><div class="phone"><p class="label">An option.</p><h1>Cart</h1><p>Your cart is empty.</p><button type="button">Browse</button></div></body></html>

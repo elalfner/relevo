@@ -254,3 +254,18 @@ test('Scenario: Linked code pointer - dev and QA read a linked pointer from the 
     assert.match(text, /never (?:as|treat it as) a reference to match/);
   });
 });
+
+test('Scenario: the developer agent follows the interface rules it is given and no others', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  assert.match(dev, /the interface rules for you/);
+  assert.match(dev, /"build it like this" line and examples of your stack/);
+  assert.match(dev, /The rules the orchestrator did not give you do not apply/);
+});
+
+test('Scenario: QA rejects on a blocking interface rule only with evidence, and lists the rest for the person', () => {
+  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  assert.match(qa, /Reject on a \*\*blocking\*\* rule only with evidence/);
+  assert.match(qa, /advisory, or whose check is `person`, is never a rejection: list it under "left for on-device review"/);
+  assert.match(qa, /Say how many rules were left out/);
+  assert.match(qa, /Treat a mobile sketch in the issue like an image reference/);
+});

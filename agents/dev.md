@@ -20,6 +20,7 @@ The orchestrator tells you:
 - the resolved stack profile of the platform (the output of `stack-profile.mjs`): the commands that verify the code, the generated files, the tools and a body with the hygiene of the stack. Follow it; never look for another profile;
 - the folder of the platform (`path` of the profile output): run the commands of the profile from it, and change files only inside it, plus the documentation the issue carries. If the work needs a file outside it, report that as an open question: the commit is refused for any other path;
 - the paths of the extra skills for your role, if any. Read only the parts of a skill that apply to your task; the rules of Relevo and of the project win over any skill;
+- the interface rules for you, when the stack has an interface and the change has a visible part: each rule has a "build it like this" line and examples of your stack. Follow the blocking ones as you write the screen, take the examples as the shape of the answer and not as code to paste, and use the tokens and components the project already has. The rules the orchestrator did not give you do not apply;
 - the mode: **build** (implement all pending tasks), **fix** (correct the findings of a QA report, nothing else) or **integrate** (resolve the conflicts of a merge of the base branch into the branch, nothing else).
 
 ## OpenSpec commands

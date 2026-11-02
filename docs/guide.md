@@ -68,6 +68,17 @@ The comment names why, and the build stopped before the agent started, so no mod
 
 `/relevo:review <n>` first merges the base branch into the branch. When files conflict, the conflicts inside the paths the change may touch are handed to the developer agent in its integrate mode; QA then checks the result, and only after that is the merge committed. A conflict in any other file, or one that QA does not accept, ends with the merge aborted and nothing changed, and the review tells you which files to resolve yourself. `/relevo:status` shows, for a branch that has fallen behind the base, whether the merge would conflict and in which files.
 
+## How to read the check of a preview
+
+When `think` shows an HTML preview it tells you the result of the automatic check for each item:
+
+- **pass**: the item was measured and is within the threshold.
+- **fail**: it is outside the threshold, and `think` names the element. It fixes the file and checks again, at most twice; if it still fails you see the preview with the failing item named.
+- **not checked**: the check could not decide (text over an image, a gradient or a partly transparent colour). It is not a pass: look at it yourself.
+- **approximate**: a value came from an approximation, such as a colour derived by opacity, so the ratio is not exact.
+
+If the machine has no browser automation, nothing was checked and `think` says so; it never shows a preview as checked when it was not. A mobile preview is an approximate sketch in a phone frame: it checks that text fits, targets are big enough and contrast holds, and says nothing about how the app really renders. The on-device review is where appearance is decided.
+
 ## Fix or a new issue
 
 - Use `/relevo:fix <n>` when the built work does not do what its issue says, or the reviewer asked for a change to the same feature: the defect is in what was built.

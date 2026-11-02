@@ -142,6 +142,22 @@ When the screen has to look like something, point to it. One bullet per referenc
 - Example code goes in a fenced block in the same section.
 - `go` copies the section to the design, adds a scenario "Matches the reference <name>" for each bullet, and QA checks the code against it. In the review that scenario is a line you confirm by looking at your screen. If a reference cannot be fetched, the issue goes back to its writer saying which one.
 
+**A preview chosen in `think`.** When you chose one of the HTML previews that `think` drew, `issue` writes it here as example code, in a bullet that says what must match. For the web: the structure, the tokens and the states, not the sample text or exact pixel values. For a mobile sketch: the layout, the spacing, the states and the role of each colour, and that its markup is not to be reproduced (the sketch is approximate, not a render of the app); the decision with its table of states goes in `Decisions`.
+
+````markdown
+## Design reference
+
+- Preview A (approved in `think`): the structure, the tokens `--app-primary` and `--app-surface`, and the five states; not the sample names
+
+```html
+<!-- Proposal: option A. Tokens: --app-primary (lib/theme/colors.dart:3) -->
+<main>…</main>
+```
+````
+
+Limits of example code, which has its own: it is not counted for the 8,000-character warning of the text. One block over 16 KB gets a warning and over 32 KB fails, all the blocks together over 32 KB get a warning, and a body over 65,536 characters (what GitHub accepts) fails. For a larger file, commit it and point to it with a bullet, or commit a picture of the sketch and point to that.
+
+**Vague appearance words.** The check warns, and never fails, when a scenario, decision, constraint or reference bullet says how something should look without saying what to build (for example "discreet", "modern", "clean"). `issue` shows each warning and asks which value, token or reference is meant. A sentence that gives a number with a unit, a token in backticks or a reference is not flagged. If you mean the word, say so and it stays. The lists exist for English and Spanish; any other language uses the English list.
 ### 9. External inputs (optional)
 
 When the work needs something that is not in the repository (a key, a file, an endpoint, another repository), say so. A script checks what it can before the build starts, so that the issue does not spend a build and a retry on something that cannot succeed:

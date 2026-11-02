@@ -68,6 +68,17 @@ El comentario dice por qué, y el build se detuvo antes de que empezara el agent
 
 `/relevo:review <n>` primero mezcla la rama base en la rama. Cuando hay archivos en conflicto, los conflictos dentro de las rutas que el cambio puede tocar se entregan al agente de desarrollo en su modo de integración; luego QA revisa el resultado y solo después se hace el commit del merge. Un conflicto en cualquier otro archivo, o uno que QA no acepta, termina con el merge abortado y sin cambios, y la revisión te dice qué archivos resolver tú. `/relevo:status` muestra, para una rama atrasada respecto a la base, si el merge tendría conflictos y en qué archivos.
 
+## Cómo leer la revisión de una vista previa
+
+Cuando `think` te muestra una vista previa en HTML, te dice el resultado de la revisión automática de cada elemento:
+
+- **pass**: se midió y está dentro del umbral.
+- **fail**: está fuera del umbral y `think` nombra el elemento. Corrige el archivo y revisa otra vez, como máximo dos veces; si sigue fallando ves la vista previa con el elemento que falla nombrado.
+- **not checked**: la revisión no pudo decidir (texto sobre una imagen, un degradado o un color parcialmente transparente). No es un pass: míralo tú.
+- **approximate**: un valor vino de una aproximación, como un color derivado por opacidad, así que la relación no es exacta.
+
+Si la máquina no tiene automatización de navegador, no se revisó nada y `think` lo dice; nunca muestra como revisada una vista previa que no lo fue. Una vista previa móvil es un boceto aproximado en un marco de teléfono: comprueba que el texto cabe, que los objetivos táctiles son suficientemente grandes y que el contraste se sostiene, y no dice nada de cómo se verá realmente la app. La revisión en el dispositivo es donde se decide la apariencia.
+
 ## Fix o un issue nuevo
 
 - Usa `/relevo:fix <n>` cuando lo construido no hace lo que dice su issue, o el revisor pidió un cambio de la misma funcionalidad: el defecto está en lo construido.

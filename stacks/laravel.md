@@ -19,6 +19,7 @@ skills_when_installed:
 review:
   log: storage/logs/*.log
   test: php artisan test
+interface: web
 ---
 
 # Laravel

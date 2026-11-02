@@ -314,6 +314,17 @@ test('the failure for a versioned restricted file takes the recovery restricted,
   assert.match(text, /fix\|delete-branch\|restricted/);
 });
 
+test('Scenario: the interface rules are selected after the specification and given to each agent with the line it needs', () => {
+  assert.match(body, /interface-rules\.mjs --role dev --platform <platform> --text-file <issue_file>/);
+  assert.match(body, /interface-rules\.mjs --role qa --platform <platform> --text-file <issue_file>/);
+  assert.match(body, /Each prints nothing for a stack with no interface/);
+  assert.match(body, /the "build it like this" lines and the examples of the stack/);
+  assert.match(body, /the "check this" lines/);
+  assert.match(body, /the count of rules left out/);
+  assert.match(body, /the interface rules for `dev`/);
+  assert.match(body, /the interface rules for `qa`/);
+});
+
 test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
   const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
   assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);

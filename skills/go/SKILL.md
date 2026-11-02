@@ -239,13 +239,22 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role qa --platform <platfor
 
 If `stack-profile.mjs` fails, take the failure path with the reason `profile not resolved` and its message. `role-skills.mjs` prints each skill as a path or as left out with a reason: give the agent only the paths, and mention the skills left out in your final report.
 
+**Interface rules (only when the platform's stack has an interface and the change has a visible part).** After the specification is written, select the rules for the two agents from the text of the issue and the tasks:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/interface-rules.mjs --role dev --platform <platform> --text-file <issue_file>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/interface-rules.mjs --role qa --platform <platform> --text-file <issue_file>
+```
+
+Each prints nothing for a stack with no interface. Give the output of `--role dev` to the developer agent (the "build it like this" lines and the examples of the stack) and the output of `--role qa` to the QA agent (the "check this" lines), each with the count of rules left out that the output states. Do not paste rules you were not given and do not select them by hand.
+
 Then:
 
 ```bash
 openspec instructions apply --change "<change_id>" --json
 ```
 
-If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the folder of the platform (`path`), the skill paths for `dev`, the base branch, and `allow_paths`.
+If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise launch the `relevo:dev` agent in **build** mode. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, the tasks whose `done` is false, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the folder of the platform (`path`), the skill paths for `dev`, the base branch, `allow_paths` and, when there are any, the interface rules for `dev`.
 
 Read its report. If its open questions are not "none", treat them as a spec defect, exactly as in step 3. Then run the instructions command again: if `progress.remaining` is above 0, take the failure path with the reason `tasks left unfinished`.
 
@@ -259,7 +268,7 @@ Make the new files of the developer visible to `git diff`, without staging them,
 node ${CLAUDE_PLUGIN_ROOT}/scripts/intent-to-add.mjs <files>
 ```
 
-Launch the `relevo:qa` agent on the result, giving it the same change directory, `<issue_file>` (the saved body of the issue, to compare the copied sections), rules files and base branch, the resolved profile, the folder of the platform (`path`), the skill paths for `qa`, and the diff to review: the working tree against the base branch, without the generated files of the profile (add one `':(exclude)<pattern>'` for each pattern in its `generated` list).
+Launch the `relevo:qa` agent on the result, giving it the same change directory, `<issue_file>` (the saved body of the issue, to compare the copied sections), rules files and base branch, the resolved profile, the folder of the platform (`path`), the skill paths for `qa`, the interface rules for `qa` when there are any, and the diff to review: the working tree against the base branch, without the generated files of the profile (add one `':(exclude)<pattern>'` for each pattern in its `generated` list).
 
 ```bash
 git diff origin/<base> -- . ':(exclude)<pattern>' ...

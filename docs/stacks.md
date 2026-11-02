@@ -34,6 +34,8 @@ A profile is the file `stacks/<stack>.md` of the plugin. Its header is read by s
 
 Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:go` resolves the profile of your platform and hands it to the developer and QA agents.
 
+The header can also say which kind of interface the stack builds with `interface: web`, `interface: mobile` or `interface: none`. Without the key the stack has none, and no interface rule is given to its agents. Flutter is `mobile` (and gets the rules for `web` too when a platform lists the `web` target), Vue and Laravel are `web`, Supabase is `none`. A stack you write yourself under `.relevo/stacks/<stack>.md` declares its own with the same key. The rules and how an agent receives them are under `knowledge/interface/`; a project adds its own rules in `.relevo/interface.json`, which can add rules and examples and never remove or lower one of the plugin (`/relevo:doctor` validates it and reports an attempt).
+
 ## The profiles Relevo ships
 
 | Stack | `analyze` | `test` | `format` | Target |
@@ -131,6 +133,29 @@ review:
 - `serve` is started only with `review.autopilot` `precheck` or `verify`, after you confirmed that the data is not production, on a free port of `localhost`, through the script that records and stops it. Its `url` must be on `localhost`, `127.0.0.1` or `[::1]`, and the command is read only from this file on the base branch, never from an issue or a comment.
 - The section `## Review` is free text for the agent, read only in a review. It can add steps and ask for more evidence. It cannot change that you confirm every line, that the log is audited, that `decide` gates the pull request, that restricted files (the list in [Security](security.md)) are never read, that no waiver is suggested or that no code is patched in a review: `/relevo:doctor` warns about a line that asks for one of them, and the review ignores it.
 - A Laravel review has no device and no browser. With `review.autopilot` `off` you run the project's tests and tell the review (`ran <exit code>`); with `precheck` or `verify` the agent runs the existing test of each line and never writes one. A test run that passes writes nothing to `storage/logs`, so the recorded run, and not the log, is what shows that the code was exercised.
+
+## Reading the design tokens
+
+For a stack with an interface, `node scripts/design-tokens.mjs` reads the colours, text styles, spacing and radii of your design system from its code and prints each with the file and line it came from. The interface step of `think` shows you that table before it draws anything.
+
+- **It reads only the paths you declared** under `design.system.tokens` in `relevo.yml`, or the ones you confirmed when it listed what it found by convention (a styling tool configuration, a stylesheet with custom properties on the root, a Dart file named after a theme). It never reads the rest of the repository, never opens a restricted file (it says which it skipped), runs none of your code and uses no network.
+- **Dart:** colour literals, constants followed to their definition, a colour scheme written with explicit colours, the shades of the standard palette from a fixed table, an opacity on a known colour (marked as derived), classes that extend the theme, text styles, spacing and radius constants, and a dark theme as a second set.
+- **Web:** custom properties on the root and in a dark-mode block (a property that refers to another is resolved), and the literal colour, spacing and radius scales of the styling tool configuration.
+- **Never guessed:** a colour scheme derived from a seed, a colour that comes from the device or a server, a swatch that is not in the fixed table, and a reference it cannot follow are listed as unresolved with their file and line. `think` asks you for those colours instead of inventing them.
+- **Several brands or flavours** are listed as separate sets and never merged: you choose one.
+
+## Design skills that were evaluated
+
+Relevo does not install a design skill and recommends none by default. Four public ones were read on 2 November 2026 to see what each would add; each can be added to a role with the mechanism of [Extra skills per role](#extra-skills-per-role), and `/relevo:init` installs none of them. "Cost" is the size of the file the agent loads when the skill is active, at about four characters per token.
+
+| Skill | Licence it states | What it is for | Fit for a role | Cost when loaded |
+|---|---|---|---|---|
+| `frontend-design` (the `anthropics/skills` collection) | Apache-2.0 | Art direction for a distinctive web interface | `dev`, for a new page where a look is wanted; it pushes for a strong visual identity, so it can conflict with an existing design system | about 9 KB (2,300 tokens) |
+| Taste (`Leonxlnx/taste-skill`) | MIT | Art direction for websites distilled from a study of gallery sites | `dev` for a landing page or marketing site; not for an application with its own system | about 40 KB (10,000 tokens) |
+| Hallmark (`Nutlope/hallmark`) | MIT | A design skill for new websites and pages, with redesign and audit modes | `dev` for a new site; it says to avoid an existing design unless named | about 18 KB (4,500 tokens) |
+| UI UX Pro Max (`nextlevelbuilder/ui-ux-pro-max-skill`) | MIT | A searchable body of UI and UX guidelines, styles, palettes and stack notes | The source of Relevo's own [interface rules](../knowledge/interface/CURATION.md); the skill itself adds a large data set | a skill file of about 16 KB (4,000 tokens) plus data files of about 3 MB, searched by a script |
+
+What follows from the reading: the three that give a look are for new sites, and a project with a design system wants the opposite (reuse its tokens and components), which is what the interface step does. Relevo's own rules come from the fourth and are loaded by role and budget, not whole. Read the current licence and the file you would add before you do; these are third-party works that change.
 
 ## Your own stack
 

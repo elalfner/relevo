@@ -13,6 +13,7 @@ skills:
   qa: [flutter-add-widget-test, dart-add-unit-test]
   issue: []
   review: []
+interface: mobile
 targets:
   android: adb
   ios: xcrun

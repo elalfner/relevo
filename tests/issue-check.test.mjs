@@ -433,6 +433,90 @@ test('Scenario: Six references across both sections - design references and link
   assert.deepEqual(pointerCheck(pointers.split('\n').slice(0, 2).join('\n'), { refs, links: ['acme/api'] }).problems, []);
 });
 
+// ---- example code and vague words (interface-decisions-upfront)
+const withDesign = (code, extra = '') => `${GOOD}\n## Design reference\n- \`lib/theme/colors.dart\`: the colours must match\n\n\`\`\`html\n${code}\n\`\`\`\n${extra}`;
+
+test('Scenario: Long example code - 5,000 characters of text and 12,000 of example code give no warning about the length of the body', () => {
+  const body = `${GOOD}\n${'Context sentence. '.repeat(280)}\n\n## Design reference\n- \`lib/theme/colors.dart\`: the colours must match\n\n\`\`\`html\n${'<p>row</p>\n'.repeat(1100)}\`\`\`\n`;
+  assert.ok(body.length > 16000);
+  const r = checkIssueDraft({ title: 'Orders', body });
+  assert.deepEqual(r.warnings.filter((w) => /the body is/.test(w)), []);
+  assert.equal(r.ok, true);
+});
+
+test('Scenario: Long body - text over 8,000 characters still warns, with the example code left out of the count', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: `${GOOD}\n${'Context sentence. '.repeat(500)}\n` });
+  assert.ok(r.warnings.some((w) => /the body is \d+ characters/.test(w)));
+  assert.equal(r.ok, true);
+});
+
+test('Scenario: A large block - 20 KB passes with a warning; all the blocks together over 32 KB warn', () => {
+  const big = checkIssueDraft({ title: 'Orders', body: withDesign('x'.repeat(20000)) });
+  assert.equal(big.ok, true, big.problems.join('; '));
+  assert.ok(big.warnings.some((w) => /example code block 1 is \d+ characters/.test(w)));
+  const two = checkIssueDraft({ title: 'Orders', body: `${withDesign('x'.repeat(15000))}\n\`\`\`html\n${'y'.repeat(15000)}\n\`\`\`\n\`\`\`html\n${'z'.repeat(5000)}\n\`\`\`\n` });
+  assert.equal(two.ok, true, two.problems.join('; '));
+  assert.ok(two.warnings.some((w) => /the example code is \d+ characters in all/.test(w)));
+});
+
+test('Scenario: A block over the limit - 40 KB fails and says to commit the file and reference it', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: withDesign('x'.repeat(40000)) });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join(' '), /example code block 1 is \d+ characters, over 32768; commit the file to the repository and point to it/);
+});
+
+test('Scenario: A body GitHub would refuse - it fails and says why', () => {
+  const body = `${GOOD}\n## Design reference\n- \`lib/theme/colors.dart\`: match\n\n${'a'.repeat(20000)}\n${'b'.repeat(20000)}\n${'c'.repeat(20000)}\n${'d'.repeat(20000)}\n`;
+  const r = checkIssueDraft({ title: 'Orders', body });
+  assert.match(r.problems.join(' '), /GitHub accepts at most 65536/);
+});
+
+const scenario = (when, then) => `## Summary\nShows orders.\n\n## Scenarios\n- **WHEN** ${when}\n- **THEN** ${then}\n\n## Edge cases\n- an empty list: a message shows\n`;
+
+test('Scenario: A vague word - the check warns and does not fail', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: scenario('the list reloads', 'a discreet loading indication shows') });
+  assert.equal(r.ok, true);
+  const w = r.warnings.find((x) => /"discreet"/.test(x));
+  assert.ok(w, r.warnings.join('|'));
+  assert.match(w, /which value, token or reference is meant\?/);
+});
+
+test('Scenario: A word with a criterion - a number with a unit, a token in backticks or a reference gives no warning', () => {
+  [
+    'a discreet bar 2px high shows',
+    'a discreet bar in `--app-primary` shows',
+    'a discreet bar as in docs/design/reload.png shows',
+    'a subtle bar like #12 shows',
+  ].forEach((then) => assert.deepEqual(checkIssueDraft({ title: 'Orders', body: scenario('the list reloads', then) }).warnings.filter((x) => /says how it should look/.test(x)), [], then));
+});
+
+test('vague words are looked for in decisions, constraints and reference bullets too, not in the summary', () => {
+  const body = `## Summary\nA modern screen.\n\n## Scenarios\n- **WHEN** a client opens it\n- **THEN** the list shows\n\n## Edge cases\n- empty: a message\n\n## Decisions\n### D1. Look\nThe cards are elegant.\n\n## Constraints\n- C1: Keep it clean.\n\n## Design reference\n- \`lib/theme/colors.dart\`: a friendly feel\n`;
+  const words = checkIssueDraft({ title: 'Orders', body }).warnings.filter((x) => /says how it should look/.test(x)).map((x) => /"(\w+)"/.exec(x)[1]);
+  assert.deepEqual(words.sort(), ['clean', 'elegant', 'friendly']);
+});
+
+test('Scenario: Spanish - the list for the language is used, and English is the fallback for any other language', () => {
+  const es = checkIssueDraft({ title: 'Pedidos', body: scenario('la lista se recarga', 'se muestra un indicador discreto'), language: 'es' });
+  assert.ok(es.warnings.some((x) => /"discreto"/.test(x)), es.warnings.join('|'));
+  assert.deepEqual(checkIssueDraft({ title: 'Pedidos', body: scenario('la lista se recarga', 'se muestra un indicador discreto'), language: 'en' }).warnings.filter((x) => /discreto/.test(x)), []);
+  const fr = checkIssueDraft({ title: 'Commandes', body: scenario('the list reloads', 'a discreet bar shows'), language: 'fr' });
+  assert.ok(fr.warnings.some((x) => /"discreet"/.test(x)));
+});
+
+test('Scenario: Kept on purpose - the issue passes with the word', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: scenario('the list reloads', 'a discreet loading indication shows') });
+  assert.equal(r.ok, true);
+});
+
+test('the command takes the language of relevo.yml', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-vague-'));
+  writeFileSync(join(dir, 'b.md'), scenario('la lista se recarga', 'se muestra un indicador discreto'));
+  const r = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Pedidos', '--body-file', join(dir, 'b.md'), '--language', 'es'], { encoding: 'utf8', cwd: dir });
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /"discreto"/);
+});
+
 // --- External inputs (spec: an issue can declare the external inputs of its work)
 const withInputs = (bullets) => `${GOOD}\n## External inputs\n\n${bullets}\n`;
 const inputsCheck = (bullets, extra = {}) => checkIssueDraft({ title: 'Home', body: withInputs(bullets), ...extra });

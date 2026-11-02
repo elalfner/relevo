@@ -75,17 +75,21 @@ export function parseCodePointers(body) {
  */
 export function parseDesign(body) {
   const found = section(body, 'Design reference');
-  if (!found) return { present: false, references: [], code: 0, problems: [] };
+  if (!found) return { present: false, references: [], code: 0, blocks: [], problems: [] };
   let code = 0;
   let inFence = false;
   const references = [];
   const problems = [];
+  // The size of each fenced block of example code, in characters, fences included.
+  const blocks = [];
   found.text.split('\n').forEach((line) => {
     if (FENCE_RE.test(line)) {
-      if (!inFence) code += 1;
+      if (!inFence) { code += 1; blocks.push(0); }
+      blocks[blocks.length - 1] += line.length + 1;
       inFence = !inFence;
       return;
     }
+    if (inFence) blocks[blocks.length - 1] += line.length + 1;
     if (inFence || !/^\s*[-*+]\s+/.test(line)) return;
     const bullet = line.replace(/^\s*[-*+]\s+/, '').trim();
     const tick = bullet.match(/^`([^`]+)`\s*(?::\s*(.*))?$/);
@@ -118,7 +122,7 @@ export function parseDesign(body) {
     if (match === '') problems.push(`"${target}" does not say what must match (structure, spacing, typography, colour, states)`);
     references.push(ref);
   });
-  return { present: true, references, code, problems };
+  return { present: true, references, code, blocks, problems };
 }
 
 export const INPUT_KINDS = ['file', 'link', 'secret', 'variable', 'manual'];
