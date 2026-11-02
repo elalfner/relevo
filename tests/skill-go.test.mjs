@@ -262,7 +262,7 @@ test('Scenario: Reference in the repository / Attachment - go fetches what the i
 test('Scenario: Refused reference in the cloud / Local run - go reads the manifest of the fetch step, and fetches only when it is not set', () => {
   assert.match(body, /`RELEVO_REFERENCES` is set: a step before you already fetched them, with a token you do not have\. Do not run the fetcher again\./);
   assert.match(body, /\*\*Otherwise\*\* \(a local run\) fetch them yourself/);
-  assert.match(body, /a `## Code pointers` bullet that names a file of another repository as `owner\/repo:path`/);
+  assert.match(body, /a `## Code pointers` bullet, or a `link` bullet of `## External inputs`, that names a file of another repository as `owner\/repo:path`/);
 });
 
 test('Scenario: Reason word for word - the reason of a refused reference reaches the issue unchanged', () => {
