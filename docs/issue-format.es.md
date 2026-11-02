@@ -142,6 +142,23 @@ Cuando la pantalla debe verse como algo, señálalo. Una viñeta por referencia,
 - El código de ejemplo va en un bloque de código en la misma sección.
 - `go` copia la sección al diseño, añade un escenario "Matches the reference <nombre>" por cada viñeta, y QA comprueba el código contra ella. En la revisión ese escenario es una línea que confirmas mirando tu pantalla. Si una referencia no se puede obtener, el issue vuelve a quien lo escribió diciendo cuál.
 
+**Una vista previa elegida en `think`.** Cuando elegiste una de las vistas previas en HTML que dibujó `think`, `issue` la escribe aquí como código de ejemplo, en una viñeta que dice qué debe coincidir. En la web: la estructura, los tokens y los estados, no el texto de ejemplo ni los píxeles exactos. En un boceto móvil: la disposición, el espaciado, los estados y el papel de cada color, y que su marcado no debe reproducirse (el boceto es aproximado, no una captura de la app); la decisión con su tabla de estados va en `Decisions`.
+
+````markdown
+## Design reference
+
+- Vista A (aprobada en `think`): la estructura, los tokens `--app-primary` y `--app-surface`, y los cinco estados; no los nombres de ejemplo
+
+```html
+<!-- Proposal: option A. Tokens: --app-primary (lib/theme/colors.dart:3) -->
+<main>…</main>
+```
+````
+
+Límites del código de ejemplo, que tiene los suyos: no cuenta para el aviso de 8.000 caracteres del texto. Un bloque de más de 16 KB da un aviso y de más de 32 KB falla, todos los bloques juntos por encima de 32 KB dan un aviso, y un cuerpo de más de 65.536 caracteres (lo que acepta GitHub) falla. Para un archivo más grande, súbelo al repositorio y señálalo con una viñeta, o sube una imagen del boceto y señala esa.
+
+**Palabras vagas de apariencia.** La comprobación avisa, y nunca falla, cuando un escenario, una decisión, una restricción o una viñeta de referencia dice cómo debe verse algo sin decir qué construir (por ejemplo «discreto», «moderno», «limpio»). `issue` muestra cada aviso y pregunta qué valor, token o referencia se quiere decir. Una frase que da un número con unidad, un token entre comillas invertidas o una referencia no se marca. Si quieres la palabra, dilo y se queda. Las listas existen en inglés y español; cualquier otro idioma usa la de inglés.
+
 ## Qué más necesita `go` del issue
 
 - **Un hito.** El hito es el lote al que pertenece el issue.
