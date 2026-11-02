@@ -9,11 +9,11 @@
 
 ## 2. The validation gate
 
-- [ ] 2.1 Add `scripts/lib/validation-gate.mjs` and `scripts/validation-gate.mjs`: make the new files visible to the diff (reuse `intent-to-add.mjs`), compute the hash of the diff against the base branch excluding the generated files of the profile, run `analyze` and `test` from the folder of the platform, run `scan-diff.mjs` and `restricted-check.mjs`, and print `green`, `red` or `could-not-run` with the exit codes 0, 1 and 2 (3 for bad arguments). Verify with `tests/validation-gate.test.mjs` on throwaway repositories: green, a failing test, a missing tool, and generated files left out of the hash.
-- [ ] 2.2 The receipt: write the hash, the base commit, each command with its exit code, duration and capped output tail, and the status, into a local folder that git ignores, created the way the fetcher's folder is. Verify with tests that the receipt has those fields and that it is not in the diff or in a commit.
-- [ ] 2.3 Add `scripts/receipt-check.mjs`: recompute the hash of the current diff and exit non-zero when it differs from the receipt's or the status is not `green`. Verify with tests for a matching receipt, a changed diff and a red receipt.
-- [ ] 2.4 Make the cap of the output tail and its truncation marker explicit and test them with a very long output.
-- [ ] 2.5 `docs/execution.md` and `docs/execution.es.md`: what the gate runs, the receipt and where it lives. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 2.1 Add `scripts/lib/validation-gate.mjs` and `scripts/validation-gate.mjs`: make the new files visible to the diff (reuse `intent-to-add.mjs`), compute the hash of the diff against the base branch excluding the generated files of the profile, run `analyze` and `test` from the folder of the platform, run `scan-diff.mjs` and `restricted-check.mjs`, and print `green`, `red` or `could-not-run` with the exit codes 0, 1 and 2 (3 for bad arguments). Verify with `tests/validation-gate.test.mjs` on throwaway repositories: green, a failing test, a missing tool, and generated files left out of the hash.
+- [x] 2.2 The receipt: write the hash, the base commit, each command with its exit code, duration and capped output tail, and the status, into a local folder that git ignores, created the way the fetcher's folder is. Verify with tests that the receipt has those fields and that it is not in the diff or in a commit.
+- [x] 2.3 Add `scripts/receipt-check.mjs`: recompute the hash of the current diff and exit non-zero when it differs from the receipt's or the status is not `green`. Verify with tests for a matching receipt, a changed diff and a red receipt.
+- [x] 2.4 Make the cap of the output tail and its truncation marker explicit and test them with a very long output.
+- [x] 2.5 `docs/execution.md` and `docs/execution.es.md`: what the gate runs, the receipt and where it lives. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 3. The lens agents
 
