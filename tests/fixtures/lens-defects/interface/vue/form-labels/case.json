@@ -7,7 +7,5 @@
   "lens": "interface",
   "finding": "label|placeholder"
  },
- "from": "tests/fixtures/interface-defects/form-labels",
- "interface_kind": "web",
  "rule": "form-labels"
 }

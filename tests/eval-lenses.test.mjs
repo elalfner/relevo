@@ -135,3 +135,20 @@ test('the note names the change folder or the issue file when the case has one',
   assert.match(orchestratorNote(decision.bad), /issue that was built is in issue\.md/);
   assert.match(orchestratorNote({ 'a.txt': 'x' }), /Change directory: none/);
 });
+
+import { interfaceRules } from '../scripts/lib/lens-eval.mjs';
+
+test('the interface lens gets the rules that interface-rules.mjs selects for the stack, and the others do not', async () => {
+  const rules = interfaceRules('vue', { 'a.vue': '<button><svg/></button> <input placeholder="Email">' });
+  assert.match(rules, /Every control has an accessible name/);
+  assert.match(rules, /Inputs have a visible label/);
+  assert.match(orchestratorNote({}, rules), /## Interface rules for QA/);
+  assert.doesNotMatch(orchestratorNote({}), /Interface rules for QA/);
+  const c = loadCases().find((x) => x.id === 'interface/vue/form-labels');
+  const seen = [];
+  const spawn = (cmd, args, o) => { seen.push(o.input); return { status: 0, stdout: JSON.stringify({ result: 'QA PASSED' }) }; };
+  await claudeRunner(spawn)({ lens: 'interface', stack: 'vue', lensText: 'LENS', files: c.bad });
+  await claudeRunner(spawn)({ lens: 'code', stack: 'vue', lensText: 'LENS', files: c.bad });
+  assert.match(seen[0], /Interface rules for QA/);
+  assert.doesNotMatch(seen[1], /Interface rules for QA/);
+});

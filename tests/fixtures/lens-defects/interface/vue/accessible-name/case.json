@@ -7,7 +7,5 @@
   "lens": "interface",
   "finding": "name|label|accessible"
  },
- "from": "tests/fixtures/interface-defects/accessible-name",
- "interface_kind": "web",
  "rule": "accessible-name"
 }

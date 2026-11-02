@@ -76,8 +76,23 @@ export function materialize(files, dir = mkdtempSync(join(tmpdir(), 'relevo-lens
   return dir;
 }
 
+/**
+ * The interface rules that the orchestrator gives the interface lens: the output of interface-rules.mjs for the stack of the
+ * case, selected by the words of the files (the real run selects by the text of the issue). Empty when there are none.
+ */
+export function interfaceRules(stack, files, root = process.cwd()) {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-lens-rules-'));
+  writeFileSync(join(dir, 'relevo.yml'), `platforms:\n  app:\n    stack: ${stack}\n    path: .\nlimits:\n  run_max_cost: 1\n`);
+  const text = Object.values(files).join('\n');
+  try {
+    return execFileSync(process.execPath, [join(root, 'scripts/interface-rules.mjs'), '--role', 'qa', '--platform', 'app', '--config', join(dir, 'relevo.yml'), '--text', text], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }).trim();
+  } catch {
+    return '';
+  }
+}
+
 /** What the orchestrator tells a lens, for a change laid out by materialize(). */
-export const orchestratorNote = (files = {}) => {
+export const orchestratorNote = (files = {}, rules = '') => {
   const change = Object.keys(files).map((f) => f.match(/^(openspec\/changes\/[^/]+)\//)?.[1]).find(Boolean);
   const issue = 'issue.md' in files ? '\nThe text of the issue that was built is in issue.md.' : '';
   return `## Inputs from the orchestrator
@@ -86,7 +101,7 @@ Change directory: ${change ?? 'none (there is no OpenSpec change; the change is 
 Base branch to diff against: main. Folder of the platform: . (the root).
 Receipt of the validation gate: .relevo-receipt/receipt.json. It is green and it matches the diff. It is simulated by the evaluation harness, which does not run the analysis or the tests: do not reject for that.
 There is no stack profile section and no review script. Review the diff of the working tree against main as your lens, and apply your protocol.
-`;
+${rules ? `\n## Interface rules for QA\n\n${rules}\n` : ''}`;
 };
 export const ORCHESTRATOR_NOTE = orchestratorNote();
 
@@ -137,7 +152,7 @@ export async function evaluate(cases, opts, runner, root = process.cwd()) {
     lensInfo[lens].text ??= lensPrompt(lensInfo[lens].body, opts, root);
     const row = { id: c.id, lens };
     for (const variant of ['bad', 'good']) {
-      const r = await runner({ lens, model: lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]), lensText: lensInfo[lens].text, files: c[variant] });
+      const r = await runner({ lens, model: lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]), lensText: lensInfo[lens].text, stack: c.meta.stack, files: c[variant] });
       row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0, report: r.report };
     }
     rows.push(row);
@@ -164,12 +179,12 @@ export function stubRunner({ miss = [], falsePositive = [], cases }) {
   };
 }
 
-export function claudeRunner(spawn, { maxTurns = 12, maxBudgetUsd = 1, make = materialize } = {}) {
-  return async ({ lensText, files, model }) => {
+export function claudeRunner(spawn, { maxTurns = 12, maxBudgetUsd = 1, make = materialize, rulesFor = interfaceRules } = {}) {
+  return async ({ lens, stack, lensText, files, model }) => {
     const args = ['-p', '--output-format', 'json', '--max-turns', String(maxTurns), '--max-budget-usd', String(maxBudgetUsd), '--allowedTools', 'Read,Grep,Glob,Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*)'];
     if (model) args.push('--model', model);
     const cwd = make(files);
-    const prompt = `${lensText}\n\n${orchestratorNote(files)}`;
+    const prompt = `${lensText}\n\n${orchestratorNote(files, lens === 'interface' ? rulesFor(stack, files) : '')}`;
     const r = spawn('claude', args, { input: prompt, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, cwd });
     if (r.status !== 0) throw new Error(`claude failed: ${(r.stderr || '').slice(0, 300)}`);
     const out = JSON.parse(r.stdout);
