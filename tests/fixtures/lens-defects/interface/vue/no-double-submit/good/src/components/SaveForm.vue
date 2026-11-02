@@ -1,17 +1,30 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
 const props = defineProps<{ save: () => Promise<void> }>();
-const error = ref('');
+const { t } = useI18n();
 const saving = ref(false);
+const status = ref<'idle' | 'saved' | 'error'>('idle');
+
 async function submit() {
   if (saving.value) return;
   saving.value = true;
-  try { await props.save(); } catch { error.value = 'Could not save'; } finally { saving.value = false; }
+  status.value = 'idle';
+  try {
+    await props.save();
+    status.value = 'saved';
+  } catch {
+    status.value = 'error';
+  } finally {
+    saving.value = false;
+  }
 }
 </script>
 <template>
   <form @submit.prevent="submit">
-    <button type="submit" :disabled="saving" :aria-busy="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
-    <p v-if="error" role="alert">{{ error }}</p>
+    <button type="submit" :disabled="saving" :aria-busy="saving">{{ saving ? t('form.saving') : t('form.save') }}</button>
+    <p v-if="status === 'saved'" role="status">{{ t('form.saved') }}</p>
+    <p v-if="status === 'error'" role="alert">{{ t('form.saveFailed') }}</p>
   </form>
 </template>
