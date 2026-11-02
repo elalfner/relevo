@@ -1,0 +1,10 @@
+{
+ "lens": "spec",
+ "stack": "vue",
+ "case": "scenario-without-code",
+ "description": "A scenario of the specification has no code that makes its THEN true.",
+ "expected": {
+  "lens": "spec",
+  "finding": "reset|scenario"
+ }
+}

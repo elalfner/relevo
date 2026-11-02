@@ -2182,6 +2182,16 @@ test('Scenario: Antigravity - doctor warns that an agent setting is not applied,
   assert.equal(byId(runChecks(healthy({ config: { ...config, agent: { build: 'claude' }, agents_given: ['agents.dev.model'] } })), 'agents.settings'), undefined, 'Claude with every setting applied: no warning');
 });
 
+test('Scenario: Antigravity with settings - the only finding that the lenses add is the warning that the settings are not applied', () => {
+  const base = runChecks(healthy({ config: { ...config, agent: { build: 'antigravity' } }, lensAgentsMissing: [] }));
+  const given = runChecks(healthy({ config: { ...config, agent: { build: 'antigravity' }, agents_given: ['agents.dev.model', 'agents.qa.interface.effort'] }, lensAgentsMissing: [] }));
+  const ids = new Set(base.map((c) => c.id));
+  const added = given.filter((c) => !ids.has(c.id));
+  assert.deepEqual(added.map((c) => c.id), ['agents.settings']);
+  assert.equal(added[0].status, 'warn');
+  assert.equal(given.filter((c) => c.status === 'fail').length, base.filter((c) => c.status === 'fail').length, 'nothing new fails');
+});
+
 test('Scenario: A plugin without a lens agent - doctor names it and says to update the plugin', () => {
   const missing = byId(runChecks(healthy({ lensAgentsMissing: ['security'] })), 'qa.lens-agents');
   assert.equal(missing.status, 'fail');

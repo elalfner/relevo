@@ -71,16 +71,16 @@
 
 ## 10. The evaluation
 
-- [ ] 10.1 Create `tests/fixtures/lens-defects/<lens>/<stack>/<case>/` with a bad and a good variant for each defect of the design: a state update after an asynchronous gap without a check, unescaped output of user input, a table without an access policy, a hard-coded secret, a scenario with no code, a task checked off without implementation, a broken decision, an altered line of documentation, and the interface defects of the change `interface-decisions-upfront`. Verify with a test that every case has both variants and states the expected finding.
-- [ ] 10.2 Add `scripts/eval-lenses.mjs`: opt-in, prints an estimate of the cost and asks before it spends anything, runs each lens on each case, reports per lens the defects found, the good variants flagged and the cost, runs without a given rule or with a given skill, and writes a dated report. Verify with a test that `npm test` never runs it and with a dry run that uses a stub in place of the model.
+- [x] 10.1 Create `tests/fixtures/lens-defects/<lens>/<stack>/<case>/` with a bad and a good variant for each defect of the design: a state update after an asynchronous gap without a check, unescaped output of user input, a table without an access policy, a hard-coded secret, a scenario with no code, a task checked off without implementation, a broken decision, an altered line of documentation, and the interface defects of the change `interface-decisions-upfront`. Verify with a test that every case has both variants and states the expected finding.
+- [x] 10.2 Add `scripts/eval-lenses.mjs`: opt-in, prints an estimate of the cost and asks before it spends anything, runs each lens on each case, reports per lens the defects found, the good variants flagged and the cost, runs without a given rule or with a given skill, and writes a dated report. Verify with a test that `npm test` never runs it and with a dry run that uses a stub in place of the model.
 - [ ] 10.3 Run the evaluation once with the maintainer's approval of the cost, write the result in `docs/lens-evaluation.md` and `docs/lens-evaluation.es.md`, set the thresholds with the maintainer, and keep or change each default on that evidence. Verify with the docs tests and with the defaults of the configuration page.
 
 ## 11. Integration checks
 
-- [ ] 11.1 Run `npm test` and `openspec validate --all`, the two steps of the CI, and confirm both pass.
+- [x] 11.1 Run `npm test` and `openspec validate --all`, the two steps of the CI, and confirm both pass.
 - [ ] 11.2 Run a local build (`go-local.mjs`) on a throwaway repository with a failing test, then with a change that breaks a decision of its issue, then with an injection defect, then with an interface defect on the last attempt. Each must end as the specs say: a red gate that returns to the developer agent without any lens, a `spec` rejection, a `security` rejection, and a passed build whose hand-off carries the advisory note, which the review checklist then lists.
-- [ ] 11.3 Render the plugin for Antigravity and confirm that the lens agents have valid names and read-only tools, that the settings produce the warning, and that `doctor` reports nothing else.
-- [ ] 11.4 Search every file of this change and the new documentation and fixtures for the name of any real project, organisation or customer that was used as an example during the exploration, and confirm that none appears.
+- [x] 11.3 Render the plugin for Antigravity and confirm that the lens agents have valid names and read-only tools, that the settings produce the warning, and that `doctor` reports nothing else.
+- [x] 11.4 Search every file of this change and the new documentation and fixtures for the name of any real project, organisation or customer that was used as an example during the exploration, and confirm that none appears.
 
 ## Workflow follow-up
 

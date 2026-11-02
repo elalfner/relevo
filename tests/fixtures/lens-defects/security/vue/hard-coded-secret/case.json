@@ -1,0 +1,10 @@
+{
+ "lens": "security",
+ "stack": "vue",
+ "case": "hard-coded-secret",
+ "description": "A client module carries a secret in its source.",
+ "expected": {
+  "lens": "security",
+  "finding": "secret|credential|hard-?coded"
+ }
+}

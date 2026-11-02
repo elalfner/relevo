@@ -1,0 +1,13 @@
+{
+ "lens": "interface",
+ "stack": "vue",
+ "case": "accessible-name",
+ "description": "The interface rule accessible-name is broken in the diff.",
+ "expected": {
+  "lens": "interface",
+  "finding": "name|label|accessible"
+ },
+ "from": "tests/fixtures/interface-defects/accessible-name",
+ "interface_kind": "web",
+ "rule": "accessible-name"
+}
