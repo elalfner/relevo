@@ -77,13 +77,18 @@ export function materialize(files, dir = mkdtempSync(join(tmpdir(), 'relevo-lens
 }
 
 /** What the orchestrator tells a lens, for a change laid out by materialize(). */
-export const ORCHESTRATOR_NOTE = `## Inputs from the orchestrator
+export const orchestratorNote = (files = {}) => {
+  const change = Object.keys(files).map((f) => f.match(/^(openspec\/changes\/[^/]+)\//)?.[1]).find(Boolean);
+  const issue = 'issue.md' in files ? '\nThe text of the issue that was built is in issue.md.' : '';
+  return `## Inputs from the orchestrator
 
-Change directory: none (there is no OpenSpec change; the change is the working tree against the base branch).
+Change directory: ${change ?? 'none (there is no OpenSpec change; the change is the working tree against the base branch)'}.${issue}
 Base branch to diff against: main. Folder of the platform: . (the root).
 Receipt of the validation gate: .relevo-receipt/receipt.json. It is green and it matches the diff. It is simulated by the evaluation harness, which does not run the analysis or the tests: do not reject for that.
 There is no stack profile section and no review script. Review the diff of the working tree against main as your lens, and apply your protocol.
 `;
+};
+export const ORCHESTRATOR_NOTE = orchestratorNote();
 
 export function casePrompt(lensText, variantFiles) {
   const files = Object.entries(variantFiles).map(([p, t]) => `### ${p}\n\`\`\`\n${t}\`\`\``).join('\n\n');
@@ -164,7 +169,7 @@ export function claudeRunner(spawn, { maxTurns = 12, maxBudgetUsd = 1, make = ma
     const args = ['-p', '--output-format', 'json', '--max-turns', String(maxTurns), '--max-budget-usd', String(maxBudgetUsd), '--allowedTools', 'Read,Grep,Glob,Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*)'];
     if (model) args.push('--model', model);
     const cwd = make(files);
-    const prompt = `${lensText}\n\n${ORCHESTRATOR_NOTE}`;
+    const prompt = `${lensText}\n\n${orchestratorNote(files)}`;
     const r = spawn('claude', args, { input: prompt, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, cwd });
     if (r.status !== 0) throw new Error(`claude failed: ${(r.stderr || '').slice(0, 300)}`);
     const out = JSON.parse(r.stdout);

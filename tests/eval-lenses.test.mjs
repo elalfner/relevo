@@ -125,3 +125,13 @@ test('the real runner works in the folder of the case and gives the lens its inp
   assert.ok(seen[0].args.includes('0.2') && seen[0].args.includes('sonnet'));
   assert.ok(!seen[0].args.join(' ').includes('Write') && !seen[0].args.join(' ').includes('Edit'), 'no tool that changes files');
 });
+
+import { orchestratorNote } from '../scripts/lib/lens-eval.mjs';
+
+test('the note names the change folder or the issue file when the case has one', () => {
+  const spec = loadCases().find((x) => x.id === 'spec/vue/scenario-without-code');
+  assert.match(orchestratorNote(spec.bad), /Change directory: openspec\/changes\/counter-reset\./);
+  const decision = loadCases().find((x) => x.id === 'spec/vue/broken-decision');
+  assert.match(orchestratorNote(decision.bad), /issue that was built is in issue\.md/);
+  assert.match(orchestratorNote({ 'a.txt': 'x' }), /Change directory: none/);
+});
