@@ -396,3 +396,71 @@ test('the command prints the skills used only when installed, and the ones the p
   assert.deepEqual(printed.skills_when_installed.dev, ['mine']);
   assert.deepEqual(printed.plugin_skills_when_installed.dev, []);
 });
+
+// ---- the knowledge of each lens (specialist-review-lenses)
+import { LENSES, bodySections, lensText } from '../scripts/lib/stack-profile.mjs';
+
+const lensProfile = (extra = '') => `${header()}\n# Vue\n\n## Verification\nrun it.\n\n## Architecture\nlayers.\n\n## Hygiene for the developer\nclean.\n\n## What the auditor looks for in the diff\nleaks.\n\n## Security for the developer\nescape output.\n${extra}`;
+
+test('Scenario: each lens reads only its sections - spec nothing, interface nothing, code the architecture and the auditor list, security its own', () => {
+  const { profile } = parseProfile(lensProfile('\n## Security review\n- Unescaped HTML. Source: https://example.org/docs. Read: 2026-11-02.\n'));
+  assert.equal(lensText(profile, 'spec'), '');
+  assert.equal(lensText(profile, 'interface'), '');
+  const code = lensText(profile, 'code');
+  assert.match(code, /## Architecture\n\nlayers\./);
+  assert.match(code, /## What the auditor looks for in the diff\n\nleaks\./);
+  assert.doesNotMatch(code, /Hygiene|Verification|Security/);
+  assert.match(lensText(profile, 'security'), /Unescaped HTML/);
+  assert.doesNotMatch(lensText(profile, 'security'), /layers|leaks/);
+  assert.throws(() => lensText(profile, 'nobody'), /unknown lens/);
+});
+
+test('the developer still receives the whole body as before, with Security for the developer, and never the security review', () => {
+  const { profile } = parseProfile(lensProfile('\n## Security review\n- Hidden from dev.\n'));
+  assert.match(profile.body, /## Hygiene for the developer/);
+  assert.match(profile.body, /## Security for the developer\nescape output\./);
+  assert.doesNotMatch(profile.body, /Hidden from dev/);
+});
+
+test('Scenario: a stack without the sections still resolves for every lens', () => {
+  const { profile, errors } = parseProfile(`${header()}\n# Plain\n\nText only.\n`);
+  assert.deepEqual(errors, []);
+  LENSES.forEach((l) => assert.equal(typeof lensText(profile, l), 'string'));
+  assert.equal(lensText(profile, 'security'), '');
+  assert.equal(lensText(profile, 'code'), '');
+});
+
+test('Scenario: a profile of the repository adds to the security review and removes nothing', () => {
+  const plugin = parseProfile(lensProfile('\n## Security review\n- Plugin item. Source: https://example.org. Read: 2026-11-02.\n')).profile;
+  const repository = parseProfile(`${header()}\n## Security review\n- Our own rule.\n`).profile;
+  const merged = mergeProfiles(plugin, repository);
+  assert.match(lensText(merged, 'security'), /Plugin item/);
+  assert.match(lensText(merged, 'security'), /Our own rule/);
+  assert.equal(mergeProfiles(plugin, null).securityReview, plugin.securityReview);
+});
+
+test('the sections of a body are listed in order', () => {
+  assert.deepEqual(bodySections('intro\n## A\none\n## B\ntwo\n').map((s) => [s.heading, s.text]), [['A', 'one'], ['B', 'two']]);
+});
+
+test('every item of a Security review section of a shipped stack names its source and the date it was read', () => {
+  for (const stack of ['flutter', 'vue', 'laravel', 'supabase']) {
+    const { profile } = parseProfile(readFileSync(`${PLUGIN_ROOT}/stacks/${stack}.md`, 'utf8'));
+    String(profile.securityReview).split('\n').filter((l) => /^\s*[-*]\s/.test(l)).forEach((item) => {
+      assert.match(item, /Source: https?:\/\/\S+/, `${stack}: an item without a source: ${item.slice(0, 60)}`);
+      assert.match(item, /Read: \d{4}-\d{2}-\d{2}/, `${stack}: an item without the date it was read: ${item.slice(0, 60)}`);
+    });
+  }
+});
+
+test('the command prints only the sections of the lens it is asked for', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-lens-profile-'));
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    path: .\n    stack: flutter\n    targets: [android]\n');
+  const run = (lens) => spawnSync('node', [CLI, '--platform', 'app', '--config', join(dir, 'relevo.yml'), '--lens', lens], { encoding: 'utf8' });
+  const code = JSON.parse(run('code').stdout);
+  assert.equal(code.lens, 'code');
+  assert.match(code.sections, /What the auditor looks for in the diff/);
+  assert.doesNotMatch(code.sections, /Hygiene for the developer/);
+  assert.equal(JSON.parse(run('spec').stdout).sections, '');
+  assert.equal(run('nobody').status, 2);
+});

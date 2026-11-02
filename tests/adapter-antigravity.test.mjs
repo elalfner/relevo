@@ -134,3 +134,41 @@ test('every tool of the table is a tool the installed agy reports', { skip: !wit
   const known = new Set(init.init.tools);
   for (const t of Object.values(ANTIGRAVITY_TOOLS).flat()) assert.ok(known.has(t), `${t} is not a tool of this agy`);
 });
+
+// ---- the QA lenses (specialist-review-lenses)
+const LENS_AGENTS = ['qa-spec', 'qa-security', 'qa-code', 'qa-interface'];
+
+test('Scenario: the four lens agents are rendered with valid names and read-only tool lists', () => {
+  for (const lens of LENS_AGENTS) {
+    const path = `agents/relevo-${lens}.md`;
+    assert.ok(file(path), `${path} is rendered`);
+    assert.equal(head(path).name, `relevo-${lens}`);
+    const tools = String(head(path).tools);
+    assert.doesNotMatch(tools, /write_to_file|replace_file_content/, `${lens} has a write tool`);
+    assert.match(tools, /view_file/);
+  }
+});
+
+test('every agent file of the plugin renders to a valid Antigravity name', () => {
+  for (const f of out.files.filter((x) => /^agents\//.test(x.path))) {
+    assert.match(head(f.path).name, /^relevo-[a-z]+(-[a-z]+)?$/, f.path);
+    assert.equal(`agents/${head(f.path).name}.md`, f.path);
+  }
+});
+
+test('Scenario: No Claude token remains - no relevo:qa-<lens> name is left in any rendered file', () => {
+  for (const f of out.files.filter((x) => x.path.endsWith('.md'))) {
+    assert.doesNotMatch(f.content, /relevo:qa-(spec|security|code|interface)/, f.path);
+  }
+});
+
+test('the paragraph about waiting for subagents says that each lens is called one at a time', () => {
+  const go = file('skills/go/SKILL.md').content;
+  assert.match(go, /relevo-qa-spec.*relevo-qa-security.*relevo-qa-code.*relevo-qa-interface.*one at a time, never two together/);
+});
+
+test('the rewrite of agent names turns the lens names and leaves other text alone', async () => {
+  const { adaptText } = await import('../scripts/lib/adapters/antigravity.mjs');
+  const text = adaptText('Launch relevo:dev, relevo:qa, relevo:qa-security and relevo:qa-interface; not relevo:qa-other or relevo:developer.', { pluginDir });
+  assert.equal(text, 'Launch relevo-dev, relevo-qa, relevo-qa-security and relevo-qa-interface; not relevo:qa-other or relevo:developer.');
+});

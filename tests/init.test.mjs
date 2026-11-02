@@ -950,3 +950,15 @@ test('Scenario: Antigravity in use with the skills only under .claude/skills - t
   assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
   assert.match(get(items, 'install.recommended.flutter.antigravity.app').command, /--agent universal/);
 });
+
+// ---- agent settings with Antigravity (specialist-review-lenses)
+test('Scenario: Init with Antigravity - the plan carries the warning that the setting is not applied, and goes on', () => {
+  const withConfig = (agent, given) => bare({ config: { ...loadConfig(template).config, agent: { build: agent }, agents_given: given } });
+  const items = plan(withConfig('antigravity', ['agents.qa.security.model', 'agents.dev.effort']));
+  const warning = get(items, 'warn.agent-settings');
+  assert.equal(warning.status, 'warning');
+  assert.match(warning.description, /Not applied with this agent: agents\.qa\.security\.model, agents\.dev\.effort/);
+  assert.match(renderPlan(items), /\[warning\] Not applied with this agent/);
+  assert.equal(get(plan(withConfig('claude', ['agents.dev.model'])), 'warn.agent-settings'), undefined);
+  assert.equal(get(plan(withConfig('antigravity', [])), 'warn.agent-settings'), undefined);
+});

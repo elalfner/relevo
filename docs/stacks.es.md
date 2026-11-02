@@ -131,6 +131,21 @@ review:
 - La sección `## Review` es texto libre para el agente, que solo lo lee en un review. Puede añadir pasos y pedir más evidencia. No puede cambiar que tú confirmas cada línea, que se audita el log, que `decide` controla el pull request, que nunca se leen los archivos restringidos (la lista está en [Seguridad](security.es.md)), que no se sugiere un waiver ni que no se parchea código en un review: `/relevo:doctor` avisa de una línea que pida alguna de esas cosas, y el review la ignora.
 - Un review de Laravel no tiene dispositivo ni navegador. Con `review.autopilot` en `off` corres los tests del proyecto y se lo dices al review (`ran <código de salida>`); con `precheck` o `verify` el agente corre el test que ya existe para cada línea y nunca escribe uno. Una corrida de tests que pasa no escribe nada en `storage/logs`, así que lo que muestra que el código se ejercitó es la corrida registrada, no el log.
 
+## Qué lee cada revisor de QA de un perfil
+
+QA se compone de cuatro revisores (lentes), y cada uno lee solo la parte del perfil que necesita, así que ninguno carga el contexto de los demás:
+
+| Revisor | Qué lee del perfil |
+|---|---|
+| `spec` | nada: compara el código con la especificación |
+| `security` | la sección `## Security review` |
+| `code` | `## Architecture` y `## What the auditor looks for in the diff` |
+| `interface` | nada del perfil: sus reglas vienen del conocimiento de interfaz |
+
+El agente de desarrollo sigue recibiendo el cuerpo completo, ahora con la sección `## Security for the developer`, y nunca la `## Security review`. Para ver lo que recibe un revisor: `node scripts/stack-profile.mjs --platform <nombre> --lens security`.
+
+Las dos secciones de seguridad son opcionales. Un stack sin ellas funciona desde el primer día: el revisor de seguridad usa entonces las categorías genéricas de su agente (inyección, autenticación y autorización, secretos en el código, deserialización insegura, confianza en la entrada del cliente, redirecciones abiertas, dependencias nuevas). Cada elemento de una `## Security review` que trae Relevo nombra su fuente y la fecha en que se leyó (`Source: <dirección>. Read: <fecha>.`). Tu propio perfil en `.relevo/stacks/<stack>.md` puede tener las mismas secciones: su texto se suma al del plugin y no le quita nada.
+
 ## Tu propio stack
 
 Relevo trae perfiles para `flutter`, `vue`, `laravel` y `supabase`. Para cualquier otro stack (Go, Python, Rust...) escribes tú el perfil, y el archivo es el perfil completo:

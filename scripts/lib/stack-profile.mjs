@@ -32,12 +32,17 @@ const emptyProfile = (stack) => ({
   skillsWhenInstalled: Object.fromEntries(ROLES.map((r) => [r, []])),
   targets: {},
   review: {},
+  securityReview: '',
   body: '',
   questions: '',
   reviewBody: '',
 });
 
 export const QUESTIONS_HEADING = 'Questions for the issue writer';
+export const SECURITY_REVIEW_HEADING = 'Security review';
+export const LENSES = ['spec', 'security', 'code', 'interface'];
+// The sections of the body that the `code` lens reads.
+export const CODE_LENS_HEADINGS = ['Architecture', 'What the auditor looks for in the diff'];
 export const REVIEW_HEADING = 'Review';
 
 /** Split the section "## <heading>" (up to the next heading of level 2) out of a body. */
@@ -57,6 +62,36 @@ function splitSection(text, heading) {
 export function splitQuestions(text) {
   const { body, section } = splitSection(text, QUESTIONS_HEADING);
   return { body, questions: section };
+}
+
+/** Split the section "## Security review" out of a body: only the security lens reads it. */
+export function splitSecurityReview(text) {
+  const { body, section } = splitSection(text, SECURITY_REVIEW_HEADING);
+  return { body, securityReview: section };
+}
+
+/** The `## Heading` sections of a body, in order: [{ heading, text }]. */
+export function bodySections(body) {
+  const out = [];
+  let current = null;
+  String(body ?? '').split('\n').forEach((line) => {
+    const m = /^## (.+?)\s*$/.exec(line);
+    if (m) { current = { heading: m[1], lines: [] }; out.push(current); return; }
+    if (current) current.lines.push(line);
+  });
+  return out.map((s) => ({ heading: s.heading, text: s.lines.join('\n').trim() }));
+}
+
+/**
+ * The part of a profile one QA lens reads, as text. `spec` and `interface` read no stack section (the first compares the code
+ * with the specification, the second gets its rules from the interface knowledge); `code` reads the architecture and what the
+ * auditor looks for; `security` reads the section Security review. A stack without a section gives an empty text.
+ */
+export function lensText(profile, lens) {
+  if (!LENSES.includes(lens)) throw new Error(`unknown lens "${lens}"; allowed: ${LENSES.join(', ')}`);
+  if (lens === 'security') return profile.securityReview ?? '';
+  if (lens === 'code') return bodySections(profile.body).filter((s) => CODE_LENS_HEADINGS.includes(s.heading)).map((s) => `## ${s.heading}\n\n${s.text}`).join('\n\n');
+  return '';
 }
 
 /** Split the section "## Review" out of a body: only a review reads it. */
@@ -186,7 +221,9 @@ export function parseProfile(text) {
   // The questions for the issue writer and the section Review are kept apart from the body: dev and qa never receive them.
   const noQuestions = splitQuestions((match[2] ?? '').trim());
   const noReview = splitReview(noQuestions.body);
-  profile.body = noReview.body;
+  const noSecurity = splitSecurityReview(noReview.body);
+  profile.body = noSecurity.body;
+  profile.securityReview = noSecurity.securityReview;
   profile.questions = noQuestions.questions;
   profile.reviewBody = noReview.review;
   return { profile: errors.length ? null : profile, errors };
@@ -249,6 +286,8 @@ export function mergeProfiles(plugin, repository) {
   out.body = [plugin.body, repository.body].filter(Boolean).join('\n\n');
   out.questions = [plugin.questions, repository.questions].filter(Boolean).join('\n\n');
   out.reviewBody = [plugin.reviewBody, repository.reviewBody].filter(Boolean).join('\n\n');
+  // A repository adds to the security review of the plugin and removes nothing from it.
+  out.securityReview = [plugin.securityReview, repository.securityReview].filter(Boolean).join('\n\n');
   return { ...out, pluginSkills, pluginSkillsWhenInstalled, skillsDisabled, skillsDisableIgnored, layers: ['plugin', 'repository'], ignored, reviewReplaced };
 }
 

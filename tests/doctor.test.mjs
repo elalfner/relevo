@@ -2118,3 +2118,35 @@ test('Scenario: A workflow for another agent has no Claude step - nothing is jud
   assert.equal(restrictedBlockState('name: x\njobs: {}\n'), null);
   assert.equal(restrictedBlockState(''), null);
 });
+
+// ---- the QA lenses (specialist-review-lenses)
+test('Scenario: Antigravity - doctor warns that an agent setting is not applied, names it, and does not fail', () => {
+  const r = runChecks(healthy({ config: { ...config, agent: { build: 'antigravity' }, agents_given: ['agents.qa.security.model'] } }));
+  const w = byId(r, 'agents.settings');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /agents\.qa\.security\.model is not applied with this agent/);
+  assert.equal(byId(runChecks(healthy({ config: { ...config, agent: { build: 'claude' }, agents_given: ['agents.dev.model'] } })), 'agents.settings'), undefined, 'Claude with every setting applied: no warning');
+});
+
+test('Scenario: A plugin without a lens agent - doctor names it and says to update the plugin', () => {
+  const missing = byId(runChecks(healthy({ lensAgentsMissing: ['security'] })), 'qa.lens-agents');
+  assert.equal(missing.status, 'fail');
+  assert.match(missing.message, /lacks the QA lens agent qa-security/);
+  assert.match(missing.fix, /update the plugin/);
+  assert.equal(byId(runChecks(healthy({ lensAgentsMissing: [] })), 'qa.lens-agents').status, 'pass');
+});
+
+test('the profile of each platform resolves for every lens', () => {
+  assert.equal(byId(runChecks(healthy()), 'qa.lens-profile.app')?.status ?? 'pass', 'pass');
+});
+
+test('Scenario: A stale reference - a file that still names relevo:qa is reported with what replaced it, and relevo:qa-code is not stale', () => {
+  const r = runChecks(healthy({ staleQaReferences: ['CLAUDE.md'] }));
+  const w = byId(r, 'qa.stale-reference.CLAUDE.md');
+  assert.equal(w.status, 'warn');
+  assert.match(w.fix, /relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface/);
+  const wf = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'allowed: relevo:qa and more' } } }));
+  assert.equal(byId(wf, 'qa.stale-reference.relevo-go.yml').status, 'warn');
+  const fine = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'relevo:qa-code relevo:qa-spec' } } }));
+  assert.equal(byId(fine, 'qa.stale-reference.relevo-go.yml'), undefined);
+});

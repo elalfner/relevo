@@ -6,11 +6,11 @@
 //   runChecks(facts)     pure: turns the facts into a list of results
 // The probes are injected so everything here is testable without a network.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { loadConfig } from './config.mjs';
+import { QA_LENSES, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
@@ -21,7 +21,7 @@ import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
 import { testDatabase } from './api-preflight.mjs';
-import { ROLES, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
+import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
 export const SKILL_INSTALL = {
@@ -84,6 +84,8 @@ const TOOL_INSTALL = {
 };
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// A name of the former QA agent (the lenses are `relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code` and `relevo:qa-interface`).
+const STALE_QA_RE = /relevo:qa(?![-\w])/;
 const pass = (id, message) => ({ id, status: 'pass', message });
 const fail = (id, message, fix) => ({ id, status: 'fail', message, fix });
 const warn = (id, message, fix) => ({ id, status: 'warn', message, fix });
@@ -281,6 +283,16 @@ export function gatherFacts(p) {
   f.configErrors = loaded && !loaded.ok ? loaded.errors.map((e) => e.message) : [];
   f.rulesFilesMissing = (f.config?.qa?.rules_from ?? []).filter((file) => !p.exists(file));
   f.rulesFileMissing = f.rulesFilesMissing.length > 0;
+  // The QA lenses: the four agent files of the plugin, and any file of the repository that still names the former agent.
+  f.lensAgentsMissing = QA_LENSES.filter((l) => !existsSync(resolve(PLUGIN_ROOT, `agents/qa-${l}.md`)));
+  const stale = [];
+  const rulesFiles = (f.config?.qa?.rules_from ?? []);
+  const candidates = [...rulesFiles, ...(f.platformFacts ?? []).map((e) => `.relevo/stacks/${e.stack}.md`)];
+  candidates.forEach((file) => {
+    const text = p.exists(file) ? tryRun(() => String(p.read(file)), '') : '';
+    if (STALE_QA_RE.test(text)) stale.push(file);
+  });
+  f.staleQaReferences = stale;
 
   gatherPlatforms(f, p, tryRun);
 
@@ -983,6 +995,7 @@ export function runChecks(f) {
 
   r.push(...pluginInstallChecks(f));
   r.push(...toolchainChecks(f));
+  r.push(...lensChecks(f));
   r.push(...runnerChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
@@ -1050,6 +1063,29 @@ function toolchainChecks(f) {
       : warn(`automation.toolchain.${e.name}`, `the go workflow has no step guarded by ${guard}, so a cloud build for platform ${e.name} (${e.stack}) may find no ${e.profile.tools.filter((t) => !NODE_TOOLS.includes(t)).join(', ')} and fail QA after spending the run`, `add a step to the build job of relevo-go.yml that installs it, guarded by "- if: ${guard}" (see the comment in the template), or, if you install it another way, ignore this`);
   });
   return [...known, ...own];
+}
+
+/** The QA lenses: settings an agent does not apply, the four agent files, the profile of each platform for each lens, stale names. */
+function lensChecks(f) {
+  const r = [];
+  const given = f.config?.agents_given ?? [];
+  if (f.config?.agent?.build === 'antigravity' && given.length > 0) {
+    r.push(warn('agents.settings', `${given.join(', ')} ${given.length === 1 ? 'is' : 'are'} not applied with this agent: agent.build is antigravity, which accepts the model and the effort of a role and does not write them to the agents it renders`, 'nothing to fix; remove the settings or use the Claude agent if you want them applied'));
+  }
+  if (f.lensAgentsMissing !== undefined) {
+    r.push(f.lensAgentsMissing.length === 0
+      ? pass('qa.lens-agents', 'the plugin has the four QA lens agents')
+      : fail('qa.lens-agents', `the plugin lacks the QA lens agent${f.lensAgentsMissing.length === 1 ? '' : 's'} ${f.lensAgentsMissing.map((l) => `qa-${l}`).join(', ')}`, 'update the plugin to the current version'));
+  }
+  (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
+    const bad = LENSES.filter((l) => { try { lensText(e.profile, l); return false; } catch { return true; } });
+    r.push(bad.length === 0
+      ? pass(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} resolves for every QA lens`)
+      : fail(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} cannot be resolved for the lens${bad.length === 1 ? '' : 'es'} ${bad.join(', ')}`, 'check .relevo/stacks and stacks/ for the stack'));
+  });
+  (f.staleQaReferences ?? []).forEach((file) => r.push(warn(`qa.stale-reference.${file}`, `${file} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
+  (f.workflows ? Object.entries(f.workflows) : []).filter(([, w]) => w?.present && typeof w.text === 'string' && STALE_QA_RE.test(w.text)).forEach(([name]) => r.push(warn(`qa.stale-reference.${name}`, `workflow ${name} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
+  return r;
 }
 
 // The tools that the build job already has: it installs Node for Relevo itself.

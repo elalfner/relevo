@@ -32,13 +32,13 @@
 
 ## 5. The knowledge of each lens
 
-- [ ] 5.1 `scripts/stack-profile.mjs` and its library: the option `--lens spec|security|code|interface` that prints only the sections that lens reads, the sections `Security for the developer` and `Security review`, nothing for `spec`, and the whole body for `dev` as before. Verify with the profile tests for each scenario of the `platforms` spec.
+- [x] 5.1 `scripts/stack-profile.mjs` and its library: the option `--lens spec|security|code|interface` that prints only the sections that lens reads, the sections `Security for the developer` and `Security review`, nothing for `spec`, and the whole body for `dev` as before. Verify with the profile tests for each scenario of the `platforms` spec.
 - [ ] 5.2 Write the sections `Security for the developer` and `Security review` of `stacks/supabase.md` (access policies on tables, exposure of service keys, functions that run with elevated rights, storage policies), each item with its source and the date it was read from the official documentation. Verify with the profile test that each item has a source and a date.
 - [ ] 5.3 The same for `stacks/laravel.md` (mass assignment, authorization policies, raw queries, unescaped output, uploads, request forgery protection). Verify as in 5.2.
 - [ ] 5.4 The same for `stacks/vue.md` (unescaped HTML, where tokens are stored, redirect targets, messages between windows, third-party scripts). Verify as in 5.2.
 - [ ] 5.5 The same for `stacks/flutter.md` (where tokens are stored, cleartext traffic, logging, platform channels, deep links). Verify as in 5.2.
-- [ ] 5.6 Test that a profile of the repository adds to these sections and removes nothing, and that a stack without them still resolves for every lens.
-- [ ] 5.7 `docs/stacks.md` and `docs/stacks.es.md`: the new sections and how a repository adds to them. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 5.6 Test that a profile of the repository adds to these sections and removes nothing, and that a stack without them still resolves for every lens.
+- [x] 5.7 `docs/stacks.md` and `docs/stacks.es.md`: the new sections and how a repository adds to them. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 6. The shared procedure and the developer agent
 
@@ -51,17 +51,17 @@
 
 ## 7. The settings
 
-- [ ] 7.1 `scripts/lib/config.mjs`: the keys `agents.dev.*` and `agents.qa.<lens>.*` with the validation of the spec (a non-empty model, an effort from the list, an unknown lens or effort fails, no keys is valid) and the defaults. Verify with `tests/config.test.mjs` for each scenario of the `configuration` and `agent-settings` specs.
-- [ ] 7.2 Add the level of validation that warns without failing, mark the agent settings as not applied with Antigravity, and print the warnings from `scripts/validate-config.mjs`. Verify with the config tests: Antigravity warns and passes, a rejected key still fails.
+- [x] 7.1 `scripts/lib/config.mjs`: the keys `agents.dev.*` and `agents.qa.<lens>.*` with the validation of the spec (a non-empty model, an effort from the list, an unknown lens or effort fails, no keys is valid) and the defaults. Verify with `tests/config.test.mjs` for each scenario of the `configuration` and `agent-settings` specs.
+- [x] 7.2 Add the level of validation that warns without failing, mark the agent settings as not applied with Antigravity, and print the warnings from `scripts/validate-config.mjs`. Verify with the config tests: Antigravity warns and passes, a rejected key still fails.
 - [ ] 7.3 Give the model of the role when `go`, `fix` and `review` launch an agent, and the effort in the way that task 1.1 found. Verify with the skill tests.
 - [ ] 7.4 `scripts/doctor.mjs` and `scripts/init.mjs`: warn about the settings that the agent does not apply, say where the effort is not applied, check that the lens agents exist and that profiles resolve for each lens, and report a file that still names `relevo:qa`. Verify with `tests/doctor.test.mjs`, `tests/init.test.mjs` and `tests/skill-init-doctor.test.mjs` for each scenario of the `init-doctor` spec.
-- [ ] 7.5 `templates/relevo.yml`: the keys commented out with the defaults. Verify with the test that validates the shipped file.
-- [ ] 7.6 `docs/configuration.md` and `docs/configuration.es.md`: the keys, the defaults, the cost of the defaults and how to restore the previous cost. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 7.5 `templates/relevo.yml`: the keys commented out with the defaults. Verify with the test that validates the shipped file.
+- [x] 7.6 `docs/configuration.md` and `docs/configuration.es.md`: the keys, the defaults, the cost of the defaults and how to restore the previous cost. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 8. The other tools
 
-- [ ] 8.1 `scripts/lib/adapters/antigravity.mjs` and `scripts/lib/adapters/tools.mjs`: render the four lens agents with the names of the spec and read-only tool lists, and extend the rewrite of agent names, which today stops at a hyphen. Verify with `tests/adapter-antigravity.test.mjs`: valid names, no `relevo:qa-` token, and the test that every agent file of the plugin renders to a valid name.
-- [ ] 8.2 Extend the rewritten paragraph about waiting for subagents so that the lenses are called one at a time. Verify with the adapter test.
+- [x] 8.1 `scripts/lib/adapters/antigravity.mjs` and `scripts/lib/adapters/tools.mjs`: render the four lens agents with the names of the spec and read-only tool lists, and extend the rewrite of agent names, which today stops at a hyphen. Verify with `tests/adapter-antigravity.test.mjs`: valid names, no `relevo:qa-` token, and the test that every agent file of the plugin renders to a valid name.
+- [x] 8.2 Extend the rewritten paragraph about waiting for subagents so that the lenses are called one at a time. Verify with the adapter test.
 - [ ] 8.3 `scripts/lib/agent-guard.mjs`: apply the result of task 1.4 so that the token limit counts the subagents. Verify with the replayed stream of that task.
 - [ ] 8.4 `docs/security.md` and `docs/security.es.md`: for each agent, which of these controls hold, which hold in part and which do not exist, including the settings not applied with Antigravity and that the receipt is not a boundary. Verify with `node --test tests/docs-claims.test.mjs`.
 

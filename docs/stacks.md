@@ -131,6 +131,21 @@ review:
 - The section `## Review` is free text for the agent, read only in a review. It can add steps and ask for more evidence. It cannot change that you confirm every line, that the log is audited, that `decide` gates the pull request, that restricted files (the list in [Security](security.md)) are never read, that no waiver is suggested or that no code is patched in a review: `/relevo:doctor` warns about a line that asks for one of them, and the review ignores it.
 - A Laravel review has no device and no browser. With `review.autopilot` `off` you run the project's tests and tell the review (`ran <exit code>`); with `precheck` or `verify` the agent runs the existing test of each line and never writes one. A test run that passes writes nothing to `storage/logs`, so the recorded run, and not the log, is what shows that the code was exercised.
 
+## What each QA reviewer reads of a profile
+
+QA is made of four reviewers (lenses), and each reads only the part of the profile it needs, so none carries the others' context:
+
+| Reviewer | Reads of the profile |
+|---|---|
+| `spec` | nothing: it compares the code with the specification |
+| `security` | the section `## Security review` |
+| `code` | `## Architecture` and `## What the auditor looks for in the diff` |
+| `interface` | nothing from the profile: its rules come from the interface knowledge |
+
+The developer agent keeps receiving the whole body, now including the section `## Security for the developer`, and never the `## Security review`. To see what one reviewer receives: `node scripts/stack-profile.mjs --platform <name> --lens security`.
+
+The two security sections are optional. A stack without them works from the first day: the security reviewer then uses the generic categories of its agent (injection, authentication and authorization, secrets in code, unsafe deserialization, trust of client input, open redirects, new dependencies). Each item of a `## Security review` that Relevo ships names its source and the date it was read (`Source: <address>. Read: <date>.`). Your own profile in `.relevo/stacks/<stack>.md` can have the same sections: its text is added to the plugin's and removes nothing from it.
+
 ## Your own stack
 
 Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any other stack (Go, Python, Rust...) you write the profile yourself, and the file is the whole profile:

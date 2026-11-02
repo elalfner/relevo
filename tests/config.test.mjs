@@ -377,3 +377,60 @@ test('Scenario: A project tries to lift a base entry - a profile that names .env
   assert.match(log.errors.join('\n'), /"review.log" names "config\/server\.key"/);
   assert.equal(resolve(profile("generated: ['dist/**']\nreview:\n  log: storage/logs/*.log\n")).ok, true, 'an ordinary profile is accepted');
 });
+
+// ---- agent settings (specialist-review-lenses)
+import { AGENT_DEFAULTS, EFFORTS, QA_LENSES } from '../scripts/lib/config.mjs';
+
+const agents = (yaml) => `${MINIMAL}agents:\n${yaml}`;
+
+test('Scenario: A project that changes nothing - each role has its default, and the default of dev is what it always was', () => {
+  const { ok, config } = loadConfig(MINIMAL);
+  assert.equal(ok, true);
+  assert.deepEqual(config.agents, AGENT_DEFAULTS);
+  assert.deepEqual(config.agents.dev, { model: 'sonnet', effort: 'high' });
+  assert.deepEqual(config.agents.qa, { spec: { model: 'opus', effort: 'high' }, security: { model: 'opus', effort: 'high' }, code: { model: 'sonnet', effort: 'high' }, interface: { model: 'sonnet', effort: 'medium' } });
+  assert.deepEqual(config.agents_given, []);
+});
+
+test('Scenario: A setting for one lens - the other roles keep their defaults', () => {
+  const { ok, config } = loadConfig(agents('  qa:\n    security:\n      model: haiku\n'));
+  assert.equal(ok, true);
+  assert.deepEqual(config.agents.qa.security, { model: 'haiku', effort: 'high' });
+  assert.deepEqual(config.agents.qa.spec, AGENT_DEFAULTS.qa.spec);
+  assert.deepEqual(config.agents.dev, AGENT_DEFAULTS.dev);
+  assert.deepEqual(config.agents_given, ['agents.qa.security.model']);
+});
+
+test('the developer agent can be set, with a model alias or a full identifier and an effort from the list', () => {
+  const { ok, config } = loadConfig(agents('  dev:\n    model: claude-sonnet-5-5\n    effort: xhigh\n'));
+  assert.equal(ok, true);
+  assert.deepEqual(config.agents.dev, { model: 'claude-sonnet-5-5', effort: 'xhigh' });
+  EFFORTS.forEach((e) => assert.equal(loadConfig(agents(`  dev:\n    effort: ${e}\n`)).ok, true, e));
+});
+
+test('Scenario: invalid values - an empty model, an unknown effort and an unknown lens fail and name the key', () => {
+  const messages = (yaml) => loadConfig(agents(yaml)).errors.map((e) => e.message).join(' | ');
+  assert.match(messages('  dev:\n    model: ""\n'), /agents\.dev\.model must be a non-empty model name/);
+  assert.match(messages('  qa:\n    code:\n      effort: huge\n'), /agents\.qa\.code\.effort has invalid value "huge"; allowed values: "low", "medium", "high", "xhigh", "max"/);
+  assert.match(messages('  qa:\n    style:\n      model: x\n'), /unknown lens "style" in agents\.qa/);
+  assert.match(messages('  dev:\n    temperature: 1\n'), /unknown setting "agents\.dev\.temperature"/);
+  assert.match(messages('  reviewer:\n    model: x\n'), /unknown setting "agents\.reviewer"/);
+});
+
+test('Scenario: An attempt to turn a lens off - validation fails because the key does not exist', () => {
+  for (const yaml of ['  qa:\n    security:\n      enabled: false\n', '  qa:\n    security: off\n', '  qa:\n    code:\n      blocking: false\n']) {
+    const r = loadConfig(agents(yaml));
+    assert.equal(r.ok, false, yaml);
+  }
+  assert.equal(QA_LENSES.length, 4);
+});
+
+test('Scenario: Antigravity warns and passes - the settings are accepted, not applied, and a rejected key still fails', () => {
+  const base = 'agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 200000\n';
+  const r = loadConfig(`${base}agents:\n  qa:\n    security:\n      model: opus\n`);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.ok(r.warnings.some((w) => w.path === 'agents' && /agents\.qa\.security\.model is not applied with this agent/.test(w.message)));
+  assert.equal(loadConfig(base).warnings.some((w) => w.path === 'agents'), false, 'no settings, no warning');
+  assert.equal(loadConfig(`${base}  run_max_cost: 5\n`).ok, false, 'a rejected key still fails');
+  assert.equal(loadConfig(`${MINIMAL}agents:\n  dev:\n    model: opus\n`).warnings.some((w) => w.path === 'agents'), false, 'Claude applies the model');
+});
