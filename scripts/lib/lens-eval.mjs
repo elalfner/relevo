@@ -1,7 +1,10 @@
 // Evaluation of the QA lenses on seeded defects. Opt-in: nothing here runs in npm test with a model.
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { loadCases } from './lens-cases.mjs';
+import { RECEIPT_DIR, RECEIPT_FILE, buildReceipt, diffHash } from './validation-gate.mjs';
 
 export const LENSES = ['spec', 'security', 'code', 'interface'];
 const OUTPUT_TOKENS = 1500; // assumed size of one lens report, for the estimate
@@ -45,6 +48,42 @@ export function lensPrompt(body, opts, root = process.cwd()) {
   if (opts.withSkill) text += `\n\n## Additional skill\n\n${readFileSync(join(root, opts.withSkill), 'utf8')}\n`;
   return text;
 }
+
+/**
+ * Lays a variant out the way the orchestrator leaves a change for a lens: a git repository whose base branch `main` is
+ * empty and whose working tree holds the files (new files marked with intent-to-add, as the gate does), and a receipt of
+ * the validation gate that is green and matches the diff. The receipt is SIMULATED: the harness does not run the analysis
+ * or the tests of the stack, so it records that. Returns the folder.
+ */
+export function materialize(files, dir = mkdtempSync(join(tmpdir(), 'relevo-lens-case-'))) {
+  const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  git('init', '-q', '-b', 'main');
+  git('-c', 'user.name=harness', '-c', 'user.email=harness@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'base');
+  appendFileSync(join(dir, '.git', 'info', 'exclude'), `${RECEIPT_DIR}/\n`);
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+  git('add', '-N', '.');
+  const hash = diffHash(git('diff', 'main', '--', '.'));
+  const receipt = buildReceipt({
+    hash, base: git('rev-parse', 'main').trim(), baseRef: 'main', generated: [], platformPath: '.', status: 'green',
+    commands: [{ name: 'simulated', command: 'not run: the evaluation harness does not run the analysis or the tests', status: 0, output: 'SIMULATED green receipt written by scripts/eval-lenses.mjs' }],
+    scans: [],
+  });
+  mkdirSync(join(dir, RECEIPT_DIR), { recursive: true });
+  writeFileSync(join(dir, RECEIPT_DIR, RECEIPT_FILE), `${JSON.stringify(receipt, null, 1)}\n`);
+  return dir;
+}
+
+/** What the orchestrator tells a lens, for a change laid out by materialize(). */
+export const ORCHESTRATOR_NOTE = `## Inputs from the orchestrator
+
+Change directory: none (there is no OpenSpec change; the change is the working tree against the base branch).
+Base branch to diff against: main. Folder of the platform: . (the root).
+Receipt of the validation gate: .relevo-receipt/receipt.json. It is green and it matches the diff. It is simulated by the evaluation harness, which does not run the analysis or the tests: do not reject for that.
+There is no stack profile section and no review script. Review the diff of the working tree against main as your lens, and apply your protocol.
+`;
 
 export function casePrompt(lensText, variantFiles) {
   const files = Object.entries(variantFiles).map(([p, t]) => `### ${p}\n\`\`\`\n${t}\`\`\``).join('\n\n');
@@ -93,7 +132,7 @@ export async function evaluate(cases, opts, runner, root = process.cwd()) {
     lensInfo[lens].text ??= lensPrompt(lensInfo[lens].body, opts, root);
     const row = { id: c.id, lens };
     for (const variant of ['bad', 'good']) {
-      const r = await runner({ lens, model: lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]) });
+      const r = await runner({ lens, model: lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]), lensText: lensInfo[lens].text, files: c[variant] });
       row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0, report: r.report };
     }
     rows.push(row);
@@ -120,11 +159,13 @@ export function stubRunner({ miss = [], falsePositive = [], cases }) {
   };
 }
 
-export function claudeRunner(spawn, { maxTurns = 8, maxBudgetUsd = 1 } = {}) {
-  return async ({ prompt, model }) => {
-    const args = ['-p', '--output-format', 'json', '--max-turns', String(maxTurns), '--max-budget-usd', String(maxBudgetUsd), '--allowedTools', 'Read,Grep,Glob'];
+export function claudeRunner(spawn, { maxTurns = 12, maxBudgetUsd = 1, make = materialize } = {}) {
+  return async ({ lensText, files, model }) => {
+    const args = ['-p', '--output-format', 'json', '--max-turns', String(maxTurns), '--max-budget-usd', String(maxBudgetUsd), '--allowedTools', 'Read,Grep,Glob,Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*)'];
     if (model) args.push('--model', model);
-    const r = spawn('claude', args, { input: prompt, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    const cwd = make(files);
+    const prompt = `${lensText}\n\n${ORCHESTRATOR_NOTE}`;
+    const r = spawn('claude', args, { input: prompt, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, cwd });
     if (r.status !== 0) throw new Error(`claude failed: ${(r.stderr || '').slice(0, 300)}`);
     const out = JSON.parse(r.stdout);
     return { report: out.result ?? '', cost: out.total_cost_usd ?? 0 };

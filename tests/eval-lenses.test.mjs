@@ -97,3 +97,31 @@ test('the report keeps what the lens said where a good variant was flagged or a 
   assert.match(md, /What the lens said where the result was not the expected one/);
   assert.match(md, new RegExp(`${id} \\(good variant, flagged\\)`));
 });
+
+import { materialize, claudeRunner, ORCHESTRATOR_NOTE } from '../scripts/lib/lens-eval.mjs';
+
+test('a variant is laid out as the orchestrator leaves a change: a repository, the diff against main, and a valid green receipt', () => {
+  const c = loadCases().find((x) => x.id === 'code/flutter/state-update-after-await');
+  const dir = materialize(c.bad);
+  const check = spawnSync(process.execPath, [join(process.cwd(), 'scripts/receipt-check.mjs'), '--root', dir], { encoding: 'utf8' });
+  assert.equal(check.status, 0, check.stdout + check.stderr);
+  const receipt = JSON.parse(readFileSync(join(dir, '.relevo-receipt/receipt.json'), 'utf8'));
+  assert.equal(receipt.status, 'green');
+  assert.match(receipt.commands[0].command, /does not run the analysis/, 'the receipt says that it is simulated');
+  const diff = spawnSync('git', ['diff', 'main', '--stat'], { cwd: dir, encoding: 'utf8' }).stdout;
+  assert.match(diff, /lib\/profile_page\.dart/);
+  assert.ok(!diff.includes('.relevo-receipt'), 'the receipt is not part of the diff');
+  assert.match(ORCHESTRATOR_NOTE, /simulated/);
+});
+
+test('the real runner works in the folder of the case and gives the lens its inputs, without calling a model here', async () => {
+  const c = loadCases().find((x) => x.id === 'security/laravel/unescaped-output');
+  const seen = [];
+  const spawn = (cmd, args, o) => { seen.push({ cmd, args, o }); return { status: 0, stdout: JSON.stringify({ result: 'QA PASSED', total_cost_usd: 0.01 }) }; };
+  const r = await claudeRunner(spawn, { maxBudgetUsd: 0.2 })({ lensText: 'LENS', files: c.bad, model: 'sonnet' });
+  assert.deepEqual(r, { report: 'QA PASSED', cost: 0.01 });
+  assert.match(seen[0].o.cwd, /relevo-lens-case-/);
+  assert.match(seen[0].o.input, /^LENS[\s\S]*Inputs from the orchestrator/);
+  assert.ok(seen[0].args.includes('0.2') && seen[0].args.includes('sonnet'));
+  assert.ok(!seen[0].args.join(' ').includes('Write') && !seen[0].args.join(' ').includes('Edit'), 'no tool that changes files');
+});
