@@ -244,3 +244,23 @@ test('Scenario: The list changes - the command finds the files of the tree by na
   assert.ok(!deny.some((d) => d.includes('.env.example') || d.includes('README')));
   assert.ok(!r.stdout.includes('x\n'), 'no content is read or printed');
 });
+
+// ---- the subagents of the lenses (specialist-review-lenses, spike S4)
+const lensStream = readFileSync(join(root, 'tests/fixtures/agy-streams/main-with-two-lens-subagents.jsonl'), 'utf8').trim().split('\n');
+
+test('S4: the turns and the tokens of the subagents are in the totals of the guard', () => {
+  const t = new Tracker();
+  lensStream.forEach((l) => t.feed(l));
+  assert.equal(t.turns, 5, 'two turns of the main agent, two of the first lens and one of the second');
+  assert.equal(t.tokens, 900, 'the tokens of the subagents are summed with those of the main agent');
+});
+
+test('S4: the limits of the guard are reached through the turns and tokens of the subagents', async () => {
+  const byTokens = start({ turns: 100, tokens: 500, minutes: 30 });
+  byTokens.child.push(...lensStream);
+  const t = await byTokens.done;
+  assert.equal(t.code, EXIT.tokens, 'the main agent alone used 200 tokens, the lenses took it past 500');
+  const byTurns = start({ turns: 4, tokens: 100000, minutes: 30 });
+  byTurns.child.push(...lensStream);
+  assert.equal((await byTurns.done).code, EXIT.turns, 'the main agent made 2 turns, with the lenses the 4th turn stops the run');
+});
