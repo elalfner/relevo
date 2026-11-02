@@ -142,6 +142,27 @@ When the screen has to look like something, point to it. One bullet per referenc
 - Example code goes in a fenced block in the same section.
 - `go` copies the section to the design, adds a scenario "Matches the reference <name>" for each bullet, and QA checks the code against it. In the review that scenario is a line you confirm by looking at your screen. If a reference cannot be fetched, the issue goes back to its writer saying which one.
 
+### 9. External inputs (optional)
+
+When the work needs something that is not in the repository (a key, a file, an endpoint, another repository), say so. A script checks what it can before the build starts, so that the issue does not spend a build and a retry on something that cannot succeed:
+
+```markdown
+## External inputs
+
+- file: `design/logo.svg`: the logo of the login screen
+- link: `acme/api:schema/schema.graphqls`: the schema that the types are generated from
+- secret: `RECAPTCHA_SITE_KEY`: the key of the login screen
+- variable: `API_URL`: the address of the backend
+- manual: the terms of use: the client sends the text
+```
+
+- One bullet per input, `<kind>: <name>: <what it is for>`. The kinds are `file` (a path of this repository), `link` (`owner/repo:path` of a linked repository), `secret` and `variable` (the name of a secret or a variable of the repository) and `manual` (anything a person has to confirm).
+- `file` must exist on the base branch when the build starts, and a `link` names a repository that is in `links` of `relevo.yml`. Write a path, an `owner/repo:path` and the name of a secret or a variable in backticks.
+- Write the **name** of a secret or a variable, never its value. Only its presence is checked, and the value is never read, printed or stored. A name that is not in backticks is refused, because a long name looks like a value to the credential scan.
+- `manual` never blocks the build: the hand-off lists it for a person to confirm. An input of a kind that the build job cannot check (a secret that the job cannot see, for example) is treated the same way.
+- A missing input sends the issue back to `needs-spec` with the reason `inputs`, before the agent starts and without spending a model turn. The comment names each missing input.
+- The section is optional. `/relevo:issue` asks for the inputs of the work and writes it.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.

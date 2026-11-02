@@ -95,7 +95,9 @@ The number of a `pr-open` issue whose pull request someone other than the author
 
 No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting. When a read from GitHub fails (for example a 403 on the repository variable that pauses the cloud), the report says which one under "Could not read" and that it may be incomplete, and an empty answer reads "Nothing is waiting on you. (from what could be read)".
 
-The daily digest posted by the digest workflow has the same content for the team, plus one line with the usage of the cloud runs of the last seven days when they left a usage marker ([what it counts](execution.md#what-a-cloud-run-reports)). `/relevo:status` itself does not show it.
+The daily digest posted by the digest workflow has the same content for the team, plus one line with the usage of the cloud runs of the last seven days when they left a usage marker ([what it counts](execution.md#what-a-cloud-run-reports)). `/relevo:status` itself does not show that line.
+
+`/relevo:status` and the digest also print, for the runs of the last seven days, how many ended in each outcome class and the seconds of each phase of a build, and say how many runs have no record ([what it counts](execution.md#what-a-cloud-run-reports)). For a branch that has fallen behind the base branch, the alert says whether merging the base would conflict and in which files; it asks the clone it runs in, changes nothing, and says it does not know when the git of that clone cannot tell (it needs git 2.38 or later).
 
 The digest also ends with the time of each stage of an issue, as the median of the stages that finished in the last seven days and how many they were, for example `Stages, last 7 days (median): gate 13 s (4), build 6 min (3), waiting for you 3 h (3), device review 24 h (2)`. [What it counts](execution.md#how-long-each-stage-takes).
 

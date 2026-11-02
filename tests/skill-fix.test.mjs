@@ -96,6 +96,14 @@ test('Scenario: QA rejects after the retries - the work is stashed, not left in 
   assert.ok(body.indexOf('fix-stash.mjs find') < body.indexOf('### 1. Understand the defect'), 'the stash is looked for before reading the defect');
 });
 
+test('Scenario: Nothing the developer can fix - fix does not retry, stashes the work and says what each class needs', () => {
+  assert.match(body, /qa-findings\.mjs --file <report>/);
+  assert.match(body, /`all_non_fixable` is `true`/);
+  assert.match(body, /\*\*do not retry\*\*/);
+  ['`input`: supply it', '`spec`: decide it in the issue', '`policy`: allow the manifest in `Allow-paths:`'].forEach((s) => assert.ok(body.includes(s), s));
+  assert.match(body, /or you skipped them because no finding was `fixable`: \*\*make no commit and no push\.\*\*/);
+});
+
 test('Scenario: Branch with only the specification - fix stops and says to start again', () => {
   assert.match(body, /branch-work\.mjs --base <base> --change <change>/);
   assert.match(body, /delete the remote branch and apply the label relevo:ready again/);

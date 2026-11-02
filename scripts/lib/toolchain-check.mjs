@@ -16,3 +16,8 @@ export function missingTools(tools, probe) {
     return !probe(tool);
   });
 }
+
+/** The paths that do not exist once the dependencies should be installed, in the order of the profile and without repeats. */
+export function missingInstalled(paths, exists) {
+  return [...new Set(paths ?? [])].filter((path) => !exists(path));
+}

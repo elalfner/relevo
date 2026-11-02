@@ -46,6 +46,28 @@ test('qa output contract: first line is QA PASSED or QA REJECTED', () => {
   assert.match(body, /first line is exactly\*\* `QA PASSED` or `QA REJECTED`/);
 });
 
+test('Scenario: The agent resolves a conflict - dev has an integrate mode that keeps both sides, adds a test and changes nothing else', () => {
+  const { body } = load('dev');
+  assert.match(body, /\*\*integrate\*\* \(resolve the conflicts of a merge of the base branch into the branch, nothing else\)/);
+  assert.match(body, /^## Integrate mode$/m);
+  assert.match(body, /keep the behaviour of both sides/);
+  assert.match(body, /remove every conflict marker/);
+  assert.match(body, /add a test that fails if either side is lost where the platform allows one/);
+  assert.match(body, /A conflict in a lock file or a generated file is not resolved by hand/);
+  assert.match(body, /if you cannot keep both behaviours, resolve nothing in that file/);
+  assert.match(body, /You do not run `git add`, `git merge --abort`/);
+  assert.match(body, /Mode: build \| fix \| integrate/);
+  assert.match(body, /Conflicts resolved \(integrate mode\)/);
+});
+
+test('qa gives each finding a class: fixable, input, spec or policy (spec: Each QA finding carries a class)', () => {
+  const { body } = load('qa');
+  assert.match(body, /Class: <class>/);
+  ['fixable', 'input', 'spec', 'policy'].forEach((c) => assert.ok(body.includes('- `' + c + '`:'), `qa must define the class ${c}`));
+  assert.match(body, /treated as `fixable`/, 'a finding without a class must count as fixable');
+  assert.match(body, /first line is exactly/, 'the first line contract must remain');
+});
+
 test('qa never passes code it could not check (spec: Validation tooling missing)', () => {
   const { body } = load('qa');
   assert.match(body, /automated validation could not run/);
