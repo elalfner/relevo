@@ -133,6 +133,16 @@ review:
 - La sección `## Review` es texto libre para el agente, que solo lo lee en un review. Puede añadir pasos y pedir más evidencia. No puede cambiar que tú confirmas cada línea, que se audita el log, que `decide` controla el pull request, que nunca se leen los archivos restringidos (la lista está en [Seguridad](security.es.md)), que no se sugiere un waiver ni que no se parchea código en un review: `/relevo:doctor` avisa de una línea que pida alguna de esas cosas, y el review la ignora.
 - Un review de Laravel no tiene dispositivo ni navegador. Con `review.autopilot` en `off` corres los tests del proyecto y se lo dices al review (`ran <código de salida>`); con `precheck` o `verify` el agente corre el test que ya existe para cada línea y nunca escribe uno. Una corrida de tests que pasa no escribe nada en `storage/logs`, así que lo que muestra que el código se ejercitó es la corrida registrada, no el log.
 
+## Lectura de los tokens de diseño
+
+Para un stack con interfaz, `node scripts/design-tokens.mjs` lee los colores, estilos de texto, espacios y radios de tu sistema de diseño desde su código y muestra cada uno con el archivo y la línea de donde salió. El paso de interfaz de `think` te enseña esa tabla antes de dibujar nada.
+
+- **Solo lee las rutas que declaraste** en `design.system.tokens` de `relevo.yml`, o las que confirmaste cuando listó lo que encontró por convención (la configuración de la herramienta de estilos, una hoja de estilos con propiedades personalizadas en la raíz, un archivo Dart con nombre de tema). Nunca lee el resto del repositorio, nunca abre un archivo restringido (dice cuáles omitió), no ejecuta nada de tu código y no usa la red.
+- **Dart:** literales de color, constantes seguidas hasta su definición, un esquema de color escrito con colores explícitos, los tonos de la paleta estándar desde una tabla fija, una opacidad sobre un color conocido (marcada como derivada), clases que extienden el tema, estilos de texto, constantes de espacio y de radio, y un tema oscuro como segundo conjunto.
+- **Web:** propiedades personalizadas en la raíz y en un bloque de modo oscuro (una propiedad que remite a otra se resuelve) y las escalas literales de color, espacio y radio de la configuración de la herramienta de estilos.
+- **Nunca se adivina:** un esquema de color derivado de una semilla, un color que viene del dispositivo o de un servidor, un tono que no está en la tabla fija y una referencia que no puede seguir se listan como no resueltos con su archivo y línea. `think` te pide esos colores en lugar de inventarlos.
+- **Varias marcas o sabores** se listan como conjuntos separados y nunca se mezclan: tú eliges uno.
+
 ## Tu propio stack
 
 Relevo trae perfiles para `flutter`, `vue`, `laravel` y `supabase`. Para cualquier otro stack (Go, Python, Rust...) escribes tú el perfil, y el archivo es el perfil completo:
