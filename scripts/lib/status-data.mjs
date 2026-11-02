@@ -7,6 +7,7 @@ import { parseIssueBody } from './issue-parse.mjs';
 import { cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { parseUsageMarker, USAGE_DAYS } from './run-usage.mjs';
 import { STAGE_DAYS, stagesOfIssue } from './stages.mjs';
+import { BEHIND_ALERT } from './status.mjs';
 
 const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
@@ -76,7 +77,7 @@ export function gatherStages({ gh, repo, config, now = new Date(), log = (m) => 
   }
 }
 
-export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false, withStages = false, now = new Date() }) {
+export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false, withStages = false, now = new Date(), mergeProbe = null }) {
   // The reads that fail and are not an answer; the report lists them so that a partial report is not taken for a complete one.
   const unread = [];
   const names = resolveLabelNames(config.labels);
@@ -118,8 +119,17 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false
       behind = 0;
       unread.push({ what: 'compare', pr: pr.number, reason: reasonOf(err) });
     }
+    // Only a branch that is far enough behind to be reported is probed; without a probe the answer is "unknown".
+    let merge = { result: 'unknown', files: [] };
+    if (behind >= BEHIND_ALERT && mergeProbe) {
+      try {
+        merge = mergeProbe(pr.base.ref, pr.head.ref);
+      } catch {
+        merge = { result: 'unknown', files: [] };
+      }
+    }
     prs.push({
-      number: pr.number, issue, url: pr.html_url, author: pr.user.login,
+      number: pr.number, issue, url: pr.html_url, author: pr.user.login, merge,
       reviewer: reviewer ?? approvedBy[0] ?? null,
       requested_at: timeline.length ? timeline[timeline.length - 1].created_at : null,
       approved: approvedBy.length > 0, behind_by: behind,

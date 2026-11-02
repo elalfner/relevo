@@ -4,6 +4,7 @@
 //   node scripts/status.mjs --input state.json [--me login] [--now ISO] [--json]
 // exit 0: reported   exit 2: invalid configuration or bad arguments
 
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
@@ -33,7 +34,16 @@ if (arg('input')) {
   data = JSON.parse(readFileSync(arg('input') === '-' ? 0 : arg('input'), 'utf8'));
 } else {
   if (!repo) fail('give --repo owner/name (or set GITHUB_REPOSITORY), or --input state.json');
-  data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config });
+  // Asks the clone this runs in, without changing it; anything but a clear answer is "unknown".
+  const mergeProbe = (base, branch) => {
+    const r = spawnSync('node', [new URL('./branch-state.mjs', import.meta.url).pathname, '--merge', base, branch], { encoding: 'utf8' });
+    try {
+      return JSON.parse(r.stdout);
+    } catch {
+      return { result: 'unknown', files: [] };
+    }
+  };
+  data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config, mergeProbe });
 }
 let me = arg('me') ?? null;
 if (!me && !arg('input')) {

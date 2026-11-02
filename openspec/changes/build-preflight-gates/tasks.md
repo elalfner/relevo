@@ -40,11 +40,11 @@
 
 ## 7. A conflict with the base branch
 
-- [ ] 7.1 `agents/dev.md`: an integration mode that receives the conflicted files and the scenarios, keeps the behaviour of both sides, adds a test that fails if either side is lost where the platform allows, edits only the conflicted files and the new test, and reports what it kept from each side. Verify with `tests/agents.test.mjs`.
-- [ ] 7.2 `scripts/conflict-scope.mjs` and its library: besides the check of files under `openspec/`, say whether every conflicted file is inside the folder of the platform or the change folder, and list those outside. Verify with `tests/conflict-scope.test.mjs`.
-- [ ] 7.3 `skills/review/SKILL.md`, step of the synchronisation: on a conflict inside the folder of the platform, hand it to the developer agent in integration mode, run QA with the retries of `qa.retries`, and go on; when the agent cannot resolve it, QA still rejects, or a conflicted file is outside the allowed folders, run `git merge --abort`, leave the branch as it was and stop with the message that names the files. Verify with `tests/skill-review.test.mjs` for each scenario of the `review` spec.
-- [ ] 7.4 `scripts/branch-state.mjs`: probe a merge of the base branch without changing the tree (`git merge-tree --write-tree` where available) and report `conflict`, `clean` or `unknown` with the files in conflict. Verify with `tests/branch-state.test.mjs` using throwaway repositories for a conflicting branch, a clean one and a git that cannot probe.
-- [ ] 7.5 `scripts/status.mjs`: the alert on a branch behind the base branch includes that result. Verify with the status tests and a rendered alert in both languages.
+- [x] 7.1 `agents/dev.md`: an integration mode that receives the conflicted files and the scenarios, keeps the behaviour of both sides, adds a test that fails if either side is lost where the platform allows, edits only the conflicted files and the new test, and reports what it kept from each side. Verify with `tests/agents.test.mjs`.
+- [x] 7.2 `scripts/conflict-scope.mjs` and its library: besides the check of files under `openspec/`, say whether every conflicted file is inside the folder of the platform or the change folder, and list those outside. Verify with `tests/conflict-scope.test.mjs`.
+- [x] 7.3 `skills/review/SKILL.md`, step of the synchronisation: on a conflict inside the folder of the platform, hand it to the developer agent in integration mode, run QA with the retries of `qa.retries`, and go on; when the agent cannot resolve it, QA still rejects, or a conflicted file is outside the allowed folders, run `git merge --abort`, leave the branch as it was and stop with the message that names the files. Verify with `tests/skill-review.test.mjs` for each scenario of the `review` spec.
+- [x] 7.4 `scripts/branch-state.mjs`: probe a merge of the base branch without changing the tree (`git merge-tree --write-tree` where available) and report `conflict`, `clean` or `unknown` with the files in conflict. Verify with `tests/branch-state.test.mjs` using throwaway repositories for a conflicting branch, a clean one and a git that cannot probe.
+- [x] 7.5 `scripts/status.mjs`: the alert on a branch behind the base branch includes that result. Verify with the status tests and a rendered alert in both languages.
 
 ## 8. Phases and outcome classes in the usage record
 

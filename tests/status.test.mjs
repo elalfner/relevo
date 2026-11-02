@@ -428,3 +428,14 @@ test('the stage line comes right after the usage line, so that the two read as o
   assert.equal(blocks.length, 3, 'the header, who waits, and one block');
   assert.equal(blocks[2].split('\n').length, 2, 'the block holds the usage and the stages, with no blank line between');
 });
+
+test('Scenario: the alert on a branch behind the base says whether the merge would conflict - both languages', () => {
+  const behind = (merge) => buildStatus({ config, me: 'ana', now: NOW, issues: [], prs: [pr({ behind_by: 12, requested_at: '2026-03-10T10:00:00Z', merge })] });
+  const conflict = behind({ result: 'conflict', files: ['README.md', 'a.txt'] });
+  assert.match(renderStatus(conflict, 'en'), /branch behind the base by 12 .*merging the base would conflict in README\.md, a\.txt/);
+  assert.match(renderStatus(conflict, 'es'), /el merge tendría conflictos en README\.md, a\.txt/);
+  assert.match(renderStatus(behind({ result: 'clean', files: [] }), 'en'), /merging the base would be clean/);
+  assert.match(renderStatus(behind({ result: 'clean', files: [] }), 'es'), /no tendría conflictos/);
+  assert.match(renderStatus(behind(undefined), 'en'), /not known whether merging the base would conflict/);
+  assert.match(renderDigest(conflict, 'es'), /el merge tendría conflictos en README\.md/);
+});
