@@ -146,6 +146,10 @@ El agente de desarrollo sigue recibiendo el cuerpo completo, ahora con la secci�
 
 Las dos secciones de seguridad son opcionales. Un stack sin ellas funciona desde el primer día: el revisor de seguridad usa entonces las categorías genéricas de su agente (inyección, autenticación y autorización, secretos en el código, deserialización insegura, confianza en la entrada del cliente, redirecciones abiertas, dependencias nuevas). Cada elemento de una `## Security review` que trae Relevo nombra su fuente y la fecha en que se leyó (`Source: <dirección>. Read: <fecha>.`). Tu propio perfil en `.relevo/stacks/<stack>.md` puede tener las mismas secciones: su texto se suma al del plugin y no le quita nada.
 
+### Qué cubren las secciones de seguridad que trae Relevo
+
+Los cuatro stacks incluidos tienen las dos secciones, y cada elemento nombra la página oficial de la que sale y la fecha en que se leyó (2 de noviembre de 2026): Supabase (seguridad a nivel de fila, la clave secreta, vistas, funciones, políticas de almacenamiento), Laravel (asignación masiva, políticas, consultas crudas, salida sin escapar, subidas, CSRF), Vue (plantillas no confiables, `v-html`, URLs, estilos, CSRF) y Flutter (SDK y dependencias, registros, tráfico sin cifrar, enlaces profundos, el almacén de claves de la plataforma). Donde la documentación oficial de un stack no dice nada de un tema, no hay un elemento para él en lugar de uno sin fuente: en Vue son dónde se guardan los tokens, los mensajes entre ventanas y los scripts de terceros, y en Flutter los canales de plataforma. El revisor de seguridad los sigue mirando con sus categorías genéricas. Vuelve a leer las páginas antes de fiarte de un elemento: la documentación cambia.
+
 ## Tu propio stack
 
 Relevo trae perfiles para `flutter`, `vue`, `laravel` y `supabase`. Para cualquier otro stack (Go, Python, Rust...) escribes tú el perfil, y el archivo es el perfil completo:

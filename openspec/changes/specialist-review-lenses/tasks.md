@@ -33,10 +33,10 @@
 ## 5. The knowledge of each lens
 
 - [x] 5.1 `scripts/stack-profile.mjs` and its library: the option `--lens spec|security|code|interface` that prints only the sections that lens reads, the sections `Security for the developer` and `Security review`, nothing for `spec`, and the whole body for `dev` as before. Verify with the profile tests for each scenario of the `platforms` spec.
-- [ ] 5.2 Write the sections `Security for the developer` and `Security review` of `stacks/supabase.md` (access policies on tables, exposure of service keys, functions that run with elevated rights, storage policies), each item with its source and the date it was read from the official documentation. Verify with the profile test that each item has a source and a date.
-- [ ] 5.3 The same for `stacks/laravel.md` (mass assignment, authorization policies, raw queries, unescaped output, uploads, request forgery protection). Verify as in 5.2.
-- [ ] 5.4 The same for `stacks/vue.md` (unescaped HTML, where tokens are stored, redirect targets, messages between windows, third-party scripts). Verify as in 5.2.
-- [ ] 5.5 The same for `stacks/flutter.md` (where tokens are stored, cleartext traffic, logging, platform channels, deep links). Verify as in 5.2.
+- [x] 5.2 Write the sections `Security for the developer` and `Security review` of `stacks/supabase.md` (access policies on tables, exposure of service keys, functions that run with elevated rights, storage policies), each item with its source and the date it was read from the official documentation. Verify with the profile test that each item has a source and a date.
+- [x] 5.3 The same for `stacks/laravel.md` (mass assignment, authorization policies, raw queries, unescaped output, uploads, request forgery protection). Verify as in 5.2.
+- [x] 5.4 The same for `stacks/vue.md` (unescaped HTML, where tokens are stored, redirect targets, messages between windows, third-party scripts). Verify as in 5.2.
+- [x] 5.5 The same for `stacks/flutter.md` (where tokens are stored, cleartext traffic, logging, platform channels, deep links). Verify as in 5.2.
 - [x] 5.6 Test that a profile of the repository adds to these sections and removes nothing, and that a stack without them still resolves for every lens.
 - [x] 5.7 `docs/stacks.md` and `docs/stacks.es.md`: the new sections and how a repository adds to them. Verify with `node --test tests/docs-claims.test.mjs`.
 

@@ -90,6 +90,26 @@ Tests:
 - `ios`: needs `xcrun`. It runs only on macOS; builds and reviews for iOS are done there. The review of iOS is not available yet.
 - `web`: needs a browser; no extra tool. The review of a web target is always driven (`review.autopilot` must be `precheck` or `verify`) and uses the browser runner.
 
+## Security for the developer
+
+While you write, keep to these. Each comes from the official documentation named in its line.
+
+- The Flutter SDK and the package dependencies are current; a pinned version is checked periodically for security updates. Source: https://docs.flutter.dev/security. Read: 2026-11-02.
+- Nothing sensitive is logged; what reaches the system log in a release build is sanitized. Source: https://developer.android.com/privacy-and-security/risks/log-info-disclosure. Read: 2026-11-02.
+- Traffic uses HTTPS; cleartext is allowed only for a domain that needs it, through the network security configuration (`cleartextTrafficPermitted`). Source: https://developer.android.com/privacy-and-security/security-config. Read: 2026-11-02.
+- A parameter that arrives by deep link is checked against a list of expected values, and the authentication and authorization state is checked before anything is exposed; Android links are verified with `android:autoVerify`. Source: https://developer.android.com/privacy-and-security/risks/unsafe-use-of-deeplinks. Read: 2026-11-02.
+- Cryptographic keys live in the platform keystore, where they are harder to extract, not in the code of the app. Source: https://developer.android.com/privacy-and-security/keystore. Read: 2026-11-02.
+
+## Security review
+
+Check the diff against each item. Report one only with the line that breaks it.
+
+- The Flutter SDK and the package dependencies are current; a pinned version is checked periodically for security updates. Source: https://docs.flutter.dev/security. Read: 2026-11-02.
+- Nothing sensitive is logged; what reaches the system log in a release build is sanitized. Source: https://developer.android.com/privacy-and-security/risks/log-info-disclosure. Read: 2026-11-02.
+- Traffic uses HTTPS; cleartext is allowed only for a domain that needs it, through the network security configuration (`cleartextTrafficPermitted`). Source: https://developer.android.com/privacy-and-security/security-config. Read: 2026-11-02.
+- A parameter that arrives by deep link is checked against a list of expected values, and the authentication and authorization state is checked before anything is exposed; Android links are verified with `android:autoVerify`. Source: https://developer.android.com/privacy-and-security/risks/unsafe-use-of-deeplinks. Read: 2026-11-02.
+- Cryptographic keys live in the platform keystore, where they are harder to extract, not in the code of the app. Source: https://developer.android.com/privacy-and-security/keystore. Read: 2026-11-02.
+
 ## Questions for the issue writer
 
 - Which screen is this, and how does the person get to it and leave it?

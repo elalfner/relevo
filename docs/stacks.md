@@ -146,6 +146,10 @@ The developer agent keeps receiving the whole body, now including the section `#
 
 The two security sections are optional. A stack without them works from the first day: the security reviewer then uses the generic categories of its agent (injection, authentication and authorization, secrets in code, unsafe deserialization, trust of client input, open redirects, new dependencies). Each item of a `## Security review` that Relevo ships names its source and the date it was read (`Source: <address>. Read: <date>.`). Your own profile in `.relevo/stacks/<stack>.md` can have the same sections: its text is added to the plugin's and removes nothing from it.
 
+### What the shipped security sections cover
+
+The four shipped stacks have both sections, and every item names the official page it comes from and the date it was read (2 November 2026): Supabase (row level security, the secret key, views, functions, storage policies), Laravel (mass assignment, policies, raw queries, unescaped output, uploads, CSRF), Vue (untrusted templates, `v-html`, URLs, styles, CSRF) and Flutter (SDK and dependencies, logging, cleartext traffic, deep links, the platform keystore). Where the official documentation of a stack says nothing about a topic, there is no item for it rather than one without a source: for Vue that means where tokens are stored, messages between windows and third-party scripts, and for Flutter the platform channels. The security reviewer still looks at those through its generic categories. Read the pages again before relying on an item: documentation changes.
+
 ## Your own stack
 
 Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any other stack (Go, Python, Rust...) you write the profile yourself, and the file is the whole profile:

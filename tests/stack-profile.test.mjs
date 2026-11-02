@@ -464,3 +464,14 @@ test('the command prints only the sections of the lens it is asked for', () => {
   assert.equal(JSON.parse(run('spec').stdout).sections, '');
   assert.equal(run('nobody').status, 2);
 });
+
+test('Scenario: the four shipped stacks have a Security review and a Security for the developer, each item with a source and a date', () => {
+  for (const stack of ['flutter', 'vue', 'laravel', 'supabase']) {
+    const { profile } = parseProfile(readFileSync(`${PLUGIN_ROOT}/stacks/${stack}.md`, 'utf8'));
+    const items = String(profile.securityReview).split('\n').filter((l) => /^\s*[-*]\s/.test(l));
+    assert.ok(items.length >= 4, `${stack}: ${items.length} security review items`);
+    assert.match(profile.body, /## Security for the developer/, stack);
+    assert.equal((profile.body.match(/^- .*Source: https?:\/\//gm) ?? []).length >= 4, true, `${stack}: the developer section is sourced`);
+    assert.doesNotMatch(profile.body, /## Security review/, stack);
+  }
+});

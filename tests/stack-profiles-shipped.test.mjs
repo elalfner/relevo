@@ -139,7 +139,9 @@ test('Scenario: Security, performance and tests in the diff - the body of Vue na
 
 test('Scenario: Size - the checklist grew the body of Vue by less than 2 KB, and the rule not to repeat analyze stays', () => {
   const p = profile('vue');
-  assert.ok(p.body.length - VUE_BODY_BEFORE < 2048, `grew by ${p.body.length - VUE_BODY_BEFORE}`);
+  // The section Security for the developer is a later addition with its own sources; the guard is about the checklist.
+  const body = p.body.replace(/## Security for the developer[\s\S]*?(?=\n## |$)/, '');
+  assert.ok(body.length - VUE_BODY_BEFORE < 2048, `grew by ${body.length - VUE_BODY_BEFORE}`);
   assert.match(p.body, /Do not spend time re-checking what `analyze` already enforces/);
 });
 
