@@ -434,3 +434,37 @@ test('Scenario: Antigravity warns and passes - the settings are accepted, not ap
   assert.equal(loadConfig(`${base}  run_max_cost: 5\n`).ok, false, 'a rejected key still fails');
   assert.equal(loadConfig(`${MINIMAL}agents:\n  dev:\n    model: opus\n`).warnings.some((w) => w.path === 'agents'), false, 'Claude applies the model');
 });
+
+// ---- the design system (interface-decisions-upfront)
+const withSystem = (yaml) => `${MINIMAL}design:\n  system:\n${yaml}`;
+
+test('Scenario: Declared paths - folders inside the repository are valid and read as lists', () => {
+  const r = loadConfig(withSystem('    tokens: [lib/theme]\n    components: [lib/widgets]\n    references: [docs/design]\n'));
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.deepEqual(r.config.design.system, { tokens: ['lib/theme'], components: ['lib/widgets'], references: ['docs/design'] });
+});
+
+test('Scenario: Nothing declared - the file is valid and the lists are empty', () => {
+  const r = loadConfig(MINIMAL);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.config.design.system, { tokens: [], components: [], references: [] });
+});
+
+test('Scenario: A path outside the repository - validation names the key and the path', () => {
+  for (const bad of ['../outside', '/etc/passwd', '~/design', 'a/../../b']) {
+    const r = loadConfig(withSystem(`    tokens: ["${bad}"]\n`));
+    assert.equal(r.ok, false, bad);
+    assert.match(r.errors.map((e) => e.message).join(' '), new RegExp(`design\\.system\\.tokens: "${bad.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" leaves the repository`));
+  }
+});
+
+test('Scenario: A restricted path - validation says why', () => {
+  const r = loadConfig(withSystem('    references: [.env]\n'));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.map((e) => e.message).join(' '), /design\.system\.references: ".env" is a restricted file/);
+});
+
+test('a protected path is refused too, and an unknown key under design.system is a typo', () => {
+  assert.match(loadConfig(withSystem('    components: [.github/workflows]\n')).errors.map((e) => e.message).join(' '), /protected path/);
+  assert.match(loadConfig(withSystem('    token: [lib]\n')).errors.map((e) => e.message).join(' '), /unknown setting "design\.system\.token"/);
+});

@@ -70,7 +70,18 @@ git merge --no-edit origin/<base>
 
 The pull brings in what `go` or `fix` pushed from another machine, so the person tests the current code. If it cannot fast-forward, the local and the remote branch have diverged: leave the issue as `built`, say so, and stop (never rebase, reset or force anything).
 
-If the merge conflicts, run `git merge --abort`, leave the issue as `built`, tell the person which files conflict, and stop.
+If the merge conflicts, do not stop yet: the developer agent may be able to resolve it. First ask whether it may. Find the platform of the issue (`platform-of.mjs --issue $ARGUMENTS`), the change id of the branch, and the entries of the `Allow-paths:` line of the issue (`gh issue view $ARGUMENTS --json body --jq .body`; none when it has no such line), and run:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/conflict-scope.mjs --handoff --within "<path of the platform>" --change "<change_id>" --allow "<the entries of Allow-paths>"
+```
+
+If it exits 1, a conflicted file is outside the folder of the platform and the change, or is a protected path, a restricted file or a dependency file that the issue does not allow: run `git merge --abort`, leave the issue as `built`, tell the person which files conflict and why the script refused each, and stop. If it exits 0, hand the conflict to the developer agent:
+
+1. Resolve the profile, the folder of the platform and the skill paths as `go` does, then launch `relevo:dev` in **integrate** mode with the list of conflicted files (`git diff --name-only --diff-filter=U`), the change folder and the scenarios of the issue.
+2. When it reports, check that no marker is left in the files it resolved (`git diff --check`, and a search for `<<<<<<<` in them) and that its report has no conflict left (`Conflicts left (integrate mode)` is `none`). A lock file or a generated file that the agent said must be regenerated is regenerated now with the tool of the project (for the install of dependencies, ask the person first), never by hand. If a marker remains, or a conflict was left, run `git merge --abort`, leave the issue as `built`, say which files, and stop.
+3. Stage what it changed, its new tests included, so that an abort removes them: `git add <the conflicted files and the files it created>`. Then run the QA step below on this uncommitted merge (the working tree against the base branch), with the retries of `qa.retries`: when QA rejects, run `qa-findings.mjs`; if every finding is non-fixable, do not retry; otherwise launch `relevo:dev` in **fix** mode with the report, stage again and run QA again.
+4. If QA passes, commit the merge: `git commit --no-edit`, and go on. If QA still rejects after the retries, or no finding could be fixed by the agent, run `git merge --abort` (it also removes the files that were staged), leave the issue as `built`, show the person what QA found and the files that conflict, and stop. Nothing is pushed in this step.
 
 If the merge brought in changes, find the platform of the issue again and resolve its profile and QA skills:
 

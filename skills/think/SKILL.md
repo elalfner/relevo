@@ -1,6 +1,6 @@
 ---
 name: think
-description: Thinking partner for an idea before any issue exists. It runs the openspec-explore skill to explore the problem and the existing code, then the grill-with-docs skill to interview the person until every decision is made, so the conversation holds a strong, shared context. It implements nothing and writes no file: the terms and decision records it settles are handed to /relevo:issue, which puts them in the issue. Use when asked to think through, explore, plan or stress-test a feature, or to think through an issue that was sent back with an open question (/relevo:think #42); /relevo:issue turns what it reaches into issues.
+description: Thinking partner for an idea before any issue exists. It runs the openspec-explore skill to explore the problem and the existing code, then the grill-with-docs skill to interview the person until every decision is made, so the conversation holds a strong, shared context. It implements nothing and writes no file in the repository (previews of the interface step go outside it, after a yes): the terms and decision records it settles are handed to /relevo:issue, which puts them in the issue. Use when asked to think through, explore, plan or stress-test a feature, or to think through an issue that was sent back with an open question (/relevo:think #42); /relevo:issue turns what it reaches into issues.
 argument-hint: "[idea or #issue]"
 disable-model-invocation: true
 ---
@@ -39,6 +39,12 @@ To tell them apart, read the first lines of `SKILL.md` of each skill that is not
 
 Invoke the `openspec-explore` skill with the Skill tool, passing `$ARGUMENTS` as its argument. Stay in it while the idea is still shapeless: compare options and look at the real code instead of asking detailed questions. Move on when the shape of the idea is clear enough for precise questions, or when the person asks for the interview.
 
+## 2b. Interface step, when the idea has a visible part
+
+If the idea is something the person will see (a screen, a component, a form, a list), run the interface step after the exploration and before the interview: read `${CLAUDE_PLUGIN_ROOT}/skills/think/references/interface.md` and follow it. It reads the design system from the declared paths, asks only the appearance questions the conversation has not answered, shows two or three options as wireframes with their states, records each choice as a decision with its reason and the discarded options, and, for a stack with a `web` or `mobile` interface, offers checked HTML previews of the finalists. An idea with nothing visible skips it without a word, and so does a stack with no interface. If you cannot tell, ask once whether there is a part the person will see.
+
+The step does not change the order of exploration and interview, the interview that is reserved for the person, or the hand-off: the decisions it records (`D<n>`, `C<n>`, `Q<n>`) go into **Settled so far** and travel with the rest.
+
 ## 3. Grill
 
 If `grill-with-docs` is invocable, invoke it with the Skill tool in the same conversation, so everything learned while exploring feeds its questions, and follow it until its own rules say it is done.
@@ -70,7 +76,7 @@ When the session is long (the exploration or the interview went on for many turn
 
 - Never write code, commit, push, create issues or apply labels.
 - Never write `GLOSSARY.md` or anything under `docs/adr/`; hand those entries over in "To document".
-- Never write a file the invoked skills' own rules do not allow; the agreement file only on request.
+- Never write a file the invoked skills' own rules do not allow; the agreement file only on request, and, after a direct yes that names a folder outside the repository, the preview files of the interface step, which are never committed.
 - Never run `openspec new change`, `openspec instructions` or `openspec archive` yourself.
 - Never continue when a required skill is missing; a skill that is only reserved for the person is not missing.
 - Never invoke a skill whose `SKILL.md` sets `disable-model-invocation`, and never replace it by running its flow yourself.

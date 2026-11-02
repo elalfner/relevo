@@ -68,6 +68,10 @@ digest:
 
 design:
   images: false        # true: a picture pasted into an issue is downloaded and shown to the model (it may hold customer data); files in the repository are always available
+  # system:                        # where the design system lives; the interface step of `think` reads only these paths
+  #   tokens: []                   # files or folders with the colours, spacing and type styles (a theme file, a CSS file of variables)
+  #   components: []               # folders with the reusable components that a new screen should use
+  #   references: []               # folders with screenshots or sketches to look at, inside the repository
 
 language: en                       # language of hand-off messages (en, es)
 trust: private-team                # private-team | public

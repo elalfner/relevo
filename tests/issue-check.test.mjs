@@ -302,6 +302,7 @@ test('the template with its placeholders filled in and its optional comments kep
     .replace('<the alternative> (<why not>)', 'by date (nobody asked)')
     .replace('<a concrete limit>', 'loads in under one second')
     .replace('`<path/to/file>`: <why it matters>', '`lib/clients.dart`: reads the clients')
+    .replace('<kind>: <name>: <what it is for>', 'manual: the demo account: the person who reviews logs in with it')
     .replace('<what only a person can check, and with which data>', 'scroll with the account demo')
     .replace('<an assumption>', 'birthdays come from the clients table')
     .replace('`<path/to/reference>`: <what must match>', '`design/home.png`: structure and colour of the list')
@@ -314,7 +315,7 @@ test('the template with its placeholders filled in and its optional comments kep
 test('every section heading the format page shows in a code block is one the scripts can read', () => {
   const page = readFileSync(new URL('../docs/issue-format.md', import.meta.url), 'utf8');
   const known = new Set(['Summary', 'Outcome', 'Scenarios', 'Edge cases', 'Out of scope', 'Decisions', 'Constraints', 'Code pointers', 'Verification',
-    'Assumptions', 'Open questions', 'Screens and behaviour', 'Data contract', 'Design reference', 'Documentation']);
+    'Assumptions', 'Open questions', 'Screens and behaviour', 'Data contract', 'Design reference', 'Documentation', 'External inputs']);
   const shown = [...page.matchAll(/^## (.+)$/gm)].map((m) => m[1]).filter((h) => !h.startsWith('What ') && !h.startsWith('Writing'));
   shown.forEach((h) => assert.ok(known.has(h), `docs/issue-format.md shows a section "${h}" that the format does not define`));
   [...known].filter((h) => ['Outcome', 'Decisions', 'Constraints', 'Code pointers', 'Verification', 'Assumptions', 'Open questions'].includes(h))
@@ -430,4 +431,160 @@ test('Scenario: Six references across both sections - design references and link
   const pointers = Array.from({ length: 3 }, (_, i) => `- \`acme/api:src/f${i}.ts\`: step ${i}`).join('\n');
   assert.match(pointerCheck(pointers, { refs, links: ['acme/api'] }).problems.join('\n'), /Design reference and the linked Code pointers have 6 references together; the most Relevo takes is 5/);
   assert.deepEqual(pointerCheck(pointers.split('\n').slice(0, 2).join('\n'), { refs, links: ['acme/api'] }).problems, []);
+});
+
+// ---- example code and vague words (interface-decisions-upfront)
+const withDesign = (code, extra = '') => `${GOOD}\n## Design reference\n- \`lib/theme/colors.dart\`: the colours must match\n\n\`\`\`html\n${code}\n\`\`\`\n${extra}`;
+
+test('Scenario: Long example code - 5,000 characters of text and 12,000 of example code give no warning about the length of the body', () => {
+  const body = `${GOOD}\n${'Context sentence. '.repeat(280)}\n\n## Design reference\n- \`lib/theme/colors.dart\`: the colours must match\n\n\`\`\`html\n${'<p>row</p>\n'.repeat(1100)}\`\`\`\n`;
+  assert.ok(body.length > 16000);
+  const r = checkIssueDraft({ title: 'Orders', body });
+  assert.deepEqual(r.warnings.filter((w) => /the body is/.test(w)), []);
+  assert.equal(r.ok, true);
+});
+
+test('Scenario: Long body - text over 8,000 characters still warns, with the example code left out of the count', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: `${GOOD}\n${'Context sentence. '.repeat(500)}\n` });
+  assert.ok(r.warnings.some((w) => /the body is \d+ characters/.test(w)));
+  assert.equal(r.ok, true);
+});
+
+test('Scenario: A large block - 20 KB passes with a warning; all the blocks together over 32 KB warn', () => {
+  const big = checkIssueDraft({ title: 'Orders', body: withDesign('x'.repeat(20000)) });
+  assert.equal(big.ok, true, big.problems.join('; '));
+  assert.ok(big.warnings.some((w) => /example code block 1 is \d+ characters/.test(w)));
+  const two = checkIssueDraft({ title: 'Orders', body: `${withDesign('x'.repeat(15000))}\n\`\`\`html\n${'y'.repeat(15000)}\n\`\`\`\n\`\`\`html\n${'z'.repeat(5000)}\n\`\`\`\n` });
+  assert.equal(two.ok, true, two.problems.join('; '));
+  assert.ok(two.warnings.some((w) => /the example code is \d+ characters in all/.test(w)));
+});
+
+test('Scenario: A block over the limit - 40 KB fails and says to commit the file and reference it', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: withDesign('x'.repeat(40000)) });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join(' '), /example code block 1 is \d+ characters, over 32768; commit the file to the repository and point to it/);
+});
+
+test('Scenario: A body GitHub would refuse - it fails and says why', () => {
+  const body = `${GOOD}\n## Design reference\n- \`lib/theme/colors.dart\`: match\n\n${'a'.repeat(20000)}\n${'b'.repeat(20000)}\n${'c'.repeat(20000)}\n${'d'.repeat(20000)}\n`;
+  const r = checkIssueDraft({ title: 'Orders', body });
+  assert.match(r.problems.join(' '), /GitHub accepts at most 65536/);
+});
+
+const scenario = (when, then) => `## Summary\nShows orders.\n\n## Scenarios\n- **WHEN** ${when}\n- **THEN** ${then}\n\n## Edge cases\n- an empty list: a message shows\n`;
+
+test('Scenario: A vague word - the check warns and does not fail', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: scenario('the list reloads', 'a discreet loading indication shows') });
+  assert.equal(r.ok, true);
+  const w = r.warnings.find((x) => /"discreet"/.test(x));
+  assert.ok(w, r.warnings.join('|'));
+  assert.match(w, /which value, token or reference is meant\?/);
+});
+
+test('Scenario: A word with a criterion - a number with a unit, a token in backticks or a reference gives no warning', () => {
+  [
+    'a discreet bar 2px high shows',
+    'a discreet bar in `--app-primary` shows',
+    'a discreet bar as in docs/design/reload.png shows',
+    'a subtle bar like #12 shows',
+  ].forEach((then) => assert.deepEqual(checkIssueDraft({ title: 'Orders', body: scenario('the list reloads', then) }).warnings.filter((x) => /says how it should look/.test(x)), [], then));
+});
+
+test('vague words are looked for in decisions, constraints and reference bullets too, not in the summary', () => {
+  const body = `## Summary\nA modern screen.\n\n## Scenarios\n- **WHEN** a client opens it\n- **THEN** the list shows\n\n## Edge cases\n- empty: a message\n\n## Decisions\n### D1. Look\nThe cards are elegant.\n\n## Constraints\n- C1: Keep it clean.\n\n## Design reference\n- \`lib/theme/colors.dart\`: a friendly feel\n`;
+  const words = checkIssueDraft({ title: 'Orders', body }).warnings.filter((x) => /says how it should look/.test(x)).map((x) => /"(\w+)"/.exec(x)[1]);
+  assert.deepEqual(words.sort(), ['clean', 'elegant', 'friendly']);
+});
+
+test('Scenario: Spanish - the list for the language is used, and English is the fallback for any other language', () => {
+  const es = checkIssueDraft({ title: 'Pedidos', body: scenario('la lista se recarga', 'se muestra un indicador discreto'), language: 'es' });
+  assert.ok(es.warnings.some((x) => /"discreto"/.test(x)), es.warnings.join('|'));
+  assert.deepEqual(checkIssueDraft({ title: 'Pedidos', body: scenario('la lista se recarga', 'se muestra un indicador discreto'), language: 'en' }).warnings.filter((x) => /discreto/.test(x)), []);
+  const fr = checkIssueDraft({ title: 'Commandes', body: scenario('the list reloads', 'a discreet bar shows'), language: 'fr' });
+  assert.ok(fr.warnings.some((x) => /"discreet"/.test(x)));
+});
+
+test('Scenario: Kept on purpose - the issue passes with the word', () => {
+  const r = checkIssueDraft({ title: 'Orders', body: scenario('the list reloads', 'a discreet loading indication shows') });
+  assert.equal(r.ok, true);
+});
+
+test('the command takes the language of relevo.yml', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-vague-'));
+  writeFileSync(join(dir, 'b.md'), scenario('la lista se recarga', 'se muestra un indicador discreto'));
+  const r = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Pedidos', '--body-file', join(dir, 'b.md'), '--language', 'es'], { encoding: 'utf8', cwd: dir });
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /"discreto"/);
+});
+
+// --- External inputs (spec: an issue can declare the external inputs of its work)
+const withInputs = (bullets) => `${GOOD}\n## External inputs\n\n${bullets}\n`;
+const inputsCheck = (bullets, extra = {}) => checkIssueDraft({ title: 'Home', body: withInputs(bullets), ...extra });
+
+test('Scenario: A valid section - a file, a file of a linked repository and a secret pass', () => {
+  const r = inputsCheck([
+    '- file: `design/logo.svg`: the logo of the login screen',
+    '- link: `acme/api:schema/schema.graphqls`: the schema the types are generated from',
+    '- secret: `RECAPTCHA_SITE_KEY`: the key of the login screen',
+  ].join('\n'), { links: ['acme/api'] });
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(parseIssueBody(withInputs('- manual: `the terms of use`: the client sends the text')).externalInputs.inputs.map((i) => i.kind), ['manual']);
+});
+
+test('Scenario: An unknown kind - the check fails and names the bullet and the kinds that exist', () => {
+  const r = inputsCheck('- credential: `API_KEY`: the key');
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /External inputs: .*the kind "credential", which does not exist: use file, link, secret, variable, manual/);
+});
+
+test('Scenario: A link outside `links` - the check fails and says to add the repository to links', () => {
+  const r = inputsCheck('- link: `acme/other:schema.graphqls`: the schema', { links: ['acme/api'] });
+  assert.match(r.problems.join('\n'), /External inputs: "acme\/other:schema\.graphqls" names acme\/other, which is not in links of relevo\.yml \(acme\/api\); add it to links first/);
+  assert.match(inputsCheck('- link: `acme/other:schema.graphqls`: the schema').problems.join('\n'), /no repository is linked/);
+});
+
+test('Scenario: No section - the check passes', () => {
+  assert.deepEqual(checkIssueDraft({ title: 'Home', body: GOOD }).problems, []);
+  assert.equal(parseIssueBody(GOOD).externalInputs.present, false);
+});
+
+test('a file that leaves the repository is a problem, and so is a name that is not a variable name', () => {
+  assert.match(inputsCheck('- file: `../secrets/key.pem`: the key').problems.join('\n'), /leaves the repository/);
+  assert.match(inputsCheck('- file: `/etc/passwd`: nothing').problems.join('\n'), /leaves the repository/);
+  assert.match(inputsCheck('- secret: `my key`: the key').problems.join('\n'), /"my key" is not a valid secret name/);
+  assert.match(inputsCheck('- variable: `API-URL`: the address').problems.join('\n'), /"API-URL" is not a valid variable name/);
+});
+
+test('a bullet that is not an input, with no name or with no purpose, is a problem', () => {
+  assert.match(inputsCheck('- just some words').problems.join('\n'), /is not an input: write kind: name: what it is for/);
+  assert.match(inputsCheck('- manual:').problems.join('\n'), /has no name after the kind/);
+  assert.match(inputsCheck('- secret: `API_KEY`').problems.join('\n'), /"API_KEY" does not say what it is for/);
+});
+
+test('a link must be owner/repo:path', () => {
+  assert.match(inputsCheck('- link: `schema.graphqls`: the schema', { links: ['acme/api'] }).problems.join('\n'), /"schema\.graphqls" is not owner\/repo:path/);
+});
+
+test('the value of a secret is never asked for: the section holds names, and a credential in it is still refused', () => {
+  const r = inputsCheck('- secret: `API_KEY`: the key is ghp_abcdefghijklmnopqrstuvwxyz0123456789');
+  assert.match(r.problems.join('\n'), /looks like a credential/);
+});
+
+test('the placeholder of the template is reported as template text and not as an input', () => {
+  const r = inputsCheck('- <kind>: <name>: <what it is for>');
+  assert.match(r.problems.join('\n'), /the body still contains template text/);
+  assert.doesNotMatch(r.problems.join('\n'), /External inputs:/);
+});
+
+test('the name of a secret or a variable must be in backticks, so that it is never taken for a value', () => {
+  assert.match(inputsCheck('- secret: RECAPTCHA_SITE_KEY: the key').problems.join('\n'), /write the name of a secret in backticks/);
+  assert.match(inputsCheck('- variable: API_URL: the address').problems.join('\n'), /write the name of a variable in backticks/);
+  assert.deepEqual(inputsCheck('- variable: `API_URL`: the address').problems, []);
+});
+
+test('a link input is fetched like a code pointer, so it counts with the references and the most is five', () => {
+  const refs = Array.from({ length: 3 }, (_, i) => `- \`design/home.png\`: part ${i}`).join('\n');
+  const links = Array.from({ length: 3 }, (_, i) => `- link: \`acme/api:src/f${i}.ts\`: file ${i}`).join('\n');
+  const body = `${GOOD}\n## Design reference\n\n${refs}\n\n## External inputs\n\n${links}\n`;
+  assert.match(checkIssueDraft({ title: 'Home', body, links: ['acme/api'] }).problems.join('\n'), /Design reference and the linked External inputs have 6 references together; the most Relevo takes is 5/);
 });

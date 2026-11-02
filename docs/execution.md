@@ -53,6 +53,14 @@ The gate writes a **receipt** under `.relevo-receipt/` in the working folder. Gi
 
 The receipt guards against an omission or a mistake: a reviewer cannot start on code whose checks did not run. It is not a defence against an agent that writes a false file; the guards of the commit remain the enforcement.
 
+## Checks before the agent
+
+The build job reads the issue before the agent starts and stops, without a model turn, when something it needs is plainly missing: a reference that could not be fetched, a file or variable declared under `External inputs` that is not there, or a path listed in the `installed:` key of the stack profile that the install step did not create. The issue returns to `needs-spec` (or `qa-failed` for the missing install) with a comment that names what is missing. The specification is checked again once it is written, before any code: a task that edits a protected path or adds a dependency the issue does not allow stops the run there.
+
+- **It is a step of the workflow that is new.** A project takes it by running `/relevo:init` (it updates the workflow in place) and raising `RELEVO_VERSION`. A workflow copied from an older version keeps working without the check.
+- **Dependencies need an install step.** Where the profile lists `installed:` paths, enable the install step for your stack in the workflow (the template has commented examples for Flutter and Laravel). Without it a run now stops early instead of letting QA fail late.
+- **It only saves work.** The checks never replace the guards that already exist; see [Security](security.md).
+
 ## Self-hosted runners
 
 The Relevo workflows run on `ubuntu-latest` unless `relevo.yml` names another runner. To use your own, list its labels:
@@ -97,6 +105,8 @@ The agent's code runs with the permissions of the runner's user, which on your o
 After each cloud run a comment gives the turns, the cost and the tokens that the agent runner's log reports (the cost is notional with a subscription). When the log does not have them nothing is posted. A run that stopped because the usage limit or the credit was reached says so and tells you to apply `ready` again later; any other failure keeps the generic comment with the link to the run.
 
 The same comment holds a hidden marker with those figures, which the daily digest adds up: it ends with a line such as `Usage, last 7 days: 3 runs, 35 turns, about $3.75, 1,350 tokens.` and says when the cost is notional (for all the runs, or `notional for 1 of 2 runs`). Only the runs of the last seven days that left a marker are counted. Runs made before your project raised `RELEVO_VERSION` to the release that writes the marker have none and are not counted, and the figures are never guessed from the text of the comment, so the line fills in during the first week. The digest still posts nothing when nobody is waiting, whatever the usage.
+
+The same marker also holds the seconds each phase of the build took (with the attempt of each QA cycle) and the class of the outcome: `built`, `inputs`, `policy`, `qa-non-fixable`, `qa-fixable-after-retries`, `conflict` or `other`. `/relevo:status` and the digest print a line such as `Outcomes, last 7 days: 4 built, 1 stopped for missing inputs; seconds per phase: development 1,200s, QA 400s; 2 without a phase record.` Runs made before your project raised `RELEVO_VERSION` have no phases or class and are counted as `without a phase record`. Nothing is stored for it; the line is read from the markers each time. The time of a phase is announced by the `go` skill, so the figures are as good as that announcement.
 
 ## How long each stage takes
 

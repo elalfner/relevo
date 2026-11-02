@@ -53,6 +53,14 @@ La puerta escribe un **recibo** en `.relevo-receipt/` dentro de la carpeta de tr
 
 El recibo protege contra una omisión o un error: un revisor no puede empezar sobre código cuyas comprobaciones no se ejecutaron. No es una defensa contra un agente que escribe un archivo falso; las barreras del commit siguen siendo las que obligan.
 
+## Comprobaciones antes del agente
+
+El job de construcción lee el issue antes de que empiece el agente y se detiene, sin gastar un turno del modelo, cuando falta algo que claramente necesita: una referencia que no se pudo descargar, un archivo o una variable declarados en `External inputs` que no están, o una ruta de la clave `installed:` del perfil del stack que el paso de instalación no creó. El issue vuelve a `needs-spec` (o a `qa-failed` si falta la instalación) con un comentario que dice qué falta. La especificación se revisa otra vez al escribirla, antes de cualquier código: una tarea que edita una ruta protegida o agrega una dependencia que el issue no permite detiene la ejecución ahí.
+
+- **Es un paso nuevo del workflow.** Un proyecto lo toma ejecutando `/relevo:init` (actualiza el workflow en su sitio) y subiendo `RELEVO_VERSION`. Un workflow copiado de una versión anterior sigue funcionando sin esta comprobación.
+- **Las dependencias necesitan un paso de instalación.** Donde el perfil lista rutas en `installed:`, activa en el workflow el paso de instalación de tu stack (la plantilla trae ejemplos comentados para Flutter y Laravel). Sin él, una ejecución ahora se detiene pronto en lugar de dejar que QA falle tarde.
+- **Solo ahorra trabajo.** Las comprobaciones nunca reemplazan las barreras que ya existen; ver [Seguridad](security.es.md).
+
 ## Runners self-hosted
 
 Los workflows de Relevo corren en `ubuntu-latest` salvo que `relevo.yml` nombre otro runner. Para usar el tuyo, lista sus etiquetas:
@@ -97,6 +105,8 @@ El código del agente corre con los permisos del usuario del runner, que en tu p
 Después de cada ejecución en la nube, un comentario da los turnos, el costo y los tokens que reporta el log del ejecutor del agente (el costo es nocional con una suscripción). Si el log no los tiene, no se publica nada. Una ejecución que se detuvo porque se alcanzó el límite de uso o el crédito lo dice y te indica volver a poner `ready` más tarde; cualquier otro fallo conserva el comentario genérico con el enlace a la ejecución.
 
 Ese mismo comentario lleva un marcador oculto con esas cifras, que el resumen diario suma: termina con una línea como `Uso, últimos 7 días: 3 ejecuciones, 35 turnos, unos $3.75, 1350 tokens.` y dice cuándo el costo es nocional (en todas las ejecuciones, o `nocional en 1 de 2 ejecuciones`). Solo cuentan las ejecuciones de los últimos siete días que dejaron marcador. Las hechas antes de que tu proyecto suba `RELEVO_VERSION` a la versión que escribe el marcador no lo tienen y no se cuentan, y las cifras nunca se deducen del texto del comentario, así que la línea se va llenando durante la primera semana. El resumen sigue sin publicarse cuando nadie espera nada, sea cual sea el uso.
+
+El mismo marcador guarda también los segundos que tardó cada fase del build (con el intento de cada ciclo de QA) y la clase del resultado: `built`, `inputs`, `policy`, `qa-non-fixable`, `qa-fixable-after-retries`, `conflict` u `other`. `/relevo:status` y el resumen diario imprimen una línea como `Resultados, últimos 7 días: 4 construidas, 1 detenidas por entradas faltantes; segundos por fase: desarrollo 1200s, QA 400s; 2 sin registro de fases.` Las ejecuciones hechas antes de que tu proyecto subiera `RELEVO_VERSION` no tienen fases ni clase y se cuentan como `sin registro de fases`. No se guarda nada para esto; la línea se lee de los marcadores cada vez. La fase la anuncia la skill `go`, así que las cifras valen lo que valga ese anuncio.
 
 ## Cuánto tarda cada etapa
 

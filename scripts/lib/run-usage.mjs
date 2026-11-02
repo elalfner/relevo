@@ -5,6 +5,8 @@
 // tolerant: a JSON array, JSON lines or a single object are accepted, the last entry that looks like a result is
 // used, and anything missing is simply left out. Nothing found means nothing is said, never an error.
 
+import { OUTCOME_CLASSES } from './phase-log.mjs';
+
 function entries(text) {
   const t = String(text ?? '').trim();
   if (!t) return [];
@@ -62,7 +64,7 @@ const MARKER_RE = /<!-- relevo:usage (\{[^\n]*?\}) -->/g;
 const FIGURES = ['turns', 'cost', 'tokens'];
 
 /** The marker for a comment, from the same result as the sentence, or an empty string when there is nothing to say. */
-export function usageMarker(usage, { subscription = false } = {}) {
+export function usageMarker(usage, { subscription = false, phases = null, outcomeClass = null } = {}) {
   if (!usage) return '';
   const figures = {};
   FIGURES.forEach((k) => {
@@ -71,6 +73,9 @@ export function usageMarker(usage, { subscription = false } = {}) {
   if (usage.cached) figures.cached = usage.cached;
   if (Object.keys(figures).length === 0) return '';
   figures.notional = Boolean(subscription);
+  // Where the time went and how the run ended. Readers that do not know these keys ignore them.
+  if (Array.isArray(phases) && phases.length) figures.phases = phases;
+  if (OUTCOME_CLASSES.includes(outcomeClass)) figures.class = outcomeClass;
   return `<!-- relevo:usage ${JSON.stringify(figures)} -->`;
 }
 
@@ -96,7 +101,32 @@ export function parseUsageMarker(comment) {
     if (num(data[k]) === null) return null;
     run[k] = data[k];
   }
+  // The phases and the class are read only when they are well formed; a malformed one is left out, not an error.
+  if (Array.isArray(data.phases)) {
+    const phases = data.phases.filter((p) => p && typeof p.name === 'string' && num(p.seconds) !== null && p.seconds >= 0);
+    if (phases.length === data.phases.length && phases.length) run.phases = phases.map((p) => ({ name: p.name, attempt: Number.isInteger(p.attempt) ? p.attempt : null, seconds: p.seconds }));
+  }
+  if (OUTCOME_CLASSES.includes(data.class)) run.class = data.class;
   return FIGURES.some((k) => run[k] !== undefined) ? run : null;
+}
+
+/**
+ * How the runs of a window ended and where their time went: { byClass, phaseSeconds, withRecord, withoutRecord }.
+ * A run without a class and without phases (a comment from before they existed) counts under `withoutRecord`.
+ */
+export function summarizeOutcomes(runs) {
+  const byClass = {};
+  const phaseSeconds = {};
+  let withRecord = 0;
+  runs.forEach((r) => {
+    if (!r.class && !r.phases) return;
+    withRecord += 1;
+    if (r.class) byClass[r.class] = (byClass[r.class] ?? 0) + 1;
+    (r.phases ?? []).forEach((p) => {
+      phaseSeconds[p.name] = (phaseSeconds[p.name] ?? 0) + p.seconds;
+    });
+  });
+  return { byClass, phaseSeconds, withRecord, withoutRecord: runs.length - withRecord };
 }
 
 /**

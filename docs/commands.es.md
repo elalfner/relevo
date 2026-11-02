@@ -7,7 +7,7 @@ Se distribuye como un plugin de Claude Code llamado `relevo`:
 | Comando | Qué hace |
 |---|---|
 | `/relevo:init` | Configura el repositorio (incluidas las [plataformas y sus stacks](stacks.es.md)), las etiquetas, la protección de ramas y los workflows (idempotente, muestra un plan primero) |
-| `/relevo:think` | Prepara el contexto antes de que exista un issue: ejecuta la skill `openspec-explore` y después la skill `grill-with-docs`, una tras otra, en la misma conversación. Las skills hacen el trabajo; `think` solo las encadena y pasa a `issue`. `grill-with-docs` está publicada de modo que solo tú puedes lanzarla, así que cuando toca, `think` te pide que ejecutes `/grill-with-docs` en la misma conversación. No escribe archivos: las entradas de glosario y los registros de decisión que se acuerdan viajan en la sección `Documentation` del issue, así nadie tiene que subirlos a mano |
+| `/relevo:think` | Prepara el contexto antes de que exista un issue: ejecuta la skill `openspec-explore` y después la skill `grill-with-docs`, una tras otra, en la misma conversación. Las skills hacen el trabajo; `think` solo las encadena y pasa a `issue`. `grill-with-docs` está publicada de modo que solo tú puedes lanzarla, así que cuando toca, `think` te pide que ejecutes `/grill-with-docs` en la misma conversación. No escribe nada en el repositorio (los únicos archivos que escribe son vistas previas en HTML, fuera de él, tras tu sí): las entradas de glosario y los registros de decisión que se acuerdan viajan en la sección `Documentation` del issue, así nadie tiene que subirlos a mano |
 | `/relevo:issue` | Convierte una idea en issues que pasan la comprobación de spec: pregunta solo lo que falta, comprueba, muestra y luego crea (nunca inicia una construcción). Con el número de un issue lo reescribe, solo mientras no esté en cola, en construcción ni construido |
 | `/relevo:go` | Construye un issue listo: comprobación de spec, construcción, QA con un reintento (se ejecuta solo en la nube). Verifica que el texto del issue sea el aprobado, rechaza las rutas protegidas y dice qué hacer cuando la rama ya existe |
 | `/relevo:review` | Revisión guiada en dispositivo: la persona maneja, el agente captura y audita los logs |
@@ -28,11 +28,26 @@ Sin argumentos. Mira el repositorio, propone las plataformas, los ajustes y los 
 
 ### `/relevo:think [idea or #issue]`
 
-Una idea, o el número de un issue que volvió con una pregunta abierta. Explora, después te entrevista, y termina con el acuerdo que `/relevo:issue` convierte en issues. No escribe ningún archivo.
+Una idea, o el número de un issue que volvió con una pregunta abierta. Explora, después te entrevista, y termina con el acuerdo que `/relevo:issue` convierte en issues. No escribe nada en el repositorio.
 
 ```text
 /relevo:think mostrar quién cumple años hoy en la pantalla de inicio
 /relevo:think #42
+```
+
+**Cuando la idea tiene algo que verás** (una pantalla, un formulario, una lista) y el proyecto tiene interfaz, `think` agrega un paso de interfaz entre la exploración y la entrevista. Lee tu sistema de diseño desde las rutas de `design.system` (o te pide confirmar las que encuentra), te muestra la tabla de tokens que leyó, pregunta solo lo de apariencia que la conversación no ha respondido y muestra dos o tres opciones como bocetos de texto con sus estados: cargando con y sin datos, vacío, error, ancho angosto, contenido largo. Cada elección queda registrada como una decisión con su razón y las opciones descartadas.
+
+Para un stack con interfaz web o móvil puede ofrecer después vistas previas en HTML de las finalistas. Pregunta antes, nombrando una carpeta fuera del repositorio, y no escribe nada sin un sí; los archivos nunca se suben al repositorio. Antes de que veas una vista previa, un script la abre en un navegador sin interfaz, sin conexión y sin scripts, y revisa desbordamiento, contraste del texto y tamaño de los objetivos táctiles. Una vista previa móvil es un boceto aproximado y etiquetado, no una captura de la app.
+
+```text
+Tú:     /relevo:think una pantalla que lista los pedidos del cliente
+Claude: Leí los tokens de lib/theme (12 colores, 2 sin resolver: el color primario viene de una semilla). ¿Cuál es tu color primario?
+Tú:     #1d4ed8
+Claude: Dos opciones para la recarga con filas en pantalla. A: dejar las filas y mostrar una barra fina … B: atenuar las filas y mostrar un indicador … (tabla de estados de cada una)
+Tú:     A
+Claude: Registrado D4: A, porque las filas siguen legibles; descartada B. ¿Escribo dos vistas previas en /tmp/relevo-previews/ (no se suben)?
+Tú:     sí
+Claude: Revisé ambas. Vista A: pasa. Vista B: falla (el botón mide 40 dp, necesita 48), corregida y revisada otra vez: pasa.
 ```
 
 ### `/relevo:issue [what to build, the path of a saved agreement, or the number of an issue to update]`
@@ -96,6 +111,8 @@ El número de un issue `pr-open` cuyo pull request aprobó alguien que no es el 
 Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cualquier construcción que dejó de reportar. Cuando falla una lectura de GitHub (por ejemplo un 403 en la variable del repositorio que pausa la nube), el informe dice cuál en "No se pudo leer" y que puede estar incompleto, y una respuesta vacía dice "Nada espera por ti. (con lo que se pudo leer)".
 
 El resumen diario que publica el workflow del resumen tiene el mismo contenido para el equipo, más una línea con el uso de las ejecuciones en la nube de los últimos siete días cuando dejaron un marcador de uso ([qué cuenta](execution.es.md#qué-reporta-una-ejecución-en-la-nube)). `/relevo:status` en sí no la muestra.
+
+`/relevo:status` y el resumen imprimen además, para las ejecuciones de los últimos siete días, cuántas terminaron en cada clase de resultado y los segundos de cada fase de un build, y dicen cuántas ejecuciones no tienen registro ([qué cuenta](execution.es.md#qué-reporta-una-ejecución-en-la-nube)). Para una rama que se atrasó respecto a la base, la alerta dice si mezclar la base tendría conflictos y en qué archivos; lo pregunta al clon donde se ejecuta, no cambia nada, y dice que no lo sabe cuando el git de ese clon no puede saberlo (requiere git 2.38 o posterior).
 
 El resumen termina además con el tiempo de cada etapa de un issue, como la mediana de las etapas que terminaron en los últimos siete días y cuántas fueron, por ejemplo `Etapas, últimos 7 días (mediana): puerta 13 s (4), construcción 6 min (3), esperando por ti 3 h (3), revisión en dispositivo 24 h (2)`. [Qué cuenta](execution.es.md#cuánto-tarda-cada-etapa).
 

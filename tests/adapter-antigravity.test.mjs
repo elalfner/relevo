@@ -24,7 +24,7 @@ test('Scenario: Rendering for Antigravity - a manifest, every skill, both agents
   for (const s of source.skills) assert.ok(paths.includes(`skills/${s.name}/SKILL.md`), `skill ${s.name}`);
   assert.ok(paths.includes('agents/relevo-dev.md') && paths.includes('agents/relevo-qa.md'));
   assert.ok(paths.includes('skills/issue/references/update.md'), 'the references of a skill travel with it');
-  assert.deepEqual(out.copy.dirs, ['scripts', 'stacks', 'templates']);
+  assert.deepEqual(out.copy.dirs, ['scripts', 'stacks', 'knowledge', 'templates']);
   const manifest = JSON.parse(file('plugin.json').content);
   assert.equal(manifest.name, 'relevo');
   assert.equal(manifest.version, source.version);

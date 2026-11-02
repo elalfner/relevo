@@ -46,6 +46,28 @@ test('qa output contract: first line is QA PASSED or QA REJECTED', () => {
   assert.match(body, /first line is exactly\*\* `QA PASSED` or `QA REJECTED`/);
 });
 
+test('Scenario: The agent resolves a conflict - dev has an integrate mode that keeps both sides, adds a test and changes nothing else', () => {
+  const { body } = load('dev');
+  assert.match(body, /\*\*integrate\*\* \(resolve the conflicts of a merge of the base branch into the branch, nothing else\)/);
+  assert.match(body, /^## Integrate mode$/m);
+  assert.match(body, /keep the behaviour of both sides/);
+  assert.match(body, /remove every conflict marker/);
+  assert.match(body, /add a test that fails if either side is lost where the platform allows one/);
+  assert.match(body, /A conflict in a lock file or a generated file is not resolved by hand/);
+  assert.match(body, /if you cannot keep both behaviours, resolve nothing in that file/);
+  assert.match(body, /You do not run `git add`, `git merge --abort`/);
+  assert.match(body, /Mode: build \| fix \| integrate/);
+  assert.match(body, /Conflicts resolved \(integrate mode\)/);
+});
+
+test('qa gives each finding a class: fixable, input, spec or policy (spec: Each QA finding carries a class)', () => {
+  const { body } = load('qa');
+  assert.match(body, /Class: <class>/);
+  ['fixable', 'input', 'spec', 'policy'].forEach((c) => assert.ok(body.includes('- `' + c + '`:'), `qa must define the class ${c}`));
+  assert.match(body, /treated as `fixable`/, 'a finding without a class must count as fixable');
+  assert.match(body, /first line is exactly/, 'the first line contract must remain');
+});
+
 test('qa never passes code it could not check (spec: Validation tooling missing)', () => {
   const { body } = load('qa');
   assert.match(body, /automated validation could not run/);
@@ -306,4 +328,19 @@ test('Scenario: every part of the old QA protocol has exactly one owner among th
 test('the spec lens reads no stack section, and the security lens works without one', () => {
   assert.match(load('qa-spec').body, /You are given no stack section/);
   assert.match(load('qa-security').body, /Without it, use the generic categories below/);
+});
+
+test('Scenario: the developer agent follows the interface rules it is given and no others', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  assert.match(dev, /the interface rules for you/);
+  assert.match(dev, /"build it like this" line and examples of your stack/);
+  assert.match(dev, /The rules the orchestrator did not give you do not apply/);
+});
+
+test('Scenario: QA rejects on a blocking interface rule only with evidence, and lists the rest for the person', () => {
+  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  assert.match(qa, /Reject on a \*\*blocking\*\* rule only with evidence/);
+  assert.match(qa, /advisory, or whose check is `person`, is never a rejection: list it under "left for on-device review"/);
+  assert.match(qa, /Say how many rules were left out/);
+  assert.match(qa, /Treat a mobile sketch in the issue like an image reference/);
 });

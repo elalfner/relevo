@@ -2,6 +2,8 @@
 // The progress of a cloud build, for the comment on the issue. Implements the progress requirements of the go specification.
 //   node scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt n] [--of m]
 //       announces the phase that `go` enters; used by the go skill
+//   node scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
+//       records how the run ended, for the usage record; used by the go skill
 //   node scripts/progress.mjs watch --issue n --decision <base64> --max-minutes n [--repo owner/name] [--config relevo.yml]
 //       the loop of the workflow: every 30 seconds it edits the one progress comment; ends by itself
 //   node scripts/progress.mjs stop [--wait seconds]
@@ -22,6 +24,7 @@ import {
   INTERVAL_MS, PHASES, closeProgress, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
 } from './lib/progress.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { OUTCOME_CLASSES, recordPhase, writeClass } from './lib/phase-log.mjs';
 
 const args = process.argv.slice(3);
 const arg = (name) => {
@@ -76,6 +79,14 @@ async function main(command) {
     if (!PHASES.includes(phase)) return fail(`unknown phase "${phase}"`);
     const whole = (v) => (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
     writeFileAtomic(join(dir, 'phase.json'), JSON.stringify({ phase, attempt: whole(arg('attempt')), of: whole(arg('of')) }));
+    // The moment each phase begins, for the seconds of the usage record.
+    recordPhase(dir, { phase, attempt: whole(arg('attempt')), of: whole(arg('of')) });
+    return;
+  }
+
+  if (command === 'class') {
+    if (!OUTCOME_CLASSES.includes(args[0])) return fail(`unknown class "${args[0]}"`);
+    writeClass(dir, args[0]);
     return;
   }
 

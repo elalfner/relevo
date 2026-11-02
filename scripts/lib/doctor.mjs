@@ -10,6 +10,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { mergeRepositoryRules } from './interface-knowledge.mjs';
 import { QA_LENSES, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
@@ -293,6 +294,9 @@ export function gatherFacts(p) {
     if (STALE_QA_RE.test(text)) stale.push(file);
   });
   f.staleQaReferences = stale;
+  // The design system and the rules a repository adds for the interface (interface-decisions-upfront).
+  f.designSystemMissing = ['tokens', 'components', 'references'].flatMap((key) => (f.config?.design?.system?.[key] ?? []).filter((entry) => !p.exists(entry)).map((entry) => ({ key, entry })));
+  f.interfaceFile = p.exists('.relevo/interface.json') ? tryRun(() => p.read('.relevo/interface.json'), null) : null;
 
   gatherPlatforms(f, p, tryRun);
 
@@ -575,6 +579,11 @@ function gatherPlatforms(f, p, tryRun) {
       }
     }
     f.platformFacts.push(entry);
+  });
+  // A platform with an interface needs a browser automation library for the preview check of `think`; its absence is only a note.
+  f.interfaceBrowser = {};
+  f.platformFacts.filter((e) => e.profile?.interface && e.profile.interface !== 'none').forEach((e) => {
+    f.interfaceBrowser[e.name] = playwrightFacts(e.path, { tool: p.tool, exists: p.exists }).playwright;
   });
 
   // The skills a stack works better with: only for a stack that has a recommendation, and only when a platform uses it.
@@ -996,6 +1005,8 @@ export function runChecks(f) {
   r.push(...pluginInstallChecks(f));
   r.push(...toolchainChecks(f));
   r.push(...lensChecks(f));
+  r.push(...interfaceChecks(f));
+  r.push(...installStepChecks(f));
   r.push(...runnerChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
@@ -1088,8 +1099,51 @@ function lensChecks(f) {
   return r;
 }
 
+/** The design system paths, the rules file of the repository and the browser for the previews. Never a failure for the browser. */
+function interfaceChecks(f) {
+  const r = [];
+  (f.designSystemMissing ?? []).forEach(({ key, entry }) => r.push(fail(`interface.design-system.${key}`, `design.system.${key} points to "${entry}", which does not exist`, 'fix the path in relevo.yml or create the folder')));
+  if (f.interfaceFile != null) {
+    const merged = mergeRepositoryRules(JSON.parse(readFileSync(resolve(PLUGIN_ROOT, 'knowledge/interface/rules.json'), 'utf8')).rules, f.interfaceFile);
+    if (merged.problems.length === 0 && merged.attempts.length === 0) r.push(pass('interface.rules-file', `.relevo/interface.json is valid and adds ${merged.added.length} rule${merged.added.length === 1 ? '' : 's'}`));
+    merged.problems.forEach((x) => r.push(fail('interface.rules-file', `.relevo/interface.json${x.id ? ` rule "${x.id}"` : ''}: ${x.problems.join('; ')}`, 'fix the file; a rule needs every field of knowledge/interface/rules.json')));
+    merged.attempts.forEach((x) => r.push(warn('interface.rules-file', `.relevo/interface.json rule "${x.id}" ${x.attempt}; the rule of the plugin is kept`, 'write a project exception in the rules file that QA reads (qa.rules_from) instead')));
+  }
+  Object.entries(f.interfaceBrowser ?? {}).forEach(([name, ok]) => {
+    if (!ok) r.push(warn(`interface.browser.${name}`, `platform ${name} has an interface, but no browser automation library resolves from it, so the previews of the interface step cannot be checked (a check that does not run is reported as not checked)`, `optional: ${'`npm install -D playwright && npx playwright install chromium`'} in the platform folder`));
+  });
+  return r;
+}
+
 // The tools that the build job already has: it installs Node for Relevo itself.
 const NODE_TOOLS = ['node', 'npm'];
+
+// The commands that install the dependencies of a stack. A stack that is not listed is judged by any of them.
+const INSTALL_COMMANDS = {
+  vue: /\b(?:npm\s+(?:ci|install|i)|pnpm\s+(?:install|i)|yarn(?:\s+install)?|bun\s+install)\b/,
+  laravel: /\bcomposer\s+(?:install|update)\b/,
+  flutter: /\b(?:flutter|dart)\s+pub\s+get\b/,
+};
+const ANY_INSTALL = new RegExp([...Object.values(INSTALL_COMMANDS)].map((re) => re.source).join('|'));
+
+/**
+ * When a profile lists the paths that exist once the dependencies are installed, does the build job of the go workflow
+ * have an active step that installs them? Without one the build stops before the agent, so this is a warning that names
+ * the platform and what to enable. Nothing is said when the profile lists no paths, when the step is there, or when the
+ * go workflow is not installed. Only active lines count: a commented example installs nothing.
+ */
+function installStepChecks(f) {
+  const go = f.workflows?.['relevo-go.yml'];
+  if (!go?.present || typeof go.text !== 'string') return [];
+  // An install into another folder (the steps that install OpenSpec and the Relevo scripts) puts nothing in the folder of the platform.
+  const active = go.text.split('\n').filter((l) => !/^\s*#/.test(l) && !/--global|\s-g\b|--prefix|RUNNER_TEMP/.test(l)).join('\n');
+  return (f.platformFacts ?? []).filter((e) => (e.profile?.installed ?? []).length > 0)
+    .filter((e) => !(INSTALL_COMMANDS[e.stack] ?? ANY_INSTALL).test(active))
+    .map((e) => {
+      const guard = `needs.decide.outputs.stack == '${e.stack}'`;
+      return warn(`automation.install.${e.name}`, `the go workflow has no active step that installs the dependencies of platform ${e.name} (${e.stack}), and its profile expects ${e.profile.installed.join(', ')} before the agent starts, so every cloud build would stop there`, `enable an install step in the build job of relevo-go.yml, guarded by ${guard} and run from the folder of the platform (${e.path ?? '.'}), for example npm ci --ignore-scripts; the template has the example commented`);
+    });
+}
 
 const HOSTED_RUNNER = ['ubuntu-latest'];
 

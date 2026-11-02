@@ -475,3 +475,44 @@ test('Scenario: the four shipped stacks have a Security review and a Security fo
     assert.doesNotMatch(profile.body, /## Security review/, stack);
   }
 });
+
+test('the interface key: a kind, none without the key, and a stack of the repository can declare its own', () => {
+  assert.equal(parseProfile(header()).profile.interface, 'none');
+  assert.equal(parseProfile(header('interface: web\n')).profile.interface, 'web');
+  assert.equal(parseProfile(header('interface: mobile\n')).profile.interface, 'mobile');
+  assert.match(parseProfile(header('interface: desktop\n')).errors.join(' '), /"interface" must be one of/);
+  const plugin = parseProfile(header('interface: web\n')).profile;
+  const repository = parseProfile(header('interface: mobile\n')).profile;
+  assert.equal(mergeProfiles(plugin, repository).interface, 'web');
+  assert.equal(mergeProfiles(plugin, repository).ignored.some((i) => i.key === 'interface'), true);
+  assert.equal(mergeProfiles(parseProfile(header()).profile, repository).interface, 'mobile');
+});
+
+test('the shipped profiles declare the interface kind of their stack', () => {
+  const kind = (s) => parseProfile(readFileSync(`${PLUGIN_ROOT}/stacks/${s}.md`, 'utf8')).profile.interface;
+  assert.deepEqual(['flutter', 'vue', 'laravel', 'supabase'].map(kind), ['mobile', 'web', 'web', 'none']);
+});
+
+// --- installed paths (spec: a profile can list the paths that exist once its dependencies are installed)
+test('Scenario: A repository adds a path - the resolved profile has the plugin paths followed by the added one', () => {
+  const base = parseProfile(`${header('installed: [node_modules]\n')}\nPlugin body.\n`).profile;
+  assert.deepEqual(base.installed, ['node_modules']);
+  const repo = parseProfile('---\nstack: vue\ninstalled: [".nuxt/tsconfig.json"]\n---\n').profile;
+  assert.deepEqual(mergeProfiles(base, repo).installed, ['node_modules', '.nuxt/tsconfig.json']);
+});
+
+test('Scenario: A repository cannot remove a path - an empty list or a repeated path leaves the plugin paths in place', () => {
+  const base = parseProfile(`${header('installed: [node_modules, vendor]\n')}\nPlugin body.\n`).profile;
+  assert.deepEqual(mergeProfiles(base, parseProfile('---\nstack: vue\ninstalled: []\n---\n').profile).installed, ['node_modules', 'vendor']);
+  assert.deepEqual(mergeProfiles(base, parseProfile('---\nstack: vue\ninstalled: [vendor]\n---\n').profile).installed, ['node_modules', 'vendor']);
+});
+
+test('Scenario: A stack with no installed dependencies - the profile lists none', () => {
+  assert.deepEqual(plugin.installed, []);
+});
+
+test('a path of installed stays inside the folder of the platform, and the list is a list of names', () => {
+  assert.match(parseProfile('---\nstack: vue\ninstalled: [/etc]\n---\n').errors.join(' '), /"installed" lists "\/etc", which is not a path inside the folder of the platform/);
+  assert.match(parseProfile('---\nstack: vue\ninstalled: [../x]\n---\n').errors.join(' '), /not a path inside the folder of the platform/);
+  assert.match(parseProfile('---\nstack: vue\ninstalled: x\n---\n').errors.join(' '), /"installed" must be a list of names/);
+});

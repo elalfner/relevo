@@ -8,7 +8,9 @@ import { parse, YamlLiteError } from './yaml-lite.mjs';
 import { isRestricted } from './restricted-paths.mjs';
 
 export const ROLES = ['dev', 'qa', 'issue', 'review'];
-const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review']);
+const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'installed', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review', 'interface']);
+// The kind of interface a stack builds, for the interface rules: none when the key is missing.
+export const INTERFACE_KINDS = ['mobile', 'web', 'none'];
 const REVIEW_KEYS = new Set(['log', 'test', 'serve']);
 const SERVE_KEYS = new Set(['command', 'url', 'env']);
 // A server the agent starts is reached on this machine only.
@@ -26,11 +28,14 @@ const emptyProfile = (stack) => ({
   commands: {},
   generated: [],
   tools: [],
+  // Paths, relative to the folder of the platform, that exist once the dependencies are installed.
+  installed: [],
   requires_skills: [],
   skills: Object.fromEntries(ROLES.map((r) => [r, []])),
   skillsDisable: [],
   skillsWhenInstalled: Object.fromEntries(ROLES.map((r) => [r, []])),
   targets: {},
+  interface: 'none',
   review: {},
   securityReview: '',
   body: '',
@@ -176,14 +181,19 @@ export function parseProfile(text) {
     if (!isMap(raw.commands) || Object.values(raw.commands).some((v) => typeof v !== 'string' || v.trim() === '')) errors.push('"commands" must map a name to a command');
     else profile.commands = { ...raw.commands };
   }
-  ['generated', 'tools', 'requires_skills'].forEach((key) => {
+  ['generated', 'tools', 'installed', 'requires_skills'].forEach((key) => {
     if (raw[key] === undefined) return;
     if (!isStringList(raw[key])) errors.push(`"${key}" must be a list of names`);
     else profile[key] = unique(raw[key]);
   });
   // A profile only adds, and it cannot weaken the list of restricted files: a path it names for the agents to treat or
   // read (generated files, the review log) is never one of them.
+  profile.installed.filter((entry) => entry.startsWith('/') || /^[A-Za-z]:[\\/]/.test(entry) || entry.split(/[\\/]/).includes('..')).forEach((entry) => errors.push(`"installed" lists "${entry}", which is not a path inside the folder of the platform`));
   profile.generated.filter((entry) => isRestricted(entry)).forEach((entry) => errors.push(`"generated" lists "${entry}", a restricted file: the base list cannot be reduced by a profile`));
+  if (raw.interface !== undefined) {
+    if (!INTERFACE_KINDS.includes(raw.interface)) errors.push(`"interface" must be one of: ${INTERFACE_KINDS.join(', ')}`);
+    else profile.interface = raw.interface;
+  }
   if (raw.skills !== undefined) {
     if (!isMap(raw.skills)) errors.push('"skills" must map a role to a list of skill names');
     else {
@@ -257,7 +267,7 @@ export function mergeProfiles(plugin, repository) {
     if (key in plugin.review && JSON.stringify(plugin.review[key]) !== JSON.stringify(value)) reviewReplaced.push(`review.${key}`);
     out.review[key] = value;
   });
-  ['generated', 'tools', 'requires_skills'].forEach((key) => { out[key] = unique([...plugin[key], ...repository[key]]); });
+  ['generated', 'tools', 'installed', 'requires_skills'].forEach((key) => { out[key] = unique([...plugin[key], ...repository[key]]); });
   ROLES.forEach((role) => { out.skills[role] = unique([...plugin.skills[role], ...repository.skills[role]]); });
   ROLES.forEach((role) => { out.skillsWhenInstalled[role] = unique([...plugin.skillsWhenInstalled[role], ...repository.skillsWhenInstalled[role]]); });
   // The repository may switch off a skill of the plugin by name, never a required one.
@@ -283,6 +293,8 @@ export function mergeProfiles(plugin, repository) {
       else if (plugin[key][name] !== value) ignored.push({ key: `${key}.${name}`, value, kept: plugin[key][name] });
     });
   });
+  if (plugin.interface === 'none' && repository.interface !== 'none') out.interface = repository.interface;
+  else if (repository.interface !== 'none' && repository.interface !== plugin.interface) ignored.push({ key: 'interface', value: repository.interface, kept: plugin.interface });
   out.body = [plugin.body, repository.body].filter(Boolean).join('\n\n');
   out.questions = [plugin.questions, repository.questions].filter(Boolean).join('\n\n');
   out.reviewBody = [plugin.reviewBody, repository.reviewBody].filter(Boolean).join('\n\n');

@@ -28,10 +28,13 @@ A profile is the file `stacks/<stack>.md` of the plugin. Its header is read by s
 - The commands that verify the code: `analyze`, `test` and `format`.
 - The generated files that are left out of the diff QA reviews.
 - The tools the stack needs, and the tool each target needs (for Flutter: `adb` for Android, `xcrun` for iOS, which runs only on macOS, and nothing for the web).
+- The paths that exist once its dependencies are installed (`installed`): Vue lists `node_modules`, Laravel `vendor` and Flutter `.dart_tool/package_config.json`, and Supabase lists none. The build job checks them before the agent starts and stops, without spending a model turn, when one is missing (see [Installing the dependencies](#installing-the-dependencies-before-the-agent)). A profile of your repository adds paths and never removes one.
 - The skills it requires and the extra skills for each role.
 - A text with the hygiene the developer follows and what QA looks for in the diff.
 
 Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:go` resolves the profile of your platform and hands it to the developer and QA agents.
+
+The header can also say which kind of interface the stack builds with `interface: web`, `interface: mobile` or `interface: none`. Without the key the stack has none, and no interface rule is given to its agents. Flutter is `mobile` (and gets the rules for `web` too when a platform lists the `web` target), Vue and Laravel are `web`, Supabase is `none`. A stack you write yourself under `.relevo/stacks/<stack>.md` declares its own with the same key. The rules and how an agent receives them are under `knowledge/interface/`; a project adds its own rules in `.relevo/interface.json`, which can add rules and examples and never remove or lower one of the plugin (`/relevo:doctor` validates it and reports an attempt).
 
 ## The profiles Relevo ships
 
@@ -150,6 +153,29 @@ The two security sections are optional. A stack without them works from the firs
 
 The four shipped stacks have both sections, and every item names the official page it comes from and the date it was read (2 November 2026): Supabase (row level security, the secret key, views, functions, storage policies), Laravel (mass assignment, policies, raw queries, unescaped output, uploads, CSRF), Vue (untrusted templates, `v-html`, URLs, styles, CSRF) and Flutter (SDK and dependencies, logging, cleartext traffic, deep links, the platform keystore). Where the official documentation of a stack says nothing about a topic, there is no item for it rather than one without a source: for Vue that means where tokens are stored, messages between windows and third-party scripts, and for Flutter the platform channels. The security reviewer still looks at those through its generic categories. Read the pages again before relying on an item: documentation changes.
 
+## Reading the design tokens
+
+For a stack with an interface, `node scripts/design-tokens.mjs` reads the colours, text styles, spacing and radii of your design system from its code and prints each with the file and line it came from. The interface step of `think` shows you that table before it draws anything.
+
+- **It reads only the paths you declared** under `design.system.tokens` in `relevo.yml`, or the ones you confirmed when it listed what it found by convention (a styling tool configuration, a stylesheet with custom properties on the root, a Dart file named after a theme). It never reads the rest of the repository, never opens a restricted file (it says which it skipped), runs none of your code and uses no network.
+- **Dart:** colour literals, constants followed to their definition, a colour scheme written with explicit colours, the shades of the standard palette from a fixed table, an opacity on a known colour (marked as derived), classes that extend the theme, text styles, spacing and radius constants, and a dark theme as a second set.
+- **Web:** custom properties on the root and in a dark-mode block (a property that refers to another is resolved), and the literal colour, spacing and radius scales of the styling tool configuration.
+- **Never guessed:** a colour scheme derived from a seed, a colour that comes from the device or a server, a swatch that is not in the fixed table, and a reference it cannot follow are listed as unresolved with their file and line. `think` asks you for those colours instead of inventing them.
+- **Several brands or flavours** are listed as separate sets and never merged: you choose one.
+
+## Design skills that were evaluated
+
+Relevo does not install a design skill and recommends none by default. Four public ones were read on 2 November 2026 to see what each would add; each can be added to a role with the mechanism of [Extra skills per role](#extra-skills-per-role), and `/relevo:init` installs none of them. "Cost" is the size of the file the agent loads when the skill is active, at about four characters per token.
+
+| Skill | Licence it states | What it is for | Fit for a role | Cost when loaded |
+|---|---|---|---|---|
+| `frontend-design` (the `anthropics/skills` collection) | Apache-2.0 | Art direction for a distinctive web interface | `dev`, for a new page where a look is wanted; it pushes for a strong visual identity, so it can conflict with an existing design system | about 9 KB (2,300 tokens) |
+| Taste (`Leonxlnx/taste-skill`) | MIT | Art direction for websites distilled from a study of gallery sites | `dev` for a landing page or marketing site; not for an application with its own system | about 40 KB (10,000 tokens) |
+| Hallmark (`Nutlope/hallmark`) | MIT | A design skill for new websites and pages, with redesign and audit modes | `dev` for a new site; it says to avoid an existing design unless named | about 18 KB (4,500 tokens) |
+| UI UX Pro Max (`nextlevelbuilder/ui-ux-pro-max-skill`) | MIT | A searchable body of UI and UX guidelines, styles, palettes and stack notes | The source of Relevo's own [interface rules](../knowledge/interface/CURATION.md); the skill itself adds a large data set | a skill file of about 16 KB (4,000 tokens) plus data files of about 3 MB, searched by a script |
+
+What follows from the reading: the three that give a look are for new sites, and a project with a design system wants the opposite (reuse its tokens and components), which is what the interface step does. Relevo's own rules come from the fourth and are loaded by role and budget, not whole. Read the current licence and the file you would add before you do; these are third-party works that change.
+
 ## Your own stack
 
 Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any other stack (Go, Python, Rust...) you write the profile yourself, and the file is the whole profile:
@@ -191,9 +217,23 @@ Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any ot
        go-version-file: ${{ needs.decide.outputs.path }}/go.mod
    ```
 
-   Install the dependencies in the way your project prefers, from `needs.decide.outputs.path`.
+   Install the dependencies in the way your project prefers, from `needs.decide.outputs.path`. If your profile lists `installed:` (the paths that exist afterwards, relative to the folder of the platform), the build stops before the agent when one is missing, and `/relevo:doctor` warns when no step installs the dependencies.
 
 `/relevo:doctor` warns when the profile of such a stack has no `analyze` or no `test`, and when the go workflow has no step guarded by the name of the stack (it does not warn for a stack whose tools are only `node` and `npm`, because the job already installs Node). It also warns while the file is not tracked by git.
+
+## Installing the dependencies before the agent
+
+The agent and QA run the commands of the profile, and they need the dependencies of the project to exist. The template does not install them, because the package manager and the lock file vary: add the step of your stack to the build job of `.github/workflows/relevo-go.yml`, guarded by the name of the stack and run from the folder of the platform. The template shows it, commented out, for each stack:
+
+```yaml
+- if: needs.decide.outputs.stack == 'vue'
+  working-directory: ${{ needs.decide.outputs.path }}
+  run: npm ci --ignore-scripts
+```
+
+- Install without the scripts of the packages where the tool allows it (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` runs none.
+- The step "Check the toolchain" looks, once the tools are there, for each path that the profile lists under `installed`. When one is missing the issue becomes `relevo:qa-failed`, the comment names the path and says to enable the install step, and no model turn is spent.
+- `/relevo:doctor` warns, for each platform whose profile lists `installed`, when the go workflow has no active step that installs its dependencies. A commented example, and an install into another folder (the steps that install OpenSpec and the Relevo scripts), do not count.
 
 ## Extra skills per role
 

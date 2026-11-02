@@ -5,7 +5,7 @@
 import { antigravityToolsOf } from './tools.mjs';
 
 export const PLUGIN_NAME = 'relevo';
-export const COPIED_DIRS = ['scripts', 'stacks', 'templates'];
+export const COPIED_DIRS = ['scripts', 'stacks', 'knowledge', 'templates'];
 export const COPIED_FILES = ['LICENSE', 'NOTICE'];
 
 // The skill `go` tells the agent to wait for each subagent. In Antigravity the call returns at once and the result

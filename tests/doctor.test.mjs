@@ -1055,6 +1055,50 @@ test('Scenario: A toolchain that is only a comment - it counts as missing; the c
   assert.equal(toolchain(withGo('steps:\n  - uses: subosito/flutter-action@v2\n')).status, 'pass', 'a project that installs it its own way, unguarded, passes');
 });
 
+// --- the install step (spec: init-doctor, "`doctor` warns when the dependencies are never installed")
+const readPlugin = (path) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
+const vuePlatform = (name = 'web') => ({ ...flutterPlatform({ name }), stack: 'vue', profile: resolveProfile({ platform: { stack: 'vue' }, pluginRoot: PLUGIN_ROOT, read: readPlugin }).profile });
+const installWarning = (over, name = 'app') => runChecks(over).find((r) => r.id === `automation.install.${name}`);
+
+test('Scenario: A workflow without an install step - a Vue platform gets a warning that names the platform and the step', () => {
+  assert.deepEqual(vuePlatform().profile.installed, ['node_modules']);
+  const warning = installWarning(withGo(GO_TEMPLATE, [vuePlatform()]), 'web');
+  assert.equal(warning.status, 'warn');
+  assert.match(warning.message, /no active step that installs the dependencies of platform web \(vue\).*node_modules.*every cloud build would stop there/);
+  assert.match(warning.fix, /guarded by needs\.decide\.outputs\.stack == 'vue'.*npm ci --ignore-scripts/);
+});
+
+test('Scenario: A workflow with the step - doctor says nothing about it, and a commented example does not count', () => {
+  const active = GO_TEMPLATE.replace('      # Install dependencies without package scripts', "      - if: needs.decide.outputs.stack == 'vue'\n        run: npm ci --ignore-scripts\n      # Install dependencies without package scripts");
+  assert.equal(installWarning(withGo(active, [vuePlatform()]), 'web'), undefined);
+  assert.equal(installWarning(withGo(GO_TEMPLATE, [vuePlatform()]), 'web').status, 'warn', 'the commented example in the template installs nothing');
+});
+
+test('the template leaves the install step to the project, shows how for each stack, and doctor warns until it is enabled', () => {
+  assert.equal(installWarning(withGo(GO_TEMPLATE)).status, 'warn', 'a Flutter platform is warned about until the step is active');
+  assert.match(GO_TEMPLATE, /#\s+run: flutter pub get/);
+  assert.match(GO_TEMPLATE, /#\s+run: composer install --no-scripts/);
+  const active = GO_TEMPLATE.replace(/^ {6}# {3}(- if: needs\.decide\.outputs\.stack == 'flutter')\n {6}# {5}(working-directory[^\n]*)\n {6}# {5}(run: flutter pub get)/m, '      $1\n        $2\n        $3');
+  assert.notEqual(active, GO_TEMPLATE, 'the fixture activates the Flutter example');
+  assert.equal(installWarning(withGo(active)), undefined);
+});
+
+test('Scenario: A stack that lists no paths - doctor makes no check', () => {
+  const noPaths = { ...vuePlatform(), profile: { ...vuePlatform().profile, installed: [] } };
+  assert.equal(installWarning(withGo(GO_TEMPLATE, [noPaths]), 'web'), undefined);
+});
+
+test('a global install is not an install of the dependencies of the platform', () => {
+  assert.equal(installWarning(withGo('steps:\n  - run: npm install --global @fission-ai/openspec\n', [vuePlatform()]), 'web').status, 'warn');
+  assert.equal(installWarning(withGo('steps:\n  - run: npm ci --ignore-scripts\n', [vuePlatform()]), 'web'), undefined);
+});
+
+test('a project that builds on machines only, or has no workflow text, gets no install warning', () => {
+  const none = healthy({ platformFacts: [vuePlatform()], workflows: { ...healthy().workflows, 'relevo-go.yml': { present: false, enabled: null } } });
+  assert.equal(installWarning(none, 'web'), undefined);
+  assert.equal(installWarning(healthy({ platformFacts: [vuePlatform()] }), 'web'), undefined);
+});
+
 test('Scenario: A project that builds on machines only - nothing is said about the toolchain', () => {
   const none = healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: false, enabled: null } } });
   assert.deepEqual(runChecks(none).filter((r) => r.id.startsWith('automation.toolchain')), []);
@@ -1564,6 +1608,16 @@ test('Scenario: A workflow with no stamp - the warning says the age of its text 
 test('Scenario: Text and pin agree - the check passes', () => {
   const w = textOf({ pluginPins: { 'relevo-go.yml': '0.8.0' }, pluginStamps: { 'relevo-go.yml': '0.8.0' } });
   assert.equal(w.status, 'pass');
+});
+
+test('Scenario: An older workflow - the text of the 0.12.0 template, which has no check before the agent, is a warning and never a failure', () => {
+  const old = readFileSync(new URL('./fixtures/workflows/relevo-go-0.12.0.yml', import.meta.url), 'utf8');
+  assert.ok(!old.includes('Check the issue before the agent'), 'the fixture is the template from before the check');
+  const stamp = (/^# relevo-template: (\d+\.\d+\.\d+)\s*$/m.exec(old) ?? [])[1];
+  assert.equal(stamp, '0.12.0');
+  const res = runChecks(healthy({ pluginPins: { 'relevo-go.yml': '0.13.0' }, pluginStamps: { 'relevo-go.yml': stamp } }));
+  assert.equal(res.find((r) => r.id === 'automation.workflow-text').status, 'warn', 'the doctor says the text is older than the scripts it runs');
+  assert.equal(exitCode(res), 0, 'and does not fail');
 });
 
 test('a stamp ahead of the pin is not a problem, and several files with the same fault are one result', () => {
@@ -2149,4 +2203,36 @@ test('Scenario: A stale reference - a file that still names relevo:qa is reporte
   assert.equal(byId(wf, 'qa.stale-reference.relevo-go.yml').status, 'warn');
   const fine = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'relevo:qa-code relevo:qa-spec' } } }));
   assert.equal(byId(fine, 'qa.stale-reference.relevo-go.yml'), undefined);
+});
+
+// ---- the interface (interface-decisions-upfront)
+test('Scenario: design.system points to a path that does not exist - a failure that names the key and the path', () => {
+  const r = runChecks(healthy({ designSystemMissing: [{ key: 'tokens', entry: 'lib/theme' }] }));
+  const check = byId(r, 'interface.design-system.tokens');
+  assert.equal(check.status, 'fail');
+  assert.match(check.message, /design\.system\.tokens points to "lib\/theme"/);
+  assert.equal(byId(runChecks(healthy({ designSystemMissing: [] })), 'interface.design-system.tokens'), undefined);
+});
+
+const ruleOf = (over = {}) => ({ id: 'brand-logo', category: 'brand', title: 'Logo', principle: 'p', applies: 'all', weight: 'advisory', check: 'person', core: false, touches: ['images'], ask: 'q', build: 'b', review: 'r', examples: [], source: { work: 'this project', numbers: [] }, ...over });
+
+test('Scenario: .relevo/interface.json - valid, with a missing field, or trying to lower a rule', () => {
+  const file = (rules) => JSON.stringify({ rules });
+  assert.equal(byId(runChecks(healthy({ interfaceFile: file([ruleOf()]) })), 'interface.rules-file').status, 'pass');
+  const missing = ruleOf();
+  delete missing.review;
+  const bad = runChecks(healthy({ interfaceFile: file([missing]) })).filter((x) => x.id === 'interface.rules-file');
+  assert.equal(bad[0].status, 'fail');
+  assert.match(bad[0].message, /lacks "review"/);
+  const lowered = runChecks(healthy({ interfaceFile: file([ruleOf({ id: 'color-contrast', weight: 'advisory', applies: 'all', core: true, category: 'accessibility' })]) })).filter((x) => x.id === 'interface.rules-file');
+  assert.equal(lowered[0].status, 'warn');
+  assert.match(lowered[0].message, /lowers the weight/);
+  assert.equal(byId(runChecks(healthy({ interfaceFile: '{nope' })), 'interface.rules-file').status, 'fail');
+  assert.equal(byId(runChecks(healthy({ interfaceFile: null })), 'interface.rules-file'), undefined);
+});
+
+test('Scenario: a platform with an interface and no browser automation - a note, never a failure', () => {
+  const r = runChecks(healthy({ interfaceBrowser: { app: false } }));
+  assert.equal(byId(r, 'interface.browser.app').status, 'warn');
+  assert.equal(byId(runChecks(healthy({ interfaceBrowser: { app: true } })), 'interface.browser.app'), undefined);
 });

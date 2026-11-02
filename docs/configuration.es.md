@@ -45,6 +45,9 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `digest.issue` | número del issue donde se publica el resumen diario como comentario | ninguno |
 | `language` | idioma de los mensajes de traspaso (`en`, `es`) | `en` |
 | `design.images` | `true` descarga una imagen pegada en un issue y se la muestra al modelo (una captura puede mostrar datos de clientes); los archivos que ya están en el repositorio no dependen de esto | `false` |
+| `design.system.tokens` | Archivos o carpetas dentro del repositorio con los colores, espacios y estilos de texto (un archivo de tema, un CSS de variables). El paso de interfaz de `think` lee solo estas rutas, o las que confirmes. Cada una debe existir y no ser restringida ni protegida | `[]` |
+| `design.system.components` | Carpetas con los componentes reutilizables que una pantalla nueva debe usar | `[]` |
+| `design.system.references` | Carpetas dentro del repositorio con capturas o bocetos para mirar | `[]` |
 | `trust` | `private-team` o `public` | `private-team` |
 | `labels` | renombra cualquier etiqueta; las claves son fijas, los nombres son tuyos | `relevo:ready`, `relevo:built`, … |
 

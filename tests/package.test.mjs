@@ -28,7 +28,7 @@ test('the package is public, scoped and named like the marketplace entry', () =>
 
 test('the package holds what runs and nothing else', () => {
   const files = packed();
-  const allowed = [/^\.claude-plugin\/plugin\.json$/, /^(scripts|skills|agents|stacks|templates)\//, /^(LICENSE|NOTICE|package\.json|README(\.es)?\.md)$/];
+  const allowed = [/^\.claude-plugin\/plugin\.json$/, /^(scripts|skills|agents|stacks|knowledge|templates)\//, /^(LICENSE|NOTICE|package\.json|README(\.es)?\.md)$/];
   const stray = files.filter((f) => !allowed.some((re) => re.test(f)));
   assert.deepEqual(stray, [], 'these files would be installed on every machine');
   ['docs/', 'tests/', 'openspec/', 'CHANGELOG.md', 'TRADEMARKS.md', 'CLAUDE.md', '.claude-plugin/marketplace.json'].forEach((p) => {
@@ -36,6 +36,13 @@ test('the package holds what runs and nothing else', () => {
   });
   assert.ok(files.includes('.claude-plugin/plugin.json'));
   assert.ok(files.includes('scripts/cli.mjs'));
+});
+
+test('Scenario: the interface rules ship with the package and the fixtures of the tests do not', () => {
+  const files = packed();
+  ['knowledge/interface/rules.json', 'knowledge/interface/keywords.json', 'knowledge/interface/vague-words.json', 'knowledge/interface/CURATION.md', 'knowledge/interface/stacks/flutter.json'].forEach((f) => assert.ok(files.includes(f), `${f} is in the package`));
+  assert.deepEqual(files.filter((f) => f.startsWith('tests/')), [], 'no fixture of the tests is installed');
+  assert.deepEqual(files.filter((f) => /interface-defects|previews\//.test(f)), []);
 });
 
 test('the command line is part of the package and is executable by node', () => {

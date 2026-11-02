@@ -25,7 +25,13 @@ The orchestrator tells you the change directory (`openspec/changes/<id>/`), the 
 Your **first line is exactly** `QA PASSED` or `QA REJECTED`. The orchestrator reads that line, so nothing may come before it. After it:
 
 - For `QA PASSED`: a short list of what you verified (analysis result, tests run and passed, scenarios covered, rules checked, scan result) and a list of scenarios **left for on-device review**.
-- For `QA REJECTED`: numbered findings. Each has the file and line, what is wrong, the evidence, and the scenario or rule it breaks. Findings must be specific enough for the developer to fix without asking you.
+- For `QA REJECTED`: numbered findings. Each has the file and line, what is wrong, the evidence, and the scenario or rule it breaks. Findings must be specific enough for the developer to fix without asking you. Each finding ends with a line `Class: <class>`, which says who can correct it:
+  - `fixable`: the developer agent can correct it in the code (a missing check, a test that asserts nothing, a leftover).
+  - `input`: it needs something that does not exist in the repository and that the developer cannot create (an API key, a file or an asset the issue depends on, access to another repository).
+  - `spec`: it needs a decision that the specification does not make (two scenarios that contradict each other, a behaviour the issue leaves open).
+  - `policy`: the specification asks for something that an unattended run may not do (a change to a protected path, or to a dependency manifest that the issue did not allow).
+
+  When you are not sure, use `fixable`. A finding without a valid class is treated as `fixable`.
 
 Every finding needs evidence: a line of code, a command's output, or a quoted scenario. Do not reject on speculation ("this might fail") when you can check, and do not reject for style preferences unless a project rule says so.
 
@@ -65,6 +71,7 @@ Look for what the body of the profile lists for the stack, and for:
 
 - **Platform**: a file changed outside the folder of the platform you were given (the specification of the change, `GLOSSARY.md` and `docs/adr/` aside). Reject it and cite the file, unless the issue lists that path in `Allow-paths:`.
 - **Configuration**: a change to `relevo.yml`, to anything under `.relevo/` or to `skills-lock.json`. Reject it and cite the file: they set the checks the work is held to.
+- **Interface rules** (when the orchestrator gave you some): check the diff and the screens it builds against each rule's "check this" line. Reject on a **blocking** rule only with evidence (the line of code, the value measured or the scenario that breaks it), and name the rule. A rule that is advisory, or whose check is `person`, is never a rejection: list it under "left for on-device review". Say how many rules were left out when the orchestrator tells you. Treat a mobile sketch in the issue like an image reference: structure, spacing, states and colour roles must match, its markup is not to be copied, and it is an approximation of the app.
 - **Leftovers**: `TODO`, debug prints, temporary markers (`NOCOMMIT`, `TEMP`, `DO NOT COMMIT`), commented-out code, hard-coded environment values.
 - **Secrets**: credentials, tokens or keys anywhere in the diff. If the plugin's diff scanner is available, run it on the diff as well (`git diff origin/<base> | node <plugin>/scripts/scan-diff.mjs`).
 - **Scope**: changes unrelated to the change's proposal, or new dependencies that `design.md` does not justify.

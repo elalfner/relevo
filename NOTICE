@@ -1,7 +1,9 @@
-Relevo is released under the MIT License (see LICENSE). It works together with the following
-MIT-licensed works. The Relevo plugin (what is installed from `skills/`, `agents/` and
-`templates/`) does not include their files: `skills/think/SKILL.md` runs their skills as they
-are, once they are installed in the project. This repository does keep copies of them as
+Relevo is released under the MIT License (see LICENSE). It works together with, and
+builds on, the following MIT-licensed works. The Relevo plugin (what is installed from `skills/`,
+`agents/` and `templates/`) does not include the files of the first two: `skills/think/SKILL.md`
+runs their skills as they are, once they are installed in the project. The third is different: the
+interface rules under `knowledge/interface/` are rewritten from its guidelines and ship with the
+plugin, so its notice travels with them. This repository does keep copies of them as
 development tooling, unmodified, so that Relevo can be worked on with the same skills it runs:
 the OpenSpec skills and commands under `.claude/`, and the mattpocock/skills skills under
 `.agents/skills/` (linked from `.claude/skills/`). Their copyright and permission notices are
@@ -17,8 +19,16 @@ reproduced here.
    Used by: skills/think/SKILL.md, which runs the "openspec-explore" skill, and the
    OpenSpec workflow that Relevo's specifications and `go` skill use through its command line.
 
+3. UI UX Pro Max (https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+   Copyright (c) 2024 Next Level Builder
+   Used by: knowledge/interface/rules.json, whose rules are written in Relevo's own words from
+   the UX guidelines of this collection (the record of what was adopted, merged or left out is
+   knowledge/interface/CURATION.md), and the code examples that some rules keep from it. The
+   rules are selected for the agents of `think`, `issue`, `go` and `review` by
+   scripts/interface-rules.mjs.
+
 --------------------------------------------------------------------------------
-MIT License text that applies to both works above
+MIT License text that applies to all the works above
 --------------------------------------------------------------------------------
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

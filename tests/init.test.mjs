@@ -962,3 +962,9 @@ test('Scenario: Init with Antigravity - the plan carries the warning that the se
   assert.equal(get(plan(withConfig('claude', ['agents.dev.model'])), 'warn.agent-settings'), undefined);
   assert.equal(get(plan(withConfig('antigravity', [])), 'warn.agent-settings'), undefined);
 });
+
+test('Scenario: A new configuration file - the three design system keys appear commented out with their explanation', () => {
+  assert.match(template, /^ {2}# system: .*interface step/m);
+  ['tokens', 'components', 'references'].forEach((k) => assert.match(template, new RegExp(`#\\s+${k}: \\[\\]\\s+# \\S`)));
+  assert.equal(loadConfig(template).ok, true);
+});

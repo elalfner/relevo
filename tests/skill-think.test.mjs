@@ -163,3 +163,90 @@ test('Scenario: Forbidden command - think lists the read-only commands and says 
   assert.match(section, /never runs `openspec init`, `openspec update`, `openspec validate` or `openspec sync`/);
   assert.match(section, /asks the person to add that repository to the session/);
 });
+
+// ---- the interface step (interface-decisions-upfront)
+const reference = readFileSync(new URL('../skills/think/references/interface.md', import.meta.url), 'utf8');
+
+test('Scenario: An idea with a visible part - the step goes after the exploration and before the interview, and an idea with nothing visible skips it', () => {
+  assert.ok(body.indexOf('## 2. Explore') < body.indexOf('## 2b. Interface step') && body.indexOf('## 2b. Interface step') < body.indexOf('## 3. Grill'));
+  assert.match(body, /skills\/think\/references\/interface\.md/);
+  assert.match(reference, /It is skipped, without a word about it/);
+  assert.match(reference, /ask once: "Does this have a part the person will see\?"/);
+  assert.match(reference, /interface: none/);
+});
+
+test('Scenario: Declared paths / Nothing found - the design system is read from declared or confirmed paths and no folder name is assumed', () => {
+  assert.match(reference, /design-tokens\.mjs --json/);
+  assert.match(reference, /design\.system/);
+  assert.match(reference, /ask which are the tokens and the components/);
+  assert.match(reference, /ask where the colours, text styles and components of the project live, or whether there is no design system/);
+  assert.match(reference, /Do not look for a folder by a name you assumed/);
+  assert.match(reference, /read-only commands only/i);
+});
+
+test('Scenario: A state already answered - only the open questions are asked, from the rules and the stack, one at a time', () => {
+  assert.match(reference, /interface-rules\.mjs --role think/);
+  assert.match(reference, /stack-profile\.mjs --role issue/);
+  assert.match(reference, /only what the idea and the conversation have not already answered/);
+  assert.match(reference, /one question at a time/i);
+});
+
+test('Scenario: Options as wireframes - two or three, with the table of states, reusing components and inventing none', () => {
+  assert.match(reference, /two or three options, never more/);
+  ['Loading, with data on screen', 'Loading, without data', 'Empty', 'Error, with data on screen', 'Error, without data', 'Narrow width / long content'].forEach((s) => assert.ok(reference.includes(`| ${s} |`), s));
+  assert.match(reference, /Do not invent a component/);
+  assert.match(reference, /says so in the option; it does not draw it as if it existed/);
+});
+
+test('Scenario: An option chosen - recorded as a decision with its reason, the discarded options and the constraints, in the list of the agreement', () => {
+  assert.match(reference, /a decision `D<n>`: what was chosen, \*\*the reason\*\*, and \*\*the options that were discarded\*\*/);
+  assert.match(reference, /constraints it implies as `C<n>`/);
+  assert.match(reference, /Settled so far/);
+});
+
+test('Scenario: Previews - offered for finalists of a stack with an interface only, after a yes that names a folder outside the repository', () => {
+  assert.match(reference, /Never offer them for a stack without an interface/);
+  assert.match(reference, /direct yes that names the folder\*\*, outside the repository/);
+  assert.match(reference, /Without a yes, write nothing/);
+  assert.match(reference, /If the folder would be inside the repository, choose another outside it/);
+  assert.match(reference, /never committed/);
+});
+
+test('Scenario: The tokens first - the table is shown before anything is drawn, and the main colours are asked for when unresolved', () => {
+  assert.match(reference, /Show the table of tokens to the person before anything is drawn/);
+  assert.match(reference, /ask for the three or four that matter instead of inventing them/);
+  assert.match(reference, /more than one set .* ask which one to use/);
+});
+
+test('Scenario: A preview is self-contained and carries the names of the project', () => {
+  ['no request to another address', 'no script', 'states stacked and labelled', '16 KB or less', 'starts with a comment'].forEach((p) => assert.ok(reference.includes(p), p));
+  assert.match(reference, /Name the custom properties after the project's tokens/);
+  assert.match(reference, /map each in the header comment to its file and line/);
+});
+
+test('Scenario: The mobile sketch - labelled on the page and in the comment, standard widgets only, costly effects marked as a risk', () => {
+  assert.match(reference, /approximate sketch, not a render of the app\*\* \*\*on the page and in the header comment|"approximate sketch, not a render of the app" \*\*on the page and in the header comment\*\*/);
+  assert.match(reference, /only the standard widgets of the platform/);
+  assert.match(reference, /marked as a risk in the option, not drawn/);
+});
+
+test('Scenario: A failure fixed / Still failing / No browser automation - at most two fixes, never presented as checked when it was not', () => {
+  assert.match(reference, /preview-check\.mjs <file> --kind <web\|mobile>/);
+  assert.match(reference, /at most twice/);
+  assert.match(reference, /show the preview with the failing item named/);
+  assert.match(reference, /Exit code 3 means no browser automation exists/);
+  assert.match(reference, /not checked/);
+  assert.match(reference, /Never present it as checked/);
+});
+
+test('Scenario: A preview after a yes - the one exception to "writes no file", and every other Never stays', () => {
+  assert.match(text, /previews of the interface step go outside it, after a yes/);
+  assert.match(body, /after a direct yes that names a folder outside the repository, the preview files of the interface step, which are never committed/);
+  ['Never write code, commit, push, create issues or apply labels.', 'Never write `GLOSSARY.md` or anything under `docs/adr/`', 'Never run `openspec new change`', 'Never invoke a skill whose `SKILL.md` sets `disable-model-invocation`'].forEach((n) => assert.ok(body.includes(n), n));
+});
+
+test('Scenario: The interview is reserved for the person - the step does not change the order, the interview or the hand-off, and its decisions are in the list', () => {
+  assert.match(body, /does not change the order of exploration and interview, the interview that is reserved for the person, or the hand-off/);
+  assert.match(body, /the decisions it records .* go into \*\*Settled so far\*\*/);
+  assert.ok(body.includes('/grill-with-docs'));
+});
