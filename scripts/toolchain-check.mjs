@@ -1,18 +1,20 @@
 #!/usr/bin/env node
-// Checks that the tools which the profile of a platform lists are on the path of this machine. Usage:
+// Checks that the tools which the profile of a platform lists are on the path of this machine, and that the paths it lists
+// as installed exist in the folder of the platform (the dependencies were installed). Usage:
 //   node scripts/toolchain-check.mjs --platform <name> [--config relevo.yml] [--plugin-root <dir>]
-// It prints { platform, stack, tools, missing } as JSON; `missing` also covers git, gh, jq and node, which every job needs. A tool is there when `<tool> --version` starts. The cloud build
+// It prints { platform, stack, tools, missing, installed, missing_installed } as JSON; `missing` also covers git, gh, jq and node, which every job needs.
+// `missing_installed` is looked at only when no tool is missing, because without the tools nothing could be installed. A tool is there when `<tool> --version` starts. The cloud build
 // runs it before the agent, so that a runner without the SDK stops in seconds and not after a full run.
-//   exit 0: every tool is there (or the profile lists none)   exit 1: a tool is missing, or the profile cannot be resolved
+//   exit 0: every tool and every installed path is there (or the profile lists none)   exit 1: a tool or an installed path is missing, or the profile cannot be resolved
 //   exit 2: bad usage or an invalid relevo.yml
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
-import { missingTools, RUNNER_TOOLS } from './lib/toolchain-check.mjs';
+import { missingInstalled, missingTools, RUNNER_TOOLS } from './lib/toolchain-check.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -46,5 +48,9 @@ if (!resolved.ok) fail(resolved.errors.join('\n'), 1);
 
 const probe = (tool) => spawnSync(tool, ['--version'], { stdio: 'ignore' }).error === undefined;
 const missing = missingTools([...RUNNER_TOOLS, ...(resolved.profile.tools ?? [])], probe);
-console.log(JSON.stringify({ platform: name, stack: resolved.profile.stack, tools: resolved.profile.tools, missing }));
-process.exit(missing.length > 0 ? 1 : 0);
+// The installed paths are relative to the folder of the platform, which is relative to the folder of relevo.yml.
+const folder = resolve(base, platform.path ?? '.');
+const installed = resolved.profile.installed ?? [];
+const missingInstalledPaths = missing.length === 0 ? missingInstalled(installed, (path) => existsSync(join(folder, path))) : [];
+console.log(JSON.stringify({ platform: name, stack: resolved.profile.stack, tools: resolved.profile.tools, missing, installed, missing_installed: missingInstalledPaths }));
+process.exit(missing.length > 0 || missingInstalledPaths.length > 0 ? 1 : 0);

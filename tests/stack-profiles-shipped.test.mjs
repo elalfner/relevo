@@ -195,3 +195,10 @@ test('Scenario: Flutter profile - the rules of the official docs are in the body
   assert.doesNotMatch(p.body, /AI rules/i);
   assert.ok(Buffer.byteLength(p.body) <= 8 * 1024, `the Flutter body is ${Buffer.byteLength(p.body)} bytes`);
 });
+
+test('Scenario: A plugin stack that installs dependencies - the profiles of Vue, Laravel and Flutter list the path that their install step creates, and Supabase lists none', () => {
+  assert.deepEqual(profile('vue').installed, ['node_modules']);
+  assert.deepEqual(profile('laravel').installed, ['vendor']);
+  assert.deepEqual(profile('flutter').installed, ['.dart_tool/package_config.json']);
+  assert.deepEqual(profile('supabase').installed, []);
+});

@@ -28,6 +28,7 @@ A profile is the file `stacks/<stack>.md` of the plugin. Its header is read by s
 - The commands that verify the code: `analyze`, `test` and `format`.
 - The generated files that are left out of the diff QA reviews.
 - The tools the stack needs, and the tool each target needs (for Flutter: `adb` for Android, `xcrun` for iOS, which runs only on macOS, and nothing for the web).
+- The paths that exist once its dependencies are installed (`installed`): Vue lists `node_modules`, Laravel `vendor` and Flutter `.dart_tool/package_config.json`, and Supabase lists none. The build job checks them before the agent starts and stops, without spending a model turn, when one is missing (see [Installing the dependencies](#installing-the-dependencies-before-the-agent)). A profile of your repository adds paths and never removes one.
 - The skills it requires and the extra skills for each role.
 - A text with the hygiene the developer follows and what QA looks for in the diff.
 
@@ -172,9 +173,23 @@ Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any ot
        go-version-file: ${{ needs.decide.outputs.path }}/go.mod
    ```
 
-   Install the dependencies in the way your project prefers, from `needs.decide.outputs.path`.
+   Install the dependencies in the way your project prefers, from `needs.decide.outputs.path`. If your profile lists `installed:` (the paths that exist afterwards, relative to the folder of the platform), the build stops before the agent when one is missing, and `/relevo:doctor` warns when no step installs the dependencies.
 
 `/relevo:doctor` warns when the profile of such a stack has no `analyze` or no `test`, and when the go workflow has no step guarded by the name of the stack (it does not warn for a stack whose tools are only `node` and `npm`, because the job already installs Node). It also warns while the file is not tracked by git.
+
+## Installing the dependencies before the agent
+
+The agent and QA run the commands of the profile, and they need the dependencies of the project to exist. The template does not install them, because the package manager and the lock file vary: add the step of your stack to the build job of `.github/workflows/relevo-go.yml`, guarded by the name of the stack and run from the folder of the platform. The template shows it, commented out, for each stack:
+
+```yaml
+- if: needs.decide.outputs.stack == 'vue'
+  working-directory: ${{ needs.decide.outputs.path }}
+  run: npm ci --ignore-scripts
+```
+
+- Install without the scripts of the packages where the tool allows it (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` runs none.
+- The step "Check the toolchain" looks, once the tools are there, for each path that the profile lists under `installed`. When one is missing the issue becomes `relevo:qa-failed`, the comment names the path and says to enable the install step, and no model turn is spent.
+- `/relevo:doctor` warns, for each platform whose profile lists `installed`, when the go workflow has no active step that installs its dependencies. A commented example, and an install into another folder (the steps that install OpenSpec and the Relevo scripts), do not count.
 
 ## Extra skills per role
 

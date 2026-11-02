@@ -6,6 +6,7 @@ commands:
   format: npx --no-install prettier --write src/
 generated: ['dist/**', '*.tsbuildinfo', 'src/auto-imports.d.ts', 'src/components.d.ts']
 tools: [node, npm]
+installed: [node_modules]
 requires_skills: []
 skills:
   dev: []
