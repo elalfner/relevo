@@ -1,0 +1,2668 @@
+{
+ "about": "Interface rules for Relevo, written in its own words from the guidelines of UI UX Pro Max (see NOTICE and CURATION.md).",
+ "accessibility_checked": null,
+ "rules": [
+  {
+   "id": "focus-visible",
+   "category": "accessibility",
+   "title": "Visible keyboard focus",
+   "principle": "Every control that can receive keyboard focus shows where the focus is, also inside a dialog or a sheet.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "interactive",
+    "forms",
+    "overlays"
+   ],
+   "ask": "Is there a control whose focus the design hides or replaces?",
+   "build": "Keep a visible focus indicator on every interactive control; never remove the outline without a replacement.",
+   "review": "Tab through the screen and the open dialogs: the focused control is always visible.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "focus:ring-2 focus:ring-blue-500",
+     "bad": "outline-none with no replacement"
+    },
+    {
+     "stack": "html",
+     "good": "button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }",
+     "bad": "button:focus { outline: none; }"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     28
+    ]
+   }
+  },
+  {
+   "id": "color-contrast",
+   "category": "accessibility",
+   "title": "Text contrast",
+   "principle": "Text is readable against its background, in every theme the product ships. Body text needs a contrast ratio of at least 4.5:1 (WCAG 1.4.3, level AA); large text needs 3:1.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "text",
+    "theme",
+    "colour"
+   ],
+   "ask": "Which text sits on a coloured, image or dark-mode background?",
+   "build": "Pick text and background pairs from the design tokens and check the ratio of each pair, in light and dark.",
+   "review": "Measure the ratio of body, secondary and disabled-looking text in each theme; flag any pair under 4.5:1.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "#333333 on white (about 12:1)",
+     "bad": "#999999 on white (about 2.8:1)"
+    },
+    {
+     "stack": "tailwind",
+     "good": "text-gray-900 on white",
+     "bad": "text-gray-400 on gray-100"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     36,
+     76
+    ]
+   }
+  },
+  {
+   "id": "not-color-alone",
+   "category": "accessibility",
+   "title": "Meaning is not carried by colour alone",
+   "principle": "A state, an error or a category is also given by an icon, a shape or text, so a person who cannot tell the colours apart gets it (WCAG 1.4.1).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "status",
+    "forms",
+    "colour"
+   ],
+   "ask": "What states or categories does the design show only with a colour?",
+   "build": "Add an icon or a word to every state that is coloured: error, success, selected, required.",
+   "review": "Look at the screen in greyscale: every state is still told apart.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Red text with an error icon and the word \"Error\"",
+     "bad": "Only a red border marks the error"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     37
+    ]
+   }
+  },
+  {
+   "id": "image-alt-text",
+   "category": "accessibility",
+   "title": "Text alternatives for images",
+   "principle": "An image that carries meaning has a text alternative that says what it shows; a decorative one is hidden from assistive technology (WCAG 1.1.1).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": true,
+   "touches": [
+    "media",
+    "images"
+   ],
+   "ask": "Which images carry information, and which are decoration?",
+   "build": "Give each meaningful image a short description; mark decorative images as decorative.",
+   "review": "Every meaningful image has a description; no image has a filename or \"image\" as its description.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<img src=\"dog.jpg\" alt=\"A dog playing in a park\">",
+     "bad": "<img src=\"dog.jpg\" alt=\"\">  (content image)"
+    },
+    {
+     "stack": "flutter",
+     "good": "Semantics(label: 'A dog playing in a park', child: Image.asset('dog.jpg'))",
+     "bad": "Image.asset('dog.jpg') with no label"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     38
+    ]
+   }
+  },
+  {
+   "id": "heading-order",
+   "category": "accessibility",
+   "title": "Headings follow a sequence",
+   "principle": "Headings are used in order, without skipping levels, because screen reader users move through a page by its headings (WCAG 1.3.1).",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "headings",
+    "pages"
+   ],
+   "ask": "What are the sections of the page and how are they nested?",
+   "build": "Use one h1 and the next level for each subsection; style headings with CSS, not by choosing a level.",
+   "review": "The heading levels read as an outline with no skipped level.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<h1>Title</h1><h2>Section</h2><h3>Detail</h3>",
+     "bad": "<h1>Title</h1><h4>Detail</h4>"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     39
+    ]
+   }
+  },
+  {
+   "id": "accessible-name",
+   "category": "accessibility",
+   "title": "Every control has an accessible name",
+   "principle": "A control that has no visible text, such as an icon button, still has a name that a screen reader announces (WCAG 4.1.2).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": true,
+   "touches": [
+    "interactive",
+    "icons",
+    "buttons"
+   ],
+   "ask": "Which controls show only an icon?",
+   "build": "Give every icon-only control a name in the language of the product.",
+   "review": "Each icon-only button has a name; the name says the action, not the icon.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<button aria-label=\"Close menu\"><svg/></button>",
+     "bad": "<button><svg/></button>"
+    },
+    {
+     "stack": "flutter",
+     "good": "IconButton(tooltip: 'Close menu', icon: Icon(Icons.close), onPressed: close)",
+     "bad": "IconButton(icon: Icon(Icons.close), onPressed: close)  // no tooltip or label"
+    },
+    {
+     "stack": "vue",
+     "good": "<button :aria-label=\"t('menu.close')\"><IconClose /></button>",
+     "bad": "<button><IconClose /></button>"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     40
+    ]
+   }
+  },
+  {
+   "id": "keyboard-operable",
+   "category": "accessibility",
+   "title": "Everything works with the keyboard",
+   "principle": "Every action that a pointer can do can be done with the keyboard, in an order that follows the visual order (WCAG 2.1.1).",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "interactive",
+    "custom-controls",
+    "overlays"
+   ],
+   "ask": "Which interactions depend on hover, drag or a custom control?",
+   "build": "Use native controls; keep the tab order the same as the visual order; give custom controls the keys people expect.",
+   "review": "Do each action of the change with the keyboard alone, with no unreachable element.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<button type=\"button\" onclick=\"open()\">Open</button>",
+     "bad": "<div onclick=\"open()\">Open</div>"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     41
+    ]
+   }
+  },
+  {
+   "id": "semantic-structure",
+   "category": "accessibility",
+   "title": "Use the semantics of the platform",
+   "principle": "Structure is expressed with the elements the platform provides (landmarks, lists, buttons), so assistive technology can read it.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "pages",
+    "layout"
+   ],
+   "ask": "What regions does the page have: navigation, main content, side content?",
+   "build": "Use native structure elements before generic containers with a role added.",
+   "review": "The page has a main region and its navigation is a navigation element, not a stack of generic containers.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<nav>…</nav><main>…</main><article>…</article>",
+     "bad": "<div>…</div> for every region"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     42
+    ]
+   }
+  },
+  {
+   "id": "form-labels",
+   "category": "accessibility",
+   "title": "Inputs have a visible label",
+   "principle": "Every input has a label that stays visible and is tied to it in code; a placeholder is a hint, not a label (WCAG 3.3.2, 1.3.1).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": true,
+   "touches": [
+    "forms",
+    "inputs"
+   ],
+   "ask": "Does every field have a label that stays on screen while the person types?",
+   "build": "Put a label above or beside each input and associate it with the input.",
+   "review": "Clicking or reading the label reaches its input; no field relies on a placeholder as its only label.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<label for=\"email\">Email</label><input id=\"email\" type=\"email\">",
+     "bad": "<input placeholder=\"Email\">"
+    },
+    {
+     "stack": "flutter",
+     "good": "TextField(decoration: InputDecoration(labelText: 'Email'))",
+     "bad": "TextField(decoration: InputDecoration(hintText: 'Email'))  // hint only"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     43,
+     54
+    ]
+   }
+  },
+  {
+   "id": "errors-announced",
+   "category": "accessibility",
+   "title": "Errors are announced",
+   "principle": "An error appears in a way that assistive technology announces, not only on screen (WCAG 4.1.3).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "forms",
+    "errors",
+    "status"
+   ],
+   "ask": "Where does an error appear and how would a screen reader user learn of it?",
+   "build": "Mark the error message so that it is announced when it appears, and tie it to its field.",
+   "review": "Trigger an error with a screen reader or inspect the markup: the message is announced and tied to the field.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<p role=\"alert\">Enter a valid email</p>",
+     "bad": "Red border only"
+    },
+    {
+     "stack": "flutter",
+     "good": "Semantics(liveRegion: true, child: Text('Enter a valid email'))",
+     "bad": "Text shown in red with no live region"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     44
+    ]
+   }
+  },
+  {
+   "id": "skip-link",
+   "category": "accessibility",
+   "title": "A way to skip repeated navigation",
+   "principle": "A keyboard user can jump past the repeated header to the main content (WCAG 2.4.1).",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "navigation",
+    "pages"
+   ],
+   "ask": "Does the page repeat a long header or menu before the content?",
+   "build": "Add a first link that moves focus to the main content.",
+   "review": "The first Tab stop is a link to the main content, and it works.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<a href=\"#main\" class=\"skip-link\">Skip to main content</a><main id=\"main\">",
+     "bad": "A header with dozens of links before the content"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     45
+    ]
+   }
+  },
+  {
+   "id": "focus-not-obscured",
+   "category": "accessibility",
+   "title": "Focus is not hidden behind other content",
+   "principle": "A focused control is not covered by a sticky header, a banner or another persistent layer (WCAG 2.4.11, level AA).",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "navigation",
+    "overlays",
+    "sticky"
+   ],
+   "ask": "Which elements stay fixed on screen while the page scrolls?",
+   "build": "Leave room for fixed elements with scroll padding, or move or dismiss a persistent layer when focus goes under it.",
+   "review": "Tab through the page with a fixed header and banner open: no focused control is hidden.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "html { scroll-padding-top: var(--header-height); }",
+     "bad": "A fixed bar that covers the focused control"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     100
+    ]
+   }
+  },
+  {
+   "id": "drag-alternative",
+   "category": "accessibility",
+   "title": "Dragging has a single-pointer alternative",
+   "principle": "Anything that can be done by dragging can also be done with a tap or a click and the keyboard (WCAG 2.5.7, level AA).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "person",
+   "core": false,
+   "touches": [
+    "drag",
+    "lists",
+    "reorder"
+   ],
+   "ask": "Which interactions need a drag: reorder, resize, slide?",
+   "build": "Add buttons or a menu next to the drag handle, such as move up and move down.",
+   "review": "Reorder or move an item without dragging: buttons, menu or keyboard.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Move up and Move down buttons beside the drag handle",
+     "bad": "A drag handle as the only way to reorder"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     103
+    ]
+   }
+  },
+  {
+   "id": "target-size-web",
+   "category": "accessibility",
+   "title": "Pointer targets are at least 24 by 24 CSS pixels",
+   "principle": "A target a pointer must hit is at least 24 by 24 CSS pixels, or has enough spacing, unless an exception applies (WCAG 2.5.8, level AA).",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "interactive",
+    "buttons",
+    "icons"
+   ],
+   "ask": "Which controls are small or close together: icon buttons, inline links, table actions?",
+   "build": "Make controls at least 24 by 24 CSS pixels or space them so each has a 24-pixel circle that touches no other target.",
+   "review": "Measure the smallest control of the change at the narrowest width; check adjacent icon buttons.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "button { min-inline-size: 24px; min-block-size: 24px; }",
+     "bad": "Tiny icon buttons side by side"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     104
+    ]
+   }
+  },
+  {
+   "id": "accessible-authentication",
+   "category": "accessibility",
+   "title": "Signing in does not need a memory or puzzle test",
+   "principle": "Signing in does not rely only on remembering, transcribing or solving something; password managers and paste work, or another method is offered (WCAG 3.3.8, level AA).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "authentication",
+    "forms",
+    "passwords"
+   ],
+   "ask": "How does a person sign in or confirm identity: a password, a code, a puzzle?",
+   "build": "Let password managers fill the field, allow paste, and offer another way such as a passkey or a sign-in link.",
+   "review": "Paste into the password field works; the field has the right autocomplete value.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<input type=\"password\" autocomplete=\"current-password\">",
+     "bad": "input.onpaste = (e) => e.preventDefault()"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     107
+    ]
+   }
+  },
+  {
+   "id": "rotating-content-control",
+   "category": "accessibility",
+   "title": "Auto-moving content can be stopped",
+   "principle": "Content that moves or changes by itself can be paused, and it stops while the person focuses it or asks for less motion (WCAG 2.2.2).",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "carousel",
+    "motion",
+    "media"
+   ],
+   "ask": "Does anything advance or animate without the person asking?",
+   "build": "Add previous, next and pause controls; stop while focused or hovered; stop when reduced motion is requested.",
+   "review": "Find any auto-advancing content: it has a pause control and honours the reduced-motion setting.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<button aria-label=\"Pause carousel\">",
+     "bad": "A carousel that advances on a timer with no control"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     108
+    ]
+   }
+  },
+  {
+   "id": "error-summary",
+   "category": "accessibility",
+   "title": "A failed form offers an error summary",
+   "principle": "After a failed submit, a summary at the top lists the problems, takes focus, and links to each invalid field, next to the error beside each field (WCAG 3.3.1).",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "forms",
+    "errors",
+    "validation"
+   ],
+   "ask": "How does a person find out which fields failed after they submit?",
+   "build": "Show a summary at the top that receives focus after a failed submit; link each item to its field; keep the inline errors.",
+   "review": "Submit an invalid form: focus lands on the summary and each item reaches its field.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<div role=\"alert\" tabindex=\"-1\" aria-labelledby=\"error-title\"><h2 id=\"error-title\">There is a problem</h2><a href=\"#email\">Enter an email</a></div>",
+     "bad": "A toast with no links and no focus target"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     109
+    ]
+   }
+  },
+  {
+   "id": "text-reflow",
+   "category": "accessibility",
+   "title": "Text reflows and survives user spacing",
+   "principle": "Text stays readable at a narrow width, at 200% zoom and when the person overrides spacing: no horizontal scrolling, no clipped text (WCAG 1.4.4, 1.4.10, 1.4.12).",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "text",
+    "responsive",
+    "zoom"
+   ],
+   "ask": "Is any text in a box with a fixed height or width?",
+   "build": "Use fluid sizes, heights that follow the content and a unitless line height.",
+   "review": "Zoom to 200% and narrow the window to 320 CSS pixels: no text is cut off and nothing scrolls sideways.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": ".copy { inline-size: min(100%, 65ch); height: auto; line-height: 1.5; }",
+     "bad": ".copy { width: 900px; height: 40px; overflow: hidden; }"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     112
+    ]
+   }
+  },
+  {
+   "id": "compact-control-semantics",
+   "category": "accessibility",
+   "title": "Chips and toggles are real controls",
+   "principle": "A chip that can be selected has a native role, a name, a state, keyboard operation and visible focus.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "chips",
+    "filters",
+    "toggles"
+   ],
+   "ask": "Are there filters or toggles drawn as chips or pills?",
+   "build": "Use a button that exposes its pressed or selected state, and make the state match the visible label.",
+   "review": "A chip is a button with a pressed or selected state; a clickable div is not accepted.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<button aria-pressed=\"true\">Open now</button>",
+     "bad": "<div class=\"selected\" onclick=\"toggle()\">Open now</div>"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     117
+    ]
+   }
+  },
+  {
+   "id": "live-badge-updates",
+   "category": "accessibility",
+   "title": "Changing counts are announced in context",
+   "principle": "When a count or badge changes without the person acting on it, a short status message tells them what changed, without moving focus.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "badges",
+    "counts",
+    "status"
+   ],
+   "ask": "What counts or badges update after load?",
+   "build": "Announce one complete message, such as \"3 items in cart\", through a status region.",
+   "review": "Change the count and listen or inspect: one complete message, no change of focus.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<span role=\"status\" aria-atomic=\"true\">3 items in cart</span>",
+     "bad": "<span aria-live=\"polite\">3</span>"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     118
+    ]
+   }
+  },
+  {
+   "id": "z-index-scale",
+   "category": "layout",
+   "title": "Layers use a defined scale",
+   "principle": "Stacking order comes from a small shared scale, and a new stacking context is understood before a bigger number is tried.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "overlays",
+    "sticky",
+    "layers"
+   ],
+   "ask": "Which elements overlap: menus, dialogs, toasts, sticky bars?",
+   "build": "Use the layer values of the design system; do not raise a number to win a conflict.",
+   "review": "No new arbitrary huge layer value; overlapping elements stack in the intended order.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "z-10 z-20 z-50",
+     "bad": "z-[9999]"
+    },
+    {
+     "stack": "html",
+     "good": "z-index: var(--layer-modal);",
+     "bad": "z-index: 9999;"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     15,
+     18
+    ]
+   }
+  },
+  {
+   "id": "overflow-clipping",
+   "category": "layout",
+   "title": "Clipping does not hide content",
+   "principle": "A container that clips its content must not hide anything the person needs.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "containers",
+    "text"
+   ],
+   "ask": "Which containers have a fixed size and long or variable content?",
+   "build": "Let a container scroll or grow before clipping; test it with the longest content.",
+   "review": "Fill each container with the longest realistic content: nothing needed is cut off.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "overflow-auto with scrolling",
+     "bad": "overflow-hidden that truncates content"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     16
+    ]
+   }
+  },
+  {
+   "id": "fixed-elements",
+   "category": "layout",
+   "title": "Fixed elements leave room for each other",
+   "principle": "Fixed bars, banners and safe areas are accounted for so they do not cover content or each other.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "sticky",
+    "navigation",
+    "overlays"
+   ],
+   "ask": "Which elements are fixed to the screen edges?",
+   "build": "Reserve space for fixed elements and the safe area; keep a gap between fixed bars.",
+   "review": "Scroll to the end of the page on a small screen: the last content is reachable and no fixed element covers another.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "A fixed top bar and a fixed bottom bar with padding for both",
+     "bad": "Several fixed elements that overlap"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     17
+    ]
+   }
+  },
+  {
+   "id": "stable-layout",
+   "category": "layout",
+   "title": "Late content does not move the layout",
+   "principle": "Images, badges, validation text and replaced skeletons reserve their space so the content around them does not jump when they appear.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "images",
+    "loading",
+    "badges",
+    "async"
+   ],
+   "ask": "What appears after the first paint: images, counts, messages?",
+   "build": "Reserve space with an aspect ratio, a fixed slot or a skeleton of the same size.",
+   "review": "Reload with a slow network: nothing near the late content moves when it arrives.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "img { aspect-ratio: 16 / 9; }",
+     "bad": "An image with no size that pushes the text down"
+    },
+    {
+     "stack": "neutral",
+     "good": "A slot of stable size for a count badge",
+     "bad": "A badge whose insertion pushes the toolbar actions"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     19
+    ]
+   }
+  },
+  {
+   "id": "viewport-height-units",
+   "category": "layout",
+   "title": "Full-height layouts account for browser chrome on phones",
+   "principle": "A full-screen section is sized for the visible area on a phone, whose address bar changes the viewport.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "layout",
+    "mobile-web"
+   ],
+   "ask": "Is a section meant to fill the screen?",
+   "build": "Use the dynamic viewport units where they are supported.",
+   "review": "Open on a phone-sized viewport: the section fits without a part hidden behind the browser bar.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "min-h-dvh",
+     "bad": "h-screen on a phone"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     20
+    ]
+   }
+  },
+  {
+   "id": "breakpoint-testing",
+   "category": "responsive",
+   "title": "Checked at the common widths",
+   "principle": "A layout is checked at the widths people use, not only at the developer screen.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "responsive",
+    "layout"
+   ],
+   "ask": "Which widths must the page support?",
+   "build": "Build mobile first and verify at 320, 375, 414, 768, 1024 and 1440 CSS pixels.",
+   "review": "Open the change at 320, 375, 768, 1024 and 1440 pixels: nothing breaks.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Checked at 320, 375, 414, 768, 1024 and 1440",
+     "bad": "Developed and checked at one screen size"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     65
+    ]
+   }
+  },
+  {
+   "id": "touch-friendly-layout",
+   "category": "responsive",
+   "title": "Small screens get touch-sized controls",
+   "principle": "On a small screen the controls are big enough for a finger, even if the desktop version is compact.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "responsive",
+    "buttons",
+    "mobile-web"
+   ],
+   "ask": "Which controls are used on a phone?",
+   "build": "Increase the size and spacing of controls on small screens.",
+   "review": "Tap each control at 360 pixels wide: none is hard to hit.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "Larger buttons below the medium breakpoint",
+     "bad": "Desktop-sized targets on a phone"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     66
+    ]
+   }
+  },
+  {
+   "id": "readable-text-size",
+   "category": "responsive",
+   "title": "Body text is readable on every device",
+   "principle": "Body text is large enough to read without zooming; roughly 16 pixels or 1rem is the floor for body text on a phone.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "text",
+    "responsive"
+   ],
+   "ask": "What size is the smallest text a person must read?",
+   "build": "Use at least the base size for body text; reserve smaller sizes for secondary labels.",
+   "review": "Body text is not below the base size at 360 pixels wide; text respects the text size the person set.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "text-base or larger for body text",
+     "bad": "text-xs for body text"
+    },
+    {
+     "stack": "flutter",
+     "good": "Theme text styles with the default body size, scaled by the system text scale",
+     "bad": "Fixed 10 point body text"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     67
+    ]
+   }
+  },
+  {
+   "id": "viewport-meta",
+   "category": "responsive",
+   "title": "Pages declare the viewport",
+   "principle": "A web page tells the browser to use the device width, or it is shown as a shrunken desktop page on a phone.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "pages",
+    "responsive"
+   ],
+   "ask": "Is this a new page or a new HTML entry?",
+   "build": "Include the viewport declaration in the document head.",
+   "review": "The head has a viewport declaration with the device width and no zoom lock.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+     "bad": "No viewport meta tag"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     68
+    ]
+   }
+  },
+  {
+   "id": "no-horizontal-scroll",
+   "category": "responsive",
+   "title": "No sideways scrolling of the page",
+   "principle": "The page fits the width of the viewport; only a component meant to scroll, such as a wide table, scrolls sideways.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "responsive",
+    "layout",
+    "tables"
+   ],
+   "ask": "Is any element wider than a phone screen?",
+   "build": "Constrain widths to the viewport; let wide content scroll inside its own container.",
+   "review": "Open at 320 and 360 pixels: the page has no horizontal scrollbar.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "max-w-full with content that wraps",
+     "bad": "A fixed-width element that causes a horizontal scrollbar"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     69
+    ]
+   }
+  },
+  {
+   "id": "image-scaling",
+   "category": "responsive",
+   "title": "Images scale with their container",
+   "principle": "Images shrink with their container instead of overflowing it.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "images",
+    "responsive"
+   ],
+   "ask": "Which images are placed in flexible containers?",
+   "build": "Give images a maximum width of their container and an automatic height.",
+   "review": "No image is wider than its container at 320 pixels.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "max-w-full h-auto",
+     "bad": "width=\"800\" with no maximum"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     70
+    ]
+   }
+  },
+  {
+   "id": "table-small-screens",
+   "category": "responsive",
+   "title": "Tables work on small screens",
+   "principle": "A table either scrolls inside its own container or turns into a list of cards on a narrow screen.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "tables",
+    "responsive"
+   ],
+   "ask": "Does the change add a table with many columns?",
+   "build": "Wrap the table in a scroll container or switch to a card layout at small widths.",
+   "review": "Open the table at 360 pixels: it does not push the page wider.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "A wrapper with overflow-x-auto around the table",
+     "bad": "A table that overflows the viewport"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     71
+    ]
+   }
+  },
+  {
+   "id": "truncation-with-recovery",
+   "category": "content",
+   "title": "Long content is cut gracefully",
+   "principle": "Long text is shortened with an ellipsis where space is limited, and the full text stays reachable.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "text",
+    "lists",
+    "cards"
+   ],
+   "ask": "Which texts can be longer than the space for them?",
+   "build": "Clamp the lines and offer a way to see the rest.",
+   "review": "Use the longest realistic title: it is clamped and the full text is reachable.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "line-clamp-2 with an expand control",
+     "bad": "Text that is cut off with no way to read it"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     84
+    ]
+   }
+  },
+  {
+   "id": "long-token-wrapping",
+   "category": "layout",
+   "title": "Long words and identifiers wrap",
+   "principle": "URLs, identifiers and user-written text must not force the layout wider than its container.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "text",
+    "urls",
+    "user-content"
+   ],
+   "ask": "Which fields show user-written text or long identifiers?",
+   "build": "Allow breaks inside long tokens and let text children of flex or grid items shrink.",
+   "review": "Paste a 60-character word without spaces in each text field: the layout does not overflow.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": ".token { min-inline-size: 0; overflow-wrap: anywhere; }",
+     "bad": ".token { white-space: nowrap; }"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     111
+    ]
+   }
+  },
+  {
+   "id": "essential-text-complete",
+   "category": "content",
+   "title": "Essential text is never lost to truncation",
+   "principle": "Headings, action labels, error messages, safety text and the names that tell items apart are shown completely, or a visible way to read them in full is provided.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "text",
+    "buttons",
+    "errors"
+   ],
+   "ask": "Which texts are essential to understand or act?",
+   "build": "Let essential text wrap, stack or resize; offer a visible full-detail path if it must be shortened.",
+   "review": "Increase the text size and use long labels: no action or error is reduced to an unexplained ellipsis.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "An action label that wraps or opens full details",
+     "bad": "A primary action shown only as an unexplained ellipsis"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     113
+    ]
+   }
+  },
+  {
+   "id": "badge-vs-chip",
+   "category": "content",
+   "title": "A badge states, a chip acts",
+   "principle": "A badge communicates a state and is not interactive; a chip stands for a value or an action and is a control. The markup follows the meaning.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "badges",
+    "chips",
+    "status"
+   ],
+   "ask": "Is each small label a state, a value or an action?",
+   "build": "Use static markup for a state; use a control for anything that can be pressed or removed.",
+   "review": "A pressable pill is a control; a plain status label has no click handler.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<span class=\"status\">Pending</span>",
+     "bad": "<div class=\"pill\" onclick=\"toggle()\">Pending</div>"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     114
+    ]
+   }
+  },
+  {
+   "id": "chip-collection-reflow",
+   "category": "layout",
+   "title": "Chip collections keep their labels",
+   "principle": "A set of filter or value chips wraps, or offers a working \"+n\" control for hidden values; it does not clip a chip when space or text size changes.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "chips",
+    "filters"
+   ],
+   "ask": "How many chips can there be and how long are their labels?",
+   "build": "Wrap the collection, or hide the overflow behind an operable \"+n\" disclosure.",
+   "review": "Add many chips and increase the text size: none is silently cut off.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": ".chip-list { display: flex; flex-wrap: wrap; gap: 8px; }",
+     "bad": ".chip-list { height: 32px; overflow: hidden; }"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     115
+    ]
+   }
+  },
+  {
+   "id": "compact-label-overflow",
+   "category": "content",
+   "title": "Short labels stay whole and disclose cuts",
+   "principle": "A badge, chip or pill label stays on one line when it can, bounds only values that are unpredictable, and shows the full value to keyboard, pointer and touch users when it must be cut.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "badges",
+    "chips",
+    "labels"
+   ],
+   "ask": "Can a label be longer than its pill?",
+   "build": "Let the label shrink, keep it on one line, and give an operable way to see the full value.",
+   "review": "Use a long label: it is cut only if needed, and the full value is reachable without a hover.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A flexible label with a minimum width of zero and a disclosure of the full value",
+     "bad": "A fixed-width badge that wraps or clips with a title tooltip as its only recovery"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     116
+    ]
+   }
+  },
+  {
+   "id": "inline-field-error",
+   "category": "forms",
+   "title": "Each invalid field shows its own error",
+   "principle": "An invalid field has a specific message next to it, tied to the field in code.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "forms",
+    "errors",
+    "validation"
+   ],
+   "ask": "What can be wrong in each field and what should the message say?",
+   "build": "Show a specific message under the field and connect it to the input.",
+   "review": "Each invalid field has its own message that says what to fix and is tied to the input.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<input aria-describedby=\"email-error\"><p id=\"email-error\">Enter an email address</p>",
+     "bad": "A red border or a summary only"
+    },
+    {
+     "stack": "flutter",
+     "good": "TextFormField(validator: (v) => v!.isEmpty ? 'Enter an email address' : null)",
+     "bad": "A red border with no message"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     55
+    ]
+   }
+  },
+  {
+   "id": "validate-on-blur",
+   "category": "forms",
+   "title": "Validate when a person leaves the field",
+   "principle": "Most fields are checked when the person leaves them, not on every key and not only at submit.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "person",
+   "core": false,
+   "touches": [
+    "forms",
+    "validation"
+   ],
+   "ask": "When should each field report a problem?",
+   "build": "Validate on blur, and again on submit.",
+   "review": "Fill a field wrongly and leave it: the message appears then, not while typing.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Validation on blur",
+     "bad": "Validation only at submit"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     56
+    ]
+   }
+  },
+  {
+   "id": "input-types",
+   "category": "forms",
+   "title": "Use the input type that matches the data",
+   "principle": "An email, phone number or number field uses the matching input type so the platform offers the right keyboard and checks.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "forms",
+    "inputs"
+   ],
+   "ask": "What kind of data does each field take?",
+   "build": "Pick the specific input type for each field.",
+   "review": "Email, phone and numeric fields do not use a generic text type.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<input type=\"email\">",
+     "bad": "<input type=\"text\"> for an email"
+    },
+    {
+     "stack": "flutter",
+     "good": "TextField(keyboardType: TextInputType.emailAddress)",
+     "bad": "TextField() for an email"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     57
+    ]
+   }
+  },
+  {
+   "id": "autofill-support",
+   "category": "forms",
+   "title": "Let the browser fill known fields",
+   "principle": "Fields that ask for known personal data declare what they are, so autofill and password managers work.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "forms",
+    "authentication"
+   ],
+   "ask": "Which fields ask for a name, an address, an email or a password?",
+   "build": "Set the autocomplete value that matches each field; do not switch it off everywhere.",
+   "review": "Name, email and address fields declare their autocomplete value.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<input autocomplete=\"email\">",
+     "bad": "<input autocomplete=\"off\"> on every field"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     58
+    ]
+   }
+  },
+  {
+   "id": "required-indicator",
+   "category": "forms",
+   "title": "Required fields are marked",
+   "principle": "A person can tell which fields are required before they submit.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "forms"
+   ],
+   "ask": "Which fields are required?",
+   "build": "Mark required fields with a symbol that is explained, or the word \"required\".",
+   "review": "The form says which fields are required.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "An asterisk with a note \"* required\"",
+     "bad": "No marking; the person must guess"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     59
+    ]
+   }
+  },
+  {
+   "id": "password-visibility",
+   "category": "forms",
+   "title": "A password can be shown",
+   "principle": "A person can reveal what they typed in a password field to avoid mistakes.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "forms",
+    "authentication",
+    "passwords"
+   ],
+   "ask": "Is there a password field?",
+   "build": "Add a show or hide control with an accessible name.",
+   "review": "The password field has a toggle that changes the visibility and announces its state.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A show/hide password button",
+     "bad": "A password that is always hidden"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     60
+    ]
+   }
+  },
+  {
+   "id": "submit-feedback",
+   "category": "forms",
+   "title": "A submit shows what happened",
+   "principle": "After a submit the person sees that it is in progress, then that it worked or failed.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "forms",
+    "buttons",
+    "async"
+   ],
+   "ask": "What does the person see between pressing submit and the result?",
+   "build": "Show a busy state, then a success or an error message.",
+   "review": "Submit with a slow and with a failing request: the person is told what happened each time.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Loading, then a success or error message",
+     "bad": "A button that does nothing visible after a click"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     61
+    ]
+   }
+  },
+  {
+   "id": "mobile-keyboards",
+   "category": "forms",
+   "title": "The keyboard matches the field",
+   "principle": "On a phone the keyboard that opens suits the data: digits for a number, an email keyboard for an address.",
+   "applies": "mobile",
+   "weight": "advisory",
+   "check": "person",
+   "core": false,
+   "touches": [
+    "forms",
+    "inputs"
+   ],
+   "ask": "Which fields expect numbers or an email?",
+   "build": "Choose the keyboard type for each field.",
+   "review": "On a device, a numeric field opens the numeric keyboard.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<input inputmode=\"numeric\">",
+     "bad": "A text keyboard for a number"
+    },
+    {
+     "stack": "flutter",
+     "good": "TextField(keyboardType: TextInputType.number)",
+     "bad": "The default keyboard for a number"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     63
+    ]
+   }
+  },
+  {
+   "id": "no-hover-only",
+   "category": "interaction",
+   "title": "Primary actions do not depend on hover",
+   "principle": "Hover does not exist on touch devices, so anything important is reachable by click or tap and by keyboard.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "interactive",
+    "menus",
+    "tooltips"
+   ],
+   "ask": "Does anything appear only when the pointer rests on it?",
+   "build": "Use click, tap or focus for primary interactions; use hover only as an extra.",
+   "review": "The change works on a touch device and with the keyboard; no action is available only on hover.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "An onClick handler for the menu",
+     "bad": "A menu that opens only on mouse enter"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     11
+    ]
+   }
+  },
+  {
+   "id": "pressed-state",
+   "category": "interaction",
+   "title": "Controls respond when pressed",
+   "principle": "A control gives immediate feedback when pressed.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "buttons",
+    "interactive"
+   ],
+   "ask": "Which controls are pressed or clicked?",
+   "build": "Give pressed controls a visible change.",
+   "review": "Press a button: something visibly changes right away.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "active:scale-95",
+     "bad": "No active state"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     30
+    ]
+   }
+  },
+  {
+   "id": "disabled-state",
+   "category": "interaction",
+   "title": "Disabled looks disabled",
+   "principle": "A control that cannot be used looks different from one that can, and says why when that is not obvious.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "buttons",
+    "forms"
+   ],
+   "ask": "When is each control unavailable?",
+   "build": "Reduce emphasis and show a not-allowed cursor; explain the reason where it is not clear.",
+   "review": "A disabled control is distinct from an enabled one and keeps its text readable.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "opacity-50 cursor-not-allowed",
+     "bad": "The same style as the enabled control"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     31
+    ]
+   }
+  },
+  {
+   "id": "no-double-submit",
+   "category": "interaction",
+   "title": "Async actions cannot be sent twice",
+   "principle": "While an action is running its control cannot start it again, and it shows that it is busy.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": true,
+   "touches": [
+    "buttons",
+    "forms",
+    "async"
+   ],
+   "ask": "Which actions take time and change data?",
+   "build": "Disable the control and show a busy state until the action ends.",
+   "review": "Press an async action twice quickly: the second press does nothing.",
+   "examples": [
+    {
+     "stack": "vue",
+     "good": "<button :disabled=\"loading\"><Spinner v-if=\"loading\" />Save</button>",
+     "bad": "<button @click=\"save\">Save</button> that stays clickable while loading"
+    },
+    {
+     "stack": "flutter",
+     "good": "onPressed: loading ? null : save",
+     "bad": "onPressed: save  // while the request is running"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     32
+    ]
+   }
+  },
+  {
+   "id": "error-feedback",
+   "category": "interaction",
+   "title": "A failure is shown where it happened",
+   "principle": "When something fails the person is told, near the problem, in plain words.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "errors",
+    "async",
+    "forms"
+   ],
+   "ask": "What can fail and what should the person do?",
+   "build": "Show a clear message close to what failed, with a next step.",
+   "review": "Make the request fail: a message appears near the cause, and it says what to do.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A red border with a message that says what to fix",
+     "bad": "A failure with no indication"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     33
+    ]
+   }
+  },
+  {
+   "id": "success-feedback",
+   "category": "interaction",
+   "title": "A success is confirmed",
+   "principle": "A completed action is confirmed with a short message or a visible change.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "forms",
+    "async",
+    "status"
+   ],
+   "ask": "How does the person know that an action worked?",
+   "build": "Show a brief confirmation or an obvious state change.",
+   "review": "Complete the action: something confirms it.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A toast or a check mark after saving",
+     "bad": "An action that completes silently"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     34,
+     83
+    ]
+   }
+  },
+  {
+   "id": "confirm-destructive",
+   "category": "interaction",
+   "title": "Destructive actions are confirmed",
+   "principle": "An action that deletes or cannot be undone asks for confirmation, or can be undone.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "person",
+   "core": false,
+   "touches": [
+    "delete",
+    "dialogs",
+    "destructive"
+   ],
+   "ask": "Which actions delete data or cannot be reversed?",
+   "build": "Ask for confirmation that names what will be lost, or offer an undo.",
+   "review": "Trigger each destructive action: it asks first or can be undone.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A dialog that says \"Delete this report?\" with a clear confirm",
+     "bad": "Delete on a single click"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     35
+    ]
+   }
+  },
+  {
+   "id": "motion-timing",
+   "category": "motion",
+   "title": "Durations come from shared tokens",
+   "principle": "Motion lasts as long as the distance and the task need, from shared values, and feedback stays quick.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "motion",
+    "animation"
+   ],
+   "ask": "Which things move and how far?",
+   "build": "Use the motion tokens of the project; keep feedback short.",
+   "review": "Animations use shared durations, not one value copied everywhere.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "transition-colors duration-200",
+     "bad": "One duration pasted into every transition"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     8
+    ]
+   }
+  },
+  {
+   "id": "reduced-motion",
+   "category": "motion",
+   "title": "Reduced motion is respected",
+   "principle": "When the person asks the system for less motion, animation is reduced and parallax or scroll-driven effects show the final readable state. This is a platform preference, not a level of a standard.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "motion",
+    "animation",
+    "parallax"
+   ],
+   "ask": "Which animations are not essential?",
+   "build": "Check the reduced-motion setting and replace movement with a state change or a fade.",
+   "review": "Turn on reduced motion: large movement and parallax stop, and the content is still readable.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "@media (prefers-reduced-motion: reduce) { * { animation: none; } }",
+     "bad": "Animation with no reduced-motion check"
+    },
+    {
+     "stack": "flutter",
+     "good": "MediaQuery.of(context).disableAnimations",
+     "bad": "Ignoring the system setting"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     9,
+     99
+    ]
+   }
+  },
+  {
+   "id": "no-decorative-loops",
+   "category": "motion",
+   "title": "Endless animation is for loading only",
+   "principle": "Looping animation distracts; it is kept for indicators of a wait.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "motion",
+    "icons"
+   ],
+   "ask": "Does anything animate forever?",
+   "build": "Loop only a loading indicator.",
+   "review": "No decorative element animates continuously.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "animate-spin on a loader",
+     "bad": "animate-bounce on an icon"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     12
+    ]
+   }
+  },
+  {
+   "id": "cheap-animation",
+   "category": "motion",
+   "title": "Animate cheap properties",
+   "principle": "Animating transform and opacity is smooth; animating layout properties is not.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "motion",
+    "animation",
+    "performance"
+   ],
+   "ask": "Which properties will an animation change?",
+   "build": "Animate transform and opacity.",
+   "review": "No animation changes top, left, width or height.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "transform: translateY(10px);",
+     "bad": "An animation of top: 10px"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     13
+    ]
+   }
+  },
+  {
+   "id": "cancellable-transitions",
+   "category": "motion",
+   "title": "Transitions can be interrupted",
+   "principle": "If the person acts again while a transition runs, the earlier motion is cancelled and the final state is set directly; the state never waits for an animation to end.",
+   "applies": "web",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "motion",
+    "chips",
+    "toggles"
+   ],
+   "ask": "Can a control be changed again before its animation finishes?",
+   "build": "Cancel or replace the previous motion and set the new state at once.",
+   "review": "Click a toggle quickly several times: the final state is the last one clicked.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "previous?.cancel(); setSelected(next)",
+     "bad": "Enabling the state only inside a transitionend handler"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     119
+    ]
+   }
+  },
+  {
+   "id": "loading-indicators",
+   "category": "feedback",
+   "title": "Waiting is shown without flicker",
+   "principle": "A wait shows feedback that suits its length: nothing for instant work, a stable placeholder or progress for longer, with the layout and focus kept and a busy status for assistive technology.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "loading",
+    "async",
+    "lists"
+   ],
+   "ask": "How long can this wait be and what is on screen meanwhile?",
+   "build": "Keep the layout stable with a placeholder or a progress indicator; mark the region as busy.",
+   "review": "Throttle the network: a stable placeholder appears, the layout does not jump, nothing flashes for a fast response.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<div aria-busy=\"true\">skeleton of the final size</div>",
+     "bad": "A blank screen or a spinner that flashes"
+    },
+    {
+     "stack": "flutter",
+     "good": "A placeholder of the final size while the future resolves",
+     "bad": "An empty Scaffold while loading"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     78,
+     10
+    ]
+   }
+  },
+  {
+   "id": "empty-states",
+   "category": "feedback",
+   "title": "An empty list helps",
+   "principle": "When there is nothing to show, the screen says why and offers the next action.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "lists",
+    "tables",
+    "search"
+   ],
+   "ask": "What does the screen show when there is no data?",
+   "build": "Show a short explanation and an action.",
+   "review": "Empty the list: a message and an action appear, not blank space.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "\"No items yet. Create one.\"",
+     "bad": "Empty white space"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     79
+    ]
+   }
+  },
+  {
+   "id": "error-recovery",
+   "category": "feedback",
+   "title": "An error offers a way forward",
+   "principle": "An error message says what the person can do next.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "errors",
+    "async"
+   ],
+   "ask": "What can the person do after each failure?",
+   "build": "Offer a retry or a help path with the message.",
+   "review": "Each error has a next step.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A message with a \"Try again\" button",
+     "bad": "An error message only"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     80
+    ]
+   }
+  },
+  {
+   "id": "progress-indicators",
+   "category": "feedback",
+   "title": "Multi-step flows show progress",
+   "principle": "A process in several steps shows where the person is and how many steps remain.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "wizard",
+    "forms",
+    "steps"
+   ],
+   "ask": "How many steps does the flow have?",
+   "build": "Show the current step and the total.",
+   "review": "A multi-step flow shows its position.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "\"Step 2 of 4\"",
+     "bad": "No sign of the step"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     81
+    ]
+   }
+  },
+  {
+   "id": "toast-use",
+   "category": "feedback",
+   "title": "Transient messages are for non-critical news",
+   "principle": "A message that disappears is for information that is not critical; anything the person must act on stays.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "toasts",
+    "status"
+   ],
+   "ask": "Does a message carry something the person must not miss?",
+   "build": "Auto-dismiss only non-critical messages after a few seconds.",
+   "review": "A critical message does not disappear by itself.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A toast that dismisses after 4 seconds for \"Saved\"",
+     "bad": "A persistent toast for routine news"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     82
+    ]
+   }
+  },
+  {
+   "id": "line-height",
+   "category": "typography",
+   "title": "Body text has room between lines",
+   "principle": "Body text is easier to read with a line height of about 1.5 to 1.75.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "text"
+   ],
+   "ask": "What text is set in long paragraphs?",
+   "build": "Set body line height around 1.5.",
+   "review": "Body paragraphs are not set tighter than 1.4.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "leading-relaxed",
+     "bad": "leading-none on a paragraph"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     72
+    ]
+   }
+  },
+  {
+   "id": "line-length",
+   "category": "typography",
+   "title": "Lines are not too long",
+   "principle": "Long text is limited to roughly 65 to 75 characters per line, which also limits the width of text containers.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "text",
+    "layout"
+   ],
+   "ask": "Which text runs the full width of a wide screen?",
+   "build": "Limit the width of reading text.",
+   "review": "At 1440 pixels the paragraphs are not wider than about 75 characters.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "max-w-prose",
+     "bad": "Paragraphs across the whole viewport"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     73,
+     21
+    ]
+   }
+  },
+  {
+   "id": "type-scale",
+   "category": "typography",
+   "title": "Sizes come from a scale",
+   "principle": "Text sizes come from one scale, so the hierarchy is consistent.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "text",
+    "theme"
+   ],
+   "ask": "Which text sizes does the screen need?",
+   "build": "Use the sizes of the type scale of the design system.",
+   "review": "No new arbitrary font size is introduced.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A scale such as 12, 14, 16, 18, 24, 32",
+     "bad": "Arbitrary sizes on each element"
+    },
+    {
+     "stack": "flutter",
+     "good": "Theme.of(context).textTheme.titleMedium",
+     "bad": "TextStyle(fontSize: 17.3)"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     74
+    ]
+   }
+  },
+  {
+   "id": "font-loading",
+   "category": "typography",
+   "title": "Fonts load without shifting the page",
+   "principle": "A web font appears without blocking the text or moving the layout: a fallback of similar size is shown first.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "text",
+    "performance"
+   ],
+   "ask": "Does the change add a font?",
+   "build": "Use a swap or optional display and a fallback with similar metrics.",
+   "review": "Reload with a slow network: the text is visible at once and does not jump when the font loads.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "@font-face { font-display: swap; }",
+     "bad": "A web font with no fallback and invisible text while it loads"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     75,
+     50
+    ]
+   }
+  },
+  {
+   "id": "image-optimisation",
+   "category": "performance",
+   "title": "Images are the right size and format",
+   "principle": "An image is served at about the size it is shown, in a modern format.",
+   "applies": "all",
+   "weight": "blocking",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "images",
+    "media",
+    "performance"
+   ],
+   "ask": "Which images are large or photographic?",
+   "build": "Provide sizes for different screens and a compressed format.",
+   "review": "No very large image is used for a small slot.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<img srcset=\"a-400.webp 400w, a-800.webp 800w\" sizes=\"(min-width: 800px) 800px, 100vw\">",
+     "bad": "A 4000-pixel image shown at 400 pixels"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     46
+    ]
+   }
+  },
+  {
+   "id": "lazy-loading",
+   "category": "performance",
+   "title": "Below-the-fold content loads when needed",
+   "principle": "Content that is not visible at first loads later.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "images",
+    "lists",
+    "performance"
+   ],
+   "ask": "What is below the first screen?",
+   "build": "Lazy load below-the-fold images and heavy content.",
+   "review": "Only the first screen of images loads eagerly.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<img loading=\"lazy\">",
+     "bad": "Every image loaded eagerly"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     47
+    ]
+   }
+  },
+  {
+   "id": "code-splitting",
+   "category": "performance",
+   "title": "Large code loads by route",
+   "principle": "A large piece of code that only one route needs is loaded for that route.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "performance",
+    "routes"
+   ],
+   "ask": "Does the change add a heavy library?",
+   "build": "Load route-specific code on demand.",
+   "review": "A heavy dependency for one route is imported lazily.",
+   "examples": [
+    {
+     "stack": "vue",
+     "good": "const Chart = defineAsyncComponent(() => import('./Chart.vue'))",
+     "bad": "import Chart from './Chart.vue' in the main bundle"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     48
+    ]
+   }
+  },
+  {
+   "id": "third-party-scripts",
+   "category": "performance",
+   "title": "External scripts do not block rendering",
+   "principle": "Scripts the page does not need to render load without blocking it.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "performance",
+    "scripts"
+   ],
+   "ask": "Does the change add an external script?",
+   "build": "Load non-critical scripts with async or defer.",
+   "review": "No external script blocks the head.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<script src=\"x.js\" defer></script>",
+     "bad": "<script src=\"x.js\"></script> in the head"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     51
+    ]
+   }
+  },
+  {
+   "id": "sticky-nav-offset",
+   "category": "navigation",
+   "title": "A fixed header does not cover content",
+   "principle": "Content starts below a fixed navigation bar.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "navigation",
+    "sticky"
+   ],
+   "ask": "Is the navigation fixed to the top?",
+   "build": "Offset the content by the height of the bar.",
+   "review": "The first section is not hidden under the bar.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "pt-20 for an h-20 bar",
+     "bad": "No compensation for the bar"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     2
+    ]
+   }
+  },
+  {
+   "id": "active-nav-state",
+   "category": "navigation",
+   "title": "The current place is marked",
+   "principle": "Navigation shows where the person is, in a way that is not only a colour.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "navigation"
+   ],
+   "ask": "Which item is current?",
+   "build": "Mark the active item with an underline or weight as well as colour, and with an accessible current state.",
+   "review": "The current item is distinguishable.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "border-b-2 text-primary on the active item",
+     "bad": "All links styled the same"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     3
+    ]
+   }
+  },
+  {
+   "id": "back-behaviour",
+   "category": "navigation",
+   "title": "Back goes where people expect",
+   "principle": "The back action returns to the previous place; navigation history is kept.",
+   "applies": "mobile",
+   "weight": "blocking",
+   "check": "person",
+   "core": false,
+   "touches": [
+    "navigation",
+    "routing"
+   ],
+   "ask": "Which steps push a new place on the history?",
+   "build": "Push routes that the person would go back from; do not replace them.",
+   "review": "Back returns to the previous screen from each flow.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "history.pushState() for a new view",
+     "bad": "location.replace() for a view people go back from"
+    },
+    {
+     "stack": "flutter",
+     "good": "Navigator.push",
+     "bad": "Navigator.pushReplacement for a screen people go back from"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     4
+    ]
+   }
+  },
+  {
+   "id": "deep-links",
+   "category": "navigation",
+   "title": "The address reflects the view",
+   "principle": "A view that can be shared or reloaded has an address that reproduces it.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "navigation",
+    "routing",
+    "filters"
+   ],
+   "ask": "Which states should survive a reload or a shared link?",
+   "build": "Reflect filters, tabs and selected items in the URL or route.",
+   "review": "Reload the page: the same view returns.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Query parameters for filters",
+     "bad": "A single address for every state"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     5
+    ]
+   }
+  },
+  {
+   "id": "date-format",
+   "category": "content",
+   "title": "Dates follow the locale",
+   "principle": "Dates are shown in a form the person reads easily, using the locale.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "dates",
+    "text"
+   ],
+   "ask": "Which dates are displayed?",
+   "build": "Format dates with the locale; use relative dates when that helps.",
+   "review": "No hand-built date strings.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "\"2 hours ago\" or a locale format",
+     "bad": "01/02/03"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     85
+    ]
+   }
+  },
+  {
+   "id": "number-format",
+   "category": "content",
+   "title": "Numbers are readable",
+   "principle": "Large numbers use separators or abbreviations.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "numbers",
+    "text"
+   ],
+   "ask": "Which numbers are large?",
+   "build": "Format numbers with the locale.",
+   "review": "No raw long numbers.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "1,234 or 1.2K",
+     "bad": "1234567"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     86
+    ]
+   }
+  },
+  {
+   "id": "realistic-placeholders",
+   "category": "content",
+   "title": "Sample content is realistic",
+   "principle": "Sample data looks like real data so layout problems show up early.",
+   "applies": "all",
+   "weight": "advisory",
+   "check": "person",
+   "core": false,
+   "touches": [
+    "placeholder"
+   ],
+   "ask": "What sample content is used while building?",
+   "build": "Use realistic names, lengths and values.",
+   "review": "No lorem ipsum left in the change.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Realistic sample content",
+     "bad": "Lorem ipsum"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     87
+    ]
+   }
+  },
+  {
+   "id": "target-size-touch",
+   "category": "touch",
+   "title": "Touch targets are large enough",
+   "principle": "A target for a finger is about 48 dp on Android and 44 pt on iOS; the web has its own rule.",
+   "applies": "mobile",
+   "weight": "blocking",
+   "check": "render",
+   "core": true,
+   "touches": [
+    "interactive",
+    "buttons",
+    "icons"
+   ],
+   "ask": "Which controls are small?",
+   "build": "Size touch targets to the platform guideline, even when the icon is smaller.",
+   "review": "Measure the smallest control of the change; none is below the platform size.",
+   "examples": [
+    {
+     "stack": "flutter",
+     "good": "IconButton with the default 48 dp constraints",
+     "bad": "SizedBox(width: 24, height: 24, child: InkWell(...))"
+    },
+    {
+     "stack": "neutral",
+     "good": "44 pt on iOS and 48 dp on Android",
+     "bad": "A 24 px button"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     22
+    ]
+   }
+  },
+  {
+   "id": "touch-spacing",
+   "category": "touch",
+   "title": "Touch targets are spaced apart",
+   "principle": "Neighbouring targets have a gap so the wrong one is not pressed.",
+   "applies": "mobile",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "interactive",
+    "buttons"
+   ],
+   "ask": "Which controls sit next to each other?",
+   "build": "Leave at least 8 px between touch targets.",
+   "review": "Adjacent controls have a visible gap.",
+   "examples": [
+    {
+     "stack": "tailwind",
+     "good": "gap-2 between buttons",
+     "bad": "gap-0 between buttons"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     23
+    ]
+   }
+  },
+  {
+   "id": "gesture-conflicts",
+   "category": "touch",
+   "title": "Custom gestures do not fight the system",
+   "principle": "Custom gestures do not collide with scrolling or the system gestures.",
+   "applies": "mobile",
+   "weight": "advisory",
+   "check": "person",
+   "core": false,
+   "touches": [
+    "gestures",
+    "carousel"
+   ],
+   "ask": "Does the change add a swipe?",
+   "build": "Keep vertical scroll primary; avoid a main-content horizontal swipe as the only way.",
+   "review": "On a device, scroll and system back still work.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "Vertical scroll with buttons for sideways moves",
+     "bad": "A horizontal swipe as the only navigation"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     24
+    ]
+   }
+  },
+  {
+   "id": "search-suggestions",
+   "category": "search",
+   "title": "Search helps while typing",
+   "principle": "Predictions appear as the person types.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "search"
+   ],
+   "ask": "Is there a search field with a large set of results?",
+   "build": "Show debounced suggestions.",
+   "review": "Typing shows suggestions without a request per key.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "A debounced request and a list of suggestions",
+     "bad": "No suggestions"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     89
+    ]
+   }
+  },
+  {
+   "id": "no-results",
+   "category": "search",
+   "title": "No results offers a way on",
+   "principle": "An empty result says so and suggests what to do next.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "render",
+   "core": false,
+   "touches": [
+    "search",
+    "lists"
+   ],
+   "ask": "What happens when a search finds nothing?",
+   "build": "Explain and suggest another search or action.",
+   "review": "A search with no results shows a helpful message.",
+   "examples": [
+    {
+     "stack": "neutral",
+     "good": "\"No results for X. Try a shorter word.\"",
+     "bad": "\"No results found.\""
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     90
+    ]
+   }
+  },
+  {
+   "id": "autoplay-media",
+   "category": "media",
+   "title": "Media does not start by itself",
+   "principle": "Video and audio start when the person asks, with a pause control and captions.",
+   "applies": "web",
+   "weight": "advisory",
+   "check": "code",
+   "core": false,
+   "touches": [
+    "media",
+    "video"
+   ],
+   "ask": "Does the change play media?",
+   "build": "Prefer click to play; add captions; stop off-screen and honour reduced motion.",
+   "review": "No media starts on its own.",
+   "examples": [
+    {
+     "stack": "html",
+     "good": "<video controls preload=\"none\"><track kind=\"captions\" src=\"c.vtt\"></video>",
+     "bad": "<video autoplay loop>"
+    }
+   ],
+   "source": {
+    "work": "UI UX Pro Max",
+    "numbers": [
+     96
+    ]
+   }
+  }
+ ]
+}
