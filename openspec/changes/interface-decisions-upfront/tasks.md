@@ -37,10 +37,10 @@
 
 ## 5. Checking a preview
 
-- [ ] 5.1 Add `scripts/lib/preview-check.mjs` and `scripts/preview-check.mjs`: the static checks (an address outside the file, a script, a size over the target), the lookup of a browser automation library in the project and then on the machine, scripts and network disabled, the items overflow, contrast and target size with the statuses `pass`, `fail`, `not checked` and `approximate`, and an exit code of its own when no library exists. Verify with `tests/preview-check.test.mjs` and fixtures: a page that passes, one with low contrast, one that overflows at 360 px, one with a small target, text over an image, a script, an external address.
-- [ ] 5.2 The thresholds by kind: `web` at 360 and 1024 px with the WCAG 2.2 minimum target, `mobile` at 320 and 360 px with 48 dp (44 pt for an iOS target) and a second pass with text at 130% and 200%. Verify with fixtures: a 40 dp button in a mobile sketch fails, a layout that breaks only at 200% fails that pass.
-- [ ] 5.3 Use the tokens in the contrast check and mark a value that came from an approximation as `approximate`. Verify with a fixture whose colour was derived by opacity.
-- [ ] 5.4 Prove that the check writes nothing into the repository and sends nothing out of the machine. Verify with a test that runs it in a repository and compares the tree before and after, and with the disabled network.
+- [x] 5.1 Add `scripts/lib/preview-check.mjs` and `scripts/preview-check.mjs`: the static checks (an address outside the file, a script, a size over the target), the lookup of a browser automation library in the project and then on the machine, scripts and network disabled, the items overflow, contrast and target size with the statuses `pass`, `fail`, `not checked` and `approximate`, and an exit code of its own when no library exists. Verify with `tests/preview-check.test.mjs` and fixtures: a page that passes, one with low contrast, one that overflows at 360 px, one with a small target, text over an image, a script, an external address.
+- [x] 5.2 The thresholds by kind: `web` at 360 and 1024 px with the WCAG 2.2 minimum target, `mobile` at 320 and 360 px with 48 dp (44 pt for an iOS target) and a second pass with text at 130% and 200%. Verify with fixtures: a 40 dp button in a mobile sketch fails, a layout that breaks only at 200% fails that pass.
+- [x] 5.3 Use the tokens in the contrast check and mark a value that came from an approximation as `approximate`. Verify with a fixture whose colour was derived by opacity.
+- [x] 5.4 Prove that the check writes nothing into the repository and sends nothing out of the machine. Verify with a test that runs it in a repository and compares the tree before and after, and with the disabled network.
 
 ## 6. The interface step of `think`
 
