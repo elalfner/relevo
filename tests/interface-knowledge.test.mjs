@@ -79,8 +79,8 @@ test('Scenario: An enhanced criterion - a rule that cites an enhanced-level crit
 });
 
 test('the accessibility check is dated, and every cited criterion is in the record', () => {
-  // Empty until task 1.8 is done: the W3C text has to be read before a date is recorded.
-  if (data.accessibility_checked !== null) assert.match(String(data.accessibility_checked), /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(String(data.accessibility_checked), /^\d{4}-\d{2}-\d{2}$/);
+  assert.doesNotMatch(read('knowledge/interface/CURATION.md'), /not yet verified|\| not yet \|/i);
   const record = read('knowledge/interface/CURATION.md');
   const cited = new Set(rules.flatMap((r) => [...`${r.principle} ${r.build} ${r.review}`.matchAll(/WCAG (\d\.\d\.\d+)/g)].map((m) => m[1])));
   assert.ok(cited.size > 0);

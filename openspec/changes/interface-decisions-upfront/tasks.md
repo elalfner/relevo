@@ -9,7 +9,7 @@
 - [x] 1.5 Write `knowledge/interface/CURATION.md`: for every one of the 119 source numbers, adopted, merged into which rule, or left out with the reason, using the groups of the design. Verify with the data test that every source number from 1 to 119 appears exactly once.
 - [x] 1.6 Add `tests/interface-knowledge.test.mjs` for the spec: every field present, unique identifiers, valid weight, check and platform values, a blocking rule has a check and an example for at least one stack, an enhanced-criterion rule is advisory, and every `source` is named in `NOTICE`. Run it and fix the data until it passes.
 - [x] 1.7 Update `NOTICE`: name the source collection as a third licensed work with its copyright line and where it is used, correct the sentence that says the plugin does not include the files of the works it uses, and keep the licence text. Verify with `tests/notice.test.mjs` and the check of task 1.6.
-- [ ] 1.8 Check every rule that cites an accessibility criterion against the W3C text of the standard, correct or remove the ones that do not hold, mark enhanced criteria as advisory, and record the date of the check in the header of `rules.json`. Verify by listing each cited criterion with the passage it was checked against in `CURATION.md`.
+- [x] 1.8 Check every rule that cites an accessibility criterion against the W3C text of the standard, correct or remove the ones that do not hold, mark enhanced criteria as advisory, and record the date of the check in the header of `rules.json`. Verify by listing each cited criterion with the passage it was checked against in `CURATION.md`.
 
 ## 2. Selecting rules for an agent
 

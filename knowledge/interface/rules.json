@@ -1,6 +1,6 @@
 {
  "about": "Interface rules for Relevo, written in its own words from the guidelines of UI UX Pro Max (see NOTICE and CURATION.md).",
- "accessibility_checked": null,
+ "accessibility_checked": "2026-11-02",
  "rules": [
   {
    "id": "focus-visible",
@@ -379,7 +379,7 @@
    "id": "focus-not-obscured",
    "category": "accessibility",
    "title": "Focus is not hidden behind other content",
-   "principle": "A focused control is not covered by a sticky header, a banner or another persistent layer (WCAG 2.4.11, level AA).",
+   "principle": "A focused control is not entirely hidden by a sticky header, a banner or another persistent layer (WCAG 2.4.11, level AA). Keeping it at least partly visible is the safer reading.",
    "applies": "web",
    "weight": "blocking",
    "check": "render",
@@ -391,7 +391,7 @@
    ],
    "ask": "Which elements stay fixed on screen while the page scrolls?",
    "build": "Leave room for fixed elements with scroll padding, or move or dismiss a persistent layer when focus goes under it.",
-   "review": "Tab through the page with a fixed header and banner open: no focused control is hidden.",
+   "review": "Tab through the page with a fixed header and banner open: no focused control is entirely hidden, and ideally none is even partly covered.",
    "examples": [
     {
      "stack": "html",
@@ -503,7 +503,7 @@
    "id": "rotating-content-control",
    "category": "accessibility",
    "title": "Auto-moving content can be stopped",
-   "principle": "Content that moves or changes by itself can be paused, and it stops while the person focuses it or asks for less motion (WCAG 2.2.2).",
+   "principle": "Content that moves, blinks or updates by itself for more than five seconds, next to other content, has a way to pause, stop or hide it (WCAG 2.2.2). As good practice it also stops while the person focuses it and when they ask for less motion.",
    "applies": "all",
    "weight": "blocking",
    "check": "render",
@@ -534,7 +534,7 @@
    "id": "error-summary",
    "category": "accessibility",
    "title": "A failed form offers an error summary",
-   "principle": "After a failed submit, a summary at the top lists the problems, takes focus, and links to each invalid field, next to the error beside each field (WCAG 3.3.1).",
+   "principle": "After a failed submit, a summary at the top lists the problems, takes focus, and links to each invalid field, next to the error beside each field. The inline error is what WCAG 3.3.1 asks for; the summary is a technique that makes the errors easy to find.",
    "applies": "web",
    "weight": "blocking",
    "check": "render",
@@ -2664,5 +2664,6 @@
     ]
    }
   }
- ]
+ ],
+ "accessibility_source": "WCAG 2.2, https://www.w3.org/TR/WCAG22/"
 }
