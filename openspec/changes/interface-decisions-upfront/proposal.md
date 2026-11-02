@@ -26,10 +26,13 @@ Out of scope: the specialist QA lenses and the model and effort of each role (ch
 
 - `interface-knowledge`: the rule collection and its fields, how rules are selected for a role, a stack and a change, the per-stack translation and examples, the limit on what an agent receives, what a repository may add, and the attribution.
 - `design-tokens`: reading the colours, text styles, spacing and radii of a project's design system from its code, with the source of each value, the light and dark themes, what is reported as unresolved, and the extractors for the stacks the plugin ships.
+- `interface-preview`: the preview files that `think` writes outside the repository after a yes, what a page and a mobile sketch contain, and the automatic check that runs before the person sees them and what it reports.
 
 ### Modified Capabilities
 
-- `think`: an interface step when the idea has a visible part; reading the design tokens; preview files outside the repository after a yes, as an HTML page for the web and as a labelled sketch for a mobile stack; running the preview check; recording the choice as a numbered decision.
+- `think`: an interface step when the idea has a visible part; reading the design tokens; options as text wireframes; offering the previews of `interface-preview`; recording the choice as a numbered decision. The rule that `think` writes no file itself gains one exception: the preview files, after a yes.
+- `issue` also: the limit of 8,000 characters for the length warning no longer counts the example code of a `Design reference`.
+- `plugin-distribution`: the package also holds the knowledge folder.
 - `issue`: asks the interface questions that the idea does not answer; writes the chosen example code in `Design reference`; warns on vague appearance words and asks about them; the length warning and limit for example code.
 - `go`: selects the interface rules for the change after the specification and gives them to the developer agent and to QA.
 - `platforms`: a profile says whether its stack has an interface (`web`, `mobile` or `none`) and may translate rules; a repository's own stack declares the same.
