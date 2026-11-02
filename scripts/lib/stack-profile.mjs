@@ -8,7 +8,9 @@ import { parse, YamlLiteError } from './yaml-lite.mjs';
 import { isRestricted } from './restricted-paths.mjs';
 
 export const ROLES = ['dev', 'qa', 'issue', 'review'];
-const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review']);
+const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review', 'interface']);
+// The kind of interface a stack builds, for the interface rules: none when the key is missing.
+export const INTERFACE_KINDS = ['mobile', 'web', 'none'];
 const REVIEW_KEYS = new Set(['log', 'test', 'serve']);
 const SERVE_KEYS = new Set(['command', 'url', 'env']);
 // A server the agent starts is reached on this machine only.
@@ -31,6 +33,7 @@ const emptyProfile = (stack) => ({
   skillsDisable: [],
   skillsWhenInstalled: Object.fromEntries(ROLES.map((r) => [r, []])),
   targets: {},
+  interface: 'none',
   review: {},
   body: '',
   questions: '',
@@ -149,6 +152,10 @@ export function parseProfile(text) {
   // A profile only adds, and it cannot weaken the list of restricted files: a path it names for the agents to treat or
   // read (generated files, the review log) is never one of them.
   profile.generated.filter((entry) => isRestricted(entry)).forEach((entry) => errors.push(`"generated" lists "${entry}", a restricted file: the base list cannot be reduced by a profile`));
+  if (raw.interface !== undefined) {
+    if (!INTERFACE_KINDS.includes(raw.interface)) errors.push(`"interface" must be one of: ${INTERFACE_KINDS.join(', ')}`);
+    else profile.interface = raw.interface;
+  }
   if (raw.skills !== undefined) {
     if (!isMap(raw.skills)) errors.push('"skills" must map a role to a list of skill names');
     else {
@@ -246,6 +253,8 @@ export function mergeProfiles(plugin, repository) {
       else if (plugin[key][name] !== value) ignored.push({ key: `${key}.${name}`, value, kept: plugin[key][name] });
     });
   });
+  if (plugin.interface === 'none' && repository.interface !== 'none') out.interface = repository.interface;
+  else if (repository.interface !== 'none' && repository.interface !== plugin.interface) ignored.push({ key: 'interface', value: repository.interface, kept: plugin.interface });
   out.body = [plugin.body, repository.body].filter(Boolean).join('\n\n');
   out.questions = [plugin.questions, repository.questions].filter(Boolean).join('\n\n');
   out.reviewBody = [plugin.reviewBody, repository.reviewBody].filter(Boolean).join('\n\n');

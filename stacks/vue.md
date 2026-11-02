@@ -15,6 +15,7 @@ skills:
 skills_when_installed:
   dev: [vue-best-practices, vue-testing-best-practices]
   qa: [vue-best-practices, vue-testing-best-practices]
+interface: web
 targets:
   web: ""
 ---
