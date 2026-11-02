@@ -14,6 +14,17 @@ export const REVIEWS_PER_PERSON_PER_DAY = 1;
 /** A feature branch this many commits behind the base branch is reported. */
 export const BEHIND_ALERT = 10;
 
+/** What the merge probe found, in words: whether merging the base branch would conflict, and in which files. */
+export function mergeText(alert, language) {
+  const es = String(language).startsWith('es');
+  if (alert.merge === 'conflict') {
+    const files = (alert.conflicts ?? []).join(', ');
+    return es ? `el merge tendría conflictos${files ? ` en ${files}` : ''}` : `merging the base would conflict${files ? ` in ${files}` : ''}`;
+  }
+  if (alert.merge === 'clean') return es ? 'el merge no tendría conflictos' : 'merging the base would be clean';
+  return es ? 'no se sabe si el merge tendría conflictos' : 'not known whether merging the base would conflict';
+}
+
 const HOUR = 3600 * 1000;
 
 function workingDays(from, to) {
@@ -96,7 +107,7 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
       const hours = Math.floor((new Date(now).getTime() - Date.parse(p.requested_at)) / HOUR);
       if (hours >= config.limits.review_sla_hours) alerts.push({ type: 'stale-review', issue: p.issue, pr: p.url, reviewer: p.reviewer, hours });
     }
-    if ((p.behind_by ?? 0) >= BEHIND_ALERT) alerts.push({ type: 'stale-branch', issue: p.issue, pr: p.url, behind: p.behind_by });
+    if ((p.behind_by ?? 0) >= BEHIND_ALERT) alerts.push({ type: 'stale-branch', issue: p.issue, pr: p.url, behind: p.behind_by, merge: p.merge?.result ?? 'unknown', conflicts: p.merge?.files ?? [] });
   });
 
   // Who is waiting on what, for the whole team (used by the digest).
@@ -188,7 +199,7 @@ export function renderStatus(report, language = 'en') {
     if (a.type === 'stuck-build') return `#${a.issue} ${t.stuck} ${a.hours}h: ${t.restart} ${a.command}`;
     return a.type === 'stale-review'
       ? `#${a.issue} ${t.staleReview} ${a.hours}h (@${a.reviewer}) ${a.pr}`
-      : `#${a.issue} ${t.staleBranch} ${a.behind} ${a.pr}`;
+      : `#${a.issue} ${t.staleBranch} ${a.behind} ${a.pr} (${mergeText(a, language)})`;
   }));
   if (unread.length) {
     if (out.length && out[out.length - 1] !== '') out.push('');
@@ -242,7 +253,7 @@ export function renderDigest(report, language = 'en') {
       if (a.type === 'stuck-build') lines.push(`- #${a.issue} ${es ? 'construcción sin actividad desde hace' : 'build with no activity for'} ${a.hours}h`);
       else lines.push(a.type === 'stale-review'
         ? `- #${a.issue} ${es ? 'revisión esperando' : 'review waiting'} ${a.hours}h (@${a.reviewer})`
-        : `- #${a.issue} ${es ? 'rama atrasada por' : 'branch behind the base by'} ${a.behind}`);
+        : `- #${a.issue} ${es ? 'rama atrasada por' : 'branch behind the base by'} ${a.behind} (${mergeText(a, es ? 'es' : 'en')})`);
     });
   }
   if (report.usage) lines.push('', digestUsageLine(report.usage, es));
