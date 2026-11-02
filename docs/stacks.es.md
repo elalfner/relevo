@@ -143,6 +143,19 @@ Para un stack con interfaz, `node scripts/design-tokens.mjs` lee los colores, es
 - **Nunca se adivina:** un esquema de color derivado de una semilla, un color que viene del dispositivo o de un servidor, un tono que no está en la tabla fija y una referencia que no puede seguir se listan como no resueltos con su archivo y línea. `think` te pide esos colores en lugar de inventarlos.
 - **Varias marcas o sabores** se listan como conjuntos separados y nunca se mezclan: tú eliges uno.
 
+## Skills de diseño evaluadas
+
+Relevo no instala ninguna skill de diseño y no recomienda ninguna por defecto. Se leyeron cuatro públicas el 2 de noviembre de 2026 para ver qué aportaría cada una; cualquiera puede añadirse a un rol con el mecanismo de [Skills extra por rol](#skills-extra-por-rol), y `/relevo:init` no instala ninguna. «Coste» es el tamaño del archivo que carga el agente cuando la skill está activa, a unos cuatro caracteres por token.
+
+| Skill | Licencia que declara | Para qué sirve | Encaje en un rol | Coste al cargarla |
+|---|---|---|---|---|
+| `frontend-design` (colección `anthropics/skills`) | Apache-2.0 | Dirección de arte para una interfaz web distintiva | `dev`, para una página nueva donde se quiere un estilo; empuja hacia una identidad visual fuerte, así que puede chocar con un sistema de diseño existente | unos 9 KB (2.300 tokens) |
+| Taste (`Leonxlnx/taste-skill`) | MIT | Dirección de arte para sitios web, destilada de un estudio de sitios de galería | `dev` para una landing o un sitio de marketing; no para una aplicación con sistema propio | unos 40 KB (10.000 tokens) |
+| Hallmark (`Nutlope/hallmark`) | MIT | Una skill de diseño para sitios y páginas nuevas, con modos de rediseño y auditoría | `dev` para un sitio nuevo; dice que no se use sobre un diseño existente salvo que se nombre | unos 18 KB (4.500 tokens) |
+| UI UX Pro Max (`nextlevelbuilder/ui-ux-pro-max-skill`) | MIT | Un cuerpo de guías de UI y UX, estilos, paletas y notas por stack, con búsqueda | La fuente de las [reglas de interfaz](../knowledge/interface/CURATION.md) propias de Relevo; la skill en sí añade un conjunto de datos grande | un archivo de skill de unos 16 KB (4.000 tokens) más datos de unos 3 MB, que busca un script |
+
+Qué se concluye de la lectura: las tres que dan un estilo son para sitios nuevos, y un proyecto con sistema de diseño quiere lo contrario (reutilizar sus tokens y componentes), que es lo que hace el paso de interfaz. Las reglas propias de Relevo vienen de la cuarta y se cargan por rol y presupuesto, no enteras. Lee la licencia vigente y el archivo que añadirías antes de hacerlo; son obras de terceros que cambian.
+
 ## Tu propio stack
 
 Relevo trae perfiles para `flutter`, `vue`, `laravel` y `supabase`. Para cualquier otro stack (Go, Python, Rust...) escribes tú el perfil, y el archivo es el perfil completo:

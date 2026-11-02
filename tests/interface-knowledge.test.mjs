@@ -87,3 +87,35 @@ test('the accessibility check is dated, and every cited criterion is in the reco
   cited.forEach((c) => assert.ok(record.includes(`WCAG ${c}`), `the record does not list WCAG ${c}`));
 });
 
+
+// ---- seeded defects
+import { existsSync, readdirSync } from 'node:fs';
+const CODE_STACKS = { html: 'html', tailwind: 'html', vue: 'vue', flutter: 'dart' };
+const defects = new URL('./fixtures/interface-defects/', import.meta.url);
+const reasons = JSON.parse(readFileSync(new URL('reasons.json', defects), 'utf8'));
+const blockingWithCode = rules.filter((r) => r.weight === 'blocking' && r.examples.some((e) => CODE_STACKS[e.stack]));
+
+test('Scenario: A blocking rule with a bad example - a fixture holds the defect and a good variant, or a reason is recorded', () => {
+  assert.ok(blockingWithCode.length > 0);
+  blockingWithCode.forEach((r) => {
+    const dir = new URL(`${r.id}/`, defects);
+    if (existsSync(dir)) {
+      const names = readdirSync(dir);
+      assert.ok(names.some((n) => n.startsWith('bad.')) && names.some((n) => n.startsWith('good.')), `${r.id}: a fixture needs a bad and a good file`);
+      assert.ok(!reasons[r.id], `${r.id} has a fixture and a reason`);
+    } else assert.ok(typeof reasons[r.id] === 'string' && reasons[r.id].length > 10, `blocking rule ${r.id} has a code example and neither a fixture nor a recorded reason`);
+  });
+});
+
+test('the fixtures are the examples of the rules: they cannot drift, and the good variant differs from the bad one', () => {
+  readdirSync(defects, { withFileTypes: true }).filter((d) => d.isDirectory()).forEach((d) => {
+    const rule = rules.find((r) => r.id === d.name);
+    assert.ok(rule, `${d.name} is not a rule`);
+    const files = readdirSync(new URL(`${d.name}/`, defects));
+    const bad = readFileSync(new URL(`${d.name}/${files.find((n) => n.startsWith('bad.'))}`, defects), 'utf8').trimEnd();
+    const good = readFileSync(new URL(`${d.name}/${files.find((n) => n.startsWith('good.'))}`, defects), 'utf8').trimEnd();
+    assert.notEqual(bad, good);
+    assert.ok(rule.examples.some((e) => e.bad === bad && e.good === good), `${d.name}: the fixture is not one of the examples of the rule`);
+  });
+  Object.keys(reasons).forEach((id) => assert.ok(rules.some((r) => r.id === id), `a reason for an unknown rule ${id}`));
+});
