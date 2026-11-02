@@ -116,7 +116,7 @@ This section follows the Supabase documentation (local development workflow and 
 
 ## Tuning how a stack is reviewed
 
-The header of `.relevo/stacks/<stack>.md` can carry a `review` block, and its body a section `## Review`. The plugin's `laravel` profile sets the defaults, so a Laravel repository needs neither.
+The header of `.relevo/stacks/<stack>.md` can carry a `review` block, and its body a section `## Review`. The plugin's `laravel` and `supabase` profiles set the defaults, so a Laravel or Supabase repository needs neither.
 
 ```yaml
 review:
@@ -129,10 +129,12 @@ review:
       APP_ENV: testing
 ```
 
+- `log` is a path or a glob of files, or `docker:<container>` for the log of a container; in a `docker:` name `{project_id}` stands for the `project_id` of `supabase/config.toml`. The default of `supabase` is `docker:supabase_db_{project_id}` with `test: supabase test db`.
 - A key you write replaces the plugin's default for that key (`/relevo:doctor` lists the ones you replaced). It is the one place a repository may replace a value of a profile, because the block says how the review is driven and is not a check of the code: `analyze`, `test` and `format` are still replaced only through `checks`.
 - `serve` is started only with `review.autopilot` `precheck` or `verify`, after you confirmed that the data is not production, on a free port of `localhost`, through the script that records and stops it. Its `url` must be on `localhost`, `127.0.0.1` or `[::1]`, and the command is read only from this file on the base branch, never from an issue or a comment.
 - The section `## Review` is free text for the agent, read only in a review. It can add steps and ask for more evidence. It cannot change that you confirm every line, that the log is audited, that `decide` gates the pull request, that restricted files (the list in [Security](security.md)) are never read, that no waiver is suggested or that no code is patched in a review: `/relevo:doctor` warns about a line that asks for one of them, and the review ignores it.
 - A Laravel review has no device and no browser. With `review.autopilot` `off` you run the project's tests and tell the review (`ran <exit code>`); with `precheck` or `verify` the agent runs the existing test of each line and never writes one. A test run that passes writes nothing to `storage/logs`, so the recorded run, and not the log, is what shows that the code was exercised.
+- A Supabase review has no device and no browser either, and it only ever touches the local containers: `review.test` is refused when it names `--linked`, `--db-url`, `link`, `push` or `pull`, and the review never reads `.env` files or `supabase/.temp`, even when the folder is linked to a remote project. Each line is proved by the pgTAP file of its scenario in `supabase/tests/` (`supabase test db <file>`); the log is the database container's, read since the review started. A policy test provokes permission, row-level security and constraint errors on purpose, so the report lists those as expected denials, and a `FATAL`, a deadlock or any other `ERROR` is a finding.
 
 ## What each QA reviewer reads of a profile
 

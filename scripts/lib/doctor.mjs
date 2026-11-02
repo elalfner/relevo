@@ -556,14 +556,24 @@ function gatherPlatforms(f, p, tryRun) {
       });
       // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
       const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
-      if (adapter.supported && adapter.kind === 'api') {
+      if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
+        // A Supabase review runs pgTAP against the local containers: the config, whether the stack runs, and its log container.
+        const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
+        const hasConfig = p.exists(at('supabase/config.toml'));
+        const dockerOk = entry.tools.find((t) => t.tool === 'docker')?.ok === true;
+        const running = hasConfig && dockerOk ? tryRun(() => { p.tool('supabase', ['status', '--workdir', platform.path || '.']); return true; }, false) : null;
+        const projectId = hasConfig ? /^\s*project_id\s*=\s*["']([^"']+)["']/m.exec(tryRun(() => p.read(at('supabase/config.toml')), '') ?? '')?.[1] ?? null : null;
+        const logName = resolved.profile.review?.log?.startsWith('docker:') ? resolved.profile.review.log.slice('docker:'.length).replaceAll('{project_id}', projectId ?? '') : null;
+        const containers = running && logName ? tryRun(() => String(p.tool('docker', ['ps', '--format', '{{.Names}}'])).split('\n').map((n) => n.trim()).filter(Boolean), null) : null;
+        entry.supabase = { config: hasConfig, running, projectId, logContainer: logName, logContainerFound: containers === null ? null : containers.includes(logName) };
+      } else if (adapter.supported && adapter.kind === 'api') {
         const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
         const xml = ['phpunit.xml', 'phpunit.xml.dist'].find((n) => p.exists(at(n)));
         entry.api = { vendor: p.exists(at('vendor/autoload.php')), database: testDatabase(xml ? tryRun(() => p.read(at(xml)), null) : null) };
       }
       // The review block of the profile: where the log is, and whether the folder it names exists.
       const logPattern = resolved.profile.review?.log;
-      if (logPattern) {
+      if (logPattern && !logPattern.startsWith('docker:')) {
         const segments = logPattern.split('/').filter(Boolean);
         const literal = segments.findIndex((s) => /[*?]/.test(s));
         const dir = (literal === -1 ? segments.slice(0, -1) : segments.slice(0, literal)).join('/');
@@ -789,6 +799,15 @@ function platformChecks(f) {
       const db = e.api.database;
       if (db.safe) r.push(pass(`review.api.${e.name}.database`, `platform ${e.name}: the tests use in-memory SQLite`));
       else r.push(note(`review.api.${e.name}.database`, `platform ${e.name}: ${db.reason}; the review asks for your written confirmation that it is not production before it runs a test`));
+    }
+    if (e.supabase) {
+      const sb = e.supabase;
+      const inDir = e.path && e.path !== '.' ? `cd ${e.path} && ` : '';
+      if (!sb.config) r.push(warn(`review.supabase.${e.name}.config`, `platform ${e.name} has no supabase/config.toml in ${e.path || '.'}, so the review cannot run supabase test db`, `run \`${inDir}supabase init\`, or point the platform's path at the folder that holds supabase/`));
+      else r.push(pass(`review.supabase.${e.name}.config`, `platform ${e.name}: supabase/config.toml exists`));
+      if (sb.config && sb.running === false) r.push(note(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is not running; the review asks before it runs \`supabase start\``));
+      else if (sb.running) r.push(pass(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is running`));
+      if (sb.logContainerFound === false) r.push(warn(`review.log.${e.name}`, `platform ${e.name}: review.log names the container ${sb.logContainer}, which does not exist while the local stack is running, so the audit would read no log`, 'check review.log in the profile; the database container is supabase_db_<project_id>'));
     }
     (e.profile.reviewReplaced ?? []).forEach((key) => {
       r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));

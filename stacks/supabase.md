@@ -20,6 +20,9 @@ skills:
     - supabase
     - supabase-postgres-best-practices
   review: []
+review:
+  log: docker:supabase_db_{project_id}
+  test: supabase test db
 interface: none
 ---
 
@@ -82,3 +85,11 @@ Check the diff against each item. Report one only with the line that breaks it.
 - **Missing Indexes**: Foreign key constraints or RLS filter columns without an index.
 - **Destructive Migrations**: `DROP TABLE`, `DROP COLUMN`, or `TRUNCATE` operations without explicit migration plans or rollback safety.
 - **Exposed Secrets**: Hardcoded `service_role` keys, API tokens, or service passwords in code, migrations, or seed files.
+
+## Review
+
+A Supabase review has no device and no browser: the checklist comes from the scenarios and each line is proved by the pgTAP file of its scenario in `supabase/tests/`. With `review.autopilot` `off` the person runs `supabase test db` and says so (`ran <exit code>`); with `precheck` or `verify` you run `supabase test db <file>` for the file that covers a line and record the output with `ran ... --tap`, and a file that does not exist or that ran no assertion is a failed proof, never a pass. Never write or edit a test in a review.
+
+The review only touches the local containers. Never add `--linked` or `--db-url`, never run `supabase link`, `db push` or `db pull`, and never read `.env` files or `supabase/.temp`, even when the folder is linked to a remote project. If the local stack is stopped, say so: the person runs `supabase start`, or you list it in the plan of the walk and run it only after they confirm, and you stop it at the end only if you started it.
+
+The log is the database container's, read since the review started. A pgTAP test of a policy provokes `permission denied`, `row-level security` and constraint errors on purpose: they are expected denials, counted in the report and not findings. A `FATAL`, a deadlock, an out-of-memory message or any other `ERROR` (a missing relation, a syntax error) is a finding.

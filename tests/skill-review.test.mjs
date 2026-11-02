@@ -391,3 +391,13 @@ test('Scenario: A conflict outside the folder of the platform - review does not 
 test('a lock file or a generated file in conflict is regenerated with the tool, never edited by hand', () => {
   assert.match(sync, /regenerated now with the tool of the project \(for the install of dependencies, ask the person first\), never by hand/);
 });
+
+test('Scenario: Supabase ready / Local stack stopped - the skill names the Supabase preflight, the pgTAP run, the started stack and the local-only rule', () => {
+  ['api-preflight.mjs --stack supabase', 'supabase test db', 'started-stack', '--tap', 'supabase-command.mjs', '--stack <the stack of the platform>'].forEach((x) => assert.ok(body.includes(x), `the skill never names ${x}`));
+  assert.match(body, /never add `--linked` or `--db-url`/);
+  assert.match(body, /Exit `7` is not a stop/);
+  assert.match(body, /only if `started-stack` was recorded/);
+  assert.match(body, /expected denials/);
+  const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
+  assert.ok(source.includes("case 'started-stack'"), 'review-state has no "started-stack" command');
+});

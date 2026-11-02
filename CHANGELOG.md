@@ -4,6 +4,15 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`/relevo:review` works for a Supabase database.** A Supabase platform defines no target, so the review used to stop before the pull request with "names no target to review". It now has an `api` adapter that only touches the local containers: with `review.autopilot` `off` you run `supabase test db` and write `ran <exit code>`; with `precheck` or `verify` the agent runs the pgTAP file in `supabase/tests/` that already covers each line, records the file, the assertions that ran and the exit code, and never writes a test. A file that ran no assertion, or a plan that was not completed, proves nothing. The audit reads the log of the database container since the review started (`docker logs --since`, never restarted or emptied); the permission, row-level security and constraint errors that a policy test provokes on purpose are listed as expected denials and are not findings, while a `FATAL`, a deadlock or any other `ERROR` is. The review never uses `--linked` or `--db-url`, never runs `link`, `db push` or `db pull` and never reads `.env` files, even when the folder is linked to a remote project. A stopped local stack is started only after you confirm it, and stopped at the end only if the agent started it. `api-preflight.mjs --stack supabase` checks the CLI, Docker, `supabase/config.toml` and the stack, and `/relevo:doctor` reports what a Supabase review needs.
+- **A `review` block can name the log of a container.** `review.log` takes `docker:<container>` besides a path or a glob, with `{project_id}` read from `supabase/config.toml`; a `review.test` that names `--linked`, `--db-url`, `link`, `push` or `pull` makes the profile invalid.
+
+### Changed
+
+- **The stop message for a stack with no review adapter** now lists Supabase among the adapters that exist.
+
 ### Fixed
 
 - **The comment for a restricted file versioned on the base branch no longer sends you to `/relevo:fix`.** Nothing was built and no command fixes it: the next step now says to rotate any secret, remove the file from the repository (`git rm --cached`), keep it ignored, merge that into the base branch and label the issue ready again.

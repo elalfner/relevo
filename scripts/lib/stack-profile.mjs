@@ -129,6 +129,11 @@ export function fixedRuleWarnings(text) {
   return out;
 }
 
+// The log of a container: `docker:<name>`, where {project_id} stands for the project_id of supabase/config.toml.
+const DOCKER_LOG_RE = /^docker:[A-Za-z0-9_.{}-]+$/;
+// A review runs its tests against what is local. A test command that names one of these reaches a remote project.
+const REMOTE_TEST_RE = /(^|\s)(--linked|--db-url(=\S*)?|link|push|pull)(\s|$)/;
+
 /** Validate the `review` block of a header. Returns { value, errors }. */
 function parseReviewBlock(raw) {
   const errors = [];
@@ -138,6 +143,8 @@ function parseReviewBlock(raw) {
   ['log', 'test'].forEach((key) => {
     if (raw[key] === undefined) return;
     if (typeof raw[key] !== 'string' || raw[key].trim() === '') errors.push(`"review.${key}" must be a non-empty string`);
+    else if (key === 'log' && raw.log.startsWith('docker:') && !DOCKER_LOG_RE.test(raw.log)) errors.push(`"review.log" names a container as docker:<name> (got "${raw.log}"); {project_id} stands for the project_id of supabase/config.toml`);
+    else if (key === 'test' && REMOTE_TEST_RE.test(raw.test)) errors.push(`"review.test" must not target a remote database (got "${raw.test}"): a review runs against the local containers only, without --linked, --db-url, link, push or pull`);
     else value[key] = raw[key];
   });
   if (raw.serve !== undefined) {
@@ -226,7 +233,7 @@ export function parseProfile(text) {
     const r = parseReviewBlock(raw.review);
     errors.push(...r.errors);
     profile.review = r.value;
-    if (r.value.log && isRestricted(r.value.log)) errors.push(`"review.log" names "${r.value.log}", a restricted file: the base list cannot be reduced by a profile`);
+    if (r.value.log && !r.value.log.startsWith('docker:') && isRestricted(r.value.log)) errors.push(`"review.log" names "${r.value.log}", a restricted file: the base list cannot be reduced by a profile`);
   }
   // The questions for the issue writer and the section Review are kept apart from the body: dev and qa never receive them.
   const noQuestions = splitQuestions((match[2] ?? '').trim());

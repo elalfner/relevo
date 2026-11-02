@@ -82,7 +82,7 @@ Use the session when you want to watch and step in; use `--local` to leave it ru
 
 ### `/relevo:review [issue-number]`
 
-The number of a `built` issue. It starts the review on the device, in a browser or, for a backend such as Laravel, with the project's tests, shows a short brief, the shot list (none for a backend) and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
+The number of a `built` issue. It starts the review on the device, in a browser or, for a backend such as Laravel or Supabase, with the project's tests, shows a short brief, the shot list (none for a backend) and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
 
 ```text
 /relevo:review 42
@@ -161,6 +161,16 @@ A Laravel platform has no screen, so its review has no device, no browser and no
 - **The database matters.** Before it runs a test the review reads the database that `phpunit.xml` declares, never your `.env`. In-memory SQLite, which a new project uses, needs nothing; any other database needs your written confirmation that it is not production.
 - **A server is optional.** Add a `serve` block to the `review` block of `.relevo/stacks/laravel.md` ([Stacks and platforms](stacks.md)) and, with `precheck` or `verify`, the agent can start it on a free local port for the lines that need requests. Without it, no server is started.
 - **Missing dependencies stop it**: when there is no `vendor/`, the review gives the `composer install` command for you to run and installs nothing.
+
+## Reviewing a Supabase database
+
+A Supabase platform has no screen either, so its review has no device, no browser and no screenshot. The checklist has one line per scenario, and you still confirm every line.
+
+- **It only touches the local database.** The review runs `supabase test db` against the local containers, never with `--linked` or `--db-url`, and never runs `link`, `db push` or `db pull`, even when the folder is linked to a remote project. It does not read `.env` files or `supabase/.temp`, and it asks no confirmation about the database because it can only be the local one.
+- **With `review.autopilot` `off`** (the default) you run `supabase test db` in your terminal and tell the review the result: `ran <exit code>`. Then you write `ok` or `fail` for each line.
+- **With `precheck` or `verify`** the agent runs the pgTAP file in `supabase/tests/` that already covers each line, records the file, how many assertions ran and the exit code, and never writes a test. A file that does not exist or that ran no assertion proves nothing, and a line with no pgTAP file stays for you. The pull request says which runs were yours and which were the agent's.
+- **The audit reads the log of the database container since the review started**, `supabase_db_<project_id>`, and never restarts or empties it. A policy test provokes `permission denied`, row-level security and constraint errors on purpose: the report lists them as expected denials and they are not findings. A `FATAL`, a deadlock, an out-of-memory message or any other `ERROR` (a missing table, a syntax error) is a finding. A clean run with a quiet log is `REVIEW PASSED`, and no run at all is `REVIEW INCONCLUSIVE`.
+- **The local stack must be running.** If it is stopped, with `off` you run `supabase start`; with `precheck` or `verify` the agent lists `supabase start` in the plan of the walk and runs it only after you confirm, and stops it at the end only if it started it. A missing CLI, a stopped Docker or a missing `supabase/config.toml` stops the review with the command for you to run.
 
 ## Letting the agent help with the review
 

@@ -162,6 +162,16 @@ Una plataforma Laravel no tiene pantalla, así que su revisión no tiene disposi
 - **Un servidor es opcional.** Añade un bloque `serve` al bloque `review` de `.relevo/stacks/laravel.md` ([Stacks y plataformas](stacks.md)) y, con `precheck` o `verify`, el agente puede arrancarlo en un puerto local libre para las líneas que necesitan peticiones. Sin él, no se arranca ningún servidor.
 - **Faltan dependencias y se detiene**: cuando no hay `vendor/`, la revisión te da el comando `composer install` para que lo corras tú y no instala nada.
 
+## Revisar una base de datos Supabase
+
+Una plataforma Supabase tampoco tiene pantalla, así que su review no usa dispositivo, navegador ni capturas. El checklist tiene una línea por escenario, y tú sigues confirmando cada línea.
+
+- **Solo toca la base de datos local.** El review corre `supabase test db` contra los contenedores locales, nunca con `--linked` ni `--db-url`, y nunca corre `link`, `db push` ni `db pull`, aunque la carpeta esté enlazada a un proyecto remoto. No lee archivos `.env` ni `supabase/.temp`, y no pide confirmar la base de datos porque solo puede ser la local.
+- **Con `review.autopilot` en `off`** (el valor por defecto) corres `supabase test db` en tu terminal y le dices el resultado al review: `ran <código de salida>`. Luego escribes `ok` o `fail` por cada línea.
+- **Con `precheck` o `verify`** el agente corre el archivo pgTAP de `supabase/tests/` que ya cubre cada línea, registra el archivo, cuántas aserciones corrieron y el código de salida, y nunca escribe un test. Un archivo que no existe o que no corrió ninguna aserción no prueba nada, y una línea sin archivo pgTAP se queda para ti. El pull request dice qué corridas fueron tuyas y cuáles del agente.
+- **La auditoría lee el log del contenedor de la base de datos desde que empezó el review**, `supabase_db_<project_id>`, y nunca lo reinicia ni lo vacía. Un test de políticas provoca a propósito errores `permission denied`, de row-level security y de constraints: el informe los lista como denegaciones esperadas y no son hallazgos. Un `FATAL`, un deadlock, un mensaje de falta de memoria o cualquier otro `ERROR` (una tabla que no existe, un error de sintaxis) es un hallazgo. Una corrida limpia con el log en silencio es `REVIEW PASSED`, y ninguna corrida es `REVIEW INCONCLUSIVE`.
+- **El stack local tiene que estar corriendo.** Si está detenido, con `off` corres `supabase start`; con `precheck` o `verify` el agente pone `supabase start` en el plan del recorrido y lo corre solo después de que confirmes, y al final lo detiene solo si lo arrancó él. Si falta la CLI, Docker está detenido o falta `supabase/config.toml`, el review se detiene con el comando para que lo corras tú.
+
 ## Dejar que el agente ayude con la revisión
 
 Por defecto la persona lo hace todo en `review` y el agente solo observa. Con `review.autopilot` en `precheck` o `verify` el agente también puede recorrer la lista, y la persona sigue confirmando las líneas y dando el acuerdo antes de que se abra un pull request.
