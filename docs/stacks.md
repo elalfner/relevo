@@ -33,6 +33,8 @@ A profile is the file `stacks/<stack>.md` of the plugin. Its header is read by s
 
 Relevo ships the `flutter`, `vue`, `laravel` and `supabase` profiles. `/relevo:go` resolves the profile of your platform and hands it to the developer and QA agents.
 
+The header can also say which kind of interface the stack builds with `interface: web`, `interface: mobile` or `interface: none`. Without the key the stack has none, and no interface rule is given to its agents. Flutter is `mobile` (and gets the rules for `web` too when a platform lists the `web` target), Vue and Laravel are `web`, Supabase is `none`. A stack you write yourself under `.relevo/stacks/<stack>.md` declares its own with the same key. The rules and how an agent receives them are under `knowledge/interface/`; a project adds its own rules in `.relevo/interface.json`, which can add rules and examples and never remove or lower one of the plugin (`/relevo:doctor` validates it and reports an attempt).
+
 ## The profiles Relevo ships
 
 | Stack | `analyze` | `test` | `format` | Target |

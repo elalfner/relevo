@@ -10,6 +10,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { mergeRepositoryRules } from './interface-knowledge.mjs';
 import { loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
@@ -281,6 +282,9 @@ export function gatherFacts(p) {
   f.configErrors = loaded && !loaded.ok ? loaded.errors.map((e) => e.message) : [];
   f.rulesFilesMissing = (f.config?.qa?.rules_from ?? []).filter((file) => !p.exists(file));
   f.rulesFileMissing = f.rulesFilesMissing.length > 0;
+  // The design system and the rules a repository adds for the interface (interface-decisions-upfront).
+  f.designSystemMissing = ['tokens', 'components', 'references'].flatMap((key) => (f.config?.design?.system?.[key] ?? []).filter((entry) => !p.exists(entry)).map((entry) => ({ key, entry })));
+  f.interfaceFile = p.exists('.relevo/interface.json') ? tryRun(() => p.read('.relevo/interface.json'), null) : null;
 
   gatherPlatforms(f, p, tryRun);
 
@@ -563,6 +567,11 @@ function gatherPlatforms(f, p, tryRun) {
       }
     }
     f.platformFacts.push(entry);
+  });
+  // A platform with an interface needs a browser automation library for the preview check of `think`; its absence is only a note.
+  f.interfaceBrowser = {};
+  f.platformFacts.filter((e) => e.profile?.interface && e.profile.interface !== 'none').forEach((e) => {
+    f.interfaceBrowser[e.name] = playwrightFacts(e.path, { tool: p.tool, exists: p.exists }).playwright;
   });
 
   // The skills a stack works better with: only for a stack that has a recommendation, and only when a platform uses it.
@@ -983,6 +992,7 @@ export function runChecks(f) {
 
   r.push(...pluginInstallChecks(f));
   r.push(...toolchainChecks(f));
+  r.push(...interfaceChecks(f));
   r.push(...runnerChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
@@ -1050,6 +1060,22 @@ function toolchainChecks(f) {
       : warn(`automation.toolchain.${e.name}`, `the go workflow has no step guarded by ${guard}, so a cloud build for platform ${e.name} (${e.stack}) may find no ${e.profile.tools.filter((t) => !NODE_TOOLS.includes(t)).join(', ')} and fail QA after spending the run`, `add a step to the build job of relevo-go.yml that installs it, guarded by "- if: ${guard}" (see the comment in the template), or, if you install it another way, ignore this`);
   });
   return [...known, ...own];
+}
+
+/** The design system paths, the rules file of the repository and the browser for the previews. Never a failure for the browser. */
+function interfaceChecks(f) {
+  const r = [];
+  (f.designSystemMissing ?? []).forEach(({ key, entry }) => r.push(fail(`interface.design-system.${key}`, `design.system.${key} points to "${entry}", which does not exist`, 'fix the path in relevo.yml or create the folder')));
+  if (f.interfaceFile != null) {
+    const merged = mergeRepositoryRules(JSON.parse(readFileSync(resolve(PLUGIN_ROOT, 'knowledge/interface/rules.json'), 'utf8')).rules, f.interfaceFile);
+    if (merged.problems.length === 0 && merged.attempts.length === 0) r.push(pass('interface.rules-file', `.relevo/interface.json is valid and adds ${merged.added.length} rule${merged.added.length === 1 ? '' : 's'}`));
+    merged.problems.forEach((x) => r.push(fail('interface.rules-file', `.relevo/interface.json${x.id ? ` rule "${x.id}"` : ''}: ${x.problems.join('; ')}`, 'fix the file; a rule needs every field of knowledge/interface/rules.json')));
+    merged.attempts.forEach((x) => r.push(warn('interface.rules-file', `.relevo/interface.json rule "${x.id}" ${x.attempt}; the rule of the plugin is kept`, 'write a project exception in the rules file that QA reads (qa.rules_from) instead')));
+  }
+  Object.entries(f.interfaceBrowser ?? {}).forEach(([name, ok]) => {
+    if (!ok) r.push(warn(`interface.browser.${name}`, `platform ${name} has an interface, but no browser automation library resolves from it, so the previews of the interface step cannot be checked (a check that does not run is reported as not checked)`, `optional: ${'`npm install -D playwright && npx playwright install chromium`'} in the platform folder`));
+  });
+  return r;
 }
 
 // The tools that the build job already has: it installs Node for Relevo itself.

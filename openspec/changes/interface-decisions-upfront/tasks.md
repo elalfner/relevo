@@ -22,10 +22,10 @@
 ## 3. Profiles and configuration
 
 - [x] 3.1 `scripts/lib/stack-profile.mjs` and the profiles in `stacks/`: the `interface` key (`mobile` for Flutter, `web` for Vue and Laravel, `none` for Supabase), a repository stack declaring its own, no key meaning none, and the rules for `web` added for a `mobile` platform with the target `web`. Verify with the profile tests and `tests/interface-rules.test.mjs`.
-- [ ] 3.2 `scripts/lib/config.mjs` and `scripts/validate-config.mjs`: the keys `design.system.tokens`, `design.system.components` and `design.system.references`, each a list of paths that must exist inside the repository and be neither restricted nor protected; a file without them is valid. Verify with `tests/config.test.mjs` for each scenario of the `configuration` spec.
-- [ ] 3.3 `templates/relevo.yml`: the three keys commented out with one line each. Verify with the test that validates the shipped `relevo.yml` and a test that `init` writes them.
-- [ ] 3.4 `scripts/doctor.mjs`: validate `.relevo/interface.json`, check the paths of `design.system`, and note, without failing, when a platform with an interface has no browser automation available. Verify with `tests/doctor.test.mjs` and `tests/skill-init-doctor.test.mjs` for each scenario of the `init-doctor` spec.
-- [ ] 3.5 `docs/configuration.md` and `docs/configuration.es.md`: the three keys. `docs/stacks.md` and `docs/stacks.es.md`: the `interface` key and how a stack of the repository declares it. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 3.2 `scripts/lib/config.mjs` and `scripts/validate-config.mjs`: the keys `design.system.tokens`, `design.system.components` and `design.system.references`, each a list of paths that must exist inside the repository and be neither restricted nor protected; a file without them is valid. Verify with `tests/config.test.mjs` for each scenario of the `configuration` spec.
+- [x] 3.3 `templates/relevo.yml`: the three keys commented out with one line each. Verify with the test that validates the shipped `relevo.yml` and a test that `init` writes them.
+- [x] 3.4 `scripts/doctor.mjs`: validate `.relevo/interface.json`, check the paths of `design.system`, and note, without failing, when a platform with an interface has no browser automation available. Verify with `tests/doctor.test.mjs` and `tests/skill-init-doctor.test.mjs` for each scenario of the `init-doctor` spec.
+- [x] 3.5 `docs/configuration.md` and `docs/configuration.es.md`: the three keys. `docs/stacks.md` and `docs/stacks.es.md`: the `interface` key and how a stack of the repository declares it. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 4. Reading the design tokens
 

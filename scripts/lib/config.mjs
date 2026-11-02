@@ -6,7 +6,8 @@ import { LABEL_KEYS } from './labels.mjs';
 import { SUPPORTED_LANGUAGES } from './messages.mjs';
 import { findCredentials } from './scan.mjs';
 import { normalizePlatforms } from './platforms.mjs';
-import { invalidRestrictedEntries } from './restricted-paths.mjs';
+import { invalidRestrictedEntries, restrictedRule } from './restricted-paths.mjs';
+import { hardRule } from './protected-paths.mjs';
 
 // One entry per supported setting. `required: true` means there is no default.
 export const SETTINGS = [
@@ -44,6 +45,11 @@ export const SETTINGS = [
   { path: 'digest.issue', type: 'int', min: 1, default: null },
   { path: 'language', type: 'string', default: 'en' },
   { path: 'design.images', type: 'bool', default: false },
+  // Where the design system lives, for the interface step of `think`: folders or files inside the repository that the
+  // agents may read. They never name a restricted or a protected path.
+  { path: 'design.system.tokens', type: 'repo-path-list', default: [] },
+  { path: 'design.system.components', type: 'repo-path-list', default: [] },
+  { path: 'design.system.references', type: 'repo-path-list', default: [] },
   { path: 'trust', type: 'enum', allowed: ['private-team', 'public'], default: 'private-team' },
 ];
 
@@ -100,6 +106,23 @@ function checkType(setting, value, errors) {
         errors.push({ path, message: `${path} must be a file name or a list of file names (got ${JSON.stringify(value)})` });
       }
       break;
+    case 'repo-path-list': {
+      if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
+        errors.push({ path, message: `${path} must be a list of paths inside the repository (got ${JSON.stringify(value)})` });
+        break;
+      }
+      value.forEach((entry) => {
+        const clean = entry.replace(/^\.\//, '').replace(/\/+$/, '');
+        if (entry.startsWith('/') || /^[A-Za-z]:[\\/]/.test(entry) || clean.split('/').includes('..') || entry.startsWith('~')) {
+          errors.push({ path, message: `${path}: "${entry}" leaves the repository; write a path inside it` });
+        } else if (restrictedRule(clean) !== null) {
+          errors.push({ path, message: `${path}: "${entry}" is a restricted file, which no agent or script reads` });
+        } else if (hardRule(clean) !== null || hardRule(`${clean}/`) !== null) {
+          errors.push({ path, message: `${path}: "${entry}" is a protected path (${hardRule(clean) ?? hardRule(`${clean}/`)}), which an unattended run never reads as part of a design system` });
+        }
+      });
+      break;
+    }
     case 'restricted-list':
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
         errors.push({ path, message: `${path} must be a list of paths or globs relative to the repository (got ${JSON.stringify(value)})` });
@@ -192,6 +215,12 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
       errors.push({ path: `${group}.${k}`, message });
     });
   });
+
+  if (user.design && typeof user.design === 'object' && user.design.system !== undefined) {
+    const system = user.design.system;
+    if (system === null || typeof system !== 'object' || Array.isArray(system)) errors.push({ path: 'design.system', message: 'design.system must be a map' });
+    else Object.keys(system).filter((k) => !['tokens', 'components', 'references'].includes(k)).forEach((k) => errors.push({ path: `design.system.${k}`, message: `unknown setting "design.system.${k}"` }));
+  }
 
   // Per-setting checks and defaults.
   const config = {};
