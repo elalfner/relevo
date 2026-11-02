@@ -251,3 +251,26 @@ test('Scenario: Process in the back end / Repository not linked - issue writes t
   assert.match(text, /as `Decisions` and `Constraints` lines, and list under `Code pointers` only the files the builder must see, as `owner\/repo:path`/);
   assert.match(text, /PNG, JPEG, GIF or WebP image, which needs no `design\.images`/);
 });
+
+// ---- interface (interface-decisions-upfront)
+test('Scenario: Decisions already in the agreement / A state nobody settled - issue asks only the interface questions still open', () => {
+  assert.match(body, /interface-rules\.mjs --role issue/);
+  assert.match(body, /only the ones that neither the idea nor the agreement has already answered/);
+  assert.match(body, /do not ask about them and carry those decisions into the issue/);
+  assert.match(body, /if nothing settles what the screen shows when there is no data, ask/);
+});
+
+test('Scenario: A web preview / A mobile sketch / A picture instead - the chosen option travels as example code with a bullet that says what must match', () => {
+  assert.match(body, /fenced block in `## Design reference`/);
+  assert.match(body, /the structure, the tokens and the states, and not the sample text or exact pixel values/);
+  assert.match(body, /the layout, the spacing, the states and the role of each colour, and that its markup is not to be reproduced/);
+  assert.match(body, /decision and its table of states in `Decisions`/);
+  assert.match(body, /commits a picture of the sketch to the repository, point to that file instead/);
+  assert.match(body, /over about 16 KB gets a warning and over 32 KB fails/);
+});
+
+test('Scenario: A vague word / Kept on purpose - each warning is shown and asked about, and the person may keep the word', () => {
+  assert.match(body, /Show each warning to the person and ask which value, token or reference is meant/);
+  assert.match(body, /If the person says to keep the word, keep it: the warning never fails the check/);
+  assert.match(body, /--language <the language of relevo\.yml>/);
+});
