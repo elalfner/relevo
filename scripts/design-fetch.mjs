@@ -2,8 +2,9 @@
 // Fetches the design references of an issue so the builder can read them. Usage:
 //   node scripts/design-fetch.mjs --issue 42 [--repo owner/name] [--out .relevo-design] [--config relevo.yml] [--repo-root .]
 //   node scripts/design-fetch.mjs --body-file issue.md ...      (the body from a file instead of GitHub, for tests)
-// The references come only from the issue: the bullets of "Design reference" and the bullets of "Code pointers" that
-// name a file of a linked repository. Pasted attachments are downloaded only when design.images is true; files of
+// The references come only from the issue: the bullets of "Design reference", the bullets of "Code pointers" that
+// name a file of a linked repository, and the `link` bullets of "External inputs" (the same kind of file, which the
+// build cannot go on without). Pasted attachments are downloaded only when design.images is true; files of
 // linked repositories are read through `gh api`. Downloads go to <out> (default .relevo-design), which is added to
 // .git/info/exclude so it is never committed, with a manifest.json. The files of this repository are not copied.
 //   exit 0: every reference is available   exit 1: some reference was refused (the reasons are printed)   exit 2: bad arguments
@@ -14,7 +15,7 @@ import { join, resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { fetchReferences } from './lib/design-fetch.mjs';
 import { restrictedList } from './lib/restricted-paths.mjs';
-import { parseCodePointers, parseDesign } from './lib/issue-parse.mjs';
+import { parseCodePointers, parseDesign, parseExternalInputs } from './lib/issue-parse.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -55,7 +56,10 @@ if (bodyFile) {
 
 const design = parseDesign(body);
 const pointers = parseCodePointers(body);
-if (!design.present && pointers.references.length === 0 && pointers.problems.length === 0) {
+const externals = parseExternalInputs(body);
+// A `link` input is a file of a linked repository like a code pointer: it is fetched, and a refusal is listed in the manifest.
+const linkInputs = externals.inputs.filter((i) => i.kind === 'link').map((i) => ({ kind: 'repo-file', target: i.name, repo: i.repo, path: i.path, match: i.purpose }));
+if (!design.present && pointers.references.length === 0 && pointers.problems.length === 0 && linkInputs.length === 0 && externals.problems.length === 0) {
   console.log('the issue has no references to fetch');
   process.exit(0);
 }
@@ -70,6 +74,7 @@ const result = await fetchReferences({
   references: [
     ...design.references.map((r) => ({ ...r, section: 'design' })),
     ...pointers.references.map((r) => ({ ...r, section: 'code-pointer' })),
+    ...linkInputs.map((r) => ({ ...r, section: 'external-input' })),
   ],
   images: config.design.images === true,
   restricted: restrictedList(config),
@@ -85,6 +90,7 @@ const result = await fetchReferences({
 const refused = [
   ...design.problems.map((p) => ({ reference: 'Design reference', reason: p })),
   ...pointers.problems.map((p) => ({ reference: 'Code pointers', reason: p })),
+  ...externals.problems.map((p) => ({ reference: 'External inputs', reason: p })),
   ...result.refused,
 ];
 

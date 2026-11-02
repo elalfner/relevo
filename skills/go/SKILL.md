@@ -157,7 +157,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/issue-hash.mjs --repo <owner/name> --issue <i
 
 If it exits 1, the text was edited after `ready`: take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`, and save its body to a file outside the working tree (call it `<issue_file>`): the sections are copied from it by a script, never retyped.
 
-**References.** If the issue has a `## Design reference` section, or a `## Code pointers` bullet that names a file of another repository as `owner/repo:path` (`issue-sections.mjs --body-file <issue_file> --list` names its sections), get what they point to before you write anything.
+**References.** If the issue has a `## Design reference` section, or a `## Code pointers` bullet, or a `link` bullet of `## External inputs`, that names a file of another repository as `owner/repo:path` (`issue-sections.mjs --body-file <issue_file> --list` names its sections), get what they point to before you write anything.
 
 - **In the cloud** the environment variable `RELEVO_REFERENCES` is set: a step before you already fetched them, with a token you do not have. Do not run the fetcher again. Read the manifest at that path; if the file does not exist, the issue had nothing to fetch.
 - **Otherwise** (a local run) fetch them yourself. The script reads the references from the issue itself, downloads pasted attachments only when `design.images` is on, and leaves them in `.relevo-design/`, which git ignores:
@@ -166,7 +166,7 @@ If it exits 1, the text was edited after `ready`: take the failure path with the
 node ${CLAUDE_PLUGIN_ROOT}/scripts/design-fetch.mjs --issue <issue> --repo <owner/name>
 ```
 
-If it exits 1 it prints each reference it refused and why; in the cloud the manifest lists them under `refused`. A refused reference is a defect in the specification, not something to work around: take the `needs-spec` path described below with `reason` `missing`, and stop without pushing. In `missing`, name each refused reference and copy its reason word for word, in English, without rewording or translating it: it names the repository, GitHub's answer and the secret to check, which the person searches for. Otherwise `.relevo-design/manifest.json` says where each file is and which section it came from (`section`: `design` or `code-pointer`); give its path to `relevo:dev` and `relevo:qa`.
+If it exits 1 it prints each reference it refused and why; in the cloud the manifest lists them under `refused`. A refused reference is a defect in the specification, not something to work around: take the `needs-spec` path described below with `reason` `missing`, and stop without pushing. In `missing`, name each refused reference and copy its reason word for word, in English, without rewording or translating it: it names the repository, GitHub's answer and the secret to check, which the person searches for. Otherwise `.relevo-design/manifest.json` says where each file is and which section it came from (`section`: `design`, `code-pointer` or `external-input`); give its path to `relevo:dev` and `relevo:qa`.
 
 Write the change specification from the issue, with the OpenSpec command line, without the pauses of the interactive `propose` workflow (it asks questions and stops after planning; you must not). The issue is the source of truth.
 
@@ -202,6 +202,14 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/spec-ready.mjs --change "<change_id>"
 If it exits 1 it names the artifacts that are not done: write them and run it once more. If one is still missing, take the failure path with the reason `specification incomplete`.
 
 Then `openspec validate "<change_id>"`. If it fails, fix the artifacts and validate again, at most twice. If it still fails, take the failure path with the reason `specification invalid`.
+
+Check, with no model, what the tasks ask for before the developer agent spends a turn on it:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/build-preflight.mjs --stage spec --issue-file <issue_file> --change-dir openspec/changes/<change_id>
+```
+
+It prints JSON. If it exits 1, a task changes a protected path or a restricted file, or adds a dependency that the issue does not allow with `Allow-paths:`. Do not build: take the same path as for an issue that is ambiguous (move it to `needs-spec` with `label-change.mjs --to needs-spec`, post `render-message.mjs needs_spec`, assign it to `team.spec_writer`, and stop without pushing), with `reason` `policy` and, in `missing`, the `missing` text of the output, which names each task and path. If the script is not in this version of the plugin or cannot run, go on: this check only saves cost, and the commit script and QA refuse the same paths later.
 
 Commit the specification on its own:
 
@@ -281,7 +289,7 @@ Do not add links to this session or attribution lines to the message.
 
 1. `git push -u origin <branch>` (a normal push, never forced).
 2. Move the issue to `built`: `label-change.mjs --to built --current "..."`, applied with `gh issue edit`.
-3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (`progress.complete` and `progress.total` of `openspec instructions apply --change "<change_id>" --json`), `branch`, `issue_hash`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, `urgent` and `built_waiting` copied from the decision when it has them (they add the line that says the issue started ahead of the queue; leave both out otherwise), and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
+3. Post one comment with `render-message.mjs built`, mentioning the assignee. Fill: `assignee`, `issue`, `title`, `tasks_done` and `tasks_total` (`progress.complete` and `progress.total` of `openspec instructions apply --change "<change_id>" --json`), `branch`, `issue_hash`, `scenarios` (`node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id> --count`), `risk` if QA or the developer pointed at a riskiest area, `urgent` and `built_waiting` copied from the decision when it has them (they add the line that says the issue started ahead of the queue; leave both out otherwise), `inputs_to_confirm` (the value of the environment variable `RELEVO_INPUTS_TO_CONFIRM` when it is set: the inputs of the issue that a script could not check and that a person has to confirm; leave it out otherwise), and `checklist` (the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/checklist.mjs openspec/changes/<change_id>`).
 
 The comment tells the assignee the next command (`/relevo:review <issue>`).
 
