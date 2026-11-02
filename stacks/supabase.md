@@ -20,6 +20,7 @@ skills:
     - supabase
     - supabase-postgres-best-practices
   review: []
+interface: none
 ---
 
 # Supabase

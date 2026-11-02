@@ -1,0 +1,26 @@
+{
+ "about": "Rules that read differently in Laravel (Blade, with Livewire or a script of the project). The lines replace the common ones.",
+ "rules": {
+  "no-double-submit": {
+   "build": "Disable the submit button while the request runs: wire:loading.attr in Livewire, or a state of the script the project uses; keep the server validation as the real guard.",
+   "review": "Submit twice quickly: the button is disabled after the first submit and the server rejects a repeated one.",
+   "examples": [
+    {"stack": "html", "good": "<button type=\"submit\" wire:loading.attr=\"disabled\" wire:target=\"save\">Save</button>", "bad": "<button type=\"submit\">Save</button>  // stays active while the request runs"}
+   ]
+  },
+  "form-labels": {
+   "build": "Use a label for each input in the Blade component and show @error messages beside the field, tied with aria-describedby.",
+   "review": "Each input in a Blade form has a label; each @error message is tied to its input.",
+   "examples": [
+    {"stack": "html", "good": "<label for=\"email\">Email</label><input id=\"email\" name=\"email\" type=\"email\" aria-describedby=\"email-error\">@error('email')<p id=\"email-error\" role=\"alert\">{{ $message }}</p>@enderror", "bad": "<input name=\"email\" placeholder=\"Email\">"}
+   ]
+  },
+  "errors-announced": {
+   "build": "Render validation messages with role=\"alert\" next to the field and an error summary at the top of the form.",
+   "review": "Submit an invalid form: each message is in an alert region and tied to its field.",
+   "examples": [
+    {"stack": "html", "good": "@error('name')<p id=\"name-error\" role=\"alert\">{{ $message }}</p>@enderror", "bad": "<span class=\"text-red-500\">{{ $errors->first('name') }}</span>"}
+   ]
+  }
+ }
+}
