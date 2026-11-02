@@ -43,7 +43,7 @@ The total is about 2.84 USD in model usage. Three of the six runs are valid for 
 - The lenses were run only with the model of their agent file. There is no comparison between models, so **no default model or effort was changed** on this evidence. The maintainer decided on 2026-11-02 to keep the defaults as they are.
 - The receipt is simulated and no analysis or test ran.
 - The `scenario-without-code` good variant received a test after the run and was not run again.
-- The thresholds (how many defects a lens must find, how many false positives it may give) are **not set**: they are the maintainer's decision, and the numbers above are the input for it.
+- The threshold, set by the maintainer on 2026-11-02 for this sample: a lens must find **every** seeded defect of its cases and flag **no** good variant (100 % and 0 false positives). It is to be reviewed when there are more cases. All four lenses meet it on the cases that were run; `security/vue/hard-coded-secret` was not run, so the `security` lens is not yet checked against it.
 
 ## Run it again
 

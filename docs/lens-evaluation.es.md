@@ -43,7 +43,7 @@ El total es de unos 2.84 USD en uso de modelo. Tres de las seis ejecuciones son 
 - Las lentes se ejecutaron solo con el modelo de su archivo de agente. No hay comparación entre modelos, así que **no se cambió ningún modelo ni esfuerzo por defecto** con esta evidencia. El mantenedor decidió el 2026-11-02 mantener los valores por defecto tal como están.
 - El recibo es simulado y no se ejecutó ningún análisis ni test.
 - La variante buena de `scenario-without-code` recibió un test después de la ejecución y no se volvió a ejecutar.
-- Los umbrales (cuántos defectos debe encontrar una lente, cuántos falsos positivos admite) **no están fijados**: son decisión del mantenedor, y los números de arriba son su insumo.
+- El umbral, fijado por el mantenedor el 2026-11-02 para esta muestra: una lente debe encontrar **todos** los defectos sembrados de sus casos y no marcar **ninguna** variante buena (100 % y 0 falsos positivos). Se revisará cuando haya más casos. Las cuatro lentes lo cumplen en los casos que se ejecutaron; `security/vue/hard-coded-secret` no se ejecutó, así que la lente `security` aún no está comprobada con él.
 
 ## Volver a ejecutarla
 
