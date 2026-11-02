@@ -124,9 +124,11 @@ The model is a non-empty string, an alias or a full identifier, and is not valid
 
 Validation gets a level that warns without blocking, used here for Antigravity: the settings are valid, and `doctor` and `init` print "not applied with this agent" and name the settings. The existing `rejectedFor` keys keep rejecting.
 
-### D11. How the settings are applied (decided that nothing is silent; mechanism pending a spike)
+### D11. How the settings are applied (decided that nothing is silent; effort at launch is accepted but unverified)
 
 `go` passes the model of the role when it launches the subagent. Whether the effort can be given at launch, or only in the agent's frontmatter, is spike S1. The specification is written to hold either way: the effort is applied where the runtime allows it, and `doctor` says where it is not applied, instead of leaving the setting to look effective. With Antigravity neither is applied (spike S2 checks whether that can change).
+
+**Spike S1, answered in part (2026-11-02).** Run in a throwaway repository with `anthropics/claude-code-action@v1`, model `claude-haiku-5-5`, a probe subagent whose frontmatter had `effort: low`. The Agent tool accepted a call with `model: haiku` and `effort: high` and ran it (the recorded input of the call held both). The runtime also showed `per_turn_effort_active: true`. It does not report the effort that a subagent used: its result carries `resolvedModel` and token totals only. So the effort at launch is accepted, and whether it takes effect is not verified. The model of the main agent was the same as the subagent's, so the run does not show that a model given at launch overrides the frontmatter either. The version of the Claude Code CLI that the action installed was not captured. Until a way to read the effective effort is found, the specification keeps its wording: the effort is passed where the runtime accepts it, and the documentation does not promise that it is applied.
 
 ### D12. One shared procedure for the three skills (proposed)
 
@@ -150,7 +152,9 @@ Change `build-preflight-gates` is expected first and supplies the finding classe
 
 ### D17. Phase two, in a follow-up change, behind three spikes (decided)
 
-The follow-up `parallel-review-lenses` launches the lenses together. It starts only after: S5, several subagents in one turn behave correctly under the rule that an unattended session waits for each report; S3 and S4, the turn, cost and token limits count the subagents; and S6, an Antigravity fan-out reports and the aggregation waits for every lens through a list of expected lenses. S3 and S4 also decide how this change satisfies "every limit counts every subagent": by the runtime when it does, and by Relevo's own accounting from the logs when it does not. S4 is partly answered already: the run guard for Antigravity counts a turn for each response of the main agent or of a subagent, and sums the tokens it reads from the stream, so what remains is to confirm that the token total includes the subagents' own responses. S3, for Claude, is open.
+The follow-up `parallel-review-lenses` launches the lenses together. It starts only after: S5, several subagents in one turn behave correctly under the rule that an unattended session waits for each report; S3 and S4, the turn, cost and token limits count the subagents; and S6, an Antigravity fan-out reports and the aggregation waits for every lens through a list of expected lenses. S3 and S4 also decide how this change satisfies "every limit counts every subagent": by the runtime when it does, and by Relevo's own accounting from the logs when it does not. S4 is partly answered already: the run guard for Antigravity counts a turn for each response of the main agent or of a subagent, and sums the tokens it reads from the stream, so what remains is to confirm that the token total includes the subagents' own responses. S3, for Claude, is answered (2026-11-02): see below.
+
+**Spike S3, answered (2026-11-02).** Same setup as S1, with `--max-turns 2`. A subagent that made 3 tool calls (at least four turns of its own) ran inside a main run limited to 2 turns, and the run ended `success` with `num_turns: 2`: the turns of a subagent are not counted by the turn limit of the run. The cost is counted: `total_cost_usd` and the per-model usage include the tokens of the subagent (the difference between the per-model totals and the top-level `usage` of the main agent equals the subagent's own cache tokens), while the top-level `usage` field leaves them out. Consequence: "every limit counts every subagent" holds for cost, and for turns it needs Relevo's own accounting, so task 9.1 is needed.
 
 ## Risks / Trade-offs
 
