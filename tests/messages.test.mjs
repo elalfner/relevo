@@ -293,3 +293,28 @@ test('qa_failed for a restricted file on the base branch does not send the perso
   assert.match(text, /versioned on the base branch/);
   assert.doesNotMatch(text, /\/relevo:fix/);
 });
+
+// ---- advisory notes of the QA lenses (specialist-review-lenses)
+const NOTE_BUILT = { assignee: 'ana', issue: 7, title: 'Orders', tasks_done: 3, tasks_total: 3, branch: 'feature/7-orders', scenarios: 4, checklist: '- [ ] one\n- [ ] two' };
+
+test('Scenario: Notes in the hand-off - the message says how many notes there are, names the lens of the first three, and carries all in a hidden marker', () => {
+  const notes = [1, 2, 3, 4, 5].map((n) => ({ lens: n % 2 ? 'interface' : 'spec', text: `note ${n}` }));
+  const en = renderMessage('built', { ...NOTE_BUILT, qa_notes: notes });
+  assert.match(en, /QA left 5 advisory notes for you \(interface: note 1; spec: note 2; interface: note 3 and 2 more\); they are in the checklist\./);
+  const marker = /<!-- relevo:qa-notes (\[.*\]) -->/.exec(en);
+  assert.deepEqual(JSON.parse(marker[1]).map((n) => n.text), ['note 1', 'note 2', 'note 3', 'note 4', 'note 5']);
+  assert.match(renderMessage('built', { ...NOTE_BUILT, qa_notes: notes }, 'es'), /QA dejó 5 notas para ti \(interface: note 1; spec: note 2; interface: note 3 y 2 más\); están en el checklist\./);
+});
+
+test('one note is singular, and a note cannot close the comment', () => {
+  assert.match(renderMessage('built', { ...NOTE_BUILT, qa_notes: [{ lens: 'spec', text: 'x' }] }), /QA left 1 advisory note for you/);
+  const t = renderMessage('built', { ...NOTE_BUILT, qa_notes: [{ lens: 'spec', text: 'a --> <script> b' }] });
+  assert.equal((t.match(/-->/g) ?? []).length, 1, 'only the end of the marker closes the comment');
+  assert.doesNotMatch(t, /<script>/);
+});
+
+test('Scenario: A build without notes - the message is unchanged', () => {
+  const plain = renderMessage('built', NOTE_BUILT);
+  assert.doesNotMatch(plain, /advisory|relevo:qa-notes/);
+  assert.equal(renderMessage('built', { ...NOTE_BUILT, qa_notes: [] }), plain);
+});

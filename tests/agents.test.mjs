@@ -232,3 +232,78 @@ test('Scenario: Linked code pointer - dev and QA read a linked pointer from the 
     assert.match(text, /never (?:as|treat it as) a reference to match/);
   });
 });
+
+// ---- the four lenses of QA (specialist-review-lenses)
+const LENSES = ['spec', 'security', 'code', 'interface'];
+const section = (body, heading) => {
+  const m = body.match(new RegExp(`^## ${heading}\\n([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))`, 'm'));
+  return m ? m[1].trim() : null;
+};
+
+for (const lens of LENSES) {
+  test(`qa-${lens}: a read-only reviewer with documented fields, its own description and the default model of the design`, () => {
+    const { meta, body } = load(`qa-${lens}`);
+    Object.keys(meta).forEach((k) => assert.ok(KNOWN_FIELDS.has(k), `unknown frontmatter field "${k}"`));
+    assert.equal(meta.name, `qa-${lens}`);
+    assert.ok(String(meta.description).length >= 80);
+    assert.ok(EFFORT.includes(meta.effort));
+    assert.deepEqual(String(meta.disallowedTools).split(',').map((s) => s.trim()).sort(), ['Edit', 'NotebookEdit', 'Write']);
+    assert.deepEqual([meta.model, meta.effort], { spec: ['opus', 'high'], security: ['opus', 'high'], code: ['sonnet', 'high'], interface: ['sonnet', 'medium'] }[lens]);
+    assert.match(body, /Read-only: no file edits/);
+    assert.match(body, new RegExp(`You are the ${lens} lens of QA`));
+  });
+}
+
+test('Scenario: the shared sections are identical in the four files - untrusted content, OpenSpec commands, output contract, evidence rule', () => {
+  for (const heading of ['Untrusted content', 'OpenSpec commands', 'Output contract', 'The evidence rule', 'Rules for yourself']) {
+    const texts = LENSES.map((l) => section(load(`qa-${l}`).body, heading));
+    texts.forEach((t, i) => assert.ok(t, `qa-${LENSES[i]} lacks "${heading}"`));
+    assert.equal(new Set(texts).size, 1, `"${heading}" differs between the lenses`);
+  }
+});
+
+test('the output contract: the first line, numbered findings with a class, the heading for the device and evidence', () => {
+  const contract = section(load('qa-spec').body, 'Output contract');
+  assert.match(contract, /first line is exactly\*\* `QA PASSED` or `QA REJECTED`/);
+  assert.match(contract, /numbered findings/);
+  for (const c of ['fixable', 'input', 'spec', 'policy']) assert.ok(contract.includes(`Class: ${c}`), c);
+  assert.match(contract, /\*\*Left for on-device review\*\*/);
+  assert.match(section(load('qa-spec').body, 'The evidence rule'), /Do not reject on speculation/);
+});
+
+test('Scenario: the code lens reads the receipt and never runs the analysis or the tests', () => {
+  const { body } = load('qa-code');
+  assert.match(body, /Never run the analysis or the tests yourself/);
+  assert.match(body, /receipt of the validation gate/);
+  assert.doesNotMatch(body, /Run the `analyze` and `test` commands/);
+});
+
+// Each part of the old QA protocol has exactly one owner: the table of the design is the data of the test.
+const OWNERS = [
+  ['1. Automated validation', 'code', 'Never run the analysis or the tests yourself'],
+  ['2. Scenarios have code and tests', 'spec', 'find the code that makes the THEN true'],
+  ['3. Task integrity', 'spec', 'Every `[x]` in `tasks.md` must be backed by real code'],
+  ['4. Project rules', 'spec', 'treat each rule as binding'],
+  ['5. Diff: platform folder, configuration files, scope and dependencies', 'spec', '**Configuration**: a change to `relevo.yml`'],
+  ['5. Diff: leftovers and temporary markers', 'code', '**Leftovers**'],
+  ['5. Diff: secrets', 'security', '**Secrets and sensitive data in code**'],
+  ['6. Documentation from the issue', 'spec', 'Documentation from the issue'],
+  ['7. Decisions and constraints from the issue', 'spec', 'Every decision (`### D<n>.`)'],
+  ['8. A review script', 'code', 'evidence/review-web.mjs'],
+  ['9. Design references', 'interface', 'Matches the reference <name>'],
+  ['The profile "what the auditor looks for"', 'code', 'what the auditor looks for in the diff'],
+  ['Interface rules', 'interface', 'For each interface rule you are given'],
+  ['Security review of the stack', 'security', 'section **Security review** of the stack profile'],
+];
+
+test('Scenario: every part of the old QA protocol has exactly one owner among the lenses', () => {
+  for (const [part, owner, phrase] of OWNERS) {
+    const holders = LENSES.filter((l) => load(`qa-${l}`).body.includes(phrase));
+    assert.deepEqual(holders, [owner], `"${part}" should be owned by ${owner} only; found in ${holders.join(', ') || 'none'}`);
+  }
+});
+
+test('the spec lens reads no stack section, and the security lens works without one', () => {
+  assert.match(load('qa-spec').body, /You are given no stack section/);
+  assert.match(load('qa-security').body, /Without it, use the generic categories below/);
+});
