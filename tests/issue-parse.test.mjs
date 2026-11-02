@@ -137,3 +137,31 @@ test('Code pointers: only linked files are references; local pointers and free t
   assert.deepEqual(codePointers.problems, ['"acme/api:../x.ts" leaves the repository: use a path inside it']);
   assert.deepEqual(parseIssueBody('## Summary\n\nx\n').codePointers, { references: [], problems: [] });
 });
+
+test('External inputs: the kinds, the names and the purpose are read, and code blocks are ignored', () => {
+  const body = `${GOOD}
+
+## External inputs
+
+- file: \`design/logo.svg\`: the logo
+- secret: \`SITE_KEY\`: the site key
+- manual: the terms of use: the client sends them
+
+\`\`\`
+- credential: ignored: inside a code block
+\`\`\`
+`;
+  const { present, inputs, problems } = parseIssueBody(body).externalInputs;
+  assert.equal(present, true);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(inputs.map((i) => [i.kind, i.name, i.purpose]), [
+    ['file', 'design/logo.svg', 'the logo'],
+    ['secret', 'SITE_KEY', 'the site key'],
+    ['manual', 'the terms of use', 'the client sends them'],
+  ]);
+});
+
+test('External inputs: a link gives its repository and its path', () => {
+  const { inputs } = parseIssueBody(`${GOOD}\n## External inputs\n\n- link: \`acme/api:lib/schema.graphqls\`: the schema\n`).externalInputs;
+  assert.deepEqual([inputs[0].repo, inputs[0].path], ['acme/api', 'lib/schema.graphqls']);
+});

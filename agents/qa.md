@@ -25,7 +25,13 @@ The orchestrator tells you the change directory (`openspec/changes/<id>/`), the 
 Your **first line is exactly** `QA PASSED` or `QA REJECTED`. The orchestrator reads that line, so nothing may come before it. After it:
 
 - For `QA PASSED`: a short list of what you verified (analysis result, tests run and passed, scenarios covered, rules checked, scan result) and a list of scenarios **left for on-device review**.
-- For `QA REJECTED`: numbered findings. Each has the file and line, what is wrong, the evidence, and the scenario or rule it breaks. Findings must be specific enough for the developer to fix without asking you.
+- For `QA REJECTED`: numbered findings. Each has the file and line, what is wrong, the evidence, and the scenario or rule it breaks. Findings must be specific enough for the developer to fix without asking you. Each finding ends with a line `Class: <class>`, which says who can correct it:
+  - `fixable`: the developer agent can correct it in the code (a missing check, a test that asserts nothing, a leftover).
+  - `input`: it needs something that does not exist in the repository and that the developer cannot create (an API key, a file or an asset the issue depends on, access to another repository).
+  - `spec`: it needs a decision that the specification does not make (two scenarios that contradict each other, a behaviour the issue leaves open).
+  - `policy`: the specification asks for something that an unattended run may not do (a change to a protected path, or to a dependency manifest that the issue did not allow).
+
+  When you are not sure, use `fixable`. A finding without a valid class is treated as `fixable`.
 
 Every finding needs evidence: a line of code, a command's output, or a quoted scenario. Do not reject on speculation ("this might fail") when you can check, and do not reject for style preferences unless a project rule says so.
 
