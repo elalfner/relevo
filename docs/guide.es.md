@@ -18,7 +18,7 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | `in-review` | `/relevo:review <n>` para continuar; si algo falla, `/relevo:fix <n>` | la persona asignada |
 | `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub; o pon `relevo:ship` al issue | quien aprueba |
 | `needs-spec` | `/relevo:issue <n>`; si la pregunta necesita explorarse, antes `/relevo:think #<n>` | quien escribe la spec |
-| `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready` | la persona asignada |
+| `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready`; si QA encontró algo que solo una persona puede aportar o decidir, `/relevo:issue <n>` después | la persona asignada |
 | `changes-requested` | `/relevo:fix <n>` | el autor |
 | `needs-reviewer` | ninguno: asigna un revisor, o pide a alguien que lo tome | quien escribe la spec |
 | `ship` | ninguno: el workflow de ship lo está fusionando; si se detiene, su comentario dice por qué y se quita la etiqueta | nadie |

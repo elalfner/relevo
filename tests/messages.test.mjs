@@ -65,6 +65,49 @@ test('when a credential stopped the push, the message says the branch was NOT pu
   assert.match(renderMessage('qa_failed', base), /is pushed/);
 });
 
+const classBase = { assignee: 'persona-b', issue: 48, title: 'Sign-in screen', finding: 'the key is the vendor test key', file: 'src/config.ts', line: 28, branch: 'feature/48-sign-in', branch_state: 'kept', tasks_done: 6, tasks_total: 8 };
+
+test('Scenario: Nothing the developer can fix - the comment says the class, that the retries were skipped, and the next step', () => {
+  const en = renderMessage('qa_failed', { ...classBase, finding_class: 'input', retries_skipped: true });
+  assert.match(en, /What kind of finding: it needs something the developer agent cannot supply: an input that the issue depends on, so the retries were skipped\./);
+  assert.match(en, /What happened: QA rejected it and no finding can be corrected by the developer agent, so there were no retries\./);
+  assert.match(en, /Your next step: \/relevo:fix 48 \(supply what is missing/);
+  const es = renderMessage('qa_failed', { ...classBase, finding_class: 'input', retries_skipped: true }, 'es');
+  assert.match(es, /Qué tipo de hallazgo: necesita algo que el agente de desarrollo no puede aportar/);
+  assert.match(es, /así que se omitieron los reintentos\./);
+  assert.match(es, /Tu siguiente paso: \/relevo:fix 48/);
+});
+
+test('each class that the developer agent cannot fix has its own next step', () => {
+  const step = (finding_class) => renderMessage('qa_failed', { ...classBase, finding_class, retries_skipped: true });
+  assert.match(step('spec'), /Your next step: \/relevo:issue 48 \(decide what the specification leaves open/);
+  assert.match(step('policy'), /Your next step: \/relevo:issue 48 \(the work needs something an unattended run may not do/);
+  assert.match(step('policy'), /Allow-paths:/);
+});
+
+test('Scenario: A mixed report - the class is named without saying that the retries were skipped', () => {
+  const text = renderMessage('qa_failed', { ...classBase, finding_class: 'input' });
+  assert.match(text, /What kind of finding: it needs something the developer agent cannot supply: an input that the issue depends on\./);
+  assert.doesNotMatch(text, /retries were skipped/);
+});
+
+test('a fixable class, or no class, adds no line and leaves the next step as it was', () => {
+  const plain = renderMessage('qa_failed', classBase);
+  assert.doesNotMatch(plain, /What kind of finding/);
+  assert.equal(renderMessage('qa_failed', { ...classBase, finding_class: 'fixable' }), plain);
+  assert.match(plain, /Your next step: \/relevo:fix 48 \(it checks and corrects the work that was kept/);
+});
+
+test('a class has a step of its own only when the work was kept on the branch', () => {
+  const text = renderMessage('qa_failed', { ...classBase, branch_state: 'pushed', finding_class: 'spec', retries_skipped: true });
+  assert.match(text, /What kind of finding/);
+  assert.match(text, /Your next step: \/relevo:fix 48/);
+});
+
+test('an unknown class is refused', () => {
+  assert.throws(() => renderMessage('qa_failed', { ...classBase, finding_class: 'urgent' }), /unknown finding_class "urgent"/);
+});
+
 test('budget failures carry their reason', () => {
   const text = renderMessage('qa_failed', {
     assignee: 'b', issue: 1, title: 't', finding: 'stopped', branch: 'f', reason: 'budget exceeded',
@@ -292,4 +335,25 @@ test('qa_failed for a restricted file on the base branch does not send the perso
   const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed', recovery: 'restricted', reason: 'restricted file in the diff' });
   assert.match(text, /versioned on the base branch/);
   assert.doesNotMatch(text, /\/relevo:fix/);
+});
+
+test('Scenario: The next step for `inputs` and `policy` reaches the needs-spec message in both languages', () => {
+  const base = { spec_writer: 'ana', issue: 48, title: 'Sign-in screen', missing: 'the schema file cannot be read' };
+  const inputs = renderMessage('needs_spec', { ...base, reason: 'inputs' });
+  assert.match(inputs, /Your next step: \/relevo:issue 48: an input of the issue is not available/);
+  const policy = renderMessage('needs_spec', { ...base, reason: 'policy', missing: 'task 3.2 changes CLAUDE.md' }, 'es');
+  assert.match(policy, /Tu siguiente paso: \/relevo:issue 48: una tarea necesita algo/);
+  assert.match(policy, /task 3\.2 changes CLAUDE\.md/);
+});
+
+test('Scenario: The install step is missing - the message names the path, says nothing was built and says to enable the step', () => {
+  const data = { assignee: 'persona-b', issue: 12, title: 'Reports', paths: 'node_modules', platform: 'web' };
+  const en = renderMessage('installed_missing', data);
+  assert.match(en, /\bnode_modules\b/);
+  assert.match(en, /no model turns were spent/);
+  assert.match(en, /Your next step: enable the step that installs the dependencies/);
+  const es = renderMessage('installed_missing', data, 'es');
+  assert.match(es, /no se gastó ningún turno del modelo/);
+  assert.match(es, /Tu siguiente paso: activa el paso que instala las dependencias/);
+  assert.throws(() => renderMessage('installed_missing', { ...data, paths: '' }), /needs "paths"/);
 });

@@ -46,6 +46,14 @@ test('qa output contract: first line is QA PASSED or QA REJECTED', () => {
   assert.match(body, /first line is exactly\*\* `QA PASSED` or `QA REJECTED`/);
 });
 
+test('qa gives each finding a class: fixable, input, spec or policy (spec: Each QA finding carries a class)', () => {
+  const { body } = load('qa');
+  assert.match(body, /Class: <class>/);
+  ['fixable', 'input', 'spec', 'policy'].forEach((c) => assert.ok(body.includes('- `' + c + '`:'), `qa must define the class ${c}`));
+  assert.match(body, /treated as `fixable`/, 'a finding without a class must count as fixable');
+  assert.match(body, /first line is exactly/, 'the first line contract must remain');
+});
+
 test('qa never passes code it could not check (spec: Validation tooling missing)', () => {
   const { body } = load('qa');
   assert.match(body, /automated validation could not run/);

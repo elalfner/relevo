@@ -99,3 +99,31 @@ test('a restricted file versioned on the base branch has no command: it says to 
   assert.match(step.line, /ready again/);
   assert.doesNotMatch(step.line, /relevo:fix/);
 });
+
+test('Scenario: The next step for `inputs` - the writer completes the issue', () => {
+  const step = nextStep({ state: 'needs-spec', reason: 'inputs', issue: 48 });
+  assert.deepEqual([step.command, step.who], ['/relevo:issue 48', 'spec_writer']);
+  assert.match(step.hint, /an input of the issue is not available/);
+  assert.match(step.hint, /External inputs/);
+  assert.match(nextStep({ state: 'needs-spec', reason: 'inputs', issue: 48, language: 'es' }).hint, /un insumo del issue no está disponible/);
+});
+
+test('Scenario: The next step for `policy` - the writer rewrites the issue', () => {
+  const step = nextStep({ state: 'needs-spec', reason: 'policy', issue: 47 });
+  assert.deepEqual([step.command, step.who], ['/relevo:issue 47', 'spec_writer']);
+  assert.match(step.hint, /Allow-paths:/);
+  assert.match(nextStep({ state: 'needs-spec', reason: 'policy', issue: 47, language: 'es' }).hint, /Allow-paths:/);
+});
+
+test('missing installed dependencies have a next step in the workflow, not a command', () => {
+  const step = nextStep({ state: 'qa-failed', reason: 'installed', issue: 9 });
+  assert.equal(step.command, null);
+  assert.match(step.hint, /installs the dependencies/);
+  assert.match(nextStep({ state: 'qa-failed', reason: 'installed', issue: 9, language: 'es' }).hint, /instala las dependencias/);
+});
+
+test('the classes of a QA finding that the developer agent cannot fix each have a next step for the kept work', () => {
+  assert.equal(nextStep({ state: 'qa-failed', reason: 'input', issue: 9 }).command, '/relevo:fix 9');
+  assert.equal(nextStep({ state: 'qa-failed', reason: 'spec', issue: 9 }).command, '/relevo:issue 9');
+  assert.equal(nextStep({ state: 'qa-failed', reason: 'policy', issue: 9 }).command, '/relevo:issue 9');
+});

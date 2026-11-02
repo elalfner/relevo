@@ -142,6 +142,27 @@ Cuando la pantalla debe verse como algo, señálalo. Una viñeta por referencia,
 - El código de ejemplo va en un bloque de código en la misma sección.
 - `go` copia la sección al diseño, añade un escenario "Matches the reference <nombre>" por cada viñeta, y QA comprueba el código contra ella. En la revisión ese escenario es una línea que confirmas mirando tu pantalla. Si una referencia no se puede obtener, el issue vuelve a quien lo escribió diciendo cuál.
 
+### 9. Insumos externos (opcional)
+
+Cuando el trabajo necesita algo que no está en el repositorio (una clave, un archivo, un endpoint, otro repositorio), dilo. Un script comprueba lo que puede antes de que empiece la construcción, para que el issue no gaste una construcción y un reintento en algo que no puede salir bien:
+
+```markdown
+## External inputs
+
+- file: `design/logo.svg`: el logo de la pantalla de acceso
+- link: `acme/api:schema/schema.graphqls`: el schema del que se generan los tipos
+- secret: `RECAPTCHA_SITE_KEY`: la clave de la pantalla de acceso
+- variable: `API_URL`: la dirección del backend
+- manual: los términos de uso: el cliente envía el texto
+```
+
+- Un bullet por insumo, `<tipo>: <nombre>: <para qué sirve>`. Los tipos son `file` (una ruta de este repositorio), `link` (`owner/repo:path` de un repositorio vinculado), `secret` y `variable` (el nombre de un secreto o de una variable del repositorio) y `manual` (cualquier cosa que una persona tiene que confirmar).
+- `file` debe existir en la rama base cuando empieza la construcción, y un `link` nombra un repositorio que está en `links` de `relevo.yml`. Escribe entre acentos graves una ruta, un `owner/repo:path` y el nombre de un secreto o de una variable.
+- Escribe el **nombre** de un secreto o de una variable, nunca su valor. Solo se comprueba que exista: el valor nunca se lee, se imprime ni se guarda. Un nombre sin acentos graves se rechaza, porque un nombre largo se parece a un valor para el escaneo de credenciales.
+- `manual` nunca bloquea la construcción: el mensaje de entrega lo lista para que una persona lo confirme. Un insumo de un tipo que el job de construcción no puede comprobar (por ejemplo, un secreto que el job no ve) se trata igual.
+- Un insumo que falta devuelve el issue a `needs-spec` con el motivo `inputs`, antes de que empiece el agente y sin gastar un turno del modelo. El comentario nombra cada insumo que falta.
+- La sección es opcional. `/relevo:issue` pregunta por los insumos del trabajo y la escribe.
+
 ## Qué más necesita `go` del issue
 
 - **Un hito.** El hito es el lote al que pertenece el issue.

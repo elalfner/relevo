@@ -2,21 +2,21 @@
 
 ## 1. Finding classes in the QA contract
 
-- [ ] 1.1 Add `scripts/lib/qa-findings.mjs` and `scripts/qa-findings.mjs`: read a QA report, return its numbered findings with their `Class:` (`fixable`, `input`, `spec`, `policy`), treat a missing or invalid class as `fixable`, and say whether every finding is non-fixable and which class the first non-fixable finding has. Verify with a new `tests/qa-findings.test.mjs`: all non-fixable, mixed, no classes, a malformed class, a report that passes (no findings).
-- [ ] 1.2 `agents/qa.md`: the output contract says that each finding ends with a `Class:` line and defines the four classes with one example each. Verify with `tests/agents.test.mjs`, which must check the contract text and that the first line is still `QA PASSED` or `QA REJECTED`.
-- [ ] 1.3 `skills/go/SKILL.md` step 5 and `skills/fix/SKILL.md`: run `qa-findings.mjs` on a rejection; when no finding is `fixable` skip the retries and take the usual failure path keeping the work, and when the findings are mixed retry as before and name the class of the first non-fixable finding if QA still rejects. Verify with `tests/skill-go.test.mjs` and `tests/skill-fix.test.mjs` (the skills mention the script, the skip and the mixed rule).
-- [ ] 1.4 `scripts/failure-comment.mjs` and `scripts/render-message.mjs`: the failure comment states the class and the next step for each class, in English and Spanish. Verify with `tests/messages.test.mjs` for both languages and every class.
+- [x] 1.1 Add `scripts/lib/qa-findings.mjs` and `scripts/qa-findings.mjs`: read a QA report, return its numbered findings with their `Class:` (`fixable`, `input`, `spec`, `policy`), treat a missing or invalid class as `fixable`, and say whether every finding is non-fixable and which class the first non-fixable finding has. Verify with a new `tests/qa-findings.test.mjs`: all non-fixable, mixed, no classes, a malformed class, a report that passes (no findings).
+- [x] 1.2 `agents/qa.md`: the output contract says that each finding ends with a `Class:` line and defines the four classes with one example each. Verify with `tests/agents.test.mjs`, which must check the contract text and that the first line is still `QA PASSED` or `QA REJECTED`.
+- [x] 1.3 `skills/go/SKILL.md` step 5 and `skills/fix/SKILL.md`: run `qa-findings.mjs` on a rejection; when no finding is `fixable` skip the retries and take the usual failure path keeping the work, and when the findings are mixed retry as before and name the class of the first non-fixable finding if QA still rejects. Verify with `tests/skill-go.test.mjs` and `tests/skill-fix.test.mjs` (the skills mention the script, the skip and the mixed rule).
+- [x] 1.4 `scripts/failure-comment.mjs` and `scripts/render-message.mjs`: the failure comment states the class and the next step for each class, in English and Spanish. Verify with `tests/messages.test.mjs` for both languages and every class.
 
 ## 2. The reasons `inputs` and `policy` and the missing-dependencies exit
 
-- [ ] 2.1 Add the reasons `inputs` and `policy` to the table of next steps (`scripts/lib/next-step.mjs`) with the owner and the command for each, and to the message renderer, in both languages. Verify with `tests/next-step.test.mjs` (every state and reason has an entry in both languages) and `tests/messages.test.mjs`.
-- [ ] 2.2 Add the `qa-failed` message for a build that stops because the installed paths of the platform are missing: it names the path and the step to enable. Verify with `tests/messages.test.mjs`.
+- [x] 2.1 Add the reasons `inputs` and `policy` to the table of next steps (`scripts/lib/next-step.mjs`) with the owner and the command for each, and to the message renderer, in both languages. Verify with `tests/next-step.test.mjs` (every state and reason has an entry in both languages) and `tests/messages.test.mjs`.
+- [x] 2.2 Add the `qa-failed` message for a build that stops because the installed paths of the platform are missing: it names the path and the step to enable. Verify with `tests/messages.test.mjs`.
 
 ## 3. The `External inputs` section of the issue
 
-- [ ] 3.1 `scripts/lib/issue-parse.mjs` and `scripts/lib/issue-check.mjs`: parse the section (`<kind>: <name>: <what it is for>`), fail an unknown kind, a `file` that leaves the repository and a `link` to a repository outside `links`, and pass an issue without the section. Verify with `tests/issue-parse.test.mjs` and a check test for each scenario of the spec.
-- [ ] 3.2 `skills/issue/SKILL.md`: ask for the external inputs that the issue does not state, write the section, say that an input a script cannot verify is listed in the hand-off, and never invent one. Verify with `tests/skill-issue.test.mjs`.
-- [ ] 3.3 `docs/issue-format.md` and `docs/issue-format.es.md`: the section, its kinds and an example, with the same headings and commands in both languages. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 3.1 `scripts/lib/issue-parse.mjs` and `scripts/lib/issue-check.mjs`: parse the section (`<kind>: <name>: <what it is for>`), fail an unknown kind, a `file` that leaves the repository and a `link` to a repository outside `links`, and pass an issue without the section. Verify with `tests/issue-parse.test.mjs` and a check test for each scenario of the spec.
+- [x] 3.2 `skills/issue/SKILL.md`: ask for the external inputs that the issue does not state, write the section, say that an input a script cannot verify is listed in the hand-off, and never invent one. Verify with `tests/skill-issue.test.mjs`.
+- [x] 3.3 `docs/issue-format.md` and `docs/issue-format.es.md`: the section, its kinds and an example, with the same headings and commands in both languages. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 4. The preflight script
 

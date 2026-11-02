@@ -18,7 +18,7 @@ An issue is always in one state, shown by a label, and each state has one next s
 | `in-review` | `/relevo:review <n>` to continue; if something fails, `/relevo:fix <n>` | the assignee |
 | `pr-open` | `/relevo:ship <n>`, after someone other than the author approves on GitHub; or apply `relevo:ship` to the issue | the approver |
 | `needs-spec` | `/relevo:issue <n>`; if the question needs exploring, `/relevo:think #<n>` first | the spec writer |
-| `qa-failed` | `/relevo:fix <n>`; if the branch has only the specification, delete it and apply `ready` again | the assignee |
+| `qa-failed` | `/relevo:fix <n>`; if the branch has only the specification, delete it and apply `ready` again; if QA found something that only a person can supply or decide, `/relevo:issue <n>` after that | the assignee |
 | `changes-requested` | `/relevo:fix <n>` | the author |
 | `needs-reviewer` | none: assign a reviewer, or ask someone to take it | the spec writer |
 | `ship` | none: the ship workflow is merging it; if it stops, its comment says why and the label is removed | nobody |

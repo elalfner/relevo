@@ -125,6 +125,25 @@ test('every failure reason of the specification is named in the failure path', (
     'possible credential or temporary marker in the diff', 'QA rejected after the retries'].forEach((r) => assert.ok(body.includes(r), r));
 });
 
+test('Scenario: Nothing the developer can fix - the retries are skipped and the class goes to the failure comment', () => {
+  assert.match(body, /node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/qa-findings\.mjs --file <report>/);
+  assert.match(body, /`all_non_fixable` is `true`/);
+  assert.match(body, /\*\*do not retry\*\*/);
+  assert.ok(body.includes('QA rejected: nothing the developer agent can fix'), 'the new reason is named');
+  assert.match(body, /`finding_class`/);
+  assert.match(body, /`retries_skipped`/);
+  assert.match(body, /counts as `fixable`, so the retries run as before/, 'a report without classes retries as before');
+});
+
+test('Scenario: A mixed report - the retries run and the class of the first finding that cannot be fixed is named', () => {
+  assert.match(body, /first_non_fixable_class/);
+  assert.match(body, /Otherwise you may retry up to `qa_retries` times/);
+});
+
+test('the work is kept when the retries were skipped, as it is after the retries', () => {
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix` or `tasks left unfinished`/);
+});
+
 test('Scenario: the profile and the role skills come from scripts, and the skill names no stack', () => {
   assert.match(body, /scripts\/stack-profile\.mjs/);
   assert.match(body, /scripts\/role-skills\.mjs --role dev/);

@@ -251,3 +251,16 @@ test('Scenario: Process in the back end / Repository not linked - issue writes t
   assert.match(text, /as `Decisions` and `Constraints` lines, and list under `Code pointers` only the files the builder must see, as `owner\/repo:path`/);
   assert.match(text, /PNG, JPEG, GIF or WebP image, which needs no `design\.images`/);
 });
+
+test('Scenario: The work needs a key - issue asks for the external inputs, writes names and never values', () => {
+  assert.match(body, /\*\*External inputs \(when the work needs something that is not in the repository\)\.\*\*/);
+  assert.match(body, /`## External inputs` section/);
+  ['`file`', '`link`', '`secret`', '`variable`', '`manual`'].forEach((k) => assert.ok(body.includes(k), `the kind ${k} is named`));
+  assert.match(body, /Never ask for the value of a secret, never write one, and never invent an input/);
+  assert.match(body, /`needs-spec` with the reason `inputs`/);
+  assert.match(body, /a `manual` input, or one the job cannot check, is listed in the hand-off/);
+});
+
+test('Scenario: Nothing is needed - issue writes no section', () => {
+  assert.match(body, /needs nothing outside the repository, write no section/);
+});
