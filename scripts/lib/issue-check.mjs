@@ -41,9 +41,11 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
     problems.push(`External inputs: "${input.name}" names ${input.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'}); add it to links first`);
   });
   const pointers = parsed.codePointers.references.length;
-  const total = parsed.design.references.length + pointers;
+  const linkInputs = parsed.externalInputs.inputs.filter((input) => input.kind === 'link').length;
+  const total = parsed.design.references.length + pointers + linkInputs;
   if (total > MAX_REFERENCES) {
-    const counted = pointers > 0 ? `Design reference and the linked Code pointers have ${total} references together` : `Design reference has ${total} references`;
+    const together = pointers > 0 && linkInputs > 0 ? 'Design reference, the linked Code pointers and the linked External inputs' : pointers > 0 ? 'Design reference and the linked Code pointers' : linkInputs > 0 ? 'Design reference and the linked External inputs' : null;
+    const counted = together ? `${together} have ${total} references together` : `Design reference has ${total} references`;
     problems.push(`${counted}; the most Relevo takes is ${MAX_REFERENCES}, so split the issue or keep the ones that matter`);
   }
   parsed.codePointers.references.forEach((ref) => {

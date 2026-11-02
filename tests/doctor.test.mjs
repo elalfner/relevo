@@ -1566,6 +1566,16 @@ test('Scenario: Text and pin agree - the check passes', () => {
   assert.equal(w.status, 'pass');
 });
 
+test('Scenario: An older workflow - the text of the 0.12.0 template, which has no check before the agent, is a warning and never a failure', () => {
+  const old = readFileSync(new URL('./fixtures/workflows/relevo-go-0.12.0.yml', import.meta.url), 'utf8');
+  assert.ok(!old.includes('Check the issue before the agent'), 'the fixture is the template from before the check');
+  const stamp = (/^# relevo-template: (\d+\.\d+\.\d+)\s*$/m.exec(old) ?? [])[1];
+  assert.equal(stamp, '0.12.0');
+  const res = runChecks(healthy({ pluginPins: { 'relevo-go.yml': '0.13.0' }, pluginStamps: { 'relevo-go.yml': stamp } }));
+  assert.equal(res.find((r) => r.id === 'automation.workflow-text').status, 'warn', 'the doctor says the text is older than the scripts it runs');
+  assert.equal(exitCode(res), 0, 'and does not fail');
+});
+
 test('a stamp ahead of the pin is not a problem, and several files with the same fault are one result', () => {
   assert.equal(textOf({ pluginPins: { 'relevo-go.yml': '0.7.0' }, pluginStamps: { 'relevo-go.yml': '0.8.0' } }).status, 'pass');
   const wf = { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true }, 'relevo-sla.yml': { present: true, enabled: true } };

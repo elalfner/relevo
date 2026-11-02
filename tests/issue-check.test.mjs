@@ -497,3 +497,10 @@ test('the name of a secret or a variable must be in backticks, so that it is nev
   assert.match(inputsCheck('- variable: API_URL: the address').problems.join('\n'), /write the name of a variable in backticks/);
   assert.deepEqual(inputsCheck('- variable: `API_URL`: the address').problems, []);
 });
+
+test('a link input is fetched like a code pointer, so it counts with the references and the most is five', () => {
+  const refs = Array.from({ length: 3 }, (_, i) => `- \`design/home.png\`: part ${i}`).join('\n');
+  const links = Array.from({ length: 3 }, (_, i) => `- link: \`acme/api:src/f${i}.ts\`: file ${i}`).join('\n');
+  const body = `${GOOD}\n## Design reference\n\n${refs}\n\n## External inputs\n\n${links}\n`;
+  assert.match(checkIssueDraft({ title: 'Home', body, links: ['acme/api'] }).problems.join('\n'), /Design reference and the linked External inputs have 6 references together; the most Relevo takes is 5/);
+});

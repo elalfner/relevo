@@ -144,6 +144,18 @@ test('the work is kept when the retries were skipped, as it is after the retries
   assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix` or `tasks left unfinished`/);
 });
 
+test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
+  assert.match(body, /build-preflight\.mjs --stage spec --issue-file <issue_file> --change-dir openspec\/changes\/<change_id>/);
+  assert.match(body, /with `reason` `policy`/);
+  assert.match(body, /this check only saves cost, and the commit script and QA refuse the same paths later/);
+  assert.ok(body.indexOf('--stage spec') < body.indexOf('### 4. Build'), 'the check runs before the build step');
+  assert.ok(body.indexOf('--stage spec') < body.indexOf('docs: specification for #<issue>'), 'and before the specification is committed');
+});
+
+test('Scenario: An input that a person confirms - the built message receives it from the workflow', () => {
+  assert.match(body, /`inputs_to_confirm` \(the value of the environment variable `RELEVO_INPUTS_TO_CONFIRM`/);
+});
+
 test('Scenario: the profile and the role skills come from scripts, and the skill names no stack', () => {
   assert.match(body, /scripts\/stack-profile\.mjs/);
   assert.match(body, /scripts\/role-skills\.mjs --role dev/);

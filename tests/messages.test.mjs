@@ -357,3 +357,11 @@ test('Scenario: The install step is missing - the message names the path, says n
   assert.match(es, /Tu siguiente paso: activa el paso que instala las dependencias/);
   assert.throws(() => renderMessage('installed_missing', { ...data, paths: '' }), /needs "paths"/);
 });
+
+test('Scenario: An input that a person confirms - the hand-off lists it, and a build without one is as it was', () => {
+  const base = { assignee: 'persona-b', issue: 31, title: 'Sign-in', tasks_done: 4, tasks_total: 4, branch: 'feature/31-sign-in', scenarios: 6 };
+  const text = renderMessage('built', { ...base, inputs_to_confirm: 'RECAPTCHA_SITE_KEY (the key of the login screen)' });
+  assert.match(text, /Inputs to confirm before you test: RECAPTCHA_SITE_KEY \(the key of the login screen\)/);
+  assert.match(renderMessage('built', { ...base, inputs_to_confirm: 'LLAVE (la llave)' }, 'es'), /Insumos que debes confirmar antes de probar: LLAVE \(la llave\)/);
+  assert.doesNotMatch(renderMessage('built', base), /Inputs to confirm/);
+});

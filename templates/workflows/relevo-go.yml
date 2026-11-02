@@ -260,6 +260,55 @@ jobs:
           [ "$code" -le 1 ] || exit "$code"
           echo "RELEVO_REFERENCES=$GITHUB_WORKSPACE/.relevo-design/manifest.json" >> "$GITHUB_ENV"
 
+      # What the build cannot go on without is checked here, with no model, before the agent starts: a reference that the
+      # fetcher refused, and the inputs that the issue declares in its External inputs section. When something is
+      # missing the issue goes back to its writer with the reason, the comment names what is missing, and this step ends
+      # the job, so the agent steps below do not run and no model turn is spent. It also lists, for the hand-off, the
+      # inputs that a person has to confirm. Only the names of the variables of the repository are read, never their
+      # values, and a secret counts only when you expose it to this step. An older package without the script skips this
+      # step and the agent takes the same path itself. This check only saves cost: the guards stay in force.
+      # If you renamed the labels in relevo.yml, change the names below too.
+      - name: Check the issue before the agent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          DECISION: ${{ needs.decide.outputs.decision_b64 }}
+          VARIABLES: ${{ toJSON(vars) }}
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/build-preflight.mjs"
+          [ -f "$script" ] || exit 0
+          fields=$(printf '%s' "$DECISION" | base64 -d | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log([d.base || "", d.assignee || "", d.title || "", d.spec_writer || ""].join("\n"))')
+          base=$(printf '%s\n' "$fields" | sed -n 1p)
+          assignee=$(printf '%s\n' "$fields" | sed -n 2p)
+          title=$(printf '%s\n' "$fields" | sed -n 3p)
+          writer=$(printf '%s\n' "$fields" | sed -n 4p)
+          gh issue view "$ISSUE" --json body --jq .body > "$RUNNER_TEMP/issue.md"
+          printf '%s' "$VARIABLES" > "$RUNNER_TEMP/variables.json"
+          args=(--stage issue --issue-file "$RUNNER_TEMP/issue.md" --variables "$RUNNER_TEMP/variables.json" --config relevo.yml)
+          [ -n "$base" ] && args+=(--base "$base")
+          [ -n "$RELEVO_REFERENCES" ] && args+=(--manifest "$RELEVO_REFERENCES")
+          code=0
+          result=$(node "$script" "${args[@]}") || code=$?
+          if [ "$code" -gt 1 ]; then
+            echo "::warning::The check before the agent could not run (exit $code); the agent will check the issue itself"
+            exit 0
+          fi
+          if [ "$code" -eq 0 ]; then
+            unverified=$(printf '%s' "$result" | node -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(r.unverified.map((u) => u.name + " (" + u.purpose + ")").join("; "))')
+            [ -z "$unverified" ] || echo "RELEVO_INPUTS_TO_CONFIRM=$unverified" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          reason=$(printf '%s' "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).reason)')
+          missing=$(printf '%s' "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).missing)')
+          to="${writer:-${assignee:-$GITHUB_ACTOR}}"
+          body=$(WRITER="$to" TITLE="$title" MISSING="$missing" REASON="$reason" node -e 'const e = process.env; console.log(JSON.stringify({spec_writer: e.WRITER, issue: Number(process.env.ISSUE), title: e.TITLE, missing: e.MISSING, reason: e.REASON}))' \
+            | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" needs_spec --config relevo.yml)
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:needs-spec
+          [ -z "$writer" ] || gh issue edit "$ISSUE" --add-assignee "$writer" || true
+          gh issue comment "$ISSUE" --body "$body"
+          echo "::error::The issue went back to needs-spec ($reason) before the agent started: $missing"
+          exit 1
+
       # relevo:agent-step begin
       - id: agent
         uses: anthropics/claude-code-action@v1
