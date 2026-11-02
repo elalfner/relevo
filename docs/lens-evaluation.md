@@ -40,7 +40,7 @@ The total is about 2.84 USD in model usage. Three of the six runs are valid for 
 
 - It is a small sample of 10 of the 11 cases; each case was run once, so nothing is known about how much a lens varies between runs.
 - The defects are the clearest ones. The evaluation does not say how much a lens misses in a noisy, real change.
-- The lenses were run only with the model of their agent file. There is no comparison between models, so **no default model or effort was changed** on this evidence.
+- The lenses were run only with the model of their agent file. There is no comparison between models, so **no default model or effort was changed** on this evidence. The maintainer decided on 2026-11-02 to keep the defaults as they are.
 - The receipt is simulated and no analysis or test ran.
 - The `scenario-without-code` good variant received a test after the run and was not run again.
 - The thresholds (how many defects a lens must find, how many false positives it may give) are **not set**: they are the maintainer's decision, and the numbers above are the input for it.

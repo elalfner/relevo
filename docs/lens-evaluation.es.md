@@ -40,7 +40,7 @@ El total es de unos 2.84 USD en uso de modelo. Tres de las seis ejecuciones son 
 
 - Es una muestra pequeña de 10 de los 11 casos; cada caso se ejecutó una vez, así que no se sabe cuánto varía una lente entre ejecuciones.
 - Los defectos son los más claros. La evaluación no dice cuánto se le escapa a una lente en un cambio real y ruidoso.
-- Las lentes se ejecutaron solo con el modelo de su archivo de agente. No hay comparación entre modelos, así que **no se cambió ningún modelo ni esfuerzo por defecto** con esta evidencia.
+- Las lentes se ejecutaron solo con el modelo de su archivo de agente. No hay comparación entre modelos, así que **no se cambió ningún modelo ni esfuerzo por defecto** con esta evidencia. El mantenedor decidió el 2026-11-02 mantener los valores por defecto tal como están.
 - El recibo es simulado y no se ejecutó ningún análisis ni test.
 - La variante buena de `scenario-without-code` recibió un test después de la ejecución y no se volvió a ejecutar.
 - Los umbrales (cuántos defectos debe encontrar una lente, cuántos falsos positivos admite) **no están fijados**: son decisión del mantenedor, y los números de arriba son su insumo.
