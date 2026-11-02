@@ -59,24 +59,24 @@
 
 ## 8. Packaging and the other tools
 
-- [ ] 8.1 `package.json`: add `knowledge` to `files`. Verify with `tests/package.test.mjs`: the package holds the knowledge folder and no fixture of the tests, and no script reads a file that the package lacks.
-- [ ] 8.2 `scripts/lib/adapters/antigravity.mjs`: copy `knowledge` with the scripts, stacks and templates. Verify with `tests/adapter-antigravity.test.mjs`: the rendered plugin has the folder and a script of it finds the knowledge next to the scripts.
+- [x] 8.1 `package.json`: add `knowledge` to `files`. Verify with `tests/package.test.mjs`: the package holds the knowledge folder and no fixture of the tests, and no script reads a file that the package lacks.
+- [x] 8.2 `scripts/lib/adapters/antigravity.mjs`: copy `knowledge` with the scripts, stacks and templates. Verify with `tests/adapter-antigravity.test.mjs`: the rendered plugin has the folder and a script of it finds the knowledge next to the scripts.
 
 ## 9. Seeded defects
 
-- [ ] 9.1 Create `tests/fixtures/interface-defects/<rule-id>/` with a bad and a good file for each blocking rule that has a code example, taken from its examples, and a recorded reason for a blocking rule with none. Verify with a test that fails when a blocking rule with a code example has neither a fixture nor a reason.
-- [ ] 9.2 Check that the fixtures are not part of the package and are not read at run time. Verify with the package test of task 8.1.
+- [x] 9.1 Create `tests/fixtures/interface-defects/<rule-id>/` with a bad and a good file for each blocking rule that has a code example, taken from its examples, and a recorded reason for a blocking rule with none. Verify with a test that fails when a blocking rule with a code example has neither a fixture nor a reason.
+- [x] 9.2 Check that the fixtures are not part of the package and are not read at run time. Verify with the package test of task 8.1.
 
 ## 10. The documentation of the external design skills
 
-- [ ] 10.1 Add the list of the design skills that were evaluated to `docs/stacks.md` and `docs/stacks.es.md`: the date each was read, the licence it states, the role it suits (the collection the rules come from, on demand, for `think` and `issue`; the skill that builds marketing pages, only for a new page of that kind; the skills that give a page its own aesthetic, only for a project with no design system), the cost of loading it, the warning about a hook that edits a settings file, and that none is recommended by default and `init` installs none. Verify with `node --test tests/docs-claims.test.mjs` and a test that `init` installs none of them.
+- [x] 10.1 Add the list of the design skills that were evaluated to `docs/stacks.md` and `docs/stacks.es.md`: the date each was read, the licence it states, the role it suits (the collection the rules come from, on demand, for `think` and `issue`; the skill that builds marketing pages, only for a new page of that kind; the skills that give a page its own aesthetic, only for a project with no design system), the cost of loading it, the warning about a hook that edits a settings file, and that none is recommended by default and `init` installs none. Verify with `node --test tests/docs-claims.test.mjs` and a test that `init` installs none of them.
 
 ## 11. Integration checks
 
-- [ ] 11.1 Run `npm test` and `openspec validate --all`, the two steps of the CI, and confirm both pass.
+- [x] 11.1 Run `npm test` and `openspec validate --all`, the two steps of the CI, and confirm both pass.
 - [ ] 11.2 Run the interface step on a throwaway web project and on a throwaway project with a Dart theme written with explicit colours: the tokens table must show the values with their file and line, the previews must be written outside the repository after a yes, and the check must report each item. Repeat on a Dart theme built from a seed colour and confirm it is reported as unresolved and the person is asked for the main colours.
 - [ ] 11.3 Take an issue with a vague appearance word and an interface rule broken in its diff, and confirm that `issue` asks about the word and that QA rejects the diff with the file, the line and the rule.
-- [ ] 11.4 Search every file of this change and the new documentation and fixtures for the name of any real project, organisation or customer that was used as an example during the exploration, and confirm that none appears.
+- [x] 11.4 Search every file of this change and the new documentation and fixtures for the name of any real project, organisation or customer that was used as an example during the exploration, and confirm that none appears.
 
 ## Workflow follow-up
 

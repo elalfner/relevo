@@ -143,6 +143,19 @@ For a stack with an interface, `node scripts/design-tokens.mjs` reads the colour
 - **Never guessed:** a colour scheme derived from a seed, a colour that comes from the device or a server, a swatch that is not in the fixed table, and a reference it cannot follow are listed as unresolved with their file and line. `think` asks you for those colours instead of inventing them.
 - **Several brands or flavours** are listed as separate sets and never merged: you choose one.
 
+## Design skills that were evaluated
+
+Relevo does not install a design skill and recommends none by default. Four public ones were read on 2 November 2026 to see what each would add; each can be added to a role with the mechanism of [Extra skills per role](#extra-skills-per-role), and `/relevo:init` installs none of them. "Cost" is the size of the file the agent loads when the skill is active, at about four characters per token.
+
+| Skill | Licence it states | What it is for | Fit for a role | Cost when loaded |
+|---|---|---|---|---|
+| `frontend-design` (the `anthropics/skills` collection) | Apache-2.0 | Art direction for a distinctive web interface | `dev`, for a new page where a look is wanted; it pushes for a strong visual identity, so it can conflict with an existing design system | about 9 KB (2,300 tokens) |
+| Taste (`Leonxlnx/taste-skill`) | MIT | Art direction for websites distilled from a study of gallery sites | `dev` for a landing page or marketing site; not for an application with its own system | about 40 KB (10,000 tokens) |
+| Hallmark (`Nutlope/hallmark`) | MIT | A design skill for new websites and pages, with redesign and audit modes | `dev` for a new site; it says to avoid an existing design unless named | about 18 KB (4,500 tokens) |
+| UI UX Pro Max (`nextlevelbuilder/ui-ux-pro-max-skill`) | MIT | A searchable body of UI and UX guidelines, styles, palettes and stack notes | The source of Relevo's own [interface rules](../knowledge/interface/CURATION.md); the skill itself adds a large data set | a skill file of about 16 KB (4,000 tokens) plus data files of about 3 MB, searched by a script |
+
+What follows from the reading: the three that give a look are for new sites, and a project with a design system wants the opposite (reuse its tokens and components), which is what the interface step does. Relevo's own rules come from the fourth and are loaded by role and budget, not whole. Read the current licence and the file you would add before you do; these are third-party works that change.
+
 ## Your own stack
 
 Relevo ships profiles for `flutter`, `vue`, `laravel` and `supabase`. For any other stack (Go, Python, Rust...) you write the profile yourself, and the file is the whole profile:
