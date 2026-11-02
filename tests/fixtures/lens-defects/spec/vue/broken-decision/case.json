@@ -1,0 +1,10 @@
+{
+ "lens": "spec",
+ "stack": "vue",
+ "case": "broken-decision",
+ "description": "The code breaks a decision of the issue (D1).",
+ "expected": {
+  "lens": "spec",
+  "finding": "D1|two decimals|decimals"
+ }
+}

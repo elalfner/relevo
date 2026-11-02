@@ -1,0 +1,8 @@
+{"event": "step_update", "step_update": {"conversation_id": "main", "step_index": 1, "state": "DONE", "step_type": "agent_response", "usage": {"input_tokens": 90, "output_tokens": 10, "total_tokens": 100, "cache_read_tokens": 0}}}
+{"event": "step_update", "step_update": {"conversation_id": "main", "step_index": 2, "state": "DONE", "step_type": "subagent"}}
+{"event": "step_update", "step_update": {"conversation_id": "lens-1", "step_index": 1, "state": "DONE", "step_type": "agent_response", "usage": {"input_tokens": 190, "output_tokens": 10, "total_tokens": 200, "cache_read_tokens": 0}}}
+{"event": "step_update", "step_update": {"conversation_id": "lens-1", "step_index": 2, "state": "DONE", "step_type": "tool", "tool_name": "view_file"}}
+{"event": "step_update", "step_update": {"conversation_id": "lens-1", "step_index": 3, "state": "DONE", "step_type": "agent_response", "usage": {"input_tokens": 190, "output_tokens": 10, "total_tokens": 200, "cache_read_tokens": 0}}}
+{"event": "step_update", "step_update": {"conversation_id": "lens-2", "step_index": 1, "state": "DONE", "step_type": "agent_response", "usage": {"input_tokens": 290, "output_tokens": 10, "total_tokens": 300, "cache_read_tokens": 0}}}
+{"event": "step_update", "step_update": {"conversation_id": "main", "step_index": 3, "state": "DONE", "step_type": "agent_response", "usage": {"input_tokens": 90, "output_tokens": 10, "total_tokens": 100, "cache_read_tokens": 0}}}
+{"event": "result", "result": {"status": "SUCCESS", "response": "done"}}

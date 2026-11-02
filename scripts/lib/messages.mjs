@@ -71,8 +71,10 @@ const CATALOG = {
       'Inputs to confirm before you test: {{inputs_to_confirm}}',
       'Your next step: {{command}}',
       'Expected by: {{due}}',
+      '{{qa_notes_line}}',
       '',
       '{{checklist}}',
+      '{{qa_notes_marker}}',
     ],
     qa_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" failed QA ❌',
@@ -248,8 +250,10 @@ const CATALOG = {
       'Insumos que debes confirmar antes de probar: {{inputs_to_confirm}}',
       'Tu siguiente paso: {{command}}',
       'Esperada para: {{due}}',
+      '{{qa_notes_line}}',
       '',
       '{{checklist}}',
+      '{{qa_notes_marker}}',
     ],
     qa_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" no pasó QA ❌',
@@ -483,6 +487,21 @@ export function renderMessage(kind, data = {}, language = 'en') {
       : `The Relevo build ended${none ? ' without an outcome' : ''}${after}. ${none ? 'The reason is' : 'The result is'} in the latest comment of this issue.`;
   }
   if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
+  // Advisory notes of the QA lenses: how many, the lens of the first three, and all of them in a hidden marker for the review.
+  if (kind === 'built' && Array.isArray(values.qa_notes) && values.qa_notes.length > 0) {
+    const notes = values.qa_notes.filter((n) => n && present(n.lens) && present(n.text)).map((n) => ({ lens: String(n.lens), text: String(n.text).replace(/\s+/g, ' ').trim() }));
+    if (notes.length > 0) {
+      // No markup in the visible line: a note is text, never HTML or the end of a comment.
+      const short = (t) => { const c = t.replace(/[<>]/g, ''); return c.length > 90 ? `${c.slice(0, 89).trimEnd()}…` : c; };
+      const named = notes.slice(0, 3).map((n) => `${n.lens}: ${short(n.text)}`).join('; ');
+      const more = notes.length > 3 ? (es ? ` y ${notes.length - 3} más` : ` and ${notes.length - 3} more`) : '';
+      values.qa_notes_line = es
+        ? `QA dejó ${notes.length} ${notes.length === 1 ? 'nota' : 'notas'} para ti (${named}${more}); están en el checklist.`
+        : `QA left ${notes.length} advisory ${notes.length === 1 ? 'note' : 'notes'} for you (${named}${more}); they are in the checklist.`;
+      // JSON that cannot close the comment: < and > are escaped.
+      values.qa_notes_marker = `<!-- relevo:qa-notes ${JSON.stringify(notes).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')} -->`;
+    }
+  }
   // Urgent does not skip dependencies: an urgent issue that is blocked says so.
   if (kind === 'blocked_notice' && values.urgent === true) {
     values.urgent_note = es ? 'La etiqueta de urgente no salta las dependencias: empieza primero en la cola cuando se fusionen.' : 'The urgent label does not skip dependencies: it goes first in the queue once they are merged.';
@@ -540,7 +559,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
     const names = [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
     const optionalEmpty = names.some((n) => !present(values[n]) && !n.endsWith('_suffix'));
     if (names.length > 0 && optionalEmpty) return;
-    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
+    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
   });
 
   // Collapse repeated blank lines and trim the ends.

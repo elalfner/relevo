@@ -26,7 +26,27 @@ function entries(text) {
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-/** { turns, cost, tokens, cached } with null for what the log does not say, or null when it says none of them. */
+/**
+ * The turns that subagents took, which the runner leaves out of `num_turns` (spike S3 of specialist-review-lenses: a
+ * subagent that made three tool calls ran inside a run limited to two turns). A finished subagent reports its tool
+ * calls in its `task_notification`; each call is followed by one more turn of the model, and the last turn gives the
+ * answer, so its turns are `tool_uses + 1`. This is an estimate that is exact when the model makes one call per turn.
+ */
+function subagentTurnsOf(all) {
+  let total = 0;
+  all.forEach((e) => {
+    if (e.type !== 'system' || e.subtype !== 'task_notification') return;
+    const calls = num(e.usage?.tool_uses);
+    if (calls !== null) total += calls + 1;
+  });
+  return total;
+}
+
+/**
+ * { turns, cost, tokens, cached } with null for what the log does not say, or null when it says none of them.
+ * `turns` counts the main agent and its subagents; `subagentTurns` is the part of them that the runner does not count,
+ * and is present only when there is one. The cost already includes the subagents (the runner counts it).
+ */
 export function readUsage(text) {
   const all = entries(text).filter((e) => e && typeof e === 'object');
   const result = [...all].reverse().find((e) => e.type === 'result') ?? [...all].reverse().find((e) => num(e.num_turns) !== null);
@@ -43,17 +63,35 @@ export function readUsage(text) {
       ? (num(result.usage?.cache_read_input_tokens) ?? 0) + (num(result.usage?.cache_creation_input_tokens) ?? 0)
       : null,
   };
-  return usage.turns === null && usage.cost === null && usage.tokens === null ? null : usage;
+  if (usage.turns === null && usage.cost === null && usage.tokens === null) return null;
+  const sub = subagentTurnsOf(all);
+  if (sub > 0 && usage.turns !== null) {
+    usage.turns += sub;
+    usage.subagentTurns = sub;
+  }
+  return usage;
+}
+
+/** The limits of relevo.yml that a run went past: [{ limit, used, max }], empty when it kept within them or the figure is unknown. */
+export function limitsExceeded(usage, limits = {}) {
+  const out = [];
+  if (!usage) return out;
+  if (usage.turns !== null && Number.isFinite(limits.run_max_turns) && usage.turns > limits.run_max_turns) out.push({ limit: 'limits.run_max_turns', used: usage.turns, max: limits.run_max_turns });
+  if (usage.cost !== null && Number.isFinite(limits.run_max_cost) && usage.cost > limits.run_max_cost) out.push({ limit: 'limits.run_max_cost', used: usage.cost, max: limits.run_max_cost });
+  return out;
 }
 
 /** One line for a comment, or an empty string when there is nothing to say. */
-export function usageLine(usage, { subscription = false } = {}) {
+export function usageLine(usage, { subscription = false, limits = null } = {}) {
   if (!usage) return '';
   const parts = [];
-  if (usage.turns !== null) parts.push(`${usage.turns} turn${usage.turns === 1 ? '' : 's'}`);
+  if (usage.turns !== null) parts.push(`${usage.turns} turn${usage.turns === 1 ? '' : 's'}${usage.subagentTurns ? ` (${usage.subagentTurns} by subagents)` : ''}`);
   if (usage.cost !== null) parts.push(`about $${usage.cost.toFixed(2)}${subscription ? ' (notional: a subscription is not billed per run)' : ''}`);
   if (usage.tokens !== null) parts.push(`${usage.tokens.toLocaleString('en-US')} tokens${usage.cached ? ` (plus ${usage.cached.toLocaleString('en-US')} from the cache)` : ''}`);
-  return parts.length ? `This run used ${parts.join(', ')}.` : '';
+  if (!parts.length) return '';
+  const over = limitsExceeded(usage, limits ?? {});
+  const warn = over.map((o) => ` It went past ${o.limit} (${o.max}) with ${o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`}${o.limit.endsWith('turns') && usage.subagentTurns ? ': the runner counts only the turns of the main agent, so the turns of the subagents were not stopped' : ''}.`).join('');
+  return `This run used ${parts.join(', ')}.${warn}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without

@@ -107,3 +107,44 @@ test('the script takes --kind', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /ran <exit code>/);
 });
+
+// ---- advisory notes of the QA lenses (specialist-review-lenses)
+import { qaNotesChecklist, qaNotesFrom } from '../scripts/lib/review-brief.mjs';
+
+test('Scenario: Notes in the checklist - one line per note, pending after the retries and naming the lens', () => {
+  const built = 'built text\n- [ ] a\n<!-- relevo:qa-notes [{"lens":"interface","text":"The empty state has no action"},{"lens":"spec","text":"Scenario 4 opens maps"}] -->';
+  assert.deepEqual(qaNotesFrom(built).map((n) => n.lens), ['interface', 'spec']);
+  assert.deepEqual(qaNotesChecklist(built), [
+    '- [ ] The empty state has no action (pending after the retries, interface lens)',
+    '- [ ] Scenario 4 opens maps (pending after the retries, spec lens)',
+  ]);
+  assert.match(qaNotesChecklist(built, 'es')[0], /pendiente tras los reintentos, lente interface/);
+});
+
+test('the brief says how many notes are pending, and is the same without notes', () => {
+  const issue = { number: 5, title: 'Orders', body: '## Summary\nShows orders.\n\n## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c: d\n' };
+  const none = reviewBrief({ issue, built: 'plain' });
+  assert.doesNotMatch(none, /QA left/);
+  const withNotes = reviewBrief({ issue, built: '<!-- relevo:qa-notes [{"lens":"spec","text":"x"}] -->' });
+  assert.match(withNotes, /QA left 1 note\(s\) pending in the checklist/);
+  assert.equal(withNotes.replace(/\nQA left.*$/m, ''), none);
+});
+
+test('a broken marker gives no notes and never throws', () => {
+  assert.deepEqual(qaNotesFrom('<!-- relevo:qa-notes [{nope -->'), []);
+  assert.deepEqual(qaNotesFrom(''), []);
+  assert.deepEqual(qaNotesFrom('<!-- relevo:qa-notes [1, "x"] -->'), []);
+});
+
+test('qa-notes.mjs prints one checklist line per note, nothing without notes, and fails on bad arguments', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-notes-'));
+  const f = join(dir, 'built.md');
+  writeFileSync(f, 'built\n<!-- relevo:qa-notes [{"lens":"interface","text":"The empty state has no action"}] -->');
+  const run = (...a) => spawnSync('node', [new URL('../scripts/qa-notes.mjs', import.meta.url).pathname, ...a], { encoding: 'utf8' });
+  assert.equal(run('--built-file', f).stdout.trim(), '- [ ] The empty state has no action (pending after the retries, interface lens)');
+  assert.match(run('--built-file', f, '--language', 'es').stdout, /pendiente tras los reintentos, lente interface/);
+  writeFileSync(f, 'built, no notes');
+  assert.equal(run('--built-file', f).stdout, '');
+  assert.equal(run().status, 2);
+  assert.equal(run('--built-file', join(dir, 'missing.md')).status, 2);
+});

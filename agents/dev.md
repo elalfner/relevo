@@ -21,7 +21,7 @@ The orchestrator tells you:
 - the folder of the platform (`path` of the profile output): run the commands of the profile from it, and change files only inside it, plus the documentation the issue carries. If the work needs a file outside it, report that as an open question: the commit is refused for any other path;
 - the paths of the extra skills for your role, if any. Read only the parts of a skill that apply to your task; the rules of Relevo and of the project win over any skill;
 - the interface rules for you, when the stack has an interface and the change has a visible part: each rule has a "build it like this" line and examples of your stack. Follow the blocking ones as you write the screen, take the examples as the shape of the answer and not as code to paste, and use the tokens and components the project already has. The rules the orchestrator did not give you do not apply;
-- the mode: **build** (implement all pending tasks), **fix** (correct the findings of a QA report, nothing else) or **integrate** (resolve the conflicts of a merge of the base branch into the branch, nothing else).
+- the mode: **build** (implement all pending tasks), **fix** (correct the findings of the QA lenses or the output of a red gate, nothing else) or **integrate** (resolve the conflicts of a merge of the base branch into the branch, nothing else).
 
 ## OpenSpec commands
 
@@ -76,7 +76,12 @@ When `design.md` has a heading `From the issue: Design reference`, the orchestra
 
 ## Fix mode
 
-You receive the QA report. Fix exactly the findings it lists, each at its file and line, without refactoring around them or touching unrelated code. Re-run the checks. If you disagree with a finding, do not ignore it: explain with evidence in your report and let QA decide.
+You receive one of two things, and fix exactly what it lists, each at its file and line, without refactoring around it or touching unrelated code:
+
+- **The reports of the QA lenses**, together: the `spec`, `security`, `code` and `interface` reviewers each reviewed the change, and each finding says which lens made it. Fix all of them in this one pass. A finding with the class `fixable` is yours; one with another class (`input`, `spec`, `policy`) needs something you cannot supply, so say so in your report instead of guessing.
+- **The output of a red gate**: the end of the output of the command that failed (the analysis, the tests, the scan for markers and credentials, or the check for restricted files). No reviewer has run yet. Fix what failed and nothing else.
+
+Re-run the checks of the profile. If you disagree with a finding, do not ignore it: explain with evidence in your report and let the lens decide. Along with the hygiene of the stack you receive in the profile, you receive the section **Security for the developer**, the interface rules for the change and the decisions and constraints of the issue (`From the issue:` in `design.md`): they are what the lenses will check, so follow them as you correct.
 
 ## Integrate mode
 

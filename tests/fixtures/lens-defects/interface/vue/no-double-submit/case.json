@@ -1,0 +1,11 @@
+{
+ "lens": "interface",
+ "stack": "vue",
+ "case": "no-double-submit",
+ "description": "The interface rule no-double-submit is broken in the diff.",
+ "expected": {
+  "lens": "interface",
+  "finding": "submit|disabled|loading|twice"
+ },
+ "rule": "no-double-submit"
+}

@@ -1,0 +1,10 @@
+{
+ "lens": "code",
+ "stack": "flutter",
+ "case": "state-update-after-await",
+ "description": "A widget updates its state after an asynchronous call without checking that it is still mounted.",
+ "expected": {
+  "lens": "code",
+  "finding": "mounted|async gap|after (the )?await"
+ }
+}

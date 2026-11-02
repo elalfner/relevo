@@ -26,6 +26,7 @@
 
 - [Construido con OpenSpec y mattpocock/skills](built-with.es.md): cómo se especificó y se pensó el proyecto.
 - [Hallazgos de los pilotos](pilot-findings.md): lo que encontraron los dos pilotos y cómo se arregló. Solo en inglés.
+- [Evaluación de las lentes de QA](lens-evaluation.es.md): cómo les fue a las lentes con defectos puestos a propósito en cambios pequeños, y los límites de esa evidencia.
 - [Especificaciones](../openspec/specs): las especificaciones, tal como están hoy (en inglés).
 
 ## Marca

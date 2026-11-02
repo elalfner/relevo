@@ -62,6 +62,26 @@ Lo que la tabla no dice, para Antigravity:
 - **Una lista de prefijos no es una frontera del sistema operativo.** La lista cerrada restringe qué comandos puede iniciar el agente, no lo que hace un comando permitido. Es el mismo límite que el de arriba para Claude.
 - **No probado:** que la calidad de la QA adversarial se mantenga con un modelo de Gemini; una ejecución completa en la nube sobre un ejecutor real (mira los límites conocidos del changelog); si la CLI puede actualizarse sola durante una ejecución.
 
+## La puerta, los revisores de QA y sus ajustes
+
+QA es un script (la puerta) y cuatro revisores (`spec`, `security`, `code`, `interface`), cada uno con su propio modelo y esfuerzo. Esta tabla dice, para cada control, qué se cumple con cada agente, qué se cumple en parte y qué no existe. «No verificado» significa que Relevo no lo afirma: no se ha probado en una ejecución real.
+
+| Control | Claude Code | Antigravity CLI |
+|---|---|---|
+| La puerta ejecuta las comprobaciones y ningún agente puede saltarla | se cumple: `validation-gate.mjs` es un script que ejecutan `go`, `fix` y `review` | el mismo script |
+| Un revisor empieza solo sobre un diff cuyas comprobaciones corrieron | se cumple con `receipt-check.mjs` antes de cada revisor, que recalcula el hash del diff | el mismo script |
+| Un revisor no puede escribir ni editar un archivo | lo hace cumplir el runner: los cuatro archivos de agente ponen `disallowedTools: Write, Edit, NotebookEdit` | **parcial**: los cuatro agentes se renderizan con una lista de herramientas sin escritura ni edición, pero conserva la herramienta de comandos, así que un comando aún puede cambiar un archivo; el límite es la lista de prefijos del workflow |
+| El resultado lo decide un script que falla cerrado | se cumple: `qa-aggregate.mjs`; un reporte sin primera línea válida nunca se lee como aprobado | el mismo script |
+| Los revisores corren de uno en uno | el procedimiento lo dice y la skill los lanza en primer plano, uno tras otro | **parcial**: Antigravity ejecuta un subagente en segundo plano; las instrucciones dicen llamarlos de uno en uno y nunca dos juntos, y nada lo hace cumplir |
+| El modelo de cada rol | se da al lanzar el agente | **no existe**: `agents.*.model` se acepta y no se aplica; `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada ajuste |
+| El esfuerzo de cada rol | se da al lanzar el agente (medido: un esfuerzo dado al lanzar cambia el razonamiento de un subagente) | **no existe**, como el modelo; el mismo aviso |
+| Los límites de turnos y costo cuentan a los subagentes | **en parte**: el costo de un subagente se cuenta; sus turnos no, así que Relevo los suma desde el log y el comentario sobre la ejecución dice cuándo el total pasó el límite (no detiene la ejecución) | **no verificado**: no se ha probado si el total de tokens de la guarda incluye a los subagentes |
+
+Dos cosas que la tabla no dice:
+
+- **El recibo no es un límite de seguridad.** Protege contra una omisión o un error: un revisor no puede empezar sobre código cuyas comprobaciones no se ejecutaron. No defiende contra un agente que escribe un archivo falso, porque vive en la carpeta de trabajo. Las barreras del commit (las rutas protegidas, los archivos restringidos, el escaneo de lo que se prepara) siguen siendo las que obligan, y corren diga lo que diga cualquier recibo.
+- **Ningún ajuste apaga a un revisor.** No hay clave para desactivar `spec`, `security` o `code`, ni para bajar lo que bloquean. Las excepciones de un proyecto van en su propio archivo de reglas, que lee el revisor `spec`.
+
 ## Archivos restringidos
 
 Hay archivos que no debería leer ningún agente ni ningún script de Relevo: archivos de entorno, llaves privadas, almacenes de credenciales. La lista es la lista base de abajo más `restricted_paths` en `relevo.yml`, que solo suma (un perfil no puede debilitarla, y `relevo.yml` no puede quitar una entrada). Es aparte de las rutas protegidas, que tratan de lo que un diff puede escribir.

@@ -514,3 +514,13 @@ Run from this branch on the same project as above, with a `relevo.yml` of one pl
 - **A clean run, a quiet log**: `init` recorded 0 log files, the agent's run of one test (`--filter`, exit 0, 1 test) let `auto 1` mark the line, and the audit printed `REVIEW PASSED` with an empty slice.
 - **An error in the slice**: after a test that calls `Log::error`, the audit printed `REVIEW REJECTED` with the entry, and `decide` refused the pull request with "the log audit found problems", even with the person's agreement.
 - **Not tried**: the run from the sandbox with `npm pack github:elalfner/relevo#dev` (the branch is not on `dev`), a model-written review (the skill was followed by hand), `review.autopilot` `off` with a person, a `serve` block, and a database other than in-memory SQLite. Task 6.1 stays open for those.
+
+## Antigravity subagents: model and effort (spike S2 of `specialist-review-lenses`, documentation only)
+
+Read on 2026-11-02 from the Antigravity documentation; nothing was run, because no Antigravity is installed in the session.
+
+- **Model**: a custom subagent's frontmatter has `model` with the values `inherit` (default), `flash` or `pro`. It is a tier, not a model name.
+- **Effort**: no property in the frontmatter. `/effort` changes the effort of the active model for the whole session.
+- **Tools**: `tools` lists the tools of the subagent. The documentation warns that a misspelled name can make the subagent hang.
+- **Execution**: subagents run asynchronously in the background and inherit the permissions of the parent.
+- **Not tried**: launching a subagent with a model tier, and what the installed version does with an unknown frontmatter key.

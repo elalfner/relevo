@@ -21,6 +21,26 @@ const LABELS = {
     apiAuto: 'El agente corre el test que ya existe para cada línea que encuentre y nunca escribe uno; tú confirmas cada línea, y una línea sin test se queda para ti.',
   },
 };
+const NOTES_RE = /<!-- relevo:qa-notes (\[[\s\S]*?\]) -->/;
+
+/** The advisory notes that QA left in a `built` comment, from its hidden marker: [{ lens, text }]. A broken marker gives none. */
+export function qaNotesFrom(built) {
+  const m = NOTES_RE.exec(String(built ?? ''));
+  if (!m) return [];
+  try {
+    const list = JSON.parse(m[1]);
+    return Array.isArray(list) ? list.filter((n) => n && typeof n.lens === 'string' && typeof n.text === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One checklist line per note, marked as pending after the retries and naming the lens that doubted. */
+export function qaNotesChecklist(built, language = 'en') {
+  const es = language === 'es';
+  return qaNotesFrom(built).map((n) => `- [ ] ${n.text} (${es ? `pendiente tras los reintentos, lente ${n.lens}` : `pending after the retries, ${n.lens} lens`})`);
+}
+
 const RISK_RE = /(?:Riskiest area, check it first|Zona más riesgosa, revísala primero):\s*(.+)/;
 
 const clean = (text) => String(text ?? '').replace(/<!--[\s\S]*?-->/g, '').replace(/\s+/g, ' ').trim();
@@ -51,6 +71,8 @@ export function reviewBrief({ issue, built = '', language = 'en', autopilot = 'o
   const risk = String(built).match(RISK_RE)?.[1];
   if (risk) lines.push(`${L.first}: ${clean(risk)}`);
   lines.push(L.count(parsed.scenarios, parsed.edgeCases));
+  const notes = qaNotesFrom(built);
+  if (notes.length) lines.push(language === 'es' ? `QA dejó ${notes.length} nota(s) pendientes en el checklist` : `QA left ${notes.length} note(s) pending in the checklist`);
   const driving = ['precheck', 'verify'].includes(autopilot);
   const noteText = kind === 'api' ? (driving ? L.apiAuto : L.apiOff) : (driving ? L.autopilot : '');
   const note = noteText ? `\n${noteText}` : '';

@@ -86,19 +86,15 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role fix --platform <platfo
 
 If `platform-of.mjs` exits 1, change nothing more and tell the person what it printed (the issue no longer names a valid platform: they correct the `Platform:` line and run `/relevo:fix` again). If `stack-profile.mjs` fails, show its message and stop.
 
-Launch the `relevo:dev` agent in **build** mode. Give it the change folder, the project rules files, the resolved profile, the folder of the platform (`path`), the skill paths and the base branch. The original tasks are all done, so the only pending ones are the corrections, and those are all it should touch.
+Launch the `relevo:dev` agent in **build** mode, with the `model` and `effort` of `agents.dev` (from `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`) as parameters of the Agent tool. Give it the change folder, the project rules files, the resolved profile, the folder of the platform (`path`), the skill paths and the base branch. The original tasks are all done, so the only pending ones are the corrections, and those are all it should touch.
 
 Read its report. If its open questions are not "none", they mean the specification is still unclear: ask the person, update the specification and run the guard again.
 
-### 4. QA, with retries
+### 4. QA: the gate, the lenses and the retries
 
-Launch the `relevo:qa` agent on the result, with the same change folder, rules files, profile, folder of the platform, skill paths (for `fix`, those of `dev` and `qa` are in the output of `role-skills.mjs --role fix`) and base branch. Its first line is `QA PASSED` or `QA REJECTED`.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/go/references/qa-run.md` and follow it on the diff of this iteration, with the same change folder, rules files, profile, folder of the platform, skill paths (for `fix`, those of `dev` and `qa` are in the output of `role-skills.mjs --role fix`) and base branch, and `qa.retries` as the number of retries. It runs the gate once and then the active lenses one at a time; a script decides the result. A red gate uses one of the attempts and goes back to `relevo:dev` in **fix** mode with the end of its output.
 
-On `QA REJECTED`, first read the classes of the findings: save the report to a file outside the repository and run `node ${CLAUDE_PLUGIN_ROOT}/scripts/qa-findings.mjs --file <report>`. When `all_non_fixable` is `true`, no finding can be corrected by the developer agent (each needs an input, a decision of the specification, or something an unattended run may not do), so **do not retry**: go on as if QA still rejected after the retries, and tell the person which class each finding has and what it needs (`input`: supply it; `spec`: decide it in the issue; `policy`: allow the manifest in `Allow-paths:` or change the issue so that it does not need the protected path). A report with no class counts as `fixable`.
-
-Otherwise you may retry up to `qa.retries` times. Each retry launches `relevo:dev` in **fix** mode with the complete QA report, then `relevo:qa` again with the previous report, so it checks each earlier finding.
-
-If QA still rejects after the retries, or you skipped them because no finding was `fixable`: **make no commit and no push.** Save the work with `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-stash.mjs save --issue <issue> --iteration <K>` (the tree is left clean, so the next `fix` can start), show the person the findings, say that `/relevo:fix <issue>` offers the saved work back, leave the issue's labels untouched, and stop.
+If QA passed, go on to step 5. Otherwise, whether it rejected after the retries, found nothing the developer agent can fix (each finding needs an input, a decision of the specification, or something an unattended run may not do), could not run the gate, or got an invalid lens report twice: **make no commit and no push.** Save the work with `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-stash.mjs save --issue <issue> --iteration <K>` (the tree is left clean, so the next `fix` can start), show the person the findings with the lens that made each (and, for a finding that is not `fixable`, its class and what it needs: `input`: supply it; `spec`: decide it in the issue; `policy`: allow the manifest in `Allow-paths:` or change the issue so that it does not need the protected path), say that `/relevo:fix <issue>` offers the saved work back, leave the issue's labels untouched, and stop.
 
 ### 5. Commit
 

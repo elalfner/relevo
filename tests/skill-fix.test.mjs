@@ -31,7 +31,8 @@ test('every script the skill runs exists', () => {
 test('the agents it launches exist and are launched in the right modes', () => {
   [...new Set([...body.matchAll(/`relevo:(\w+)`/g)].map((m) => m[1]))].forEach((a) => assert.ok(existsSync(root(`agents/${a}.md`)), `agents/${a}.md is missing`));
   assert.match(body, /Launch the `relevo:dev` agent in \*\*build\*\* mode/);
-  assert.match(body, /`relevo:dev` in \*\*fix\*\* mode with the complete QA report/);
+  assert.match(body, /skills\/go\/references\/qa-run\.md/);
+  assert.match(body, /goes back to `relevo:dev` in \*\*fix\*\* mode with the end of its output/);
 });
 
 test('the message it renders is a real kind, and the review-state command it uses is implemented', () => {
@@ -97,11 +98,10 @@ test('Scenario: QA rejects after the retries - the work is stashed, not left in 
 });
 
 test('Scenario: Nothing the developer can fix - fix does not retry, stashes the work and says what each class needs', () => {
-  assert.match(body, /qa-findings\.mjs --file <report>/);
-  assert.match(body, /`all_non_fixable` is `true`/);
-  assert.match(body, /\*\*do not retry\*\*/);
+  assert.match(body, /found nothing the developer agent can fix/);
+  assert.match(body, /skills\/go\/references\/qa-run\.md/);
   ['`input`: supply it', '`spec`: decide it in the issue', '`policy`: allow the manifest in `Allow-paths:`'].forEach((s) => assert.ok(body.includes(s), s));
-  assert.match(body, /or you skipped them because no finding was `fixable`: \*\*make no commit and no push\.\*\*/);
+  assert.match(body, /\*\*make no commit and no push\.\*\*/);
 });
 
 test('Scenario: Branch with only the specification - fix stops and says to start again', () => {

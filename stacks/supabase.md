@@ -31,6 +31,26 @@ Run the verification commands from the platform directory: `analyze` (`supabase 
 
 Do not claim the database schema is valid, clean, or passes tests unless you ran the commands and saw the results. All tests run hermetically against local Docker containers; never point tests at a remote Supabase project.
 
+## Security for the developer
+
+While you write, keep to these. Each comes from the official documentation named in its line.
+
+- Row level security is enabled on every table of an exposed schema, with policies that give each role only what it needs; with it enabled and no policy, nothing is readable through the API with a publishable key. Source: https://supabase.com/docs/guides/database/postgres/row-level-security. Read: 2026-11-02.
+- A secret key (the `service_role` role, which bypasses row level security) is never used in the browser and never reaches a customer. Source: https://supabase.com/docs/guides/database/postgres/row-level-security. Read: 2026-11-02.
+- A view over a protected table can hand out every row its policies withhold: a new view gets the same attention as a table. Source: https://supabase.com/docs/guides/database/postgres/row-level-security. Read: 2026-11-02.
+- A database function prefers `security invoker`; one that uses `security definer` sets `search_path` (empty) and names the schema of every relation in its body. Source: https://supabase.com/docs/guides/database/functions. Read: 2026-11-02.
+- Storage allows no upload to a bucket without row level security policies on `storage.objects`: check that each policy allows only the operation and the path it should. Source: https://supabase.com/docs/guides/storage/security/access-control. Read: 2026-11-02.
+
+## Security review
+
+Check the diff against each item. Report one only with the line that breaks it.
+
+- Row level security is enabled on every table of an exposed schema, with policies that give each role only what it needs; with it enabled and no policy, nothing is readable through the API with a publishable key. Source: https://supabase.com/docs/guides/database/postgres/row-level-security. Read: 2026-11-02.
+- A secret key (the `service_role` role, which bypasses row level security) is never used in the browser and never reaches a customer. Source: https://supabase.com/docs/guides/database/postgres/row-level-security. Read: 2026-11-02.
+- A view over a protected table can hand out every row its policies withhold: a new view gets the same attention as a table. Source: https://supabase.com/docs/guides/database/postgres/row-level-security. Read: 2026-11-02.
+- A database function prefers `security invoker`; one that uses `security definer` sets `search_path` (empty) and names the schema of every relation in its body. Source: https://supabase.com/docs/guides/database/functions. Read: 2026-11-02.
+- Storage allows no upload to a bucket without row level security policies on `storage.objects`: check that each policy allows only the operation and the path it should. Source: https://supabase.com/docs/guides/storage/security/access-control. Read: 2026-11-02.
+
 ## Questions for the issue writer
 
 - **Authorization & RLS**: Who is permitted to select, insert, update, and delete rows in these tables? Which Postgres roles (`anon`, `authenticated`) should have access?

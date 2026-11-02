@@ -41,8 +41,8 @@ test('Scenario: QA still rejects - the assignee is mentioned with the finding an
 
 test('Scenario: QA still rejects - go retries exactly qa_retries times, then takes the failure path that pushes and opens no pull request', () => {
   const go = skill('go');
-  assert.match(go, /you may retry up to `qa_retries` times/);
-  assert.match(go, /If QA still rejects after the retries, take the failure path with the reason `QA rejected after the retries`/);
+  assert.match(readFileSync(`${root}skills/go/references/qa-run.md`, 'utf8'), /Otherwise, if `<n>` is below `<qa_retries> \+ 1`/);
+  assert.match(go, /\*\*QA still rejected after the retries\*\*, with the reason `QA rejected after the retries`/);
   assert.match(go, /Push the branch with `git push -u origin <branch>`; never force-push\. \*\*Do not push anything\*\* when the reason is a possible credential or temporary marker, a protected path in the diff/);
   assert.match(go, /Stop\. Do not open a pull request and do not advance the state\./);
   assert.match(go, /You never approve, merge or open a pull request/);

@@ -55,7 +55,60 @@ export const SETTINGS = [
 
 const GROUPS = new Set(SETTINGS.filter((s) => s.path.includes('.')).map((s) => s.path.split('.')[0]));
 const TOP_SCALARS = new Set(SETTINGS.filter((s) => !s.path.includes('.')).map((s) => s.path));
-const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels', 'platform', 'platforms']);
+const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels', 'platform', 'platforms', 'agents']);
+
+// The model and the effort of the developer agent and of each QA lens. The default of `dev` is what it always was; the lenses'
+// defaults are set in the design of specialist-review-lenses and change only on the evidence of its evaluation.
+export const QA_LENSES = ['spec', 'security', 'code', 'interface'];
+export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+export const AGENT_DEFAULTS = {
+  dev: { model: 'sonnet', effort: 'high' },
+  qa: {
+    spec: { model: 'opus', effort: 'high' },
+    security: { model: 'opus', effort: 'high' },
+    code: { model: 'sonnet', effort: 'high' },
+    interface: { model: 'sonnet', effort: 'medium' },
+  },
+};
+const isMapValue = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** Validate `agents` and return the settings with the defaults. { value, errors: [{ path, message }], given } where `given` lists the paths the file set. */
+function agentSettings(user) {
+  const errors = [];
+  const given = [];
+  const value = structuredClone(AGENT_DEFAULTS);
+  const raw = user.agents;
+  if (raw === undefined || raw === null) return { value, errors, given };
+  if (!isMapValue(raw)) return { value, errors: [{ path: 'agents', message: 'agents must be a map with dev and qa' }], given };
+  const role = (path, entry, target) => {
+    if (!isMapValue(entry)) { errors.push({ path, message: `${path} must be a map with model and/or effort` }); return; }
+    Object.keys(entry).forEach((k) => {
+      if (!['model', 'effort'].includes(k)) { errors.push({ path: `${path}.${k}`, message: `unknown setting "${path}.${k}"; a role has model and effort` }); return; }
+      const v = entry[k];
+      if (k === 'model') {
+        if (typeof v !== 'string' || v.trim() === '') { errors.push({ path: `${path}.model`, message: `${path}.model must be a non-empty model name or alias (got ${JSON.stringify(v)})` }); return; }
+        target.model = v.trim();
+      } else {
+        if (!EFFORTS.includes(v)) { errors.push({ path: `${path}.effort`, message: `${path}.effort has invalid value ${JSON.stringify(v)}; allowed values: ${describeAllowed(EFFORTS)}` }); return; }
+        target.effort = v;
+      }
+      given.push(`${path}.${k}`);
+    });
+  };
+  Object.keys(raw).forEach((k) => {
+    if (!['dev', 'qa'].includes(k)) errors.push({ path: `agents.${k}`, message: `unknown setting "agents.${k}"; the roles are dev and qa` });
+  });
+  if (raw.dev !== undefined) role('agents.dev', raw.dev, value.dev);
+  if (raw.qa !== undefined) {
+    if (!isMapValue(raw.qa)) errors.push({ path: 'agents.qa', message: `agents.qa must be a map with a lens: ${QA_LENSES.join(', ')}` });
+    else Object.keys(raw.qa).forEach((lens) => {
+      // There is no key that turns a lens off or lowers what it blocks: an unknown name fails here.
+      if (!QA_LENSES.includes(lens)) errors.push({ path: `agents.qa.${lens}`, message: `unknown lens "${lens}" in agents.qa; the lenses are ${QA_LENSES.join(', ')}, and none can be turned off or weakened (write exceptions in the project rules file)` });
+      else role(`agents.qa.${lens}`, raw.qa[lens], value.qa[lens]);
+    });
+  }
+  return { value, errors, given };
+}
 const ORIGIN_RE = /^https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?$/;
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const LANGUAGE_RE = /^[a-z]{2}(-[A-Z]{2})?$/;
@@ -246,6 +299,16 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
     checkType(setting, given, errors);
     setPath(config, setting.path, given);
   });
+
+  // The model and the effort of each agent, with defaults. With Antigravity they are accepted and not applied: a warning, not an error.
+  const agents = agentSettings(user);
+  agents.errors.forEach((e) => errors.push(e));
+  config.agents = agents.value;
+  // Which keys the file set, for doctor and init: kept out of the settings (not enumerable), because it is not one.
+  Object.defineProperty(config, 'agents_given', { value: agents.given, enumerable: false, writable: true, configurable: true });
+  if (build === 'antigravity' && agents.given.length > 0) {
+    warnings.push({ path: 'agents', message: `${agents.given.join(', ')} ${agents.given.length === 1 ? 'is' : 'are'} not applied with this agent: with agent.build "antigravity" the model and the effort of a role are accepted and not written to the agents it renders` });
+  }
 
   // Platforms: the registry, or the legacy shortcut turned into one entry.
   const normalized = normalizePlatforms({ platform: user.platform, platforms: user.platforms }, { knownTargets });

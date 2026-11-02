@@ -69,6 +69,28 @@ A repository tunes this in its own `.relevo/stacks/laravel.md`: a `review` block
 
 None. A Laravel platform is the back of a feature: the front depends on it with `Depends-on:`. `review` reviews a backend with the `api` adapter (the tests and the log, see Review above), so a Laravel platform needs no target.
 
+## Security for the developer
+
+While you write, keep to these. Each comes from the official documentation named in its line.
+
+- A model sets `$fillable` to the attributes that may be mass assigned and nothing else; an empty `$guarded = []` makes every array passed to `fill`, `create` and `update` something to hand-craft. Source: https://laravel.com/docs/12.x/eloquent#mass-assignment. Read: 2026-11-02.
+- An action on a model goes through a policy or the gate (`Gate::authorize`, `$this->authorize`, the `can` middleware), not through a check written in the controller alone. Source: https://laravel.com/docs/12.x/authorization. Read: 2026-11-02.
+- A query binds its parameters; an unprepared statement never takes a user-controlled value. Source: https://laravel.com/docs/12.x/database. Read: 2026-11-02.
+- Output uses the escaped `{{ }}` syntax; `{!! !!}` is used only for content the application produced itself. Source: https://laravel.com/docs/12.x/blade#displaying-unescaped-data. Read: 2026-11-02.
+- An upload takes its name and extension from `hashName` and `extension`, not from `getClientOriginalName` and `getClientOriginalExtension`, which a malicious user can tamper with. Source: https://laravel.com/docs/12.x/filesystem. Read: 2026-11-02.
+- A form and a route that changes state carry the CSRF token. Source: https://laravel.com/docs/12.x/csrf. Read: 2026-11-02.
+
+## Security review
+
+Check the diff against each item. Report one only with the line that breaks it.
+
+- A model sets `$fillable` to the attributes that may be mass assigned and nothing else; an empty `$guarded = []` makes every array passed to `fill`, `create` and `update` something to hand-craft. Source: https://laravel.com/docs/12.x/eloquent#mass-assignment. Read: 2026-11-02.
+- An action on a model goes through a policy or the gate (`Gate::authorize`, `$this->authorize`, the `can` middleware), not through a check written in the controller alone. Source: https://laravel.com/docs/12.x/authorization. Read: 2026-11-02.
+- A query binds its parameters; an unprepared statement never takes a user-controlled value. Source: https://laravel.com/docs/12.x/database. Read: 2026-11-02.
+- Output uses the escaped `{{ }}` syntax; `{!! !!}` is used only for content the application produced itself. Source: https://laravel.com/docs/12.x/blade#displaying-unescaped-data. Read: 2026-11-02.
+- An upload takes its name and extension from `hashName` and `extension`, not from `getClientOriginalName` and `getClientOriginalExtension`, which a malicious user can tamper with. Source: https://laravel.com/docs/12.x/filesystem. Read: 2026-11-02.
+- A form and a route that changes state carry the CSRF token. Source: https://laravel.com/docs/12.x/csrf. Read: 2026-11-02.
+
 ## Questions for the issue writer
 
 - What is the endpoint (method and path), and how does the caller authenticate?

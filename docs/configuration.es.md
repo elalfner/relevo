@@ -38,6 +38,8 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `runner.labels` | runner de todos los workflows de Relevo, como lista de etiquetas (`[self-hosted, linux-build]`); `/relevo:init` la escribe en los archivos de workflow y `/relevo:doctor` comprueba que coincidan. Relevo asume que cualquier runner persiste entre jobs, así que no hay un ajuste para eso ([Runners self-hosted](execution.es.md#runners-self-hosted)) | `[ubuntu-latest]` |
 | `agent.build` | qué agente construye en la nube: `claude`, o `antigravity` (lo que cada uno puede y no puede hacer cumplir está en [Seguridad](security.es.md)) | `claude` |
 | `qa.retries` | intentos del desarrollador después de que QA rechaza | 1 |
+| `agents.dev.model`, `agents.dev.effort` | modelo (un alias como `sonnet` o un identificador completo) y esfuerzo (`low`, `medium`, `high`, `xhigh`, `max`) del agente de desarrollo | `sonnet`, `high` |
+| `agents.qa.<lente>.model`, `agents.qa.<lente>.effort` | lo mismo para cada revisor de QA: `spec`, `security`, `code` o `interface`. Una lente desconocida falla; no hay clave para apagar una | `spec` y `security`: `opus`, `high`; `code`: `sonnet`, `high`; `interface`: `sonnet`, `medium` |
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, o `local_only` para datos sensibles | `attach_to_pr` |
 | `digest.issue` | número del issue donde se publica el resumen diario como comentario | ninguno |
@@ -55,9 +57,33 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 - El perfil de un stack viene en capas: el archivo `stacks/<stack>.md` del plugin, y después `.relevo/stacks/<stack>.md` de tu repositorio. El tuyo añade texto de higiene, herramientas, skills y comandos que el plugin no tiene; no puede reemplazar un comando del plugin. Hazle commit, porque la nube y tus compañeros lo leen de git.
 - Para reemplazar un comando, escríbelo en `platforms.<name>.checks`, a la vista, por ejemplo `analyze: "vendor/bin/pint --test && vendor/bin/phpstan analyse"`. Solo se pueden reemplazar los comandos que nombra el perfil (`analyze`, `test`, `format`).
 
+## El modelo y el esfuerzo de cada agente
+
+QA se compone de cuatro revisores (ver [Qué lee cada revisor de QA de un perfil](stacks.es.md#qué-lee-cada-revisor-de-qa-de-un-perfil)), y el agente de desarrollo y cada revisor tienen su propio `model` y `effort` bajo `agents`. Escribe solo lo que quieras cambiar; lo demás conserva su valor por defecto.
+
+```yaml
+agents:
+  qa:
+    security: { model: sonnet }   # el revisor de seguridad con el modelo que de otro modo no usaría
+```
+
+- **Las claves**, completas: `agents.dev.model`, `agents.dev.effort`, `agents.qa.spec.model`, `agents.qa.spec.effort`, `agents.qa.security.model`, `agents.qa.security.effort`, `agents.qa.code.model`, `agents.qa.code.effort`, `agents.qa.interface.model`, `agents.qa.interface.effort`.
+- **El costo de los valores por defecto.** `spec` y `security` usan el modelo más potente (`opus`) por defecto, así que QA cuesta más que cuando era un solo agente con `sonnet`. Para mantener el costo anterior, pon ambos en `sonnet`:
+  ```yaml
+  agents:
+    qa:
+      spec: { model: sonnet }
+      security: { model: sonnet }
+  ```
+  Los valores por defecto cambian solo con la evidencia de una evaluación de los revisores sobre defectos sembrados.
+- **Un modelo es un nombre, no una lista.** Escribe un alias o un identificador completo; Relevo no lo comprueba contra una lista porque la lista cambia, y el entorno de ejecución rechaza el que no conoce.
+- **Ningún ajuste apaga un revisor ni baja lo que bloquea.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee.
+- **Con Antigravity** los ajustes se aceptan y no se aplican: no se escriben en los agentes que renderiza. `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada uno y siguen.
+
 ## Qué significan los límites
 
 - `limits.run_max_cost` es obligatorio y lo eliges tú. Con una clave de API es un tope real de gasto por ejecución. Con un token de suscripción el costo que reporta el log es nocional, así que es solo una red de seguridad contra una ejecución descontrolada.
 - Con `agent.build: antigravity` no hay un límite de costo que fijar, porque el agente no lo tiene: el límite es `limits.run_max_tokens`, y la cuota y el presupuesto del proyecto de Google Cloud dueño de la clave son el tope que de verdad se cumple. `trust: public` todavía no se acepta con él.
 - `limits.run_max_turns` es el control principal con una suscripción, junto con un `limits.concurrent_agents` bajo: la cuota la comparten todas las ejecuciones y el uso interactivo de la cuenta.
+- El runner cuenta contra `limits.run_max_turns` solo los turnos del agente principal; el límite no detiene los turnos de las lentes de QA (el costo que usan sí se cuenta). Relevo suma los turnos de los subagentes desde el log de la ejecución, estimados como uno más que las llamadas a herramientas de cada uno, y el comentario sobre la ejecución dice cuándo el total pasó el límite. Lo informa después de la ejecución; no la detiene.
 - Una ejecución que alcanza un límite de turnos o de costo se detiene y el issue pasa a `qa-failed` con el motivo. [Dónde corre `go`](execution.es.md) tiene el resto.
