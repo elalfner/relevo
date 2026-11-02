@@ -135,3 +135,16 @@ test('a broken marker gives no notes and never throws', () => {
   assert.deepEqual(qaNotesFrom(''), []);
   assert.deepEqual(qaNotesFrom('<!-- relevo:qa-notes [1, "x"] -->'), []);
 });
+
+test('qa-notes.mjs prints one checklist line per note, nothing without notes, and fails on bad arguments', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-notes-'));
+  const f = join(dir, 'built.md');
+  writeFileSync(f, 'built\n<!-- relevo:qa-notes [{"lens":"interface","text":"The empty state has no action"}] -->');
+  const run = (...a) => spawnSync('node', [new URL('../scripts/qa-notes.mjs', import.meta.url).pathname, ...a], { encoding: 'utf8' });
+  assert.equal(run('--built-file', f).stdout.trim(), '- [ ] The empty state has no action (pending after the retries, interface lens)');
+  assert.match(run('--built-file', f, '--language', 'es').stdout, /pendiente tras los reintentos, lente interface/);
+  writeFileSync(f, 'built, no notes');
+  assert.equal(run('--built-file', f).stdout, '');
+  assert.equal(run().status, 2);
+  assert.equal(run('--built-file', join(dir, 'missing.md')).status, 2);
+});

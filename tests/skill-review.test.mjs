@@ -81,7 +81,8 @@ test('it admits it cannot attach images (spec: Screenshots attached by the perso
 test('it synchronises with the base branch and re-runs QA when the merge changed something', () => {
   assert.match(body, /git merge --no-edit origin\/<base>/);
   assert.match(body, /git merge --abort/);
-  assert.match(body, /launch the `relevo:qa` agent again/);
+  assert.match(body, /follow `\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/go\/references\/qa-run\.md` on the result after the synchronisation/);
+  assert.match(body, /the gate and the active lenses/);
 });
 
 test('the skill mentions neither private sources nor personal data', () => {
@@ -224,10 +225,10 @@ test('the Flutter driver rules are written down', () => {
 });
 
 test('Scenario: Origin not allowed / Script reaches the file system - QA reads the script before the runner, the runner is the only way to run it', () => {
-  const qa = autopilot.indexOf('launch `relevo:qa` on the script, read-only');
+  const qa = autopilot.indexOf('launch `relevo:qa-code` on the script, read-only');
   const run = autopilot.indexOf('web-review.mjs --script');
   assert.ok(qa > 0 && run > qa, 'QA comes before the runner');
-  assert.match(autopilot, /Only if it answers `QA PASSED`, record that exact script with `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/review-state\.mjs qa-pass evidence\/review-web\.mjs`/);
+  assert.match(autopilot, /Only if it answers `QA PASSED` \(this is a review of a script, so only the `code` lens runs, with no gate\), record that exact script with `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/review-state\.mjs qa-pass evidence\/review-web\.mjs`/);
   assert.ok(autopilot.indexOf('qa-pass') < autopilot.indexOf('web-review.mjs --script'), 'qa-pass comes before the runner');
   assert.match(autopilot, /a refused script is not run in any other way/);
   assert.match(autopilot, /can reach only `localhost`, the address under review and `review\.allowed_origins`/);
@@ -289,7 +290,7 @@ test('Scenario: Capture saved / Each capture proves the state it shows - capture
 });
 
 test('Scenario: Script edited after QA - any change needs QA and qa-pass again', () => {
-  assert.match(autopilot, /Any change to the script afterwards, even one port, needs `relevo:qa` and `qa-pass` again/);
+  assert.match(autopilot, /Any change to the script afterwards, even one port, needs `relevo:qa-code` and `qa-pass` again/);
 });
 
 test('Scenario: Capture after the agreement - captures belong to the walk; after agreeing the agent does not drive again', () => {

@@ -9,6 +9,7 @@ const root = (p) => new URL(`../${p}`, import.meta.url);
 const text = readFileSync(root('skills/go/SKILL.md'), 'utf8');
 const [, front, body] = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 const meta = parse(front);
+const ref = readFileSync(root('skills/go/references/qa-run.md'), 'utf8');
 
 // Claude Code ignores unknown skill fields silently, so a typo would disable a setting unnoticed.
 const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'arguments', 'disable-model-invocation', 'user-invocable',
@@ -39,9 +40,11 @@ test('the checklist comes from the shared script, so go and review always agree'
 });
 
 test('every agent the skill launches exists', () => {
-  const agents = [...body.matchAll(/`relevo:(\w+)`/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(agents)].sort(), ['dev', 'qa']);
+  const agents = [...body.matchAll(/`relevo:([a-z-]+)`/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(agents)].sort(), ['dev', 'qa-code', 'qa-interface', 'qa-security', 'qa-spec']);
   new Set(agents).forEach((a) => assert.ok(existsSync(root(`agents/${a}.md`)), `agents/${a}.md is missing`));
+  assert.equal(existsSync(root('agents/qa.md')), false, 'the former QA agent is gone');
+  [...ref.matchAll(/`relevo:([a-z-]+)`/g)].filter((m) => m[1] !== 'qa-notes').forEach((m) => assert.ok(existsSync(root(`agents/${m[1]}.md`)), `the reference launches ${m[1]}, which is missing`));
 });
 
 test('every go-plan flag the skill uses is implemented', () => {
@@ -111,8 +114,10 @@ test('Scenario: No documentation section - no task and nothing else is documente
 });
 
 test('Scenario: the skill runs the shared scripts for the rules that must not vary', () => {
-  ['preflight.mjs', 'issue-hash.mjs', 'branch-state.mjs', 'spec-ready.mjs', 'intent-to-add.mjs', 'commit-change.mjs', 'next-step.mjs']
+  ['preflight.mjs', 'issue-hash.mjs', 'branch-state.mjs', 'spec-ready.mjs', 'commit-change.mjs', 'next-step.mjs']
     .forEach((s) => assert.match(body, new RegExp(`scripts/${s.replace('.', '\\.')}`), `the skill does not run ${s}`));
+  ['intent-to-add.mjs', 'validation-gate.mjs', 'receipt-check.mjs', 'lens-plan.mjs', 'qa-aggregate.mjs']
+    .forEach((s) => assert.match(ref, new RegExp(`scripts/${s.replace('.', '\\.')}`), `the procedure of QA does not run ${s}`));
 });
 
 test('the developer is driven by the apply instructions and the run is cut by the runner, not by the agent', () => {
@@ -126,22 +131,23 @@ test('every failure reason of the specification is named in the failure path', (
 });
 
 test('Scenario: Nothing the developer can fix - the retries are skipped and the class goes to the failure comment', () => {
-  assert.match(body, /node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/qa-findings\.mjs --file <report>/);
-  assert.match(body, /`all_non_fixable` is `true`/);
-  assert.match(body, /\*\*do not retry\*\*/);
+  assert.match(ref, /qa-aggregate\.mjs --plan/);
+  assert.match(ref, /`all_non_fixable` is `true`/);
+  assert.match(ref, /\*\*do not retry\*\*/);
   assert.ok(body.includes('QA rejected: nothing the developer agent can fix'), 'the new reason is named');
-  assert.match(body, /`finding_class`/);
-  assert.match(body, /`retries_skipped`/);
-  assert.match(body, /counts as `fixable`, so the retries run as before/, 'a report without classes retries as before');
+  assert.ok(ref.includes('QA rejected: nothing the developer agent can fix'), 'the procedure names it too');
+  assert.match(ref, /`finding_class`/);
+  assert.match(ref, /`retries_skipped`/);
+  assert.match(ref, /counts as `fixable`/, 'a finding without a class retries as before');
 });
 
 test('Scenario: A mixed report - the retries run and the class of the first finding that cannot be fixed is named', () => {
-  assert.match(body, /first_non_fixable_class/);
-  assert.match(body, /Otherwise you may retry up to `qa_retries` times/);
+  assert.match(ref, /first_non_fixable_class/);
+  assert.match(ref, /Otherwise, if `<n>` is below `<qa_retries> \+ 1`/);
 });
 
 test('the work is kept when the retries were skipped, as it is after the retries', () => {
-  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix` or `tasks left unfinished`/);
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
 });
 
 test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
@@ -161,7 +167,6 @@ test('Scenario: the profile and the role skills come from scripts, and the skill
   assert.match(body, /scripts\/role-skills\.mjs --role dev/);
   assert.match(body, /scripts\/role-skills\.mjs --role qa/);
   assert.match(body, /failure path with the reason `profile not resolved`/);
-  assert.match(body, /`generated` list/);
   assert.doesNotMatch(body, /\.g\.dart|\.freezed\.dart|flutter/i, 'the skill must not name the generated files or tools of one stack');
   const source = readFileSync(root('scripts/role-skills.mjs'), 'utf8');
   [...body.matchAll(/role-skills\.mjs([^\n`]*)/g)].flatMap((m) => [...m[1].matchAll(/--([a-z]+)/g)].map((f) => f[1]))
@@ -243,7 +248,8 @@ test('Scenario: Question left in the issue - a hand-run takes the ambiguous path
 });
 
 test('QA receives the saved body of the issue to compare the copied sections', () => {
-  assert.match(body, /`<issue_file>` \(the saved body of the issue, to compare the copied sections\)/);
+  assert.match(ref, /`<issue_file>` \(the saved body of the issue\)/);
+  assert.match(ref, /`spec`: the change folder, `<issue_file>`/);
 });
 
 // ---------- design reference
@@ -322,7 +328,8 @@ test('Scenario: the interface rules are selected after the specification and giv
   assert.match(body, /the "check this" lines/);
   assert.match(body, /the count of rules left out/);
   assert.match(body, /the interface rules for `dev`/);
-  assert.match(body, /the interface rules for `qa`/);
+  assert.match(body, /keep the output of `--role qa` for the `interface` lens/);
+  assert.match(ref, /interface-rules\.mjs --role qa --platform <platform> --text-file <issue_file>/);
 });
 
 test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
@@ -330,4 +337,21 @@ test('Scenario: every exit records one class of the outcome, the seven classes o
   assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);
   OUTCOME_CLASSES.forEach((c) => assert.ok(body.includes(`\`${c}\``), `the skill names the class ${c}`));
   assert.match(body, /best-effort command/);
+});
+
+test('Scenario: the reference of QA exists and names each step, and go, fix and review read it', () => {
+  assert.ok(existsSync(root('skills/go/references/qa-run.md')));
+  [
+    ['the gate', /validation-gate\.mjs --base origin\/<base>/], ['a red gate uses an attempt', /A red gate uses an attempt/], ['could not run', /`automated validation could not run`/],
+    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['one at a time, in the foreground', /one at a time, in the foreground/],
+    ['the model of the lens', /agents\.qa\.<lens>\.model/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
+    ['an invalid report is asked again once', /Ask that lens again, once/], ['a second invalid report', /`lens report invalid`/], ['the advisory notes', /`qa_notes`/], ['the receipt is not a boundary', /not a defence against an agent that writes a false file/],
+  ].forEach(([what, re]) => assert.match(ref, re, what));
+  assert.match(body, /skills\/go\/references\/qa-run\.md/);
+  assert.match(body, /Announce the phase when the gate starts: `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/progress\.mjs phase qa --attempt 1 --of <qa_retries \+ 1>`/);
+  for (const s of ['fix', 'review']) assert.match(readFileSync(root(`skills/${s}/SKILL.md`), 'utf8'), /skills\/go\/references\/qa-run\.md/, s);
+});
+
+test('Scenario: the hand-off carries the advisory notes of QA', () => {
+  assert.match(body, /Add `qa_notes` \(the `advisory` list of the aggregation of step 5, as `\{ lens, text \}` items\)/);
 });

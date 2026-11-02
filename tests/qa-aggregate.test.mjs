@@ -102,3 +102,15 @@ test('the command uses exit codes: 0 passed, 1 rejected, 4 ask again, 5 lens rep
   assert.equal(exit({ code: 'nothing' }, ['--reasked', 'code']), 5);
   assert.equal(spawnSync('node', [base[0]], { encoding: 'utf8' }).status, 2);
 });
+
+test('Scenario: Nothing the developer can fix - every blocking finding needs an input, a decision or a policy, so the retries are skipped', () => {
+  const r = run({ ...ok, spec: rejected('1. The key is missing.\n   Class: input'), security: rejected('1. Edits a protected file.\n   Class: policy') });
+  assert.deepEqual([r.all_non_fixable, r.first_non_fixable_class], [true, 'input']);
+});
+
+test('a mixed report is retried as before, and the class of the first finding that is not fixable is named', () => {
+  const r = run({ ...ok, spec: rejected('1. A null is not checked.'), security: rejected('1. No key.\n   Class: input') });
+  assert.deepEqual([r.all_non_fixable, r.first_non_fixable_class], [false, 'input']);
+  const passed = run(ok);
+  assert.deepEqual([passed.all_non_fixable, passed.first_non_fixable_class], [false, null]);
+});

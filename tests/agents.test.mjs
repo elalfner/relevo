@@ -11,6 +11,14 @@ const KNOWN_FIELDS = new Set([
 ]);
 const EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'];
 
+// QA is made of four lenses. The assertions that were about the one QA agent read the four files together.
+const LENS_FILES = ['qa-spec', 'qa-security', 'qa-code', 'qa-interface'];
+const qaText = () => ['qa-spec', 'qa-security', 'qa-code', 'qa-interface'].map((n) => readFileSync(new URL(`../agents/${n}.md`, import.meta.url), 'utf8')).join('\n\n');
+function loadQa() {
+  const all = LENS_FILES.map((n) => load(n));
+  return { meta: all[0].meta, body: all.map((a) => a.body).join('\n\n') };
+}
+
 function load(name) {
   const text = readFileSync(new URL(`../agents/${name}.md`, import.meta.url), 'utf8');
   const m = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
@@ -18,7 +26,7 @@ function load(name) {
   return { meta: parse(m[1]), body: m[2] };
 }
 
-for (const name of ['dev', 'qa']) {
+for (const name of ['dev']) {
   test(`${name}: frontmatter uses only documented fields and sane values`, () => {
     const { meta } = load(name);
     Object.keys(meta).forEach((k) => assert.ok(KNOWN_FIELDS.has(k), `unknown frontmatter field "${k}"`));
@@ -35,14 +43,14 @@ for (const name of ['dev', 'qa']) {
 }
 
 test('qa is read-only: it cannot write or edit files', () => {
-  const { meta } = load('qa');
+  const { meta } = loadQa();
   const denied = String(meta.disallowedTools).split(',').map((s) => s.trim());
   ['Write', 'Edit', 'NotebookEdit'].forEach((t) => assert.ok(denied.includes(t), `qa must disallow ${t}`));
   assert.ok(!('tools' in meta), 'qa must not restrict tools with an allow-list: it needs the tooling server tools');
 });
 
 test('qa output contract: first line is QA PASSED or QA REJECTED', () => {
-  const { body } = load('qa');
+  const { body } = loadQa();
   assert.match(body, /first line is exactly\*\* `QA PASSED` or `QA REJECTED`/);
 });
 
@@ -61,7 +69,7 @@ test('Scenario: The agent resolves a conflict - dev has an integrate mode that k
 });
 
 test('qa gives each finding a class: fixable, input, spec or policy (spec: Each QA finding carries a class)', () => {
-  const { body } = load('qa');
+  const { body } = loadQa();
   assert.match(body, /Class: <class>/);
   ['fixable', 'input', 'spec', 'policy'].forEach((c) => assert.ok(body.includes('- `' + c + '`:'), `qa must define the class ${c}`));
   assert.match(body, /treated as `fixable`/, 'a finding without a class must count as fixable');
@@ -69,18 +77,18 @@ test('qa gives each finding a class: fixable, input, spec or policy (spec: Each 
 });
 
 test('qa never passes code it could not check (spec: Validation tooling missing)', () => {
-  const { body } = load('qa');
+  const { body } = loadQa();
   assert.match(body, /automated validation could not run/);
   assert.match(body, /Never pass code you could not check/);
 });
 
 test('qa defers device-only scenarios to on-device review (spec: Device-only scenario)', () => {
-  const { body } = load('qa');
-  assert.match(body, /left for on-device review/);
+  const { body } = loadQa();
+  assert.match(body, /left for on-device review/i);
 });
 
 test('qa checks tasks, scenarios and project rules read from the rules file', () => {
-  const { body } = load('qa');
+  const { body } = loadQa();
   assert.match(body, /\[x\]/);
   assert.match(body, /qa\.rules_from/);
   assert.match(body, /Never assume a rule from memory/);
@@ -99,15 +107,16 @@ test('dev stops on an ambiguous specification instead of guessing', () => {
 });
 
 test('both agents run the commands of the profile they are given and do not name a tool of one stack', () => {
-  ['dev', 'qa'].forEach((n) => {
-    const { body } = load(n);
-    assert.match(body, /commands of the profile/);
-    assert.match(body, /stack-profile\.mjs/);
-  });
+  const dev = load('dev').body;
+  assert.match(dev, /commands of the profile/);
+  assert.match(dev, /stack-profile\.mjs/);
+  // The lenses do not run the commands: the gate does, and the code lens reads its receipt.
+  ['qa-security', 'qa-code'].forEach((n) => assert.match(load(n).body, /profile/, n));
+  assert.match(load('qa-code').body, /Never run the analysis or the tests yourself/);
 });
 
 test('Scenario: the agents are generic - no word of one stack, which lives in stacks/<stack>.md', () => {
-  ['dev', 'qa'].forEach((n) => {
+  ['dev', ...LENS_FILES].forEach((n) => {
     const text = readFileSync(new URL(`../agents/${n}.md`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /flutter|dart|android|\badb\b|freezed|setstate|buildcontext/i, `agents/${n}.md names a stack`);
   });
@@ -115,14 +124,14 @@ test('Scenario: the agents are generic - no word of one stack, which lives in st
 
 test('Scenario: Developer edits the configuration - dev must not, qa rejects', () => {
   const dev = load('dev').body;
-  const qa = load('qa').body;
+  const qa = loadQa().body;
   assert.match(dev, /edit `relevo\.yml`, anything under `\.relevo\/` or `skills-lock\.json`/);
   assert.match(qa, /a change to `relevo\.yml`, to anything under `\.relevo\/` or to `skills-lock\.json`/);
   assert.match(qa, /Reject it and cite the file/);
 });
 
 test('the agents take the skills of the role as paths, and let the rules of Relevo and the project win', () => {
-  ['dev', 'qa'].forEach((n) => {
+  ['dev', ...LENS_FILES].forEach((n) => {
     const { body } = load(n);
     assert.match(body, /extra skills for your role/);
     assert.match(body, /rules of Relevo and (of )?the project win over any skill/);
@@ -130,7 +139,7 @@ test('the agents take the skills of the role as paths, and let the rules of Rele
 });
 
 test('neither agent mentions private sources or personal data', () => {
-  ['dev', 'qa'].forEach((n) => {
+  ['dev', ...LENS_FILES].forEach((n) => {
     const text = readFileSync(new URL(`../agents/${n}.md`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /claude\.ai|session_[0-9A-Za-z]{6}|co-authored/i);
   });
@@ -148,24 +157,24 @@ test('Scenario: Glossary entries and A decision record - dev writes exactly the 
 });
 
 test('Scenario: The agent rewords an entry / Other lines change / Documentation nobody asked for - qa checks the documentation against the issue', () => {
-  const { body } = load('qa');
-  assert.match(body, /### 6\. Documentation/);
+  const { body } = loadQa();
+  assert.match(body, /### 5\. Documentation text/);
   assert.match(body, /heading `Documentation from the issue` in `design\.md`/);
-  assert.match(body, /Reject when an added word differs, when any other line of `GLOSSARY\.md` changed, when an existing record changed/);
+  assert.match(body, /reject when an added word differs, when any other line of `GLOSSARY\.md` changed, when an existing record changed/);
   assert.match(body, /number is not the highest existing number plus one/);
   assert.match(body, /If it is not there, reject a diff that touches `GLOSSARY\.md` or `docs\/adr\/`/);
   assert.match(body, /Do not judge the vocabulary itself/);
 });
 
 test('qa stays read-only after the documentation check', () => {
-  const { meta } = load('qa');
+  const { meta } = loadQa();
   assert.match(String(meta.disallowedTools), /Write/);
   assert.match(String(meta.disallowedTools), /Edit/);
 });
 
 test('Scenario: the agents have a read-only OpenSpec section and use the shared test flags', () => {
   const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
-  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  const qa = qaText();
   [dev, qa].forEach((t) => {
     assert.match(t, /## OpenSpec commands/);
     assert.match(t, /openspec instructions apply --change/);
@@ -174,16 +183,16 @@ test('Scenario: the agents have a read-only OpenSpec section and use the shared 
   assert.match(dev, /Install with the tool's no-scripts option/);
   assert.match(qa, /git diff origin\/<base> -- \. ':\(exclude\)<generated>'/);
   assert.match(qa, /`generated` in the profile/);
-  assert.match(qa, /you never change the index or any file/);
-  assert.match(qa, /You still run analysis and all tests/);
+  assert.match(qa, /no change to the index/);
+  assert.match(qa, /Never run the analysis or the tests yourself/);
 });
 
 test('Scenario: Monorepo - both agents get the folder of the platform and the work stays inside it', () => {
   const dev = load('dev').body;
-  const qa = load('qa').body;
+  const qa = loadQa().body;
   assert.match(dev, /the folder of the platform \(`path` of the profile output\): run the commands of the profile from it, and change files only inside it/);
   assert.match(dev, /the commit is refused for any other path/);
-  assert.match(qa, /the folder of the platform \(run the commands of the profile from it\)/);
+  assert.match(qa, /the folder of the platform/);
   assert.match(qa, /\*\*Platform\*\*: a file changed outside the folder of the platform/);
   assert.match(qa, /unless the issue lists that path in `Allow-paths:`/);
 });
@@ -191,12 +200,12 @@ test('Scenario: Monorepo - both agents get the folder of the platform and the wo
 // ---------- issue format v2
 
 test('Scenario: Decision broken / Section reworded - QA applies the decisions and constraints by id and compares the copied sections', () => {
-  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
-  assert.match(qa, /### 7\. Decisions and constraints from the issue/);
+  const qa = qaText();
+  assert.match(qa, /### 6\. Decisions and constraints from the issue/);
   assert.match(qa, /headings that start `From the issue:`/);
   assert.match(qa, /issue-sections\.mjs --body-file <issue_file> --copy/);
-  assert.match(qa, /Reject a reworded, shortened or reordered section and cite the section/);
-  assert.match(qa, /citing its id \(`D2`, `C1`\)/);
+  assert.match(qa, /must be contained, unchanged, in the issue/);
+  assert.match(qa, /citing its id, the file and line/);
   assert.match(qa, /A decision under `Discarded` is not a rule/);
   assert.match(qa, /`Verification` is for the person's review/);
   assert.match(qa, /the saved body of the issue \(`issue_file`\)/);
@@ -213,8 +222,8 @@ test('the developer treats the decisions and constraints as binding and reports 
 // ---------- review-autopilot
 
 test('QA reviews a review script: real assertions, allowed origins, no credential values, nothing about appearance', () => {
-  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
-  const section = qa.slice(qa.indexOf('### 8. A review script'), qa.indexOf('## Rules for yourself'));
+  const qa = qaText();
+  const section = qa.slice(qa.indexOf('### 3. A review script'), qa.indexOf('## Rules for yourself', qa.indexOf('### 3. A review script')));
   assert.match(section, /would fail if the behaviour of checklist line `n` did not exist/);
   assert.match(section, /only loads the page, or asserts something always true, is rejected/);
   assert.match(section, /nothing outside `localhost`, the address under review and `review\.allowed_origins`/);
@@ -237,18 +246,18 @@ test('Scenario: Asset not available - dev reproduces the reference without inven
 });
 
 test('QA compares example code, checks an image plausibly, rejects an invented asset and leaves appearance to the person', () => {
-  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
-  const section = qa.slice(qa.indexOf('### 9. Design references'), qa.indexOf('## Rules for yourself'));
+  const qa = qaText();
+  const section = qa.slice(qa.indexOf('### 2. Design references'), qa.indexOf('## Rules for yourself', qa.indexOf('### 2. Design references')));
   assert.match(section, /scenario `Matches the reference <name>` for each bullet/);
   assert.match(section, /compare the structure, tokens and states of the code with it/);
   assert.match(section, /You cannot compare pixels, so reject only what the code makes clear is different/);
   assert.match(section, /reject an asset .* that the diff adds and that is neither in the project nor in the references/);
-  assert.match(section, /left for on-device review/);
+  assert.match(section, /left for on-device review/i);
 });
 
 test('Scenario: Linked code pointer - dev and QA read a linked pointer from the manifest, as a hint and never as a reference to match', () => {
   const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
-  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  const qa = qaText();
   [dev, qa].forEach((text) => {
     assert.match(text, /`\.relevo-design\/manifest\.json` with `section` `code-pointer`/);
     assert.match(text, /never (?:as|treat it as) a reference to match/);
@@ -288,7 +297,9 @@ test('the output contract: the first line, numbered findings with a class, the h
   const contract = section(load('qa-spec').body, 'Output contract');
   assert.match(contract, /first line is exactly\*\* `QA PASSED` or `QA REJECTED`/);
   assert.match(contract, /numbered findings/);
-  for (const c of ['fixable', 'input', 'spec', 'policy']) assert.ok(contract.includes(`Class: ${c}`), c);
+  assert.match(contract, /`Class: <class>`/);
+  for (const c of ['fixable', 'input', 'spec', 'policy']) assert.ok(contract.includes(`- \`${c}\`:`), c);
+  assert.match(contract, /without a valid class is treated as `fixable`/);
   assert.match(contract, /\*\*Left for on-device review\*\*/);
   assert.match(section(load('qa-spec').body, 'The evidence rule'), /Do not reject on speculation/);
 });
@@ -338,9 +349,9 @@ test('Scenario: the developer agent follows the interface rules it is given and 
 });
 
 test('Scenario: QA rejects on a blocking interface rule only with evidence, and lists the rest for the person', () => {
-  const qa = readFileSync(new URL('../agents/qa.md', import.meta.url), 'utf8');
+  const qa = qaText();
   assert.match(qa, /Reject on a \*\*blocking\*\* rule only with evidence/);
-  assert.match(qa, /advisory, or whose check is `person`, is never a rejection: list it under "left for on-device review"/);
+  assert.match(qa, /advisory, or whose check is `person`, is never a rejection: list it under \*\*Left for on-device review\*\*/);
   assert.match(qa, /Say how many rules were left out/);
-  assert.match(qa, /Treat a mobile sketch in the issue like an image reference/);
+  assert.match(qa, /treat a \*\*mobile sketch\*\* like an image reference/);
 });

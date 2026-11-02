@@ -42,12 +42,12 @@
 
 ## 6. The shared procedure and the developer agent
 
-- [ ] 6.1 Write `skills/go/references/qa-run.md`: the gate, the plan of lenses, launching each lens one at a time with its model, the aggregation, the attempt accounting (a red gate uses an attempt), the retry with the previous report of each lens, the advisory notes and the failure paths. Verify with `tests/skill-go.test.mjs` (the reference exists and names each step).
-- [ ] 6.2 `skills/go/SKILL.md` step 5: read the reference instead of launching `relevo:qa`, announce the QA phase when the gate starts, and keep the failure paths. Verify with `tests/skill-go.test.mjs`.
-- [ ] 6.3 `skills/fix/SKILL.md`: the same procedure on the iteration's diff. `skills/review/SKILL.md`: the same procedure after the synchronisation, and the checklist with the notes. Verify with `tests/skill-fix.test.mjs` and `tests/skill-review.test.mjs`.
-- [ ] 6.4 `agents/dev.md`: receive the build faces (the hygiene and the security for the developer, the interface rules, the issue's decisions) and the output of a red gate in fix mode. Verify with `tests/agents.test.mjs`.
-- [ ] 6.5 Replace every remaining use of `relevo:qa`: `scripts/web-review.mjs` (its message names the `code` lens), `scripts/lib/next-step.mjs`, `scripts/fix-state.mjs` and the skills, and delete `agents/qa.md`. Verify with a search that finds no `relevo:qa` and with the whole test suite.
-- [ ] 6.6 `docs/guide.md` and `docs/guide.es.md`: which lens or the gate can reject and what each means, the advisory notes and how they reach the review. Verify with `node --test tests/docs-claims.test.mjs`.
+- [x] 6.1 Write `skills/go/references/qa-run.md`: the gate, the plan of lenses, launching each lens one at a time with its model, the aggregation, the attempt accounting (a red gate uses an attempt), the retry with the previous report of each lens, the advisory notes and the failure paths. Verify with `tests/skill-go.test.mjs` (the reference exists and names each step).
+- [x] 6.2 `skills/go/SKILL.md` step 5: read the reference instead of launching `relevo:qa`, announce the QA phase when the gate starts, and keep the failure paths. Verify with `tests/skill-go.test.mjs`.
+- [x] 6.3 `skills/fix/SKILL.md`: the same procedure on the iteration's diff. `skills/review/SKILL.md`: the same procedure after the synchronisation, and the checklist with the notes. Verify with `tests/skill-fix.test.mjs` and `tests/skill-review.test.mjs`.
+- [x] 6.4 `agents/dev.md`: receive the build faces (the hygiene and the security for the developer, the interface rules, the issue's decisions) and the output of a red gate in fix mode. Verify with `tests/agents.test.mjs`.
+- [x] 6.5 Replace every remaining use of `relevo:qa`: `scripts/web-review.mjs` (its message names the `code` lens), `scripts/lib/next-step.mjs`, `scripts/fix-state.mjs` and the skills, and delete `agents/qa.md`. Verify with a search that finds no `relevo:qa` and with the whole test suite.
+- [x] 6.6 `docs/guide.md` and `docs/guide.es.md`: which lens or the gate can reject and what each means, the advisory notes and how they reach the review. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 7. The settings
 

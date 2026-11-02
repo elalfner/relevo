@@ -67,7 +67,7 @@ const source = readFileSync(scriptPath, 'utf8');
 const problems = scanReviewScript(source);
 if (problems.length > 0) stop(1, `the review script was refused before any browser started:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
 if (readState().qaScript?.sha256 !== scriptHash(source)) {
-  stop(1, `the review script is not the one QA passed: launch relevo:qa on it, and after QA PASSED run review-state.mjs qa-pass ${scriptPath}`);
+  stop(1, `the review script is not the one QA passed: launch relevo:qa-code on it, and after QA PASSED run review-state.mjs qa-pass ${scriptPath}`);
 }
 
 const secrets = Object.fromEntries(secretNames.filter((n) => process.env[n]).map((n) => [n, process.env[n]]));

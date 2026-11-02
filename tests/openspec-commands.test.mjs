@@ -41,8 +41,9 @@ test('no allowed command is one that no unattended run may use', () => {
 });
 
 test('the agents use only their own lists', () => {
-  ['dev', 'qa'].forEach((part) => {
-    commandsIn(read(`agents/${part}.md`)).forEach(({ line, tokens }) => {
+  // The four QA lenses share the list of the former QA agent.
+  [['dev', 'dev'], ['qa-spec', 'qa'], ['qa-security', 'qa'], ['qa-code', 'qa'], ['qa-interface', 'qa']].forEach(([file, part]) => {
+    commandsIn(read(`agents/${file}.md`)).forEach(({ line, tokens }) => {
       if (/\b(never|do not|Do not|Never)\b/.test(line)) return;
       assert.ok(isAllowed(part, tokens), `${part} uses "openspec ${tokens.join(' ')}", which is not on its list`);
     });

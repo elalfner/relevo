@@ -22,7 +22,8 @@ test('Scenario: Rendering for Antigravity - a manifest, every skill, both agents
   const paths = out.files.map((f) => f.path);
   assert.ok(paths.includes('plugin.json'));
   for (const s of source.skills) assert.ok(paths.includes(`skills/${s.name}/SKILL.md`), `skill ${s.name}`);
-  assert.ok(paths.includes('agents/relevo-dev.md') && paths.includes('agents/relevo-qa.md'));
+  assert.ok(paths.includes('agents/relevo-dev.md') && ['spec', 'security', 'code', 'interface'].every((l) => paths.includes(`agents/relevo-qa-${l}.md`)));
+  assert.ok(!paths.includes('agents/relevo-qa.md'), 'the former QA agent is gone');
   assert.ok(paths.includes('skills/issue/references/update.md'), 'the references of a skill travel with it');
   assert.deepEqual(out.copy.dirs, ['scripts', 'stacks', 'knowledge', 'templates']);
   const manifest = JSON.parse(file('plugin.json').content);
@@ -36,7 +37,7 @@ test('Scenario: No Claude token remains', () => {
     assert.ok(!f.content.includes('${CLAUDE_PLUGIN_ROOT}'), `${f.path} keeps the script path variable`);
     assert.ok(!/relevo:(dev|qa)(?![\w-])/.test(f.content), `${f.path} keeps a Claude agent name`);
   }
-  for (const p of ['agents/relevo-dev.md', 'agents/relevo-qa.md']) {
+  for (const p of ['agents/relevo-dev.md', 'agents/relevo-qa-spec.md', 'agents/relevo-qa-security.md', 'agents/relevo-qa-code.md', 'agents/relevo-qa-interface.md']) {
     const meta = head(p);
     for (const k of ['model', 'effort', 'disallowedTools']) assert.ok(!(k in meta), `${p} keeps ${k}`);
   }
@@ -76,14 +77,14 @@ test('Scenario: A reserved skill - the key is kept, and only for the skills that
 });
 
 test('Scenario: QA is read-only - it can run commands and has no write or edit tool', () => {
-  const qa = String(head('agents/relevo-qa.md').tools);
+  const qa = ['spec', 'security', 'code', 'interface'].map((l) => String(head(`agents/relevo-qa-${l}.md`).tools)).join(' ');
   const dev = String(head('agents/relevo-dev.md').tools);
   assert.match(qa, /run_command/);
   for (const t of [...ANTIGRAVITY_TOOLS.Write, ...ANTIGRAVITY_TOOLS.Edit]) {
     assert.ok(!qa.includes(t), `qa has ${t}`);
     assert.ok(dev.includes(t), `dev lacks ${t}`);
   }
-  assert.match(file('agents/relevo-qa.md').content, /tools: \[[a-z_, ]+\]\n/, 'the list is a YAML list: a string makes the agent fail to load');
+  for (const l of ['spec', 'security', 'code', 'interface']) assert.match(file(`agents/relevo-qa-${l}.md`).content, /tools: \[[a-z_, ]+\]\n/, 'the list is a YAML list: a string makes the agent fail to load');
 });
 
 test('Scenario: Unknown tool - the render stops and names it', () => {

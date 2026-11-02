@@ -40,6 +40,24 @@ When a reviewer requested changes on the pull request, the issue becomes `change
 
 The issue becomes `qa-failed` and the assignee is told, with the first finding. When the cloud build was rejected after the retries (or left tasks unfinished), the work is not lost: the branch holds it as a commit `wip: rejected by QA`, and the comment says it is code that QA did not approve. Run `/relevo:fix <n>`: it takes the finding from that comment as the defect, so you do not have to describe it, and runs the checks QA could not run. To rethink the issue instead, use `/relevo:think` and then `/relevo:issue <n>`. If the comment instead says the build was not built because the runner has no tool (for example `flutter`), the build job stopped before the agent and no model turn was spent: enable the toolchain step in `relevo-go.yml`, remove `relevo:qa-failed` and apply `ready` again. If the safe commit refused the work (a protected path, a restricted file, a file outside the platform, a marker or a possible credential), nothing is pushed and the comment says so. If the branch has code that you wrote, run `/relevo:fix <n>` and describe what QA found. If it has only the specification (the build failed before any code), delete the remote branch and apply `ready` again.
 
+### Who rejected it: the gate or one of the reviewers
+
+QA is no longer one agent. First a script (the **gate**) runs the analysis, the tests and the scans once, with no model; then four reviewers (the **lenses**) each look at what they own. The comment names the one that stopped the build:
+
+| It says | What it means | What to do |
+|---|---|---|
+| the gate is red | analysis, a test, the scan for temporary markers and credentials or the check for restricted files failed; no reviewer ran | `/relevo:fix <n>`; the comment has the end of the failing output |
+| automated validation could not run | a tool the profile needs is missing on the runner | install it (the developer agent cannot); nothing was reviewed |
+| `spec` | the code does not do what a scenario, a task, a decision or a constraint of the issue says, or it touches a file outside the platform, a configuration file or a dependency the issue does not allow | read the finding; `/relevo:fix <n>` or change the issue |
+| `security` | a security problem in the diff, with the line that shows it | `/relevo:fix <n>` |
+| `code` | a weak test, a leftover or what the stack profile lists as a defect | `/relevo:fix <n>` |
+| `interface` | the change breaks an interface rule or does not match a design reference | `/relevo:fix <n>`. On the **last** attempt this reviewer only advises: its findings do not block |
+| lens report invalid | a reviewer did not answer in the expected form twice | run it again; nothing was wrong with the code |
+
+When the gate is red the developer agent fixes it before any reviewer runs, and that uses one of the attempts, so the total is still `qa.retries + 1`.
+
+**The advisory notes.** When the build passes, QA can still leave notes for you: the findings of the `interface` reviewer on the last attempt, and the scenarios that only a person on a device can confirm. The `built` comment says how many there are and names the reviewer of the first three, and `/relevo:review` adds each one to the checklist, pending, with the reviewer that doubted. Look at those first.
+
 ### The quota ran out
 
 A cloud run that stops at a usage limit or an empty credit says so in the last comment. The issue is not lost: apply `ready` again later, or build it on your machine with `/relevo:go <n> --local`. With a subscription the quota is shared with the interactive use of the same account, so a busy day can use it up.

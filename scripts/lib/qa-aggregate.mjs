@@ -72,5 +72,12 @@ export function aggregate({ reports, plan, attempt, retries, reasked = [] }) {
     return { result: null, action: 'stop', lenses, findings, advisory, invalid, reason: 'lens report invalid' };
   }
   const rejected = plan.some((p) => p.active && lenses[p.lens].status === 'REJECTED' && lenses[p.lens].blocking);
-  return { result: rejected ? 'QA REJECTED' : 'QA PASSED', action: 'done', lenses, findings, advisory, invalid, reason: null };
+  // A retry can only succeed when the developer agent can fix something: with every blocking finding needing an input, a
+  // decision of the specification or something an unattended run may not do, `go` skips the retries.
+  const nonFixable = findings.filter((f) => f.class !== 'fixable');
+  const allNonFixable = rejected && findings.length > 0 && nonFixable.length === findings.length;
+  return {
+    result: rejected ? 'QA REJECTED' : 'QA PASSED', action: 'done', lenses, findings, advisory, invalid, reason: null,
+    all_non_fixable: allNonFixable, first_non_fixable_class: nonFixable[0]?.class ?? null,
+  };
 }

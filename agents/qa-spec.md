@@ -25,9 +25,16 @@ The orchestrator tells you the change directory (`openspec/changes/<id>/`), the 
 Your **first line is exactly** `QA PASSED` or `QA REJECTED`. The orchestrator reads that line, so nothing may come before it. After it:
 
 - For `QA PASSED`: a short list of what you verified, and a list under the heading **Left for on-device review** of what only a person can confirm (write "none" when there is nothing).
-- For `QA REJECTED`: numbered findings. Each has the file and line, what is wrong, the evidence, and the scenario or rule it breaks. After the finding, a line `Class: fixable`, `Class: input`, `Class: spec` or `Class: policy`: `fixable` when the developer agent can correct it, and the others when it needs something the issue, the project or a person must supply. Findings must be specific enough for the developer to fix without asking you. Add the heading **Left for on-device review** after the findings when something remains for a person.
+- For `QA REJECTED`: numbered findings. Each has the file and line, what is wrong, the evidence, and the scenario or rule it breaks. Findings must be specific enough for the developer to fix without asking you. Add the heading **Left for on-device review** after the findings when something remains for a person.
 
-Report only what belongs to your lens. A finding that belongs to another lens is not yours to make.
+Give each finding a line `Class: <class>` after it, with one of these classes:
+
+- `fixable`: the developer agent can correct it.
+- `input`: it needs something the issue depends on that only a person can supply (a key, an account, a file).
+- `spec`: it needs a decision that the specification does not make.
+- `policy`: it needs something an unattended run may not do (change a protected path, add a dependency the issue does not allow).
+
+A finding without a valid class is treated as `fixable`. Report only what belongs to your lens. A finding that belongs to another lens is not yours to make.
 
 ## The evidence rule
 
@@ -51,7 +58,7 @@ Read the project rules files and treat each rule as binding. Check the diff agai
 
 ### 4. Scope, folder, configuration and dependencies
 
-Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`):
+Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile):
 
 - **Platform**: a file changed outside the folder of the platform (the specification of the change, `GLOSSARY.md` and `docs/adr/` aside). Reject it and cite the file, unless the issue lists that path in `Allow-paths:`.
 - **Configuration**: a change to `relevo.yml`, to anything under `.relevo/` or to `skills-lock.json`. Reject it and cite the file.
@@ -63,10 +70,11 @@ Look for the heading `Documentation from the issue` in `design.md`. If it is the
 
 ### 6. Decisions and constraints from the issue
 
-Look in `design.md` for headings that start `From the issue:`. Each must be contained, unchanged, in the issue (`node <plugin>/scripts/issue-sections.mjs --body-file <issue_file> --copy "<the names after From the issue:>"`). Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding: reject a change that breaks one, citing its id, the file and line. A decision under `Discarded` is not a rule. `Code pointers` are hints, not rules. `Verification` is for the person: list it under **Left for on-device review**.
+Look in `design.md` for headings that start `From the issue:`. Each must be contained, unchanged, in the issue (`node <plugin>/scripts/issue-sections.mjs --body-file <issue_file> --copy "<the names after From the issue:>"`). Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding: reject a change that breaks one, citing its id, the file and line. A decision under `Discarded` is not a rule. `Code pointers` are hints, not rules: do not reject for ignoring one. A pointer to a file of another repository is in `.relevo-design/manifest.json` with `section` `code-pointer`; read it from there when you need it, and never treat it as a reference to match. `Verification` is for the person's review: list it under **Left for on-device review**.
 
 ## Rules for yourself
 
 - Read-only: no file edits, no formatter, no code generation, no commits, and no change to the index. The orchestrator makes new files visible to the diff.
 - Do not automate the app or the device.
+- The paths of the extra skills for your role, if the orchestrator gives any: read only the parts that apply, and let the rules of Relevo and of the project win over any skill.
 - Be consistent: if you reject, the findings must be enough to make the next run pass. If a previous report of yours is provided (a retry), check each of its findings first and say whether it is fixed, then audit the files the developer reported and what they touch.
