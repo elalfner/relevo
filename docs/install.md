@@ -26,7 +26,7 @@ Restart Claude Code in your project and run `/relevo:doctor` to see what is stil
 
 - **The plugin, and only the plugin.** The package `@elalfner/relevo` holds the manifest, the scripts, the skills, the agents, the stack profiles, the templates, the licence and the notice. It does not hold the documentation, the tests, the OpenSpec history, the changelog or the brand material; read those online in the [repository](https://github.com/elalfner/relevo).
 - **Machine or project.** `claude plugin install relevo@relevo` (scope `user`, the default) makes the commands available in every project of the machine. `--scope project` declares the plugin in `.claude/settings.json` of the repository, so everyone who opens it is offered the same plugin; `--scope local` keeps it to you. `claude plugin marketplace update relevo` and `claude plugin update relevo@relevo` bring it up to date, which `relevo update` does in one command.
-- **OpenSpec in a web session.** A session of Claude Code on the web starts in a new container without OpenSpec. `/relevo:init` offers a `SessionStart` hook in `.claude/settings.json` that installs it when it is missing (`npm install --global @fission-ai/openspec`), only in a remote session; commit the file. Without it, `go` stops with the install command instead of going on without OpenSpec.
+- **OpenSpec and the plugin in a web session.** A session of Claude Code on the web starts in a new container without OpenSpec and without the plugin. `/relevo:init` offers two `SessionStart` hooks in `.claude/settings.json`, only for a remote session: one installs OpenSpec when it is missing (`npm install --global @fission-ai/openspec`) and one installs the plugin ([Work on the web without cloning](#work-on-the-web-without-cloning)); commit the file. Without the first, `go` stops with the install command instead of going on without OpenSpec.
 - **In the workflows.** Each workflow downloads the same package at the version it pins (`RELEVO_VERSION`), never the repository, and stops with the name of the missing file if the package lacks a script. The agent of a cloud build loads its plugin from that same package (`--plugin-dir` on the unpacked folder), so the pin decides the skills as well as the scripts, nothing is cloned from the plugin repository and no token is needed to read it. How to move a project from an old version to a new one is in [Upgrading](upgrading.md). The first line of each workflow, `# relevo-template: X.Y.Z`, is the version of the text it was copied from: it is not the pin, and raising the pin by hand moves the scripts but not the text. To move them to a newer version, change the pin in each workflow after reading the changelog; `relevo update` does not touch your workflows. `/relevo:doctor` reports a workflow without a pin, with a pin that differs from the installed plugin, or from the time they cloned the repository.
 
 ## Other tools: Antigravity
@@ -49,19 +49,26 @@ relevo init --tools claude,antigravity --scope project
 
 ## Work on the web without cloning
 
-A person who works only in Claude Code on the web (a PM, for example) does not install anything or clone the repository. Someone does this once, from a clone, and commits the result:
+A person who works only in Claude Code on the web (a PM, for example) installs nothing and clones nothing. Someone does this once, from a clone, and commits the result.
 
-1. Declare the plugin in the project:
-   ```bash
-   claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project
-   claude plugin install relevo@relevo --scope project
-   ```
-   This writes `extraKnownMarketplaces` and `enabledPlugins` (`"relevo@relevo": true`) into `.claude/settings.json`.
-2. Run `/relevo:init` (it needs admin rights). Accept the `SessionStart` hook that installs OpenSpec in remote sessions; without it `go` stops in a web session.
-3. Create the model secret (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) in the GitHub Actions secrets, so the cloud builds can run.
-4. Commit and push `.claude/settings.json`, `relevo.yml` and the workflows to the default branch. The workflows run from the default branch, so with `main` as default and `dev` as base they reach the cloud only after `dev` is promoted ([Where `go` runs](execution.md#which-branch-the-cloud-reads)).
+**Declaring the plugin in the project is not enough on the web.** A cloud session does not install the plugins that `.claude/settings.json` turns on, because adding their marketplace needs the workspace trust dialog, which a cloud session never shows ([Claude Code on the web](https://code.claude.com/docs/en/cloud-environments)). The declaration (`--scope project`) serves a terminal: a teammate who clones the repository is offered the plugin. For the web, the repository also needs a `SessionStart` hook that installs the plugin when the session starts.
 
-From then on, anyone who opens the repository in Claude Code on the web gets Relevo: `/relevo:think`, `/relevo:issue` and `/relevo:status` work in the session, and labelling an issue `relevo:ready` starts the build in GitHub Actions. The review on a real device still needs a person with the device.
+1. Run `/relevo:init` (it needs admin rights). It offers, one yes each, the declaration (`install.plugin-project`), the hook that installs OpenSpec (`install.web-hook`) and the hook that installs the plugin (`install.web-plugin-hook`). Without the OpenSpec hook `go` stops in a web session; without the plugin hook there are no `/relevo:` commands.
+2. Create the model secret (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) in the GitHub Actions secrets, so the cloud builds can run.
+3. Commit and push `.claude/settings.json`, `relevo.yml` and the workflows to the default branch. The workflows run from the default branch, so with `main` as default and `dev` as base they reach the cloud only after `dev` is promoted ([Where `go` runs](execution.md#which-branch-the-cloud-reads)).
+
+The plugin hook runs only in a remote session. It adds the marketplace and installs the plugin at the project scope, writes what they print to `relevo-plugin-hook.log` in the temporary folder, and never fails the session:
+
+```bash
+claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project
+claude plugin install relevo@relevo --scope project
+```
+
+From then on, anyone who opens the repository in Claude Code on the web gets Relevo: `/relevo:think`, `/relevo:issue` and `/relevo:status` are available in the session, and labelling an issue `relevo:ready` starts the build in GitHub Actions. The review on a real device still needs a person with the device.
+
+- **Checked on a sandbox repository.** A new web session with the hook installed the plugin (version 0.12.0, project scope, enabled) and listed `relevo:doctor`, `relevo:status` and the developer and QA agents in its first turn. A session without the hook showed no plugin at all. The build in GitHub Actions was not part of that check.
+- **The install may reorder `.claude/settings.json`.** The command can rewrite the file with its keys in another order, which shows as a change to commit; the content is the same.
+- **One configuration for the whole organization.** The alternative the documentation names is the server-managed settings of the organization (`extraKnownMarketplaces` and `enabledPlugins` under Organization settings, Claude Code, Managed settings; it needs the Owner role). They apply to every repository of the organization, not to one.
 
 ## What you need
 

@@ -8,6 +8,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - **`/relevo:review` works for a Supabase database.** A Supabase platform defines no target, so the review used to stop before the pull request with "names no target to review". It now has an `api` adapter that only touches the local containers: with `review.autopilot` `off` you run `supabase test db` and write `ran <exit code>`; with `precheck` or `verify` the agent runs the pgTAP file in `supabase/tests/` that already covers each line, records the file, the assertions that ran and the exit code, and never writes a test. A file that ran no assertion, or a plan that was not completed, proves nothing. The audit reads the log of the database container since the review started (`docker logs --since`, never restarted or emptied); the permission, row-level security and constraint errors that a policy test provokes on purpose are listed as expected denials and are not findings, while a `FATAL`, a deadlock or any other `ERROR` is. The review never uses `--linked` or `--db-url`, never runs `link`, `db push` or `db pull` and never reads `.env` files, even when the folder is linked to a remote project. A stopped local stack is started only after you confirm it, and stopped at the end only if the agent started it. `api-preflight.mjs --stack supabase` checks the CLI, Docker, `supabase/config.toml` and the stack, and `/relevo:doctor` reports what a Supabase review needs.
 - **A `review` block can name the log of a container.** `review.log` takes `docker:<container>` besides a path or a glob, with `{project_id}` read from `supabase/config.toml`; a `review.test` that names `--linked`, `--db-url`, `link`, `push` or `pull` makes the profile invalid.
+- **The Relevo plugin is installed at the start of a web session.** A session of Claude Code on the web does not load the plugins that `.claude/settings.json` declares (adding their marketplace needs the workspace trust dialog, which the cloud never shows), so declaring the plugin in the project did not give a person who opens the repository there any `/relevo:` command. `/relevo:init` now offers a second `SessionStart` hook, `install.web-plugin-hook`, which in a remote session adds the marketplace and installs the plugin at the project scope (`web-hook.mjs --hook plugin`); `/relevo:doctor` warns in a web session when the repository lacks it (`web.plugin-hook`). Checked on a sandbox repository: a new web session installed the plugin and listed its skills and agents in its first turn. The build in GitHub Actions was not part of that check.
 
 ### Fixed
 
@@ -16,6 +17,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Changed
 
+- **The install page no longer says that declaring the plugin is enough on the web.** `docs/install.md` and `docs/install.es.md` explain that the declaration serves a terminal, that the web needs the hook, and name the managed settings of the organization as the alternative that covers every repository.
 - **The stop message for a stack with no review adapter** now lists Supabase among the adapters that exist.
 
 ### Fixed

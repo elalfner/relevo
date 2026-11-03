@@ -305,6 +305,7 @@ export function gatherFacts(p) {
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
   f.pluginDeclared = pluginDeclaration(p);
   f.webHook = webHookDeclaration(p);
+  f.webPluginHook = webPluginHookDeclaration(p);
   // The restricted files and what the settings of the agents say about them, by path name: no restricted file is opened.
   f.restricted = restrictedFacts({
     list: restrictedListFromText(f.configText),
@@ -484,23 +485,38 @@ export function pluginDeclaration(p) {
 // outside a remote session, and nothing when `openspec` already runs; `|| true` keeps a failed install from failing the hook.
 export const WEB_HOOK_COMMAND = '[ "$CLAUDE_CODE_REMOTE" = "true" ] && ! command -v openspec >/dev/null 2>&1 && OPENSPEC_TELEMETRY=0 npm install --global @fission-ai/openspec || true';
 
+// The `SessionStart` hook that installs the Relevo plugin in a session of Claude Code on the web. A cloud session does
+// not install the plugins that `enabledPlugins` of the repository turns on (it never shows the workspace trust dialog
+// that adding their marketplace needs), so without this hook a person who opens the repository there finds no /relevo:
+// commands. It does nothing outside a remote session; the output goes to a log, and `|| true` keeps a failure from failing the hook.
+export const WEB_PLUGIN_HOOK_COMMAND = '[ "$CLAUDE_CODE_REMOTE" = "true" ] && { claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project && claude plugin install relevo@relevo --scope project; } >"${TMPDIR:-/tmp}/relevo-plugin-hook.log" 2>&1 || true';
+
 /** Does a `SessionStart` entry install OpenSpec? The package name is what is matched, so a hook written by hand counts. */
 const installsOpenspec = (entry) => (entry?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('@fission-ai/openspec'));
 
+/** Does a `SessionStart` entry install the Relevo plugin? The install command is what is matched, so a hook written by hand counts. */
+const installsPlugin = (entry) => (entry?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('claude plugin install relevo@relevo'));
+
 /**
- * Whether the committed settings file has a `SessionStart` hook that installs OpenSpec: { declared } or, when the file
- * is not valid JSON, { unreadable: true }. A missing file is { declared: false }.
+ * Whether the committed settings file has a `SessionStart` entry that `matches`: { declared } or, when the file is not
+ * valid JSON, { unreadable: true }. A missing file is { declared: false }.
  */
-export function webHookDeclaration(p) {
+function sessionStartDeclaration(p, matches) {
   const path = '.claude/settings.json';
   if (!p.exists(path)) return { declared: false };
   try {
     const settings = JSON.parse(p.read(path));
-    return { declared: Array.isArray(settings?.hooks?.SessionStart) && settings.hooks.SessionStart.some(installsOpenspec) };
+    return { declared: Array.isArray(settings?.hooks?.SessionStart) && settings.hooks.SessionStart.some(matches) };
   } catch {
     return { unreadable: true };
   }
 }
+
+/** Whether the repository has a `SessionStart` hook that installs OpenSpec. */
+export const webHookDeclaration = (p) => sessionStartDeclaration(p, installsOpenspec);
+
+/** Whether the repository has a `SessionStart` hook that installs the Relevo plugin. */
+export const webPluginHookDeclaration = (p) => sessionStartDeclaration(p, installsPlugin);
 
 /** Reads a file: the plugin's own files from disk, the repository's through the probes. Null when absent. */
 function readerFor(p, tryRun) {
@@ -940,6 +956,7 @@ export function runChecks(f) {
   r.push(f.evidenceIgnored ? pass('evidence.ignored', 'evidence/ is ignored by git') : fail('evidence.ignored', 'evidence/ is not in .gitignore; `review` would put screenshots in git', 'add the line `evidence/` to .gitignore (or run /relevo:init)'));
   r.push(...pluginDeclaredChecks(f));
   r.push(...webHookChecks(f));
+  r.push(...webPluginHookChecks(f));
   r.push(...restrictedChecks(f));
 
   // GitHub side
@@ -1254,6 +1271,18 @@ function webHookChecks(f) {
   if (f.webHook.unreadable) return [warn('web.openspec-hook', '.claude/settings.json is not valid JSON, so it cannot be checked whether it installs OpenSpec in web sessions', 'fix the file; /relevo:init then offers the hook')];
   if (f.webHook.declared) return [pass('web.openspec-hook', 'the repository installs OpenSpec at the start of a web session (SessionStart hook in .claude/settings.json)')];
   return [warn('web.openspec-hook', 'this is a web session and the repository has no SessionStart hook that installs OpenSpec, so every new session starts without it and go cannot run', `run /relevo:init to add the hook, commit .claude/settings.json, or install it now: ${OPENSPEC_INSTALL}`)];
+}
+
+/**
+ * Does the repository install the Relevo plugin in the sessions of Claude Code on the web? A cloud session does not load
+ * the plugins that `enabledPlugins` declares, so the hook is what gives the next person who opens the repository there
+ * the /relevo: commands. Like the OpenSpec hook it is judged only when doctor runs in a remote session, and it warns.
+ */
+function webPluginHookChecks(f) {
+  if (!f.remoteSession || !f.webPluginHook) return [];
+  if (f.webPluginHook.unreadable) return [warn('web.plugin-hook', '.claude/settings.json is not valid JSON, so it cannot be checked whether it installs the Relevo plugin in web sessions', 'fix the file; /relevo:init then offers the hook')];
+  if (f.webPluginHook.declared) return [pass('web.plugin-hook', 'the repository installs the Relevo plugin at the start of a web session (SessionStart hook in .claude/settings.json)')];
+  return [warn('web.plugin-hook', 'this is a web session and the repository has no SessionStart hook that installs the Relevo plugin: a cloud session does not load the plugins a repository declares, so whoever opens it there next finds no /relevo: commands', 'run /relevo:init to add the hook and commit .claude/settings.json; the declaration in .claude/settings.json alone is not enough on the web')];
 }
 
 /**

@@ -11,7 +11,7 @@ import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
 import { restrictedList } from './restricted-paths.mjs';
 import { claudeProposalText } from './restricted-settings.mjs';
-import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
+import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -35,18 +35,28 @@ const RESTRICTED_AGY_DETAIL = 'It adds the rules shown to permissions.deny in ~/
 
 const WEB_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it installs OpenSpec when it is missing (npm install --global @fission-ai/openspec); on a terminal it does nothing. The file is left for you to commit.';
 
+const WEB_PLUGIN_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it adds the Relevo marketplace and installs the plugin (claude plugin marketplace add, then claude plugin install, at the project scope), because a cloud session does not load the plugins a repository only declares; on a terminal it does nothing. The file is left for you to commit.';
+
+const WEB_HOOKS = {
+  openspec: { command: WEB_HOOK_COMMAND, marker: '@fission-ai/openspec' },
+  plugin: { command: WEB_PLUGIN_HOOK_COMMAND, marker: 'claude plugin install relevo@relevo' },
+};
+
 /**
- * `.claude/settings.json` with the hook that installs OpenSpec added to `SessionStart`, every other key and hook kept.
- * Idempotent: text that already installs OpenSpec is returned as it is. Throws on text that is not a JSON object, so a
- * broken file is never rewritten. `text` is null when the file does not exist.
+ * `.claude/settings.json` with a hook added to `SessionStart`, every other key and hook kept: the one that installs
+ * OpenSpec (`kind` 'openspec', the default) or the one that installs the Relevo plugin (`kind` 'plugin'). Idempotent:
+ * text that already has that hook is returned as it is. Throws on text that is not a JSON object, so a broken file is
+ * never rewritten. `text` is null when the file does not exist.
  */
-export function mergeWebHook(text) {
+export function mergeWebHook(text, kind = 'openspec') {
+  const hook = WEB_HOOKS[kind];
+  if (!hook) throw new Error(`unknown hook: ${kind}`);
   const settings = text === null ? {} : JSON.parse(text);
   if (settings === null || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('.claude/settings.json is not a JSON object');
   const current = settings.hooks?.SessionStart;
   if (current !== undefined && !Array.isArray(current)) throw new Error('hooks.SessionStart in .claude/settings.json is not a list');
-  if ((current ?? []).some((e) => (e?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('@fission-ai/openspec')))) return text;
-  const hooks = { ...(settings.hooks ?? {}), SessionStart: [...(current ?? []), { hooks: [{ type: 'command', command: WEB_HOOK_COMMAND }] }] };
+  if ((current ?? []).some((e) => (e?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes(hook.marker)))) return text;
+  const hooks = { ...(settings.hooks ?? {}), SessionStart: [...(current ?? []), { hooks: [{ type: 'command', command: hook.command }] }] };
   return `${JSON.stringify({ ...settings, hooks }, null, 2)}\n`;
 }
 
@@ -373,6 +383,12 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   if (facts.webHook?.declared) items.push(item('install.web-hook', 'ok', 'The repository installs OpenSpec at the start of a web session (.claude/settings.json)'));
   else if (facts.webHook?.unreadable) items.push(item('install.web-hook', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the hook that installs OpenSpec in web sessions'));
   else if (facts.webHook) items.push(item('install.web-hook', 'todo', 'Add a hook that installs OpenSpec at the start of a web session of Claude Code, where it is missing (the changed .claude/settings.json is left for you to commit)', { install: true, command: `node \${CLAUDE_PLUGIN_ROOT}/scripts/web-hook.mjs`, hook: WEB_HOOK_COMMAND, detail: WEB_HOOK_DETAIL }));
+
+  // The Relevo plugin in the sessions of Claude Code on the web: a cloud session does not load the plugins a repository
+  // declares, so it is installed from a hook at the start of the session.
+  if (facts.webPluginHook?.declared) items.push(item('install.web-plugin-hook', 'ok', 'The repository installs the Relevo plugin at the start of a web session (.claude/settings.json)'));
+  else if (facts.webPluginHook?.unreadable) items.push(item('install.web-plugin-hook', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the hook that installs the Relevo plugin in web sessions'));
+  else if (facts.webPluginHook) items.push(item('install.web-plugin-hook', 'todo', 'Add a hook that installs the Relevo plugin at the start of a web session of Claude Code, so that whoever opens the repository on the web finds the /relevo: commands (the changed .claude/settings.json is left for you to commit)', { install: true, command: `node \${CLAUDE_PLUGIN_ROOT}/scripts/web-hook.mjs --hook plugin`, hook: WEB_PLUGIN_HOOK_COMMAND, detail: WEB_PLUGIN_HOOK_DETAIL }));
 
   // The read denials of restricted files, for a person's own agents: shown with their exact text, written only after a yes.
   const restricted = facts.restricted;

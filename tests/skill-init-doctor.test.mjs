@@ -157,8 +157,15 @@ test('init offers the OpenSpec hook for web sessions on a yes, through the scrip
   assert.ok(existsSync(new URL('../scripts/web-hook.mjs', import.meta.url)), 'the script the skill runs exists');
 });
 
+test('init offers the plugin hook for web sessions on a yes, through the same script, and says why the declaration is not enough', () => {
+  const { body } = load('init');
+  assert.match(body, /`install\.web-plugin-hook`/);
+  assert.match(body, /web-hook\.mjs --hook plugin/);
+  assert.match(body, /does not load the plugins a repository declares/);
+});
+
 test('doctor says it checks the OpenSpec hook in a web session', () => {
-  assert.match(load('doctor').meta.description, /in a web session whether the repository installs OpenSpec/);
+  assert.match(load('doctor').meta.description, /in a web session whether the repository installs OpenSpec and the Relevo plugin/);
 });
 
 test('Scenario: Init asks for the runner labels only for a self-hosted runner, and never whether it is ephemeral', () => {
