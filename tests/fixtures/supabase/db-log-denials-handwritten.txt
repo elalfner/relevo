@@ -1,0 +1,6 @@
+192.168.107.6 2026-11-03 05:10:03.201 UTC [310] postgres@postgres ERROR:  new row violates row-level security policy for table "orders"
+192.168.107.6 2026-11-03 05:10:03.201 UTC [310] postgres@postgres STATEMENT:  insert into public.orders (user_id) values ('00000000-0000-0000-0000-000000000002')
+192.168.107.6 2026-11-03 05:10:03.230 UTC [310] postgres@postgres ERROR:  permission denied for table orders
+192.168.107.6 2026-11-03 05:10:03.230 UTC [310] postgres@postgres STATEMENT:  select * from public.orders
+192.168.107.6 2026-11-03 05:10:03.260 UTC [310] postgres@postgres ERROR:  duplicate key value violates unique constraint "orders_pkey"
+192.168.107.6 2026-11-03 05:10:03.300 UTC [310] postgres@postgres ERROR:  insert or update on table "orders" violates foreign key constraint "orders_user_id_fkey"

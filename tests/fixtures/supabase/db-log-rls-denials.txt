@@ -1,7 +1,2 @@
-2026-11-02 10:00:03.114 UTC [210] LOG:  statement: select plan(6);
-2026-11-02 10:00:03.201 UTC [210] ERROR:  new row violates row-level security policy for table "orders"
-2026-11-02 10:00:03.201 UTC [210] STATEMENT:  insert into public.orders (user_id) values ('00000000-0000-0000-0000-000000000002')
-2026-11-02 10:00:03.230 UTC [210] ERROR:  permission denied for table orders
-2026-11-02 10:00:03.230 UTC [210] STATEMENT:  select * from public.orders
-2026-11-02 10:00:03.260 UTC [210] ERROR:  duplicate key value violates unique constraint "orders_pkey"
-2026-11-02 10:00:03.300 UTC [210] ERROR:  insert or update on table "orders" violates foreign key constraint "orders_user_id_fkey"
+192.168.107.1 2026-11-03 04:59:19.004 UTC [280] postgres@postgres LOG:  statement: create extension if not exists pgtap with schema extensions
+192.168.107.1 2026-11-03 04:59:19.464 UTC [280] postgres@postgres LOG:  statement: drop extension if exists pgtap

@@ -34,12 +34,15 @@ function project(autopilot = 'off', { dockerLog = '', dockerStatus = 0 } = {}) {
 }
 
 test('pgTAP: the assertions, the failing names and the plan are read from the output', () => {
-  assert.deepEqual(parseTap(fixture('tap-pass.txt')), { assertions: 6, failing: [], planned: null, planComplete: true });
+  assert.deepEqual(parseTap(fixture('tap-pass.txt')), { assertions: 4, failing: [], planned: null, planComplete: true });
   const fail = parseTap(fixture('tap-fail.txt'));
-  assert.deepEqual([fail.assertions, fail.failing, fail.planComplete], [6, ['anon cannot read orders'], true]);
+  assert.deepEqual([fail.assertions, fail.failing, fail.planComplete], [4, ['orders is gone'], true]);
   const half = parseTap(fixture('tap-incomplete.txt'));
-  assert.deepEqual([half.assertions, half.planComplete], [4, false]);
+  assert.deepEqual([half.assertions, half.planComplete], [2, false]);
   assert.equal(parseTap(fixture('tap-empty.txt')).assertions, 0);
+  const uncaught = parseTap(fixture('tap-uncaught.txt'));
+  assert.deepEqual([uncaught.assertions, uncaught.planComplete], [0, false]);
+  assert.deepEqual(parseTap('ok 1 - a\nnot ok 2 - b\n# Failed test 2: "b"\n1..2\n'), { assertions: 2, failing: ['b'], planned: 2, planComplete: true });
 });
 
 test('Supabase commands: only the closed list, never a remote target', () => {
@@ -70,15 +73,22 @@ test('Scenario: Unreadable file - a container that does not exist is reported an
   assert.match(audit.reason, /gone/);
 });
 
-test('Scenario: Denial provoked by a policy test - expected denials are listed, not findings', () => {
-  const audit = auditApi({ text: fixture('db-log-rls-denials.txt'), runs: [{ exit: 0, tests: 6, by: 'agent', line: 1 }], flavor: 'postgres' });
+test('Scenario: Denial provoked by a policy test - expected denials are listed, not findings (hand-written log: no capture holds one)', () => {
+  const audit = auditApi({ text: fixture('db-log-denials-handwritten.txt'), runs: [{ exit: 0, tests: 4, by: 'agent', line: 1 }], flavor: 'postgres' });
   assert.equal(audit.verdict, 'REVIEW PASSED');
   assert.equal(audit.expected.length, 4);
   assert.match(auditReport(audit, { scope: { kind: 'api', pattern: 'docker:x', runs: 1, flavor: 'postgres' } }), /4 expected denial/);
 });
 
+test('Scenario: Policy test that logs nothing - the run is the proof and the report says so', () => {
+  const audit = auditApi({ text: fixture('db-log-rls-denials.txt'), runs: [{ exit: 0, tests: 4, by: 'agent', line: 1 }], flavor: 'postgres' });
+  assert.equal(audit.verdict, 'REVIEW PASSED');
+  assert.equal(audit.expected.length, 0);
+  assert.match(auditReport(audit, { scope: { kind: 'api', pattern: 'docker:x', runs: 1, flavor: 'postgres' } }), /No denial appears in the log.*the proof is the recorded run/);
+});
+
 test('Scenario: Denials with a failing run - the run rejects, the denials stay as context', () => {
-  const audit = auditApi({ text: fixture('db-log-rls-denials.txt'), runs: [{ exit: 1, tests: 6, by: 'agent', line: 1, failing: ['anon cannot read orders'] }], flavor: 'postgres' });
+  const audit = auditApi({ text: fixture('db-log-denials-handwritten.txt'), runs: [{ exit: 1, tests: 4, by: 'agent', line: 1, failing: ['anon cannot read orders'] }], flavor: 'postgres' });
   assert.equal(audit.verdict, 'REVIEW REJECTED');
   assert.equal(audit.findings[0].class, 'test-failure');
   assert.match(audit.findings[0].excerpt, /anon cannot read orders/);
@@ -86,16 +96,19 @@ test('Scenario: Denials with a failing run - the run rejects, the denials stay a
 });
 
 test('Scenario: Other error and Fatal - a missing relation, a syntax error, a fatal entry and a deadlock are findings', () => {
-  const audit = auditApi({ text: fixture('db-log-error.txt'), runs: [{ exit: 0, tests: 6, by: 'agent', line: 1 }], flavor: 'postgres' });
-  assert.equal(audit.verdict, 'REVIEW REJECTED');
-  assert.deepEqual(audit.counts, { 'database-error': 2, fatal: 1, deadlock: 1 });
+  const run = [{ exit: 0, tests: 4, by: 'agent', line: 1 }];
+  const syntax = auditApi({ text: fixture('db-log-error.txt'), runs: run, flavor: 'postgres' });
+  assert.equal(syntax.verdict, 'REVIEW REJECTED');
+  assert.deepEqual(syntax.counts, { 'database-error': 1 });
+  assert.deepEqual(auditApi({ text: fixture('db-log-uncaught.txt'), runs: run, flavor: 'postgres' }).counts, { 'database-error': 1 });
+  assert.deepEqual(auditApi({ text: fixture('db-log-fatal-handwritten.txt'), runs: run, flavor: 'postgres' }).counts, { fatal: 1, deadlock: 1 });
 });
 
 test('Postgres audit: a clean slice with a recorded run passes, and with no run it proves nothing', () => {
   assert.equal(auditApi({ text: fixture('db-log-clean.txt'), runs: [{ exit: 0, tests: 2, by: 'person' }], flavor: 'postgres' }).verdict, 'REVIEW PASSED');
   assert.equal(auditApi({ text: '', runs: [{ exit: 0, tests: 2, by: 'person' }], flavor: 'postgres' }).verdict, 'REVIEW PASSED');
   assert.equal(auditApi({ text: '', runs: [], flavor: 'postgres' }).verdict, 'REVIEW INCONCLUSIVE');
-  assert.equal(auditApi({ text: fixture('db-log-rls-denials.txt'), runs: [], flavor: 'postgres' }).verdict, 'REVIEW REJECTED');
+  assert.equal(auditApi({ text: fixture('db-log-denials-handwritten.txt'), runs: [], flavor: 'postgres' }).verdict, 'REVIEW REJECTED');
 });
 
 test('Laravel audit is unchanged by the Postgres flavor', () => {
@@ -114,7 +127,7 @@ test('Supabase review: init reads the container log from now on, the audit reads
 });
 
 test('Supabase review: expected denials pass with a run, other errors reject', () => {
-  const r = project('off', { dockerLog: fixture('db-log-rls-denials.txt') });
+  const r = project('off', { dockerLog: fixture('db-log-denials-handwritten.txt') });
   r.run('ran', '0');
   const ok = r.run('audit');
   assert.match(ok.stdout, /^REVIEW PASSED/);
@@ -122,7 +135,7 @@ test('Supabase review: expected denials pass with a run, other errors reject', (
   r.setLog(fixture('db-log-error.txt'));
   const bad = r.run('audit').stdout;
   assert.match(bad, /^REVIEW REJECTED/);
-  assert.match(bad, /database-error: .*invoices/);
+  assert.match(bad, /database-error: .*tabel/);
 });
 
 test('Supabase review: a container that is missing makes the audit inconclusive', () => {
@@ -138,12 +151,12 @@ test('Scenario: Failing assertion and Plan not completed - the run is recorded w
   r.run('confirm-env');
   const fail = r.run('ran', '1', '--by', 'agent', '--line', '1', '--filter', 'supabase/tests/orders_rls.test.sql', '--tap', join(FIX, 'tap-fail.txt'));
   assert.equal(fail.status, 0, fail.stderr);
-  assert.match(fail.stdout, /6 assertion\(s\)/);
-  assert.deepEqual(r.show().runs[0].failing, ['anon cannot read orders']);
+  assert.match(fail.stdout, /4 assertion\(s\)/);
+  assert.deepEqual(r.show().runs[0].failing, ['orders is gone']);
   const half = r.run('ran', '0', '--by', 'agent', '--line', '2', '--tap', join(FIX, 'tap-incomplete.txt'));
   assert.match(half.stdout, /the plan was not completed/);
   const run = r.show().runs[1];
-  assert.deepEqual([run.exit, run.incomplete, run.tests], [1, true, 4]);
+  assert.deepEqual([run.exit, run.incomplete, run.tests], [1, true, 2]);
 });
 
 test('Supabase review: a line is proved only by a run of the agent with at least one assertion', () => {
@@ -153,9 +166,9 @@ test('Supabase review: a line is proved only by a run of the agent with at least
   r.run('ran', '0', '--by', 'agent', '--line', '1', '--tap', join(FIX, 'tap-empty.txt'));
   assert.match(r.run('auto', '1', 'file ran').stderr, /ran no test/);
   r.run('ran', '0', '--by', 'agent', '--line', '1', '--filter', 'supabase/tests/orders_rls.test.sql', '--tap', join(FIX, 'tap-pass.txt'));
-  assert.equal(r.run('auto', '1', 'supabase/tests/orders_rls.test.sql: 6 assertions').status, 0);
+  assert.equal(r.run('auto', '1', 'supabase/tests/orders_rls.test.sql: 4 assertions').status, 0);
   const list = r.run('runs-list').stdout;
-  assert.match(list, /file `supabase\/tests\/orders_rls.test.sql`: exit 0, 6 assertion\(s\)/);
+  assert.match(list, /file `supabase\/tests\/orders_rls.test.sql`: exit 0, 4 assertion\(s\)/);
 });
 
 test('Scenario: Run told by the person - recorded as the person\'s, without assertions', () => {
