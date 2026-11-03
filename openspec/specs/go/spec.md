@@ -772,3 +772,48 @@ When GitHub answers 404 or 403 for a file of a linked repository, the reason SHA
 #### Scenario: Local run without access
 - **WHEN** a local run gets 404 for `acme/design:home.webp`
 - **THEN** the reason says that the person's `gh` login cannot read `acme/design`
+
+### Requirement: The failure comment does not offer fix when nothing was pushed
+When `go` ends in `qa-failed` with the branch not pushed (`unsafe` or `not_pushed`) and gives no explicit recovery, the comment SHALL show the next step of the `rebuild` variant and SHALL NOT suggest `/relevo:fix <n>`. A comment for a pushed branch, for kept work and for an existing branch SHALL keep its current next step.
+
+#### Scenario: Commit refused by the scanner
+- **WHEN** QA rejected the build, the safe commit of the work in progress was refused because of a possible credential, and `branch_state` is `unsafe`
+- **THEN** the comment says the branch was not pushed, ends with the rebuild step, and does not contain `/relevo:fix`
+
+#### Scenario: Not pushed for another reason
+- **WHEN** the issue changed after `ready` and `branch_state` is `not_pushed`
+- **THEN** the comment ends with the rebuild step and does not contain `/relevo:fix`
+
+#### Scenario: Pushed branch unchanged
+- **WHEN** `branch_state` is `pushed`
+- **THEN** the next step is still `/relevo:fix <n>`
+
+### Requirement: A qa-failed issue without a branch can be retried
+When the planner is asked to retry an issue (`--retry`, together with `--only <n>`), it SHALL treat that issue, when it is `qa-failed`, as if it were `ready`: the same gates apply and the claim SHALL move it from `qa-failed` to `building`. It SHALL NOT add or require the `ready` label, and the claim SHALL post no comment of its own. In place of the person who applied `ready` it SHALL use the person who runs the retry: only write access, or a maintainer when `trust` is `public`, may retry.
+
+#### Scenario: Retry of a qa-failed issue without a branch
+- **WHEN** issue 67 is `qa-failed`, has no remote branch, and a person with write access runs the planner with `--only 67 --retry --apply --claim`
+- **THEN** the decision is `start`, the issue loses `qa-failed` and gains `building`, no `ready` label is added and no comment is posted
+
+#### Scenario: The person may not start work
+- **WHEN** the person who runs the retry has only read access, or `trust` is `public` and the person is not a maintainer
+- **THEN** the decision is `denied` and nothing is claimed
+
+#### Scenario: Gates still apply
+- **WHEN** the retried issue has no assignee, no milestone or an incomplete specification
+- **THEN** the same decision as for a `ready` issue is returned, and nothing is built
+
+#### Scenario: Without the flag
+- **WHEN** the planner runs without `--retry`
+- **THEN** a `qa-failed` issue is still ignored
+
+### Requirement: A retry is refused when there is something to fix instead
+The planner SHALL refuse a retry, changing nothing, when the issue is not `qa-failed` or when a branch `feature/<n>-*` exists on the remote. The message SHALL send the person to `/relevo:fix <n>` or to delete the branch.
+
+#### Scenario: A branch exists
+- **WHEN** `origin/feature/67-...` exists and the retry is requested
+- **THEN** nothing changes and the message says to run `/relevo:fix 67` or to delete the branch
+
+#### Scenario: The issue is not qa-failed
+- **WHEN** the retry is requested for an issue that is `built`
+- **THEN** nothing changes and the message says that only a `qa-failed` issue can be retried
