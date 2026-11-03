@@ -13,6 +13,8 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } fro
 import { dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { gatherFacts, readOnlyGh, vueWebFacts, WORKFLOW_FILES } from './lib/doctor.mjs';
+import { findRepo, isRemote } from './lib/gh-web.mjs';
+import { ghClient } from './lib/gh-client.mjs';
 import { applyPlan, planInit, renderPlan, skipItems } from './lib/init.mjs';
 import { findRestrictedFiles, restrictedList } from './lib/restricted-paths.mjs';
 import { planUpgrades, publishedTemplates, unifiedDiff } from './lib/workflow-upgrade.mjs';
@@ -35,6 +37,7 @@ const run = (name, args, input) => execFileSync(name, args, { encoding: 'utf8', 
 const tool = (name, args) => run(name, args);
 
 let repo = arg('repo') ?? process.env.GITHUB_REPOSITORY ?? null;
+if (!repo && isRemote(process.env)) repo = findRepo({ env: process.env, git: (args) => run('git', args) }); // no GraphQL in a web session
 if (!repo) {
   try {
     repo = run('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner']).trim();
@@ -112,7 +115,7 @@ if (mode === 'plan') {
 }
 
 const io = {
-  gh: (args, input) => run('gh', args, input),
+  gh: ghClient({ run: execFileSync }), // the same `gh`, except that a web session answers label creation over REST
   write: (p, text) => {
     mkdirSync(dirname(resolve(p)), { recursive: true });
     writeFileSync(p, text);

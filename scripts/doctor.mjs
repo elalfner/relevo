@@ -9,6 +9,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { adapterFacts } from './lib/adapters/install.mjs';
 import { exitCode, gatherFacts, readOnlyGh, renderReport, reportHeader, runChecks } from './lib/doctor.mjs';
+import { findRepo, isRemote } from './lib/gh-web.mjs';
 import { findRestrictedFiles } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
@@ -20,6 +21,7 @@ const arg = (name) => {
 let repo = arg('repo') ?? process.env.GITHUB_REPOSITORY ?? null;
 const tool = (name, args) => execFileSync(name, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
 const gh = (args) => tool('gh', args);
+if (!repo && isRemote(process.env)) repo = findRepo({ env: process.env, git: (args) => tool('git', args) }); // no GraphQL in a web session
 if (!repo) {
   try {
     repo = tool('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner']).trim() || null;

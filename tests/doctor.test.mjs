@@ -1395,6 +1395,51 @@ test('gatherFacts reads the plugin hook', () => {
   assert.deepEqual(f.webHook, { declared: false });
 });
 
+// ---- GitHub access in a remote session (web-sessions)
+
+const apiError = (status, message) => Object.assign(new Error('x'), { stderr: `gh: ${message} (HTTP ${status})`, stdout: JSON.stringify({ message }) });
+
+test('Scenario: A remote session whose sign-in status fails but whose token works - GitHub access passes and no sign-in is asked', () => {
+  const calls = [];
+  const tool = (name, args) => {
+    calls.push([name, ...args]);
+    if (name === 'gh' && args[0] === 'auth') throw apiError(401, 'The token in GH_TOKEN is invalid');
+    if (name === 'gh' && args[0] === 'api') return 'o/r\n';
+    return '1.0.0';
+  };
+  const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), tool, env: { CLAUDE_CODE_REMOTE: 'true' }, repo: 'o/r' });
+  assert.equal(f.ghAuth, true);
+  assert.deepEqual(f.ghAccess, { ok: true, repo: 'o/r' });
+  assert.ok(!calls.some((c) => c[0] === 'gh' && c[1] === 'auth'), 'gh auth status is not used in a remote session');
+  const check = byId(runChecks(healthy({ ghAuth: true, ghAccess: f.ghAccess })), 'tools.gh-auth');
+  assert.equal(check.status, 'pass');
+  assert.match(check.message, /web session/);
+});
+
+test('Scenario: A remote session with no usable token - the check fails and names the cause', () => {
+  const tool = (name, args) => {
+    if (name === 'gh' && args[0] === 'api') throw apiError(401, 'Bad credentials');
+    return '1.0.0';
+  };
+  const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), tool, env: { CLAUDE_CODE_REMOTE: 'true' }, repo: 'o/r' });
+  assert.equal(f.ghAuth, false);
+  assert.equal(f.ghAccess.status, 401);
+  const check = byId(runChecks(healthy({ ghAuth: false, ghAccess: f.ghAccess })), 'tools.gh-auth');
+  assert.equal(check.status, 'fail');
+  assert.match(check.message, /no usable GitHub token/);
+});
+
+test('Scenario: A terminal - the sign-in status of gh is what counts, as before', () => {
+  const calls = [];
+  const tool = (name, args) => { calls.push([name, ...args]); return '1.0.0'; };
+  const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), tool, env: {}, repo: 'o/r' });
+  assert.equal(f.ghAuth, true);
+  assert.equal(f.ghAccess, undefined);
+  assert.ok(calls.some((c) => c[0] === 'gh' && c[1] === 'auth'));
+  assert.equal(byId(runChecks(healthy({ ghAuth: false })), 'tools.gh-auth').status, 'fail');
+  assert.match(byId(runChecks(healthy({ ghAuth: false })), 'tools.gh-auth').fix, /gh auth login/);
+});
+
 const HOSTED_GO = GO_TEMPLATE;
 const BUILD_GO = GO_TEMPLATE.replaceAll('runs-on: ubuntu-latest', 'runs-on: [self-hosted, linux-build]');
 const BUILD_CONFIG = loadConfig(`${CONFIG_TEXT}runner:\n  labels: [self-hosted, linux-build]\n`).config;
