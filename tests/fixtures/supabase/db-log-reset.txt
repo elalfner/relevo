@@ -1,0 +1,32 @@
+waiting for server to start.... 2026-11-03 05:44:49.004 UTC [43] LOG:  pgaudit extension initialized
+ 2026-11-03 05:44:49.008 UTC [43] LOG:  pgsodium primary server secret key loaded
+ 2026-11-03 05:44:49.009 UTC [43] LOG:  vault primary server secret key loaded
+ 2026-11-03 05:44:49.025 UTC [43] LOG:  starting PostgreSQL 17.11 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit
+ 2026-11-03 05:44:49.026 UTC [43] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+ 2026-11-03 05:44:49.028 UTC [50] LOG:  database system was shut down at 2026-11-03 05:44:48 UTC
+ 2026-11-03 05:44:49.031 UTC [53] FATAL:  role "postgres" does not exist
+ 2026-11-03 05:44:49.031 UTC [43] LOG:  database system is ready to accept connections
+ 2026-11-03 05:44:49.032 UTC [43] LOG:  background worker "pg_net 0.20.4 worker" (PID 53) exited with exit code 1
+ 2026-11-03 05:44:49.033 UTC [54] LOG:  pg_cron scheduler started
+ done
+server started
+
+ 2026-11-03 05:44:49.986 UTC [1] LOG:  starting PostgreSQL 17.11 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit
+ 2026-11-03 05:44:49.986 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+ 2026-11-03 05:44:49.986 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+ 2026-11-03 05:44:49.988 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+ 2026-11-03 05:44:49.990 UTC [205] LOG:  database system was shut down at 2026-11-03 05:44:49 UTC
+ 2026-11-03 05:44:49.993 UTC [1] LOG:  database system is ready to accept connections
+ 2026-11-03 05:44:49.996 UTC [209] LOG:  pg_cron scheduler started
+192.168.107.1 2026-11-03 05:45:02.782 UTC [219] postgres@postgres LOG:  statement: CREATE SCHEMA IF NOT EXISTS supabase_migrations
+192.168.107.1 2026-11-03 05:45:02.783 UTC [219] postgres@postgres LOG:  statement: CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text NOT NULL PRIMARY KEY)
+192.168.107.1 2026-11-03 05:45:02.784 UTC [219] postgres@postgres LOG:  statement: ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS statements text[]
+192.168.107.1 2026-11-03 05:45:02.785 UTC [219] postgres@postgres LOG:  statement: ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS name text
+192.168.107.1 2026-11-03 05:45:02.793 UTC [219] postgres@postgres LOG:  execute <unnamed>: create table public.orders (
+	  id bigint generated always as identity primary key,
+	  user_id uuid not null,
+	  total int not null default 0
+	)
+192.168.107.1 2026-11-03 05:45:02.794 UTC [219] postgres@postgres LOG:  execute <unnamed>: alter table public.orders enable row level security
+192.168.107.1 2026-11-03 05:45:02.794 UTC [219] postgres@postgres LOG:  execute <unnamed>: create policy "owner reads" on public.orders for select to authenticated using (user_id = auth.uid())
+192.168.107.1 2026-11-03 05:45:02.794 UTC [219] postgres@postgres LOG:  execute <unnamed>: create policy "owner inserts" on public.orders for insert to authenticated with check (user_id = auth.uid())

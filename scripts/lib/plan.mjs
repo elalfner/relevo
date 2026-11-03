@@ -11,6 +11,7 @@
 //   completed  issue numbers closed as completed (their pull request merged)
 //   running    issue numbers with an agent run in progress
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
+//   retry      { issue, by } | null  the person `by` retries the `qa-failed` issue `issue`: it is planned as if `by` had made it `ready`
 //
 // Output: { decisions: [...], summary }, in the order the issues were processed.
 
@@ -52,7 +53,7 @@ export function withoutCredential(decisions, issues = []) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {} }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null }) {
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);
   const open = issues.filter((i) => i.state === 'open');
@@ -80,8 +81,12 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
   // Valid urgent issues are considered first, so they take the free agent slots before the others; inside each group
   // the order is the time `ready` was applied.
+  // A retry stands in for `ready`: the issue is `qa-failed`, the person who runs it takes the place of who applied the label.
+  const isRetry = (issue) => Boolean(retry) && retry.issue === issue.number && has(issue, 'qa-failed');
+  const startedBy = (issue) => (isRetry(issue) ? retry.by : issue.ready_by);
+
   const candidates = open
-    .filter((i) => has(i, 'ready') || has(i, 'queued') || has(i, 'blocked'))
+    .filter((i) => has(i, 'ready') || has(i, 'queued') || has(i, 'blocked') || isRetry(i))
     .sort((a, b) => Number(isUrgent(b)) - Number(isUrgent(a)) || byReadyAt(a, b));
 
   const decisions = [];
@@ -145,7 +150,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
     ];
     const missing = [...parsed.missing, ...(platform.ok ? [] : [platform.message]), ...linkProblems, ...ambiguity];
     const needsSpec = () => {
-      const specWriter = config.team.spec_writer ?? issue.ready_by;
+      const specWriter = config.team.spec_writer ?? startedBy(issue);
       decision(issue, 'needs-spec', `the spec is incomplete: ${missing.join('; ')}`, {
         labels: moveTo(issue, 'needs-spec'),
         assign: [specWriter],
@@ -156,28 +161,29 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       });
     };
 
-    if (has(issue, 'ready')) {
+    if (has(issue, 'ready') || isRetry(issue)) {
       // Trigger: only people with write access may start work.
-      const permission = issue.ready_by ? permissions[issue.ready_by] : undefined;
+      const by = startedBy(issue);
+      const permission = by ? permissions[by] : undefined;
       const isPublic = config.trust === 'public';
-      if (!issue.ready_by || !(isPublic ? MAY_TRIGGER_PUBLIC : MAY_TRIGGER).has(permission)) {
+      if (!by || !(isPublic ? MAY_TRIGGER_PUBLIC : MAY_TRIGGER).has(permission)) {
         decision(issue, 'denied', isPublic ? 'the ready label was not applied by a maintainer (trust is public)' : 'the ready label was not applied by someone with write access', {
           labels: dropReady(issue),
-          comment: { kind: isPublic ? 'ready_denied_maintainer' : 'ready_denied', data: { issue: issue.number, actor: issue.ready_by ?? undefined } },
+          comment: { kind: isPublic ? 'ready_denied_maintainer' : 'ready_denied', data: { issue: issue.number, actor: by ?? undefined } },
         });
         return;
       }
       if (!issue.milestone) {
         decision(issue, 'no-milestone', 'the issue has no milestone', {
           labels: dropReady(issue),
-          comment: { kind: 'no_milestone', data: { issue: issue.number, actor: issue.ready_by } },
+          comment: { kind: 'no_milestone', data: { issue: issue.number, actor: by } },
         });
         return;
       }
       if (!assignee) {
         decision(issue, 'no-assignee', 'the issue has no assignee', {
           labels: dropReady(issue),
-          comment: { kind: 'no_assignee', data: { issue: issue.number, actor: issue.ready_by } },
+          comment: { kind: 'no_assignee', data: { issue: issue.number, actor: by } },
         });
         return;
       }
@@ -252,6 +258,8 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         change_id: changeId(issue.number, issue.title),
         base: config.branches.base,
         assignee,
+        // Who the issue goes back to when a check before the build finds that it cannot succeed.
+        spec_writer: config.team.spec_writer ?? issue.ready_by ?? null,
         title: issue.title,
         qa_retries: config.qa.retries,
         run_max_turns: config.limits.run_max_turns,
@@ -270,6 +278,18 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       },
     });
   });
+
+  // A retry of an issue that is not `qa-failed` (or is not open) changes nothing.
+  if (retry && !decisions.some((d) => d.issue === retry.issue)) {
+    decisions.push({
+      issue: retry.issue,
+      action: 'skip',
+      reason: 'only an open issue labelled qa-failed can be retried',
+      labels: { add: [], remove: [] },
+      comment: null,
+      assign: null,
+    });
+  }
 
   const summary = {};
   decisions.forEach((d) => {

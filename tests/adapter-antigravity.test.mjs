@@ -22,9 +22,10 @@ test('Scenario: Rendering for Antigravity - a manifest, every skill, both agents
   const paths = out.files.map((f) => f.path);
   assert.ok(paths.includes('plugin.json'));
   for (const s of source.skills) assert.ok(paths.includes(`skills/${s.name}/SKILL.md`), `skill ${s.name}`);
-  assert.ok(paths.includes('agents/relevo-dev.md') && paths.includes('agents/relevo-qa.md'));
+  assert.ok(paths.includes('agents/relevo-dev.md') && ['spec', 'security', 'code', 'interface'].every((l) => paths.includes(`agents/relevo-qa-${l}.md`)));
+  assert.ok(!paths.includes('agents/relevo-qa.md'), 'the former QA agent is gone');
   assert.ok(paths.includes('skills/issue/references/update.md'), 'the references of a skill travel with it');
-  assert.deepEqual(out.copy.dirs, ['scripts', 'stacks', 'templates']);
+  assert.deepEqual(out.copy.dirs, ['scripts', 'stacks', 'knowledge', 'templates']);
   const manifest = JSON.parse(file('plugin.json').content);
   assert.equal(manifest.name, 'relevo');
   assert.equal(manifest.version, source.version);
@@ -36,7 +37,7 @@ test('Scenario: No Claude token remains', () => {
     assert.ok(!f.content.includes('${CLAUDE_PLUGIN_ROOT}'), `${f.path} keeps the script path variable`);
     assert.ok(!/relevo:(dev|qa)(?![\w-])/.test(f.content), `${f.path} keeps a Claude agent name`);
   }
-  for (const p of ['agents/relevo-dev.md', 'agents/relevo-qa.md']) {
+  for (const p of ['agents/relevo-dev.md', 'agents/relevo-qa-spec.md', 'agents/relevo-qa-security.md', 'agents/relevo-qa-code.md', 'agents/relevo-qa-interface.md']) {
     const meta = head(p);
     for (const k of ['model', 'effort', 'disallowedTools']) assert.ok(!(k in meta), `${p} keeps ${k}`);
   }
@@ -76,14 +77,14 @@ test('Scenario: A reserved skill - the key is kept, and only for the skills that
 });
 
 test('Scenario: QA is read-only - it can run commands and has no write or edit tool', () => {
-  const qa = String(head('agents/relevo-qa.md').tools);
+  const qa = ['spec', 'security', 'code', 'interface'].map((l) => String(head(`agents/relevo-qa-${l}.md`).tools)).join(' ');
   const dev = String(head('agents/relevo-dev.md').tools);
   assert.match(qa, /run_command/);
   for (const t of [...ANTIGRAVITY_TOOLS.Write, ...ANTIGRAVITY_TOOLS.Edit]) {
     assert.ok(!qa.includes(t), `qa has ${t}`);
     assert.ok(dev.includes(t), `dev lacks ${t}`);
   }
-  assert.match(file('agents/relevo-qa.md').content, /tools: \[[a-z_, ]+\]\n/, 'the list is a YAML list: a string makes the agent fail to load');
+  for (const l of ['spec', 'security', 'code', 'interface']) assert.match(file(`agents/relevo-qa-${l}.md`).content, /tools: \[[a-z_, ]+\]\n/, 'the list is a YAML list: a string makes the agent fail to load');
 });
 
 test('Scenario: Unknown tool - the render stops and names it', () => {
@@ -133,4 +134,42 @@ test('every tool of the table is a tool the installed agy reports', { skip: !wit
   const init = r.stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((e) => e.event === 'init');
   const known = new Set(init.init.tools);
   for (const t of Object.values(ANTIGRAVITY_TOOLS).flat()) assert.ok(known.has(t), `${t} is not a tool of this agy`);
+});
+
+// ---- the QA lenses (specialist-review-lenses)
+const LENS_AGENTS = ['qa-spec', 'qa-security', 'qa-code', 'qa-interface'];
+
+test('Scenario: the four lens agents are rendered with valid names and read-only tool lists', () => {
+  for (const lens of LENS_AGENTS) {
+    const path = `agents/relevo-${lens}.md`;
+    assert.ok(file(path), `${path} is rendered`);
+    assert.equal(head(path).name, `relevo-${lens}`);
+    const tools = String(head(path).tools);
+    assert.doesNotMatch(tools, /write_to_file|replace_file_content/, `${lens} has a write tool`);
+    assert.match(tools, /view_file/);
+  }
+});
+
+test('every agent file of the plugin renders to a valid Antigravity name', () => {
+  for (const f of out.files.filter((x) => /^agents\//.test(x.path))) {
+    assert.match(head(f.path).name, /^relevo-[a-z]+(-[a-z]+)?$/, f.path);
+    assert.equal(`agents/${head(f.path).name}.md`, f.path);
+  }
+});
+
+test('Scenario: No Claude token remains - no relevo:qa-<lens> name is left in any rendered file', () => {
+  for (const f of out.files.filter((x) => x.path.endsWith('.md'))) {
+    assert.doesNotMatch(f.content, /relevo:qa-(spec|security|code|interface)/, f.path);
+  }
+});
+
+test('the paragraph about waiting for subagents says that each lens is called one at a time', () => {
+  const go = file('skills/go/SKILL.md').content;
+  assert.match(go, /relevo-qa-spec.*relevo-qa-security.*relevo-qa-code.*relevo-qa-interface.*one at a time, never two together/);
+});
+
+test('the rewrite of agent names turns the lens names and leaves other text alone', async () => {
+  const { adaptText } = await import('../scripts/lib/adapters/antigravity.mjs');
+  const text = adaptText('Launch relevo:dev, relevo:qa, relevo:qa-security and relevo:qa-interface; not relevo:qa-other or relevo:developer.', { pluginDir });
+  assert.equal(text, 'Launch relevo-dev, relevo-qa, relevo-qa-security and relevo-qa-interface; not relevo:qa-other or relevo:developer.');
 });

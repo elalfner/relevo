@@ -52,6 +52,20 @@ test('qa-failed goes to fix, or says to delete the branch when it holds only the
   assert.match(spec.line, /ready again/);
 });
 
+test('Scenario: Rebuild variant - qa-failed with nothing pushed has no command and says to relabel ready', () => {
+  const step = nextStep({ state: 'qa-failed', reason: 'rebuild', issue: 37 });
+  assert.equal(step.command, null);
+  assert.equal(step.who, 'assignee');
+  assert.match(step.hint, /nothing was pushed/);
+  assert.match(step.hint, /remove relevo:qa-failed and label the issue relevo:ready again/);
+  assert.match(step.hint, /\/relevo:go 37 --local --retry \(the cloud does not start\)/);
+  assert.doesNotMatch(step.line, /\/relevo:fix/);
+  const es = nextStep({ state: 'qa-failed', reason: 'rebuild', issue: 37, language: 'es' });
+  assert.match(es.hint, /no se subió nada/);
+  assert.match(es.hint, /quita relevo:qa-failed y vuelve a poner relevo:ready/);
+  assert.match(es.hint, /\/relevo:go 37 --local --retry \(la nube no arranca\)/);
+});
+
 test('pr-open waits for an approval and then goes to ship; changes-requested goes to fix', () => {
   assert.equal(nextStep({ state: 'pr-open', issue: 3 }).command, '/relevo:ship 3');
   assert.match(nextStep({ state: 'pr-open', issue: 3 }).line, /someone other than the author approves/);
@@ -90,4 +104,40 @@ test('the command prints the line, the JSON on request, and exits 2 on bad input
   assert.equal(run('--state', 'nope', '--issue', '1').status, 2);
   assert.equal(run().status, 2);
   assert.match(run().stderr, /usage: next-step\.mjs/);
+});
+
+test('a restricted file versioned on the base branch has no command: it says to remove the file and label ready again', () => {
+  const step = nextStep({ state: 'qa-failed', reason: 'restricted', issue: 9 });
+  assert.equal(step.command, null);
+  assert.match(step.line, /git rm --cached/);
+  assert.match(step.line, /ready again/);
+  assert.doesNotMatch(step.line, /relevo:fix/);
+});
+
+test('Scenario: The next step for `inputs` - the writer completes the issue', () => {
+  const step = nextStep({ state: 'needs-spec', reason: 'inputs', issue: 48 });
+  assert.deepEqual([step.command, step.who], ['/relevo:issue 48', 'spec_writer']);
+  assert.match(step.hint, /an input of the issue is not available/);
+  assert.match(step.hint, /External inputs/);
+  assert.match(nextStep({ state: 'needs-spec', reason: 'inputs', issue: 48, language: 'es' }).hint, /un insumo del issue no está disponible/);
+});
+
+test('Scenario: The next step for `policy` - the writer rewrites the issue', () => {
+  const step = nextStep({ state: 'needs-spec', reason: 'policy', issue: 47 });
+  assert.deepEqual([step.command, step.who], ['/relevo:issue 47', 'spec_writer']);
+  assert.match(step.hint, /Allow-paths:/);
+  assert.match(nextStep({ state: 'needs-spec', reason: 'policy', issue: 47, language: 'es' }).hint, /Allow-paths:/);
+});
+
+test('missing installed dependencies have a next step in the workflow, not a command', () => {
+  const step = nextStep({ state: 'qa-failed', reason: 'installed', issue: 9 });
+  assert.equal(step.command, null);
+  assert.match(step.hint, /installs the dependencies/);
+  assert.match(nextStep({ state: 'qa-failed', reason: 'installed', issue: 9, language: 'es' }).hint, /instala las dependencias/);
+});
+
+test('the classes of a QA finding that the developer agent cannot fix each have a next step for the kept work', () => {
+  assert.equal(nextStep({ state: 'qa-failed', reason: 'input', issue: 9 }).command, '/relevo:fix 9');
+  assert.equal(nextStep({ state: 'qa-failed', reason: 'spec', issue: 9 }).command, '/relevo:issue 9');
+  assert.equal(nextStep({ state: 'qa-failed', reason: 'policy', issue: 9 }).command, '/relevo:issue 9');
 });

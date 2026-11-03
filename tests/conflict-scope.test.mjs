@@ -62,3 +62,52 @@ test('no conflicts is fine', () => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   assert.equal(spawnSync('node', [CLI], { cwd: dir, encoding: 'utf8' }).status, 0);
 });
+
+// --- handing a conflict to the developer agent (spec: review, "Synchronise with the base branch first")
+import { conflictHandoff } from '../scripts/lib/conflict-handoff.mjs';
+
+test('Scenario: The agent resolves a conflict - files inside the folder of the platform may be handed over', () => {
+  const r = conflictHandoff(['apps/web/src/Table.vue', 'apps/web/src/index.css'], { within: 'apps/web', change: '42-x' });
+  assert.deepEqual([r.ok, r.outside], [true, []]);
+});
+
+test('Scenario: A conflict outside the folder of the platform - it is not handed over and the path is named', () => {
+  const r = conflictHandoff(['apps/web/src/a.ts', 'apps/api/src/b.ts'], { within: 'apps/web', change: '42-x' });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.outside.map((o) => o.path), ['apps/api/src/b.ts']);
+  assert.match(r.outside[0].reason, /outside the platform \(apps\/web\)/);
+});
+
+test('the specification of the change, the glossary and the decision records are inside, another change is not', () => {
+  assert.equal(conflictHandoff(['openspec/changes/42-x/tasks.md', 'GLOSSARY.md', 'docs/adr/0003-x.md'], { within: 'apps/web', change: '42-x' }).ok, true);
+  assert.equal(conflictHandoff(['openspec/changes/43-y/tasks.md'], { within: 'apps/web', change: '42-x' }).ok, false);
+});
+
+test('a platform at the root has no folder to leave, but a protected path or a restricted file still stops the handoff', () => {
+  assert.equal(conflictHandoff(['src/a.ts'], { within: '.', change: '1-x' }).ok, true);
+  const hard = conflictHandoff(['src/a.ts', '.github/workflows/ci.yml'], { within: '.', change: '1-x' });
+  assert.deepEqual(hard.outside.map((o) => o.path), ['.github/workflows/ci.yml']);
+  assert.match(hard.outside[0].reason, /protected path/);
+  assert.match(conflictHandoff(['.env.production'], { within: '.', change: '1-x' }).outside[0].reason, /restricted file/);
+});
+
+test('a dependency file in conflict is handed over only when the issue allows it', () => {
+  assert.equal(conflictHandoff(['package-lock.json'], { within: '.', change: '1-x' }).ok, false);
+  assert.match(conflictHandoff(['package-lock.json'], { within: '.', change: '1-x' }).outside[0].reason, /Allow-paths/);
+  assert.equal(conflictHandoff(['package-lock.json'], { within: '.', change: '1-x', allow: ['package-lock.json'] }).ok, true);
+});
+
+test('no conflicts is a handoff that is fine', () => {
+  assert.deepEqual(conflictHandoff([], { within: 'apps/web', change: '1-x' }), { ok: true, paths: [], outside: [] });
+});
+
+test('the script answers the question of review in JSON and exits 1 when a file may not go to the agent', () => {
+  const run = (input, ...args) => spawnSync('node', [CLI, '--handoff', '--paths', ...args], { input, encoding: 'utf8' });
+  const ok = run('apps/web/src/a.ts\n', '--within', 'apps/web', '--change', '1-x');
+  assert.equal(ok.status, 0);
+  assert.equal(JSON.parse(ok.stdout).ok, true);
+  const bad = run('apps/web/src/a.ts\napps/api/b.ts\n', '--within', 'apps/web', '--change', '1-x');
+  assert.equal(bad.status, 1);
+  assert.deepEqual(JSON.parse(bad.stdout).outside.map((o) => o.path), ['apps/api/b.ts']);
+  assert.equal(run('package.json\n', '--within', '.', '--allow', 'package.json').status, 0);
+});

@@ -33,7 +33,10 @@ test('Scenario: QA starts / Retry after a rejection - go announces each phase at
   assert.deepEqual([...new Set(calls.map((c) => c.phase))].sort(), [...PHASES].sort(), 'every phase of the specification is announced, and no other');
   const qa = calls.find((c) => c.step.startsWith('5. QA'));
   assert.match(qa.flags, /--attempt 1 --of <qa_retries \+ 1>/);
-  assert.match(skill, /announce `phase development --attempt <k> --of <qa_retries>`, and before the QA that follows it `phase qa --attempt <k \+ 1> --of <qa_retries \+ 1>`/);
+  // The retries are announced by the shared procedure of QA.
+  const ref = readFileSync(`${root}skills/go/references/qa-run.md`, 'utf8');
+  assert.match(ref, /announce `phase development --attempt <n> --of <qa_retries>`/);
+  assert.match(ref, /announcing `phase qa --attempt <n \+ 1> --of <qa_retries \+ 1>`/);
 });
 
 test('the announcement is best effort: the skill says so and never makes it a reason to stop', () => {

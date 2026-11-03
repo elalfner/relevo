@@ -9,6 +9,7 @@ const root = (p) => new URL(`../${p}`, import.meta.url);
 const text = readFileSync(root('skills/go/SKILL.md'), 'utf8');
 const [, front, body] = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 const meta = parse(front);
+const ref = readFileSync(root('skills/go/references/qa-run.md'), 'utf8');
 
 // Claude Code ignores unknown skill fields silently, so a typo would disable a setting unnoticed.
 const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'arguments', 'disable-model-invocation', 'user-invocable',
@@ -18,7 +19,7 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 test('frontmatter uses only documented fields', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
   assert.equal(meta.name, 'go');
-  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--decision <base64>]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
 });
 
 test('go pushes code and spends money, so Claude can never start it on its own', () => {
@@ -39,9 +40,11 @@ test('the checklist comes from the shared script, so go and review always agree'
 });
 
 test('every agent the skill launches exists', () => {
-  const agents = [...body.matchAll(/`relevo:(\w+)`/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(agents)].sort(), ['dev', 'qa']);
+  const agents = [...body.matchAll(/`relevo:([a-z-]+)`/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(agents)].sort(), ['dev', 'qa-code', 'qa-interface', 'qa-security', 'qa-spec']);
   new Set(agents).forEach((a) => assert.ok(existsSync(root(`agents/${a}.md`)), `agents/${a}.md is missing`));
+  assert.equal(existsSync(root('agents/qa.md')), false, 'the former QA agent is gone');
+  [...ref.matchAll(/`relevo:([a-z-]+)`/g)].filter((m) => m[1] !== 'qa-notes').forEach((m) => assert.ok(existsSync(root(`agents/${m[1]}.md`)), `the reference launches ${m[1]}, which is missing`));
 });
 
 test('every go-plan flag the skill uses is implemented', () => {
@@ -111,8 +114,10 @@ test('Scenario: No documentation section - no task and nothing else is documente
 });
 
 test('Scenario: the skill runs the shared scripts for the rules that must not vary', () => {
-  ['preflight.mjs', 'issue-hash.mjs', 'branch-state.mjs', 'spec-ready.mjs', 'intent-to-add.mjs', 'commit-change.mjs', 'next-step.mjs']
+  ['preflight.mjs', 'issue-hash.mjs', 'branch-state.mjs', 'spec-ready.mjs', 'commit-change.mjs', 'next-step.mjs']
     .forEach((s) => assert.match(body, new RegExp(`scripts/${s.replace('.', '\\.')}`), `the skill does not run ${s}`));
+  ['intent-to-add.mjs', 'validation-gate.mjs', 'receipt-check.mjs', 'lens-plan.mjs', 'qa-aggregate.mjs']
+    .forEach((s) => assert.match(ref, new RegExp(`scripts/${s.replace('.', '\\.')}`), `the procedure of QA does not run ${s}`));
 });
 
 test('the developer is driven by the apply instructions and the run is cut by the runner, not by the agent', () => {
@@ -125,12 +130,43 @@ test('every failure reason of the specification is named in the failure path', (
     'possible credential or temporary marker in the diff', 'QA rejected after the retries'].forEach((r) => assert.ok(body.includes(r), r));
 });
 
+test('Scenario: Nothing the developer can fix - the retries are skipped and the class goes to the failure comment', () => {
+  assert.match(ref, /qa-aggregate\.mjs --plan/);
+  assert.match(ref, /`all_non_fixable` is `true`/);
+  assert.match(ref, /\*\*do not retry\*\*/);
+  assert.ok(body.includes('QA rejected: nothing the developer agent can fix'), 'the new reason is named');
+  assert.ok(ref.includes('QA rejected: nothing the developer agent can fix'), 'the procedure names it too');
+  assert.match(ref, /`finding_class`/);
+  assert.match(ref, /`retries_skipped`/);
+  assert.match(ref, /counts as `fixable`/, 'a finding without a class retries as before');
+});
+
+test('Scenario: A mixed report - the retries run and the class of the first finding that cannot be fixed is named', () => {
+  assert.match(ref, /first_non_fixable_class/);
+  assert.match(ref, /Otherwise, if `<n>` is below `<qa_retries> \+ 1`/);
+});
+
+test('the work is kept when the retries were skipped, as it is after the retries', () => {
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
+});
+
+test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
+  assert.match(body, /build-preflight\.mjs --stage spec --issue-file <issue_file> --change-dir openspec\/changes\/<change_id>/);
+  assert.match(body, /with `reason` `policy`/);
+  assert.match(body, /this check only saves cost, and the commit script and QA refuse the same paths later/);
+  assert.ok(body.indexOf('--stage spec') < body.indexOf('### 4. Build'), 'the check runs before the build step');
+  assert.ok(body.indexOf('--stage spec') < body.indexOf('docs: specification for #<issue>'), 'and before the specification is committed');
+});
+
+test('Scenario: An input that a person confirms - the built message receives it from the workflow', () => {
+  assert.match(body, /`inputs_to_confirm` \(the value of the environment variable `RELEVO_INPUTS_TO_CONFIRM`/);
+});
+
 test('Scenario: the profile and the role skills come from scripts, and the skill names no stack', () => {
   assert.match(body, /scripts\/stack-profile\.mjs/);
   assert.match(body, /scripts\/role-skills\.mjs --role dev/);
   assert.match(body, /scripts\/role-skills\.mjs --role qa/);
   assert.match(body, /failure path with the reason `profile not resolved`/);
-  assert.match(body, /`generated` list/);
   assert.doesNotMatch(body, /\.g\.dart|\.freezed\.dart|flutter/i, 'the skill must not name the generated files or tools of one stack');
   const source = readFileSync(root('scripts/role-skills.mjs'), 'utf8');
   [...body.matchAll(/role-skills\.mjs([^\n`]*)/g)].flatMap((m) => [...m[1].matchAll(/--([a-z]+)/g)].map((f) => f[1]))
@@ -187,7 +223,7 @@ test('Scenario: Review stays in the main working tree - the go skill does not to
 test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does not build in the session', () => {
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--local`\*\*, do not build in this session: run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`/);
   assert.match(body, /show what it prints, and stop/);
-  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--decision <base64>]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
 });
 
 // ---------- issue format v2
@@ -212,7 +248,8 @@ test('Scenario: Question left in the issue - a hand-run takes the ambiguous path
 });
 
 test('QA receives the saved body of the issue to compare the copied sections', () => {
-  assert.match(body, /`<issue_file>` \(the saved body of the issue, to compare the copied sections\)/);
+  assert.match(ref, /`<issue_file>` \(the saved body of the issue\)/);
+  assert.match(ref, /`spec`: the change folder, `<issue_file>`/);
 });
 
 // ---------- design reference
@@ -231,7 +268,7 @@ test('Scenario: Reference in the repository / Attachment - go fetches what the i
 test('Scenario: Refused reference in the cloud / Local run - go reads the manifest of the fetch step, and fetches only when it is not set', () => {
   assert.match(body, /`RELEVO_REFERENCES` is set: a step before you already fetched them, with a token you do not have\. Do not run the fetcher again\./);
   assert.match(body, /\*\*Otherwise\*\* \(a local run\) fetch them yourself/);
-  assert.match(body, /a `## Code pointers` bullet that names a file of another repository as `owner\/repo:path`/);
+  assert.match(body, /a `## Code pointers` bullet, or a `link` bullet of `## External inputs`, that names a file of another repository as `owner\/repo:path`/);
 });
 
 test('Scenario: Reason word for word - the reason of a refused reference reaches the issue unchanged', () => {
@@ -276,4 +313,62 @@ test('Scenario: A restricted file that is already versioned - the skill checks t
 test('a restricted file versioned on the base branch is reported as that, not as part of the change', () => {
   const body = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
   assert.match(body, /versioned on the base branch/);
+});
+
+test('Scenario: Local flag with retry - the skill passes --retry to go-local.mjs and to the planner', () => {
+  assert.match(body, /go-local\.mjs <issue>` \(with `--retry` when `\$ARGUMENTS` has it\)/);
+  assert.match(body, /\*\*When `\$ARGUMENTS` has `--retry`\*\*/);
+  assert.match(body, /--only <issue> --retry --apply --claim/);
+  assert.match(body, /a branch means `\/relevo:fix <issue>`/);
+});
+
+test('the failure for a versioned restricted file takes the recovery restricted, which no command fixes', () => {
+  assert.match(text, /`recovery` `restricted`/);
+  assert.match(text, /fix\|delete-branch\|restricted/);
+});
+
+test('Scenario: the interface rules are selected after the specification and given to each agent with the line it needs', () => {
+  assert.match(body, /interface-rules\.mjs --role dev --platform <platform> --text-file <issue_file>/);
+  assert.match(body, /interface-rules\.mjs --role qa --platform <platform> --text-file <issue_file>/);
+  assert.match(body, /Each prints nothing for a stack with no interface/);
+  assert.match(body, /the "build it like this" lines and the examples of the stack/);
+  assert.match(body, /the "check this" lines/);
+  assert.match(body, /the count of rules left out/);
+  assert.match(body, /the interface rules for `dev`/);
+  assert.match(body, /keep the output of `--role qa` for the `interface` lens/);
+  assert.match(ref, /interface-rules\.mjs --role qa --platform <platform> --text-file <issue_file>/);
+});
+
+test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
+  const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
+  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);
+  OUTCOME_CLASSES.forEach((c) => assert.ok(body.includes(`\`${c}\``), `the skill names the class ${c}`));
+  assert.match(body, /best-effort command/);
+});
+
+test('Scenario: the reference of QA exists and names each step, and go, fix and review read it', () => {
+  assert.ok(existsSync(root('skills/go/references/qa-run.md')));
+  [
+    ['the gate', /validation-gate\.mjs --base origin\/<base>/], ['a red gate uses an attempt', /A red gate uses an attempt/], ['could not run', /`automated validation could not run`/],
+    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['one at a time, in the foreground', /one at a time, in the foreground/],
+    ['the model of the lens', /agents\.qa\.<lens>\.model/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
+    ['an invalid report is asked again once', /Ask that lens again, once/], ['a second invalid report', /`lens report invalid`/], ['the advisory notes', /`qa_notes`/], ['the receipt is not a boundary', /not a defence against an agent that writes a false file/],
+  ].forEach(([what, re]) => assert.match(ref, re, what));
+  assert.match(body, /skills\/go\/references\/qa-run\.md/);
+  assert.match(body, /Announce the phase when the gate starts: `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/progress\.mjs phase qa --attempt 1 --of <qa_retries \+ 1>`/);
+  for (const s of ['fix', 'review']) assert.match(readFileSync(root(`skills/${s}/SKILL.md`), 'utf8'), /skills\/go\/references\/qa-run\.md/, s);
+});
+
+test('Scenario: the hand-off carries the advisory notes of QA', () => {
+  assert.match(body, /Add `qa_notes` \(the `advisory` list of the aggregation of step 5, as `\{ lens, text \}` items\)/);
+});
+
+test('Scenario: Model and effort of a role - go, fix, review and the shared QA procedure pass them as parameters of the Agent tool', () => {
+  const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+  for (const p of ['skills/go/SKILL.md', 'skills/fix/SKILL.md', 'skills/review/SKILL.md', 'skills/go/references/qa-run.md']) {
+    const text = read(p);
+    assert.match(text, /`model` and (the )?`effort`|model\*\* and the \*\*effort\*\*/, `${p} names the model and the effort`);
+    assert.match(text, /Agent tool/, `${p} says where they go`);
+  }
+  assert.doesNotMatch(read('skills/go/references/qa-run.md'), /unless the runtime lets you set it at launch/, 'the effort is no longer left to the agent file');
 });

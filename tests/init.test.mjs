@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WORKFLOW_FILES, recommendedSkillFacts } from '../scripts/lib/doctor.mjs';
+import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, recommendedSkillFacts } from '../scripts/lib/doctor.mjs';
 import { mergeWebHook, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { claudeProposal, mergeAgyDenials, mergeClaudeDenials, missingClaudeEntries, restrictedFacts } from '../scripts/lib/restricted-settings.mjs';
@@ -425,6 +425,48 @@ test('a settings file that is not a JSON object is never rewritten', () => {
   assert.throws(() => mergeWebHook('{ not json'));
   assert.throws(() => mergeWebHook('[]'), /not a JSON object/);
   assert.throws(() => mergeWebHook('{"hooks":{"SessionStart":{}}}'), /not a list/);
+});
+
+// ---- the Relevo plugin in web sessions
+
+test('Scenario: A repository without the plugin hook - an install line that shows the hook, never applied by the script', () => {
+  const it = get(plan(bare({ webPluginHook: { declared: false } })), 'install.web-plugin-hook');
+  assert.equal(it.status, 'todo');
+  assert.equal(it.install, true);
+  assert.equal(it.hook, WEB_PLUGIN_HOOK_COMMAND);
+  assert.match(it.command, /web-hook\.mjs --hook plugin/);
+  assert.match(renderPlan([it]), /\[will do\] Add a hook that installs the Relevo plugin at the start of a web session/);
+  const calls = [];
+  applyPlan([it], { repo: 'o/r', io: { gh: (a) => calls.push(a), write: (p) => calls.push(p), append: (p) => calls.push(p) } });
+  assert.deepEqual(calls, []);
+});
+
+test('Scenario: A repository that already has the plugin hook - reported as in place; unreadable - a manual step', () => {
+  assert.equal(get(plan(bare({ webPluginHook: { declared: true } })), 'install.web-plugin-hook').status, 'ok');
+  assert.equal(get(plan(bare({ webPluginHook: { unreadable: true } })), 'install.web-plugin-hook').status, 'manual');
+  assert.equal(get(plan(bare()), 'install.web-plugin-hook'), undefined, 'without the fact there is no line');
+});
+
+test('the plugin hook runs only in a remote session, installs at the project scope and never fails the session', () => {
+  assert.match(WEB_PLUGIN_HOOK_COMMAND, /^\[ "\$CLAUDE_CODE_REMOTE" = "true" \]/);
+  assert.match(WEB_PLUGIN_HOOK_COMMAND, /claude plugin marketplace add elalfner\/relevo --sparse \.claude-plugin --scope project/);
+  assert.match(WEB_PLUGIN_HOOK_COMMAND, /claude plugin install relevo@relevo --scope project/);
+  assert.match(WEB_PLUGIN_HOOK_COMMAND, /\|\| true$/);
+});
+
+test('Scenario: Both hooks in one file - each is added next to the other settings, once, and the other kind is kept', () => {
+  const before = JSON.stringify({ attribution: { commit: '' }, hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo hi' }] }] } });
+  const withPlugin = mergeWebHook(before, 'plugin');
+  const after = JSON.parse(withPlugin);
+  assert.deepEqual(after.attribution, { commit: '' });
+  assert.equal(after.hooks.SessionStart.length, 2);
+  assert.deepEqual(after.hooks.SessionStart[0], JSON.parse(before).hooks.SessionStart[0]);
+  assert.equal(after.hooks.SessionStart[1].hooks[0].command, WEB_PLUGIN_HOOK_COMMAND);
+  assert.equal(mergeWebHook(withPlugin, 'plugin'), withPlugin, 'merging twice adds nothing twice');
+  const both = JSON.parse(mergeWebHook(withPlugin));
+  assert.deepEqual(both.hooks.SessionStart.map((e) => e.hooks[0].command), ['echo hi', WEB_PLUGIN_HOOK_COMMAND, WEB_HOOK_COMMAND]);
+  assert.throws(() => mergeWebHook(before, 'nope'), /unknown hook/);
+  assert.throws(() => mergeWebHook('{ not json', 'plugin'));
 });
 
 // ---- the agent that builds in the cloud
@@ -949,4 +991,22 @@ test('Scenario: Antigravity in use with the skills only under .claude/skills - t
   const items = recItems(skillFactsFor(SET.map((n) => `app/.claude/skills/${n}`), [{ scope: 'project' }]));
   assert.equal(get(items, 'install.recommended.flutter.claude').status, 'ok');
   assert.match(get(items, 'install.recommended.flutter.antigravity.app').command, /--agent universal/);
+});
+
+// ---- agent settings with Antigravity (specialist-review-lenses)
+test('Scenario: Init with Antigravity - the plan carries the warning that the setting is not applied, and goes on', () => {
+  const withConfig = (agent, given) => bare({ config: { ...loadConfig(template).config, agent: { build: agent }, agents_given: given } });
+  const items = plan(withConfig('antigravity', ['agents.qa.security.model', 'agents.dev.effort']));
+  const warning = get(items, 'warn.agent-settings');
+  assert.equal(warning.status, 'warning');
+  assert.match(warning.description, /Not applied with this agent: agents\.qa\.security\.model, agents\.dev\.effort/);
+  assert.match(renderPlan(items), /\[warning\] Not applied with this agent/);
+  assert.equal(get(plan(withConfig('claude', ['agents.dev.model'])), 'warn.agent-settings'), undefined);
+  assert.equal(get(plan(withConfig('antigravity', [])), 'warn.agent-settings'), undefined);
+});
+
+test('Scenario: A new configuration file - the three design system keys appear commented out with their explanation', () => {
+  assert.match(template, /^ {2}# system: .*interface step/m);
+  ['tokens', 'components', 'references'].forEach((k) => assert.match(template, new RegExp(`#\\s+${k}: \\[\\]\\s+# \\S`)));
+  assert.equal(loadConfig(template).ok, true);
 });

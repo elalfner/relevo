@@ -47,6 +47,19 @@ qa:
   retries: 1                       # developer attempts after QA rejects
   rules_from: CLAUDE.md            # project rules QA reads at every run
 
+# The model and the effort of the developer agent and of each QA reviewer (lens). The values below are the defaults.
+# Two reviewers use the stronger model by default; set `spec` and `security` to `sonnet` to keep the cost QA had before.
+# With agent.build antigravity these are accepted and not applied (doctor and init say so). No key turns a reviewer off.
+# agents:
+#   dev:
+#     model: sonnet
+#     effort: high
+#   qa:
+#     spec:      { model: opus,   effort: high }
+#     security:  { model: opus,   effort: high }
+#     code:      { model: sonnet, effort: high }
+#     interface: { model: sonnet, effort: medium }
+
 evidence:
   policy: attach_to_pr             # attach_to_pr | local_only (use for sensitive data)
 
@@ -55,6 +68,10 @@ digest:
 
 design:
   images: false        # true: a picture pasted into an issue is downloaded and shown to the model (it may hold customer data); files in the repository are always available
+  # system:                        # where the design system lives; the interface step of `think` reads only these paths
+  #   tokens: []                   # files or folders with the colours, spacing and type styles (a theme file, a CSS file of variables)
+  #   components: []               # folders with the reusable components that a new screen should use
+  #   references: []               # folders with screenshots or sketches to look at, inside the repository
 
 language: en                       # language of hand-off messages (en, es)
 trust: private-team                # private-team | public

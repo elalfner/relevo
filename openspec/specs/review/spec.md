@@ -269,7 +269,7 @@ Before it opens a pull request, `review` SHALL look for one for the branch; if i
 - **THEN** the review stops, says why and force-pushes nothing
 
 ### Requirement: The review picks its adapter from the platform and the target
-`review` SHALL resolve, from the platform of the issue and its target, how the review obtains its log and captures and whether it can be driven: a device with `adb` for Flutter on `android`, a simulator with `xcrun` for Flutter on `ios` (macOS only), a browser for `web`, and the `api` adapter for a stack with no targets that has one (Laravel). A combination without an adapter SHALL stop the review before it changes anything, naming what is missing, which adapters exist and what the person can do next. When the adapter is a browser and `review.autopilot` is `off`, the stop message SHALL recommend `verify`, with `precheck` as the cautious option, in the language of `relevo.yml`.
+`review` SHALL resolve, from the platform of the issue and its target, how the review obtains its log and captures and whether it can be driven: a device with `adb` for Flutter on `android`, a simulator with `xcrun` for Flutter on `ios` (macOS only), a browser for `web`, and the `api` adapter for a stack with no targets that has one (Laravel and Supabase). A combination without an adapter SHALL stop the review before it changes anything, naming what is missing, which adapters exist and what the person can do next. When the adapter is a browser and `review.autopilot` is `off`, the stop message SHALL recommend `verify`, with `precheck` as the cautious option, in the language of `relevo.yml`.
 
 #### Scenario: Android device
 - **WHEN** the platform is Flutter with the target `android`
@@ -287,9 +287,13 @@ Before it opens a pull request, `review` SHALL look for one for the branch; if i
 - **WHEN** the platform has the stack `laravel`, which defines no targets
 - **THEN** the adapter is `api`, and the review does not need `review.autopilot` other than `off`
 
+#### Scenario: Supabase
+- **WHEN** the platform has the stack `supabase`, which defines no targets
+- **THEN** the adapter is `api`, driven by `supabase test db`, and the review does not need `review.autopilot` other than `off`
+
 #### Scenario: No adapter
 - **WHEN** the combination has no adapter, or the tool it needs is missing
-- **THEN** `review` stops before changing anything, says what to install or that it is not supported yet, names the adapters that exist, says that the issue stays `built`, and says that a stack the plugin ships can tune its review in its profile
+- **THEN** `review` stops before changing anything, says what to install or that it is not supported yet, names the adapters that exist (Flutter on Android, Flutter on web, Vue on web, Laravel and Supabase), says that the issue stays `built`, and says that a stack the plugin ships can tune its review in its profile
 
 ### Requirement: Who drives the review is a setting, and the person always closes the loop
 `review.autopilot` SHALL be `off` (the person does everything), `precheck` (the agent walks the lines, takes captures, audits and records its result per line apart from the person's confirmation; the person confirms every line) or `verify` (as `precheck`, and the agent may mark a line `ok (auto)` only when its `THEN` was verified by an assertion, a semantic finder, the log or the exit code of a project command; the person confirms the rest and gives the agreement). A line checked only by reading code, CI configuration or documentation SHALL be pre-checked, never marked automatically. The pull request SHALL list the lines verified automatically.
@@ -568,26 +572,42 @@ For the `api` adapter the review SHALL need no device, no browser and no capture
 - **THEN** the agent says that this adapter takes none and records nothing
 
 ### Requirement: The agent proves a line of an api review with an existing test
-With `review.autopilot` `precheck` or `verify`, the agent SHALL prove a line of an `api` review only by running the feature test that already covers its scenario, never by writing or editing a test, and SHALL record the filter it used, the number of tests that ran and the exit code. A run that matched no test SHALL be a failed proof. With `verify` a line SHALL be marked `ok (auto)` only when the exit code proves its `THEN`; a line with no covering test, or one whose test does not assert its `THEN`, SHALL stay for the person.
+With `review.autopilot` `precheck` or `verify`, the agent SHALL prove a line of an `api` review only by running the test that already covers its scenario (a feature test selected by a filter, or, for Supabase, a pgTAP file passed to `supabase test db`), never by writing or editing a test, and SHALL record the filter or file it used, the number of tests or assertions that ran and the exit code. A run that matched no test or no file, or whose pgTAP plan ran no assertion, SHALL be a failed proof. For Supabase the agent SHALL also record the names of the assertions of the file that cover the `THEN` of the line, and the proof SHALL fail unless the run has at least one covered name, every covered name appears in the pgTAP file and none of them is among the failing assertions of the run; the pull request SHALL list the covered names for each line proved. With `verify` a line SHALL be marked `ok (auto)` only when the exit code proves its `THEN`; a line with no covering test, or one whose test does not assert its `THEN`, SHALL stay for the person.
 
 #### Scenario: A test covers the line
 - **WHEN** `review.autopilot` is `verify` and the test for line 2 ran once and exited 0
 - **THEN** line 2 is `ok (auto)` and the pull request lists it with the test name
+
+#### Scenario: A pgTAP file covers the line
+- **WHEN** `review.autopilot` is `verify`, the platform is Supabase and `supabase test db supabase/tests/orders_rls.test.sql` ran 4 assertions, exited 0 and the run names the assertion `anon cannot insert orders` of that file as covering the line
+- **THEN** the line that file covers is `ok (auto)` and the pull request lists it with the file, the count and the covered name
 
 #### Scenario: Precheck
 - **WHEN** `review.autopilot` is `precheck` and the test for line 2 exited 0
 - **THEN** line 2 is recorded as pre-checked and stays pending until the person confirms it
 
 #### Scenario: A filter that matches nothing
-- **WHEN** the filter matched no test
+- **WHEN** the filter matched no test, the file does not exist, or the pgTAP file ran no assertion
 - **THEN** the proof fails, the line stays pending and the agent says no test was found
 
 #### Scenario: No test for the line
 - **WHEN** no test of the project covers a line
 - **THEN** the agent does not write one, and the line is left to the person with a note that it has no test
 
+#### Scenario: A pgTAP run that names no covering assertion
+- **WHEN** the platform is Supabase and the run for the line exited 0 with assertions but names none as covering it
+- **THEN** `precheck` and `auto` refuse the line and say that a covering assertion must be named
+
+#### Scenario: A covered name that is not in the file
+- **WHEN** the run names `anon cannot read invoices` as covering the line and the pgTAP file has no assertion with that name
+- **THEN** the proof fails and the line stays for the person
+
+#### Scenario: A covered assertion that failed
+- **WHEN** the run names an assertion as covering the line and that assertion is among the failing ones
+- **THEN** the proof fails, whatever the exit code of the other assertions
+
 ### Requirement: The audit of an api review reads the log since the review started
-For the `api` adapter the audit SHALL read only what the project's log files received since the review started, recorded as an offset per file when the state is created, SHALL treat a file that appears later as new from its start, and SHALL NOT truncate or delete a log. It SHALL report a file it could not read.
+For the `api` adapter the audit SHALL read only what the project's log received since the review started, SHALL NOT truncate, delete, restart or recreate it, and SHALL report a source it could not read. When the log is made of files, the start SHALL be an offset per file recorded when the state is created, and a file that appears later SHALL be read from its start. When the log is a container's (`docker:<name>`), the start SHALL be a timestamp recorded when the state is created and the audit SHALL read what the container wrote since then.
 
 #### Scenario: Entries from before the review
 - **WHEN** the log already had an unhandled exception before the review started and none after
@@ -597,9 +617,13 @@ For the `api` adapter the audit SHALL read only what the project's log files rec
 - **WHEN** the project writes `laravel-<date>.log` and a new file appears after the review started
 - **THEN** the audit reads the new file from its start
 
+#### Scenario: Container log
+- **WHEN** the platform is Supabase and the review started at 10:00:00
+- **THEN** the audit reads the log of the local database container from 10:00:00, and an error the container logged at 09:59 is not a finding
+
 #### Scenario: Unreadable file
-- **WHEN** a log file named by the setting cannot be read
-- **THEN** the report says which file and why, and the verdict is not `REVIEW PASSED` on that file's account
+- **WHEN** a log file named by the setting cannot be read, or the container does not exist
+- **THEN** the report says which source and why, and the verdict is not `REVIEW PASSED` on that source's account
 
 ### Requirement: A recorded test run proves an api review whose log is quiet
 For the `api` adapter, an empty log slice SHALL be `REVIEW INCONCLUSIVE` only when no test run is recorded in the review state, and SHALL be `REVIEW PASSED` when a run is recorded and the latest run of each line or filter exited 0, so a run repeated after a fix replaces the one before. A latest run with a non-zero exit code SHALL be `REVIEW REJECTED` and name the failing tests. The log slice SHALL still be scanned for unhandled exceptions, server errors and database errors. A run told by the person SHALL be recorded as the person's, and the pull request SHALL say which runs were the person's and which the agent's.
@@ -629,7 +653,7 @@ For the `api` adapter, an empty log slice SHALL be `REVIEW INCONCLUSIVE` only wh
 - **THEN** the waiver is refused
 
 ### Requirement: An api review checks its tools and the test database before running
-Before an `api` review runs a test, the review SHALL check that PHP and Composer can be found, that the installed dependencies match the lock file, and which database the test configuration declares, without reading the real environment files. A database other than in-memory SQLite, or one the test configuration does not declare, SHALL need the person's written confirmation that it is not production before any test or server runs. The review SHALL install nothing; for missing dependencies it SHALL give the command for the person to run.
+Before an `api` review runs a test, the review SHALL check the tools of its stack without reading the real environment files. For Laravel it SHALL check that PHP and Composer can be found, that the installed dependencies match the lock file, and which database the test configuration declares; a database other than in-memory SQLite, or one the test configuration does not declare, SHALL need the person's written confirmation that it is not production before any test or server runs. For Supabase it SHALL check that the Supabase CLI can be found, that the Docker daemon answers, that `supabase/config.toml` exists and that the local stack is running; it SHALL need no confirmation about the database because the tests only ever run against the local containers. The review SHALL install and start nothing without showing it in the plan of the walk; for a missing tool or dependency it SHALL give the command for the person to run.
 
 #### Scenario: In-memory SQLite
 - **WHEN** the test configuration declares `sqlite` and `:memory:`
@@ -646,6 +670,22 @@ Before an `api` review runs a test, the review SHALL check that PHP and Composer
 #### Scenario: Missing dependencies
 - **WHEN** `vendor/` does not exist
 - **THEN** the review stops, runs no installer and gives the Composer command for the person to run
+
+#### Scenario: Supabase ready
+- **WHEN** the CLI is found, Docker answers, `supabase/config.toml` exists and the local stack is running
+- **THEN** the check passes and no confirmation is asked
+
+#### Scenario: Docker not running
+- **WHEN** the Supabase CLI is found and the Docker daemon does not answer
+- **THEN** the review stops before running a test and tells the person to start Docker
+
+#### Scenario: Local stack stopped
+- **WHEN** the CLI and Docker are fine and the local stack is not running
+- **THEN** the review says so; with `review.autopilot` `off` it asks the person to run `supabase start`, and with `precheck` or `verify` it lists `supabase start` in the plan of the walk and runs it only after the person confirms, and it stops only a stack it started
+
+#### Scenario: Missing config
+- **WHEN** `supabase/config.toml` does not exist in the folder of the platform
+- **THEN** the review stops, runs nothing and says to run `supabase init` or to check the platform's path
 
 ### Requirement: An api review may start its own server on its own port
 When the profile's `review` block names a `serve` command, the agent MAY, with `review.autopilot` `precheck` or `verify` and after the person confirmed the data, start that server on a free localhost port through the script that records and stops it, wait until its URL answers, and stop only the servers it recorded. Every server SHALL be listed in the plan of the walk before the person confirms. The review SHALL reach only `localhost` on that port. Without a `serve` command the agent SHALL start no server.
@@ -676,3 +716,72 @@ Before it switches to the branch of the issue, `review` SHALL check whether anot
 #### Scenario: Review in a worktree of its own
 - **WHEN** the person runs `review` in a worktree where the branch of the issue is free
 - **THEN** `review` switches to the branch there and goes on as in the main checkout
+
+### Requirement: A Supabase review only touches the local database
+For the `supabase` stack the review SHALL run `supabase test db` and `supabase db lint` only against the local containers. A command of the review SHALL NOT carry `--linked` or `--db-url`, SHALL NOT run `supabase link`, `supabase db push`, `supabase db pull`, `supabase db reset --linked` or any command that reaches a remote project, and SHALL NOT read `.env` files or `supabase/.temp`. A `review.test` that names one of those flags SHALL be refused.
+
+#### Scenario: Linked project
+- **WHEN** the folder of the platform is linked to a remote project
+- **THEN** the review runs its tests against the local containers, never with `--linked`, and says nothing about the remote project
+
+#### Scenario: Test command that targets a remote database
+- **WHEN** `review.test` in `.relevo/stacks/supabase.md` is `supabase test db --linked`
+- **THEN** resolving the profile fails and names the key
+
+#### Scenario: Agent asked to push
+- **WHEN** a line of the checklist says to apply the migration to the staging project
+- **THEN** the agent does not run it, and the line is left to the person with a note that a review is local only
+
+### Requirement: The audit of a Supabase review separates expected denials from errors
+For the `supabase` stack the audit SHALL classify what the database container logged since the review started. `FATAL`, `PANIC`, a detected deadlock and an out-of-memory message SHALL be findings, except the single entry `FATAL:  role "postgres" does not exist`, which `supabase db reset` writes while it recreates the database: that entry SHALL be counted and listed in the report as an expected startup entry and SHALL NOT be a finding. An `ERROR` whose message is a permission denial (`permission denied`), a row-level security violation (`violates row-level security policy`) or a constraint violation (`violates ... constraint`, `duplicate key`) SHALL be counted and listed in the report as an expected denial and SHALL NOT be a finding while a recorded run exited 0. Any other `ERROR` SHALL be a finding. The audit SHALL NOT assume that a pgTAP test of a policy writes its denials to the log: a denial caught by `throws_ok` is not logged, and the report SHALL say that the proof of a denial is the recorded run and its assertions, not the log. The person MAY waive a finding with a reason, as in any `api` review.
+
+#### Scenario: Denial provoked by a policy test
+- **WHEN** a run exited 0 and the slice has three `new row violates row-level security policy` errors
+- **THEN** the report lists three expected denials and the verdict can be `REVIEW PASSED`
+
+#### Scenario: Policy test that logs nothing
+- **WHEN** a run exited 0 with assertions and the slice has only `create extension` and `drop extension` statements
+- **THEN** the verdict can be `REVIEW PASSED` and the report says that no denial appears in the log and that the run is the proof
+
+#### Scenario: Denials with a failing run
+- **WHEN** a run exited non-zero and the slice has `permission denied` errors
+- **THEN** the verdict is `REVIEW REJECTED` on the run, and the report names the failing assertions
+
+#### Scenario: Other error
+- **WHEN** a run exited 0 and the slice has `ERROR: relation "orders" does not exist` or a syntax error
+- **THEN** the verdict is `REVIEW REJECTED` and the finding can be waived by the person with a reason
+
+#### Scenario: Fatal
+- **WHEN** the slice has a `FATAL` or `PANIC` entry other than the startup entry of a database reset
+- **THEN** the verdict is `REVIEW REJECTED`
+
+#### Scenario: Database reset with a good migration
+- **WHEN** a run exited 0 and the slice holds the log of a `supabase db reset`, with `FATAL:  role "postgres" does not exist` and no other `FATAL` or `ERROR`
+- **THEN** the report lists the entry as an expected startup entry and the verdict can be `REVIEW PASSED`
+
+#### Scenario: Database reset with a broken migration
+- **WHEN** the slice holds the log of a `supabase db reset` whose migration has a syntax error
+- **THEN** the verdict is `REVIEW REJECTED` on the `ERROR` of the migration, and the startup entry is not a finding
+
+### Requirement: A pgTAP run is recorded with its assertions
+For the `supabase` stack a recorded run SHALL carry the file or files passed to `supabase test db` (or none for the whole suite), the number of assertions that ran, the names of the assertions that failed and the exit code. The number of assertions SHALL be read from the summary line `Files=F, Tests=N` (a passing run prints no `ok N` lines) and the failing names from `# Failed test N: "name"` lines, or from `not ok` lines when the output has them. A run whose output has no assertion (`Tests=0`, `skipped` or `No tests run!`), or whose plan was not completed (`Bad plan`, `Looks like you planned`), SHALL count as a run that ran no test. A run told by the person (`ran <exit code>`) SHALL be recorded as the person's, without assertions, and the pull request SHALL say which runs were the person's and which the agent's.
+
+#### Scenario: Passing run
+- **WHEN** the output ends with `All tests successful.`, `Files=1, Tests=4` and `Result: PASS`
+- **THEN** the run is recorded with exit 0 and 4 assertions
+
+#### Scenario: Failing assertion
+- **WHEN** the output has `# Failed test 1: "orders is gone"` and `Failed 1/4 subtests`
+- **THEN** the run is recorded with exit non-zero, 4 assertions and that name as failing
+
+#### Scenario: Plan not completed
+- **WHEN** the output says `# Looks like you planned 3 tests but ran 2`
+- **THEN** the run is recorded as failed, whatever the exit code
+
+#### Scenario: File that ran no assertion
+- **WHEN** the output has `No tests run!` or `Files=1, Tests=0`
+- **THEN** the run is recorded as a run that ran no test
+
+#### Scenario: Run told by the person
+- **WHEN** the person says `ran 0`
+- **THEN** the run is recorded as the person's, and the pull request says that no assertions were counted

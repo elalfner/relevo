@@ -1,0 +1,5 @@
+192.168.107.1 2026-11-03 04:59:34.002 UTC [301] postgres@postgres LOG:  statement: drop extension if exists pgtap
+192.168.107.1 2026-11-03 04:59:34.786 UTC [305] postgres@postgres LOG:  statement: create extension if not exists pgtap with schema extensions
+192.168.107.6 2026-11-03 04:59:35.113 UTC [307] postgres@postgres ERROR:  relation "public.no_such_table" does not exist at character 15
+192.168.107.6 2026-11-03 04:59:35.113 UTC [307] postgres@postgres STATEMENT:  select * from public.no_such_table;
+192.168.107.1 2026-11-03 04:59:35.227 UTC [305] postgres@postgres LOG:  statement: drop extension if exists pgtap

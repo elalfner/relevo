@@ -18,7 +18,7 @@ An issue is always in one state, shown by a label, and each state has one next s
 | `in-review` | `/relevo:review <n>` to continue; if something fails, `/relevo:fix <n>` | the assignee |
 | `pr-open` | `/relevo:ship <n>`, after someone other than the author approves on GitHub; or apply `relevo:ship` to the issue | the approver |
 | `needs-spec` | `/relevo:issue <n>`; if the question needs exploring, `/relevo:think #<n>` first | the spec writer |
-| `qa-failed` | `/relevo:fix <n>`; if the branch has only the specification, delete it and apply `ready` again | the assignee |
+| `qa-failed` | `/relevo:fix <n>`; if the branch has only the specification, delete it and apply `ready` again; if QA found something that only a person can supply or decide, `/relevo:issue <n>` after that | the assignee |
 | `changes-requested` | `/relevo:fix <n>` | the author |
 | `needs-reviewer` | none: assign a reviewer, or ask someone to take it | the spec writer |
 | `ship` | none: the ship workflow is merging it; if it stops, its comment says why and the label is removed | nobody |
@@ -38,7 +38,25 @@ When a reviewer requested changes on the pull request, the issue becomes `change
 
 ### QA failed
 
-The issue becomes `qa-failed` and the assignee is told, with the first finding. When the cloud build was rejected after the retries (or left tasks unfinished), the work is not lost: the branch holds it as a commit `wip: rejected by QA`, and the comment says it is code that QA did not approve. Run `/relevo:fix <n>`: it takes the finding from that comment as the defect, so you do not have to describe it, and runs the checks QA could not run. To rethink the issue instead, use `/relevo:think` and then `/relevo:issue <n>`. If the comment instead says the build was not built because the runner has no tool (for example `flutter`), the build job stopped before the agent and no model turn was spent: enable the toolchain step in `relevo-go.yml`, remove `relevo:qa-failed` and apply `ready` again. If the safe commit refused the work (a protected path, a restricted file, a file outside the platform, a marker or a possible credential), nothing is pushed and the comment says so. If the branch has code that you wrote, run `/relevo:fix <n>` and describe what QA found. If it has only the specification (the build failed before any code), delete the remote branch and apply `ready` again.
+The issue becomes `qa-failed` and the assignee is told, with the first finding. When the cloud build was rejected after the retries (or left tasks unfinished), the work is not lost: the branch holds it as a commit `wip: rejected by QA`, and the comment says it is code that QA did not approve. Run `/relevo:fix <n>`: it takes the finding from that comment as the defect, so you do not have to describe it, and runs the checks QA could not run. To rethink the issue instead, use `/relevo:think` and then `/relevo:issue <n>`. If the comment instead says the build was not built because the runner has no tool (for example `flutter`), the build job stopped before the agent and no model turn was spent: enable the toolchain step in `relevo-go.yml`, remove `relevo:qa-failed` and apply `ready` again. If the safe commit refused the work (a protected path, a restricted file, a file outside the platform, a marker or a possible credential), nothing is pushed and the comment says so; there is no branch to fix then, so resolve the cause the comment names, remove `relevo:qa-failed` and apply `ready` again. If the branch has code that you wrote, run `/relevo:fix <n>` and describe what QA found. If it has only the specification (the build failed before any code), delete the remote branch and apply `ready` again.
+
+### Who rejected it: the gate or one of the reviewers
+
+QA is no longer one agent. First a script (the **gate**) runs the analysis, the tests and the scans once, with no model; then four reviewers (the **lenses**) each look at what they own. The comment names the one that stopped the build:
+
+| It says | What it means | What to do |
+|---|---|---|
+| the gate is red | analysis, a test, the scan for temporary markers and credentials or the check for restricted files failed; no reviewer ran | `/relevo:fix <n>`; the comment has the end of the failing output |
+| automated validation could not run | a tool the profile needs is missing on the runner | install it (the developer agent cannot); nothing was reviewed |
+| `spec` | the code does not do what a scenario, a task, a decision or a constraint of the issue says, or it touches a file outside the platform, a configuration file or a dependency the issue does not allow | read the finding; `/relevo:fix <n>` or change the issue |
+| `security` | a security problem in the diff, with the line that shows it | `/relevo:fix <n>` |
+| `code` | a weak test, a leftover or what the stack profile lists as a defect | `/relevo:fix <n>` |
+| `interface` | the change breaks an interface rule or does not match a design reference | `/relevo:fix <n>`. On the **last** attempt this reviewer only advises: its findings do not block |
+| lens report invalid | a reviewer did not answer in the expected form twice | run it again; nothing was wrong with the code |
+
+When the gate is red the developer agent fixes it before any reviewer runs, and that uses one of the attempts, so the total is still `qa.retries + 1`.
+
+**The advisory notes.** When the build passes, QA can still leave notes for you: the findings of the `interface` reviewer on the last attempt, and the scenarios that only a person on a device can confirm. The `built` comment says how many there are and names the reviewer of the first three, and `/relevo:review` adds each one to the checklist, pending, with the reviewer that doubted. Look at those first.
 
 ### The quota ran out
 
@@ -57,6 +75,27 @@ The label counts only when the person who applied it could mark the issue `ready
 ### The issue went back to needs-spec
 
 Read the last comment: it says what is missing. If information is missing, run `/relevo:issue <n>` and complete it. If a question is open, decide it, with `/relevo:think #<n>` first if you need to explore. Then apply `ready` again.
+
+The comment names why, and the build stopped before the agent started, so no model turn was spent:
+
+- **`missing`** a reference of the issue could not be read (a design file, a linked repository): fix the reference, or the access of `RELEVO_LINKS_TOKEN`.
+- **`inputs`** the issue declares something in its `External inputs` section that is not there: a file that is not on the base branch, or a variable that is not set. Add it, or write what the issue should do without it. A secret or a manual input that the job cannot check is not a reason to stop: it is listed in the hand-off as `Inputs to confirm before you test`.
+- **`policy`** a task of the specification changes a protected path or a restricted file, or adds a dependency that the issue does not allow. Add the manifest to `Allow-paths:` if the dependency is intended, or change the task. A protected file is never edited by an unattended run.
+
+### A branch that conflicts with the base
+
+`/relevo:review <n>` first merges the base branch into the branch. When files conflict, the conflicts inside the paths the change may touch are handed to the developer agent in its integrate mode; QA then checks the result, and only after that is the merge committed. A conflict in any other file, or one that QA does not accept, ends with the merge aborted and nothing changed, and the review tells you which files to resolve yourself. `/relevo:status` shows, for a branch that has fallen behind the base, whether the merge would conflict and in which files.
+
+## How to read the check of a preview
+
+When `think` shows an HTML preview it tells you the result of the automatic check for each item:
+
+- **pass**: the item was measured and is within the threshold.
+- **fail**: it is outside the threshold, and `think` names the element. It fixes the file and checks again, at most twice; if it still fails you see the preview with the failing item named.
+- **not checked**: the check could not decide (text over an image, a gradient or a partly transparent colour). It is not a pass: look at it yourself.
+- **approximate**: a value came from an approximation, such as a colour derived by opacity, so the ratio is not exact.
+
+If the machine has no browser automation, nothing was checked and `think` says so; it never shows a preview as checked when it was not. A mobile preview is an approximate sketch in a phone frame: it checks that text fits, targets are big enough and contrast holds, and says nothing about how the app really renders. The on-device review is where appearance is decided.
 
 ## Fix or a new issue
 

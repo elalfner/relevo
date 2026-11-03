@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Keeps the state of an on-device review and decides whether a pull request may be opened.
 //   review-state.mjs init <change-dir> [--autopilot off|precheck|verify]   build the checklist from the change's scenarios
-//   review-state.mjs init <change-dir> --adapter api [--log <path or glob>] [--cwd <dir>]
-//                                                 an api review: also records how much of the log files exists now
-//   review-state.mjs ran <exit code> [--by person|agent] [--filter <f>] [--tests <n>] [--line <n>] [--failing a,b]
-//                                                 an api review: record a test run (the person's, or the agent's for a line)
+//   review-state.mjs init <change-dir> --adapter api [--stack supabase] [--log <path, glob or docker:name>] [--cwd <dir>]
+//                                                 an api review: also records how much of the log files exists now,
+//                                                 or the time a container's log is read from (the Supabase default)
+//   review-state.mjs ran <exit code> [--by person|agent] [--filter <f>] [--tests <n>] [--line <n>] [--failing a,b] [--tap <file>|-]
+//                                                 an api review: record a test run (the person's, or the agent's for a line);
+//                                                 --tap reads the output of `supabase test db` for the assertions and the failing names
+//   review-state.mjs started-stack                a Supabase review: the agent started the local stack, so it stops it at the end
 //   review-state.mjs runs-list                    print the "Test runs" section for the pull request body
 //   review-state.mjs reset-log                    an api review: take the log files as they are now (after a fix)
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
@@ -32,7 +35,8 @@ import { dirname, join } from 'node:path';
 import { readSlice, snapshotLog } from './lib/api-log.mjs';
 import { checklistFromChange } from './lib/checklist.mjs';
 import { auditApi, auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
-import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
+import { parseTap } from './lib/pgtap.mjs';
+import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, markStackStarted, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const argv = process.argv.slice(2);
@@ -40,6 +44,10 @@ const si = argv.indexOf('--state');
 const statePath = si === -1 ? 'evidence/review-state.json' : argv[si + 1];
 const args = si === -1 ? argv : argv.filter((_, i) => i !== si && i !== si + 1);
 const [command, ...rest] = args;
+
+// The log an api review reads when the profile does not say: the files of Laravel, the container of Supabase.
+const DEFAULT_LOG = { supabase: 'docker:supabase_db_{project_id}' };
+const describeLog = (log) => (log.source === 'docker' ? `the log of the container ${log.container} is read from ${log.since} on` : `the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)`);
 
 const fail = (m) => {
   console.error(m);
@@ -62,11 +70,13 @@ try {
       const flag = (name) => (rest.indexOf(`--${name}`) === -1 ? undefined : rest[rest.indexOf(`--${name}`) + 1]);
       const api = flag('adapter') === 'api';
       if (flag('adapter') !== undefined && !api) fail('--adapter can only be "api"');
-      const log = api ? snapshotLog(flag('log') ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log });
+      const stack = flag('stack');
+      if (stack !== undefined && !api) fail('--stack goes with --adapter api');
+      const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack });
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
-      console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})${api ? `; the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)` : ''}`);
+      console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})${api ? `; ${describeLog(log)}` : ''}`);
       break;
     }
     case 'sync': {
@@ -111,10 +121,19 @@ try {
     case 'ran': {
       const [exit, ...flags] = rest;
       const flag = (name) => (flags.indexOf(`--${name}`) === -1 ? undefined : flags[flags.indexOf(`--${name}`) + 1]);
-      const state = recordRun(load(), { exit, by: flag('by'), filter: flag('filter'), tests: flag('tests'), line: flag('line'), failing: flag('failing')?.split(',').filter(Boolean) });
+      const tapSource = flag('tap');
+      const tap = tapSource === undefined ? null : parseTap(readFileSync(tapSource === '-' ? 0 : tapSource, 'utf8'));
+      const failing = tap ? [...tap.failing, ...(flag('failing')?.split(',').filter(Boolean) ?? [])] : flag('failing')?.split(',').filter(Boolean);
+      const state = recordRun(load(), { exit, by: flag('by'), filter: flag('filter'), tests: tap ? tap.assertions : flag('tests'), line: flag('line'), failing, covers: flag('covers')?.split(',').map((n) => n.trim()).filter(Boolean), incomplete: tap ? !tap.planComplete : false });
       save(state);
       const last = state.runs.at(-1);
-      console.log(`recorded: run by the ${last.by}${last.line ? ` for line ${last.line}` : ''}, exit ${last.exit}${last.tests !== undefined ? `, ${last.tests} test(s)` : ''}`);
+      console.log(`recorded: run by the ${last.by}${last.line ? ` for line ${last.line}` : ''}, exit ${last.exit}${last.tests !== undefined ? `, ${last.tests} ${state.stack === 'supabase' ? 'assertion(s)' : 'test(s)'}` : ''}${last.covers?.length ? `, covering ${last.covers.join(', ')}` : ''}${last.incomplete ? ' (the plan was not completed)' : ''}`);
+      break;
+    }
+    case 'started-stack': {
+      const state = markStackStarted(load());
+      save(state);
+      console.log('recorded: the agent started the local stack, so it stops it at the end');
       break;
     }
     case 'runs-list':
@@ -125,16 +144,17 @@ try {
       if (state.kind !== 'api') fail('reset-log is for an api review');
       state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
       save(state);
-      console.log(`the log ${state.log.pattern} is read from now on (${Object.keys(state.log.offsets).length} file(s) as they are)`);
+      console.log(describeLog(state.log));
       break;
     }
     case 'audit': {
       const state = load();
       if (state.kind === 'api') {
         const slice = readSlice(state.log, { cwd: state.cwd ?? '.' });
-        const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable });
-        const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length };
-        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}) };
+        const flavor = state.stack === 'supabase' ? 'postgres' : 'laravel';
+        const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor });
+        const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor === 'postgres' ? { flavor } : {}) };
+        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}) };
         applyWaivers(state);
         audit.verdict = state.audit.verdict;
         save(state);
@@ -220,7 +240,7 @@ try {
       break;
     }
     default:
-      fail('usage: review-state.mjs <init|set|sync|capture|qa-pass|drain|audit|ran|runs-list|reset-log|waive|waived|confirm-env|precheck|auto|auto-list|agree|show|decide> [...]');
+      fail('usage: review-state.mjs <init|set|sync|capture|qa-pass|drain|audit|ran|started-stack|runs-list|reset-log|waive|waived|confirm-env|precheck|auto|auto-list|agree|show|decide> [...]');
   }
 } catch (err) {
   fail(err.message);

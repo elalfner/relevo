@@ -19,7 +19,7 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 | A run adds a dependency that runs code when installed | dependency files are protected unless the issue lists them in `Allow-paths:`, dependencies are installed without package scripts, and QA rejects a dependency the design does not justify | a script, and QA |
 | A pull request changes the skills the agent follows | the extra skills are read from the base branch, never from the branch under work, and a skill with scripts runs only if `skills.allow_scripts` lists it | a script |
 | A repository weakens the checks of a stack | a repository profile can add to the plugin's profile but cannot replace a command; only `platforms.<name>.checks` does, in the open | a script |
-| A secret or a temporary marker reaches a commit | the diff is scanned before every commit and push (`scan-diff.mjs`) and the commit is aborted on a match | a script |
+| A secret or a temporary marker reaches a commit | the diff is scanned before every commit and push (`scan-diff.mjs`) and the commit is aborted on a match; a name such as `token` or `password` assigned a quoted value of 16 or more characters, or an unquoted value that looks generated (letters mixed with digits, or base64-like), is a match, while a variable, a call or a member access is not | a script |
 | A run spends without limit | every run has turn and cost limits (`limits.run_max_turns`, `limits.run_max_cost`), and a run that reaches one stops | the runner |
 | Text from a linked repository carries instructions | it is read as data, with a read-only token (`RELEVO_LINKS_TOKEN`: issues, pull requests and contents) that the agent never holds: only the gate, the queue and the step that fetches the references before the agent get it | the runner, and a closed list of repositories |
 | A picture in an issue shows customer data to the model, or a download goes somewhere it should not | pasted pictures are downloaded only when `design.images` is on; a script, not the agent, downloads them, from the GitHub attachment domains and linked repositories only, in a step before the agent in the cloud, with size and type limits and the token sent only to GitHub; the files stay out of git | a script |
@@ -31,6 +31,7 @@ Relevo lets an AI agent write and run code in your repository, unattended. This 
 
 ## What it does not protect
 
+- **The checks before the agent are not a security control.** They stop a run that is plainly missing something, to save a build, and they can be wrong. Every rule they apply is applied again by the guard that already enforces it (the commit script, the scan of restricted files, QA), and those stay in force. A defect in the checks costs a build or a late rejection; it cannot let a protected change through.
 - **Prompt injection has no complete defence.** A hidden instruction in a README, a comment or a package can still steer the agent. Relevo shrinks what a steered agent can do (no web, a closed tool list, protected paths, limits), not whether it can be steered.
 - **Code the agent writes runs in the runner.** The tests and the build run with the runner's network and permissions. The closed list restricts the agent's tools, not the operating system, so malicious code that the agent was led to write would run there until QA and the review stop it.
 - **A self-hosted runner is not a sandbox.** Relevo assumes it keeps its files between jobs, cleans what its own steps add, and cannot tell whether the machine is ephemeral. The agent's code runs with the permissions of the runner's user and the network of the machine, which on your own hardware can reach internal services and the credentials of other jobs. An ephemeral runner (created for one job) or a container is the real barrier; keep the repository private, and do not share the runner with projects you do not control. Runners registered under one user of the machine share what the agent of any of them can read, including the workspaces of the others, so give each runner its own user or a container ([Several runners on one machine](execution.md#several-runners-on-one-machine)). `runner.labels` in `relevo.yml` only chooses where the workflows run ([Where `go` runs](execution.md#self-hosted-runners)).
@@ -60,6 +61,26 @@ What the table does not say, for Antigravity:
 - **The guard counts what the tool reports.** A turn is a model response, of the main agent or of a subagent. Tokens are input plus output as the tool reports them; tokens read from the cache are not counted, so the limit is more lenient than the work the model did.
 - **A prefix list is not an operating-system boundary.** The closed list restricts which commands the agent may start, not what an allowed command does. This is the same limit as the one above for Claude.
 - **Not tried:** that the quality of the adversarial QA holds with a Gemini model; a full cloud run on a real runner (see the known limits in the changelog); whether the CLI can update itself during a run.
+
+## The gate, the QA reviewers and their settings
+
+QA is a script (the gate) and four reviewers (`spec`, `security`, `code`, `interface`), each with its own model and effort. This table says, for each control, what holds with each agent, what holds in part and what does not exist. "Not verified" means that Relevo does not claim it: it has not been tried on a real run.
+
+| Control | Claude Code | Antigravity CLI |
+|---|---|---|
+| The gate runs the checks and no agent can skip it | enforced: `validation-gate.mjs` is a script that `go`, `fix` and `review` run | the same script |
+| A reviewer starts only on a diff whose checks ran | enforced by `receipt-check.mjs` before each reviewer, which recomputes the hash of the diff | the same script |
+| A reviewer cannot write or edit a file | enforced by the runner: the four agent files set `disallowedTools: Write, Edit, NotebookEdit` | **partial**: the four agents are rendered with a tool list that has no write or edit tool, but it keeps the command tool, so a command can still change a file; the prefix list of the workflow is the limit |
+| The result is decided by a script that fails closed | enforced: `qa-aggregate.mjs`; a report without a valid first line is never read as a pass | the same script |
+| The reviewers run one at a time | the procedure says so and the skill launches them in the foreground, one after the other | **partial**: Antigravity runs a subagent in the background; the instructions say to call them one at a time and never two together, and nothing enforces it |
+| The model of each role | given when the agent is launched | **does not exist**: `agents.*.model` is accepted and not applied; `/relevo:doctor` and `/relevo:init` print a warning that names each setting |
+| The effort of each role | given when the agent is launched (measured: an effort given at launch changes the reasoning of a subagent) | **does not exist**, as the model; the same warning |
+| The turn and cost limits count the subagents | **in part**: the cost of a subagent is counted; its turns are not, so Relevo adds them from the log and the comment about the run says when the total went past the limit (it does not stop the run) | **not verified**: whether the token total of the guard includes the subagents has not been tried |
+
+Two things the table does not say:
+
+- **The receipt is not a security boundary.** It guards against an omission or a mistake: a reviewer cannot start on code whose checks did not run. It does not defend against an agent that writes a false file, because it lives in the working folder. The guards of the commit (the protected paths, the restricted files, the scan of what is staged) remain the enforcement, and they run whatever any receipt says.
+- **A setting never turns a reviewer off.** There is no key to disable `spec`, `security` or `code`, or to lower what they block. A project's exceptions go in its own rules file, which the `spec` reviewer reads.
 
 ## Restricted files
 

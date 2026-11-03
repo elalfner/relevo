@@ -2,8 +2,37 @@
 // started, and what they received since. Implements "The audit of an api review reads the log since the review
 // started" of openspec/specs/review/spec.md. Nothing is truncated or deleted: the log belongs to the person.
 
-import { existsSync, openSync, readSync, closeSync, readdirSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, openSync, readSync, closeSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+
+const DOCKER_PREFIX = 'docker:';
+
+/** Is the log setting the log of a container (`docker:<name>`) and not a path or a glob? */
+export const isDockerLog = (pattern) => String(pattern).startsWith(DOCKER_PREFIX);
+
+/** The `project_id` of supabase/config.toml in `cwd`, or null. */
+export function projectIdOf({ cwd = '.' } = {}) {
+  const file = join(cwd, 'supabase', 'config.toml');
+  if (!existsSync(file)) return null;
+  const m = /^\s*project_id\s*=\s*["']([^"']+)["']/m.exec(readFileSync(file, 'utf8'));
+  return m ? m[1] : null;
+}
+
+/** The name of the container a `docker:` setting names, with `{project_id}` read from supabase/config.toml. */
+export function containerOf(pattern, { cwd = '.' } = {}) {
+  const name = String(pattern).slice(DOCKER_PREFIX.length);
+  if (!name.includes('{project_id}')) return name;
+  const id = projectIdOf({ cwd });
+  if (!id) throw new Error('review.log names {project_id} but supabase/config.toml has no project_id: run from the folder of the platform');
+  return name.replaceAll('{project_id}', id);
+}
+
+const defaultRun = (command, args) => {
+  const r = spawnSync(command, args, { encoding: 'utf8' });
+  if (r.error) return { status: 127, stdout: '', stderr: r.error.message };
+  return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+};
 
 const segmentRe = (segment) => new RegExp(`^${segment.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
 
@@ -24,8 +53,13 @@ export function expandLog(pattern, { cwd = '.' } = {}) {
   return walk('', String(pattern).split('/').filter(Boolean)).filter((f) => statSync(join(cwd, f)).isFile());
 }
 
-/** What the files named by `pattern` hold now: { pattern, offsets: { file: size } }. Recorded when the review starts. */
-export function snapshotLog(pattern, { cwd = '.' } = {}) {
+/**
+ * What the files named by `pattern` hold now: { pattern, offsets: { file: size } }. Recorded when the review starts.
+ * For `docker:<name>` it is { pattern, source: 'docker', container, since } instead.
+ */
+export function snapshotLog(pattern, { cwd = '.', now = () => new Date() } = {}) {
+  // A container has no offsets: what it wrote since this moment is the slice. Nothing is cleared or restarted.
+  if (isDockerLog(pattern)) return { pattern, source: 'docker', container: containerOf(pattern, { cwd }), since: now().toISOString() };
   const offsets = {};
   expandLog(pattern, { cwd }).forEach((f) => { offsets[f] = statSync(join(cwd, f)).size; });
   return { pattern, offsets };
@@ -50,7 +84,16 @@ function readFrom(file, start) {
  * What the log files received since the snapshot: { text, files, unreadable: [{ file, reason }] }.
  * A file that appeared later is read from its start; a file of the snapshot that is gone, or that cannot be read, is reported.
  */
-export function readSlice(snapshot, { cwd = '.' } = {}) {
+export function readSlice(snapshot, { cwd = '.', run = defaultRun } = {}) {
+  if (snapshot.source === 'docker') {
+    // `docker logs` writes what the container wrote to stdout and stderr (Postgres logs to stderr).
+    const r = run('docker', ['logs', '--since', snapshot.since, snapshot.container]);
+    if (r.status !== 0) {
+      const why = String(r.stderr || r.stdout || `docker exited ${r.status}`).trim().split('\n')[0];
+      return { text: '', files: [], unreadable: [{ file: snapshot.container, reason: why }] };
+    }
+    return { text: `${r.stdout ?? ''}${r.stderr ?? ''}`, files: [snapshot.container], unreadable: [] };
+  }
   const files = expandLog(snapshot.pattern, { cwd });
   const unreadable = [];
   const parts = [];

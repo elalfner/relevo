@@ -337,3 +337,20 @@ test('the client for linked repositories uses GH_LINKS_TOKEN as the token, and t
   assert.equal(seen[1].env, undefined, 'the environment of the process is used as it is');
   assert.equal(seen[0].cmd, 'gh');
 });
+
+test('Scenario: gather reads a qa-failed issue only for a retry, only the retried one, and the permission of the person', () => {
+  const world = {
+    issuesByLabel: { 'relevo:qa-failed': [rawIssue(67, ['relevo:qa-failed']), rawIssue(68, ['relevo:qa-failed'])] },
+    timeline: {},
+    permissions: { 'persona-a': 'write' },
+    issueDetails: {},
+  };
+  const without = gather({ gh: fakeGh(world), repo: REPO, config });
+  assert.deepEqual(without.issues, [], 'without a retry qa-failed is not read');
+  const state = gather({ gh: fakeGh(world), repo: REPO, config, retry: { issue: 67, by: 'persona-a' } });
+  assert.deepEqual(state.issues.map((i) => i.number), [67]);
+  assert.equal(state.permissions['persona-a'], 'write');
+  const decision = planGo({ config, repo: REPO, ...state, retry: { issue: 67, by: 'persona-a' } }).decisions[0];
+  assert.equal(decision.action, 'start');
+  assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:qa-failed'] });
+});

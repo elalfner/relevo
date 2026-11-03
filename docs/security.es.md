@@ -19,7 +19,7 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 | Una ejecución añade una dependencia que ejecuta código al instalarse | los archivos de dependencias están protegidos salvo que el issue los liste en `Allow-paths:`, las dependencias se instalan sin scripts de paquetes, y QA rechaza una dependencia que el diseño no justifica | un script, y QA |
 | Un pull request cambia las skills que sigue el agente | las skills extra se leen de la rama base, nunca de la rama en trabajo, y una skill con scripts solo corre si `skills.allow_scripts` la lista | un script |
 | Un repositorio debilita las comprobaciones de un stack | el perfil de un repositorio puede añadir al del plugin pero no reemplazar un comando; solo lo hace `platforms.<name>.checks`, a la vista | un script |
-| Un secreto o una marca temporal llega a un commit | el diff se escanea antes de cada commit y push (`scan-diff.mjs`) y el commit se aborta si hay coincidencia | un script |
+| Un secreto o una marca temporal llega a un commit | el diff se escanea antes de cada commit y push (`scan-diff.mjs`) y el commit se aborta si hay coincidencia; un nombre como `token` o `password` con un valor entre comillas de 16 o más caracteres, o con un valor sin comillas que parece generado (letras mezcladas con dígitos, o tipo base64), es una coincidencia; una variable, una llamada o un acceso a un miembro no | un script |
 | Una ejecución gasta sin límite | cada ejecución tiene límites de turnos y de costo (`limits.run_max_turns`, `limits.run_max_cost`), y una que alcanza uno se detiene | el ejecutor |
 | El texto de un repositorio enlazado trae instrucciones | se lee como datos, con un token de solo lectura (`RELEVO_LINKS_TOKEN`: issues, pull requests y contenido) que el agente nunca tiene: solo lo reciben el gate, la cola y el paso que obtiene las referencias antes del agente | el ejecutor, y una lista cerrada de repositorios |
 | Una imagen en un issue muestra datos de clientes al modelo, o una descarga va adonde no debe | las imágenes pegadas se descargan solo cuando `design.images` está activo; las descarga un script, no el agente, solo de los dominios de adjuntos de GitHub y de repositorios enlazados, en un paso anterior al agente en la nube, con límites de tamaño y de tipo y el token enviado solo a GitHub; los archivos quedan fuera de git | un script |
@@ -31,6 +31,7 @@ Relevo deja que un agente de IA escriba y ejecute código en tu repositorio, sin
 
 ## Qué no protege
 
+- **Las comprobaciones antes del agente no son un control de seguridad.** Detienen una ejecución a la que claramente le falta algo, para ahorrar un build, y pueden equivocarse. Cada regla que aplican la vuelve a aplicar la barrera que ya la hace cumplir (el script de commit, el escaneo de archivos restringidos, QA), y esas siguen vigentes. Un defecto en las comprobaciones cuesta un build o un rechazo tardío; no puede dejar pasar un cambio protegido.
 - **La inyección de prompts no tiene una defensa completa.** Una instrucción oculta en un README, un comentario o un paquete aún puede desviar al agente. Relevo reduce lo que puede hacer un agente desviado (sin web, una lista cerrada de herramientas, rutas protegidas, límites), no si puede desviarse.
 - **El código que escribe el agente corre en el ejecutor.** Las pruebas y la construcción corren con la red y los permisos del ejecutor. La lista cerrada restringe las herramientas del agente, no el sistema operativo, así que un código malicioso que el agente fue llevado a escribir correría ahí hasta que QA y la revisión lo detengan.
 - **Un runner self-hosted no es un entorno aislado.** Relevo asume que conserva sus archivos entre jobs, limpia lo que agregan sus propios pasos y no puede saber si la máquina es efímera. El código del agente corre con los permisos del usuario del runner y la red de la máquina, que en tu propio hardware puede llegar a servicios internos y a las credenciales de otros jobs. La barrera real es un runner efímero (creado para un solo job) o un contenedor; mantén el repositorio privado y no compartas el runner con proyectos que no controlas. Los runners registrados con un mismo usuario de la máquina comparten lo que puede leer el agente de cualquiera de ellos, incluidos los workspaces de los demás, así que da a cada runner su propio usuario o un contenedor ([Varios runners en una misma máquina](execution.es.md#varios-runners-en-una-misma-máquina)). `runner.labels` en `relevo.yml` solo elige dónde corren los workflows ([Dónde corre `go`](execution.es.md#runners-self-hosted)).
@@ -60,6 +61,26 @@ Lo que la tabla no dice, para Antigravity:
 - **La guardia cuenta lo que reporta la herramienta.** Un turno es una respuesta del modelo, del agente principal o de un subagente. Los tokens son entrada más salida como los reporta la herramienta; los tokens leídos de la caché no se cuentan, así que el límite es más holgado que el trabajo que hizo el modelo.
 - **Una lista de prefijos no es una frontera del sistema operativo.** La lista cerrada restringe qué comandos puede iniciar el agente, no lo que hace un comando permitido. Es el mismo límite que el de arriba para Claude.
 - **No probado:** que la calidad de la QA adversarial se mantenga con un modelo de Gemini; una ejecución completa en la nube sobre un ejecutor real (mira los límites conocidos del changelog); si la CLI puede actualizarse sola durante una ejecución.
+
+## La puerta, los revisores de QA y sus ajustes
+
+QA es un script (la puerta) y cuatro revisores (`spec`, `security`, `code`, `interface`), cada uno con su propio modelo y esfuerzo. Esta tabla dice, para cada control, qué se cumple con cada agente, qué se cumple en parte y qué no existe. «No verificado» significa que Relevo no lo afirma: no se ha probado en una ejecución real.
+
+| Control | Claude Code | Antigravity CLI |
+|---|---|---|
+| La puerta ejecuta las comprobaciones y ningún agente puede saltarla | se cumple: `validation-gate.mjs` es un script que ejecutan `go`, `fix` y `review` | el mismo script |
+| Un revisor empieza solo sobre un diff cuyas comprobaciones corrieron | se cumple con `receipt-check.mjs` antes de cada revisor, que recalcula el hash del diff | el mismo script |
+| Un revisor no puede escribir ni editar un archivo | lo hace cumplir el runner: los cuatro archivos de agente ponen `disallowedTools: Write, Edit, NotebookEdit` | **parcial**: los cuatro agentes se renderizan con una lista de herramientas sin escritura ni edición, pero conserva la herramienta de comandos, así que un comando aún puede cambiar un archivo; el límite es la lista de prefijos del workflow |
+| El resultado lo decide un script que falla cerrado | se cumple: `qa-aggregate.mjs`; un reporte sin primera línea válida nunca se lee como aprobado | el mismo script |
+| Los revisores corren de uno en uno | el procedimiento lo dice y la skill los lanza en primer plano, uno tras otro | **parcial**: Antigravity ejecuta un subagente en segundo plano; las instrucciones dicen llamarlos de uno en uno y nunca dos juntos, y nada lo hace cumplir |
+| El modelo de cada rol | se da al lanzar el agente | **no existe**: `agents.*.model` se acepta y no se aplica; `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada ajuste |
+| El esfuerzo de cada rol | se da al lanzar el agente (medido: un esfuerzo dado al lanzar cambia el razonamiento de un subagente) | **no existe**, como el modelo; el mismo aviso |
+| Los límites de turnos y costo cuentan a los subagentes | **en parte**: el costo de un subagente se cuenta; sus turnos no, así que Relevo los suma desde el log y el comentario sobre la ejecución dice cuándo el total pasó el límite (no detiene la ejecución) | **no verificado**: no se ha probado si el total de tokens de la guarda incluye a los subagentes |
+
+Dos cosas que la tabla no dice:
+
+- **El recibo no es un límite de seguridad.** Protege contra una omisión o un error: un revisor no puede empezar sobre código cuyas comprobaciones no se ejecutaron. No defiende contra un agente que escribe un archivo falso, porque vive en la carpeta de trabajo. Las barreras del commit (las rutas protegidas, los archivos restringidos, el escaneo de lo que se prepara) siguen siendo las que obligan, y corren diga lo que diga cualquier recibo.
+- **Ningún ajuste apaga a un revisor.** No hay clave para desactivar `spec`, `security` o `code`, ni para bajar lo que bloquean. Las excepciones de un proyecto van en su propio archivo de reglas, que lee el revisor `spec`.
 
 ## Archivos restringidos
 

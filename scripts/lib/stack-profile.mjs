@@ -8,7 +8,9 @@ import { parse, YamlLiteError } from './yaml-lite.mjs';
 import { isRestricted } from './restricted-paths.mjs';
 
 export const ROLES = ['dev', 'qa', 'issue', 'review'];
-const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review']);
+const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'installed', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review', 'interface']);
+// The kind of interface a stack builds, for the interface rules: none when the key is missing.
+export const INTERFACE_KINDS = ['mobile', 'web', 'none'];
 const REVIEW_KEYS = new Set(['log', 'test', 'serve']);
 const SERVE_KEYS = new Set(['command', 'url', 'env']);
 // A server the agent starts is reached on this machine only.
@@ -26,18 +28,26 @@ const emptyProfile = (stack) => ({
   commands: {},
   generated: [],
   tools: [],
+  // Paths, relative to the folder of the platform, that exist once the dependencies are installed.
+  installed: [],
   requires_skills: [],
   skills: Object.fromEntries(ROLES.map((r) => [r, []])),
   skillsDisable: [],
   skillsWhenInstalled: Object.fromEntries(ROLES.map((r) => [r, []])),
   targets: {},
+  interface: 'none',
   review: {},
+  securityReview: '',
   body: '',
   questions: '',
   reviewBody: '',
 });
 
 export const QUESTIONS_HEADING = 'Questions for the issue writer';
+export const SECURITY_REVIEW_HEADING = 'Security review';
+export const LENSES = ['spec', 'security', 'code', 'interface'];
+// The sections of the body that the `code` lens reads.
+export const CODE_LENS_HEADINGS = ['Architecture', 'What the auditor looks for in the diff'];
 export const REVIEW_HEADING = 'Review';
 
 /** Split the section "## <heading>" (up to the next heading of level 2) out of a body. */
@@ -57,6 +67,36 @@ function splitSection(text, heading) {
 export function splitQuestions(text) {
   const { body, section } = splitSection(text, QUESTIONS_HEADING);
   return { body, questions: section };
+}
+
+/** Split the section "## Security review" out of a body: only the security lens reads it. */
+export function splitSecurityReview(text) {
+  const { body, section } = splitSection(text, SECURITY_REVIEW_HEADING);
+  return { body, securityReview: section };
+}
+
+/** The `## Heading` sections of a body, in order: [{ heading, text }]. */
+export function bodySections(body) {
+  const out = [];
+  let current = null;
+  String(body ?? '').split('\n').forEach((line) => {
+    const m = /^## (.+?)\s*$/.exec(line);
+    if (m) { current = { heading: m[1], lines: [] }; out.push(current); return; }
+    if (current) current.lines.push(line);
+  });
+  return out.map((s) => ({ heading: s.heading, text: s.lines.join('\n').trim() }));
+}
+
+/**
+ * The part of a profile one QA lens reads, as text. `spec` and `interface` read no stack section (the first compares the code
+ * with the specification, the second gets its rules from the interface knowledge); `code` reads the architecture and what the
+ * auditor looks for; `security` reads the section Security review. A stack without a section gives an empty text.
+ */
+export function lensText(profile, lens) {
+  if (!LENSES.includes(lens)) throw new Error(`unknown lens "${lens}"; allowed: ${LENSES.join(', ')}`);
+  if (lens === 'security') return profile.securityReview ?? '';
+  if (lens === 'code') return bodySections(profile.body).filter((s) => CODE_LENS_HEADINGS.includes(s.heading)).map((s) => `## ${s.heading}\n\n${s.text}`).join('\n\n');
+  return '';
 }
 
 /** Split the section "## Review" out of a body: only a review reads it. */
@@ -89,6 +129,11 @@ export function fixedRuleWarnings(text) {
   return out;
 }
 
+// The log of a container: `docker:<name>`, where {project_id} stands for the project_id of supabase/config.toml.
+const DOCKER_LOG_RE = /^docker:[A-Za-z0-9_.{}-]+$/;
+// A review runs its tests against what is local. A test command that names one of these reaches a remote project.
+const REMOTE_TEST_RE = /(^|\s)(--linked|--db-url(=\S*)?|link|push|pull)(\s|$)/;
+
 /** Validate the `review` block of a header. Returns { value, errors }. */
 function parseReviewBlock(raw) {
   const errors = [];
@@ -98,6 +143,8 @@ function parseReviewBlock(raw) {
   ['log', 'test'].forEach((key) => {
     if (raw[key] === undefined) return;
     if (typeof raw[key] !== 'string' || raw[key].trim() === '') errors.push(`"review.${key}" must be a non-empty string`);
+    else if (key === 'log' && raw.log.startsWith('docker:') && !DOCKER_LOG_RE.test(raw.log)) errors.push(`"review.log" names a container as docker:<name> (got "${raw.log}"); {project_id} stands for the project_id of supabase/config.toml`);
+    else if (key === 'test' && REMOTE_TEST_RE.test(raw.test)) errors.push(`"review.test" must not target a remote database (got "${raw.test}"): a review runs against the local containers only, without --linked, --db-url, link, push or pull`);
     else value[key] = raw[key];
   });
   if (raw.serve !== undefined) {
@@ -141,14 +188,19 @@ export function parseProfile(text) {
     if (!isMap(raw.commands) || Object.values(raw.commands).some((v) => typeof v !== 'string' || v.trim() === '')) errors.push('"commands" must map a name to a command');
     else profile.commands = { ...raw.commands };
   }
-  ['generated', 'tools', 'requires_skills'].forEach((key) => {
+  ['generated', 'tools', 'installed', 'requires_skills'].forEach((key) => {
     if (raw[key] === undefined) return;
     if (!isStringList(raw[key])) errors.push(`"${key}" must be a list of names`);
     else profile[key] = unique(raw[key]);
   });
   // A profile only adds, and it cannot weaken the list of restricted files: a path it names for the agents to treat or
   // read (generated files, the review log) is never one of them.
+  profile.installed.filter((entry) => entry.startsWith('/') || /^[A-Za-z]:[\\/]/.test(entry) || entry.split(/[\\/]/).includes('..')).forEach((entry) => errors.push(`"installed" lists "${entry}", which is not a path inside the folder of the platform`));
   profile.generated.filter((entry) => isRestricted(entry)).forEach((entry) => errors.push(`"generated" lists "${entry}", a restricted file: the base list cannot be reduced by a profile`));
+  if (raw.interface !== undefined) {
+    if (!INTERFACE_KINDS.includes(raw.interface)) errors.push(`"interface" must be one of: ${INTERFACE_KINDS.join(', ')}`);
+    else profile.interface = raw.interface;
+  }
   if (raw.skills !== undefined) {
     if (!isMap(raw.skills)) errors.push('"skills" must map a role to a list of skill names');
     else {
@@ -181,12 +233,14 @@ export function parseProfile(text) {
     const r = parseReviewBlock(raw.review);
     errors.push(...r.errors);
     profile.review = r.value;
-    if (r.value.log && isRestricted(r.value.log)) errors.push(`"review.log" names "${r.value.log}", a restricted file: the base list cannot be reduced by a profile`);
+    if (r.value.log && !r.value.log.startsWith('docker:') && isRestricted(r.value.log)) errors.push(`"review.log" names "${r.value.log}", a restricted file: the base list cannot be reduced by a profile`);
   }
   // The questions for the issue writer and the section Review are kept apart from the body: dev and qa never receive them.
   const noQuestions = splitQuestions((match[2] ?? '').trim());
   const noReview = splitReview(noQuestions.body);
-  profile.body = noReview.body;
+  const noSecurity = splitSecurityReview(noReview.body);
+  profile.body = noSecurity.body;
+  profile.securityReview = noSecurity.securityReview;
   profile.questions = noQuestions.questions;
   profile.reviewBody = noReview.review;
   return { profile: errors.length ? null : profile, errors };
@@ -220,7 +274,7 @@ export function mergeProfiles(plugin, repository) {
     if (key in plugin.review && JSON.stringify(plugin.review[key]) !== JSON.stringify(value)) reviewReplaced.push(`review.${key}`);
     out.review[key] = value;
   });
-  ['generated', 'tools', 'requires_skills'].forEach((key) => { out[key] = unique([...plugin[key], ...repository[key]]); });
+  ['generated', 'tools', 'installed', 'requires_skills'].forEach((key) => { out[key] = unique([...plugin[key], ...repository[key]]); });
   ROLES.forEach((role) => { out.skills[role] = unique([...plugin.skills[role], ...repository.skills[role]]); });
   ROLES.forEach((role) => { out.skillsWhenInstalled[role] = unique([...plugin.skillsWhenInstalled[role], ...repository.skillsWhenInstalled[role]]); });
   // The repository may switch off a skill of the plugin by name, never a required one.
@@ -246,9 +300,13 @@ export function mergeProfiles(plugin, repository) {
       else if (plugin[key][name] !== value) ignored.push({ key: `${key}.${name}`, value, kept: plugin[key][name] });
     });
   });
+  if (plugin.interface === 'none' && repository.interface !== 'none') out.interface = repository.interface;
+  else if (repository.interface !== 'none' && repository.interface !== plugin.interface) ignored.push({ key: 'interface', value: repository.interface, kept: plugin.interface });
   out.body = [plugin.body, repository.body].filter(Boolean).join('\n\n');
   out.questions = [plugin.questions, repository.questions].filter(Boolean).join('\n\n');
   out.reviewBody = [plugin.reviewBody, repository.reviewBody].filter(Boolean).join('\n\n');
+  // A repository adds to the security review of the plugin and removes nothing from it.
+  out.securityReview = [plugin.securityReview, repository.securityReview].filter(Boolean).join('\n\n');
   return { ...out, pluginSkills, pluginSkillsWhenInstalled, skillsDisabled, skillsDisableIgnored, layers: ['plugin', 'repository'], ignored, reviewReplaced };
 }
 

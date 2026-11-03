@@ -167,3 +167,25 @@ test('the command-line wrapper rejects a missing issue and a missing relevo.yml'
   assert.equal(noIssue.status, 2);
   assert.match(noIssue.stdout + noIssue.stderr, /give the issue number/);
 });
+
+test('Scenario: Local retry - the agent runs /relevo:go <n> --retry with the same limits, and the cloud is not asked about', () => {
+  const runner = fakeRunner();
+  const r = run(runner, { retry: true, workflowPresent: true });
+  assert.equal(r.status, 0);
+  const claude = runner.calls.find((c) => c.kind === 'stream');
+  assert.deepEqual(claude.args, ['-p', '/relevo:go 42 --retry', ...runFlags(config)]);
+  assert.ok(!runner.calls.some((c) => c.cmd === 'gh' && c.args[0] === 'variable'), 'the cloud variable is not read');
+  assert.ok(!r.messages.some((m) => /cloud/.test(m)), 'no cloud warning for a retry');
+});
+
+test('Scenario: No cloud warning is still shown for a normal run', () => {
+  const r = run(fakeRunner({ variable: 'on' }), { workflowPresent: true });
+  assert.ok(r.messages.some((m) => /the cloud can also build this issue/.test(m)));
+});
+
+test('the dry run shows the retry flag, and Antigravity gets it in its prompt', () => {
+  const dry = run(fakeRunner(), { retry: true, dryRun: true });
+  assert.match(dry.messages.join('\n'), /\/relevo:go 42 --retry/);
+  const agy = planLocalRun({ issue: '42', repoRoot: REPO, config: { ...config, agent: { ...config.agent, build: 'antigravity' } }, retry: true });
+  assert.ok(agy.claude[1].includes('/relevo:go 42 --retry'));
+});

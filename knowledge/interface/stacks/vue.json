@@ -1,0 +1,47 @@
+{
+ "about": "Rules that read differently in Vue. The lines replace the common ones; the examples are templates.",
+ "rules": {
+  "accessible-name": {
+   "build": "Give each icon-only button an aria-label (or a visually hidden text) taken from the translations of the project; bind dynamic attributes with a colon.",
+   "review": "Every icon-only button in the templates has a name from the i18n messages, not a hard-coded string.",
+   "examples": [
+    {"stack": "vue", "good": "<button type=\"button\" :aria-label=\"t('menu.close')\"><IconClose aria-hidden=\"true\" /></button>", "bad": "<button type=\"button\"><IconClose /></button>"}
+   ]
+  },
+  "keyboard-operable": {
+   "build": "Use <button> and <a>, not a div with @click; bind the state of a disclosure with :aria-expanded.",
+   "review": "No @click on a non-interactive element; a menu button exposes :aria-expanded.",
+   "examples": [
+    {"stack": "vue", "good": "<button type=\"button\" :aria-expanded=\"menuOpen\" @click=\"menuOpen = !menuOpen\">Menu</button>", "bad": "<div @click=\"menuOpen = !menuOpen\">Menu</div>"}
+   ]
+  },
+  "form-labels": {
+   "build": "Associate each label with its input by id (use a generated id for a reusable component) and bind the error with aria-describedby.",
+   "review": "Each input in a component has a label tied by for/id, including inside reusable components.",
+   "examples": [
+    {"stack": "vue", "good": "<label :for=\"id\">{{ label }}</label><input :id=\"id\" v-model=\"model\" :aria-describedby=\"error ? `${id}-error` : undefined\">", "bad": "<input v-model=\"model\" :placeholder=\"label\">"}
+   ]
+  },
+  "no-double-submit": {
+   "build": "Disable the button while the async call runs and show a busy state; reset it in finally.",
+   "review": "Click the submit button twice: only one request is sent.",
+   "examples": [
+    {"stack": "vue", "good": "<button type=\"submit\" :disabled=\"submitting\">Save</button>  // submitting is set before and reset in finally", "bad": "<button type=\"submit\" @click=\"save\">Save</button>  // clickable while saving"}
+   ]
+  },
+  "loading-indicators": {
+   "build": "Give each view that loads data a loading, an empty and an error state, and keep the final size with a skeleton.",
+   "review": "Throttle the network: each view shows a placeholder, then content; a failed request shows an error state.",
+   "examples": [
+    {"stack": "vue", "good": "<Skeleton v-if=\"pending\" aria-busy=\"true\" /><ErrorState v-else-if=\"error\" /><List v-else :items=\"items\" />", "bad": "<List :items=\"items\" />  // blank until the request ends"}
+   ]
+  },
+  "stable-layout": {
+   "build": "Give images a width, a height or an aspect ratio, and reserve a slot for late badges.",
+   "review": "Throttle the network: the content around a late image or count does not move.",
+   "examples": [
+    {"stack": "vue", "good": "<img :src=\"src\" :alt=\"alt\" width=\"640\" height=\"360\">", "bad": "<img :src=\"src\" :alt=\"alt\">"}
+   ]
+  }
+ }
+}

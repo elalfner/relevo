@@ -1,0 +1,11 @@
+{
+ "lens": "interface",
+ "stack": "vue",
+ "case": "form-labels",
+ "description": "The interface rule form-labels is broken in the diff.",
+ "expected": {
+  "lens": "interface",
+  "finding": "label|placeholder"
+ },
+ "rule": "form-labels"
+}

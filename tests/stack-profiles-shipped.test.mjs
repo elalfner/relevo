@@ -31,6 +31,16 @@ test('Scenario: Defaults of Laravel - the review block has the log under storage
   assert.deepEqual(p.targets, {}, 'Targets: None is unchanged');
 });
 
+test('Scenario: Defaults of Supabase - the review block has the container log and supabase test db and no serve; the commands and tools are unchanged', () => {
+  const p = profile('supabase');
+  assert.deepEqual(p.review, { log: 'docker:supabase_db_{project_id}', test: 'supabase test db' });
+  assert.equal(p.review.serve, undefined);
+  assert.match(p.reviewBody, /pgTAP file of its scenario/);
+  assert.match(p.reviewBody, /Never add `--linked` or `--db-url`/);
+  assert.doesNotMatch(p.body, /pgTAP file of its scenario/);
+  assert.deepEqual([p.commands.analyze, p.commands.test, p.tools], ['supabase db lint', 'supabase test db', ['supabase', 'docker']]);
+});
+
 test('Scenario: Laravel profile - analyze is Pint in test mode, test is php artisan test, format is Pint, no targets', () => {
   const p = profile('laravel');
   assert.equal(p.commands.analyze, 'vendor/bin/pint --test');
@@ -139,7 +149,9 @@ test('Scenario: Security, performance and tests in the diff - the body of Vue na
 
 test('Scenario: Size - the checklist grew the body of Vue by less than 2 KB, and the rule not to repeat analyze stays', () => {
   const p = profile('vue');
-  assert.ok(p.body.length - VUE_BODY_BEFORE < 2048, `grew by ${p.body.length - VUE_BODY_BEFORE}`);
+  // The section Security for the developer is a later addition with its own sources; the guard is about the checklist.
+  const body = p.body.replace(/## Security for the developer[\s\S]*?(?=\n## |$)/, '');
+  assert.ok(body.length - VUE_BODY_BEFORE < 2048, `grew by ${body.length - VUE_BODY_BEFORE}`);
   assert.match(p.body, /Do not spend time re-checking what `analyze` already enforces/);
 });
 
@@ -194,4 +206,11 @@ test('Scenario: Flutter profile - the rules of the official docs are in the body
   assert.doesNotMatch(p.body, /\b(must|always) use (Command|Result|provider|freezed)/i);
   assert.doesNotMatch(p.body, /AI rules/i);
   assert.ok(Buffer.byteLength(p.body) <= 8 * 1024, `the Flutter body is ${Buffer.byteLength(p.body)} bytes`);
+});
+
+test('Scenario: A plugin stack that installs dependencies - the profiles of Vue, Laravel and Flutter list the path that their install step creates, and Supabase lists none', () => {
+  assert.deepEqual(profile('vue').installed, ['node_modules']);
+  assert.deepEqual(profile('laravel').installed, ['vendor']);
+  assert.deepEqual(profile('flutter').installed, ['.dart_tool/package_config.json']);
+  assert.deepEqual(profile('supabase').installed, []);
 });

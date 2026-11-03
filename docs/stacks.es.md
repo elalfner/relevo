@@ -28,10 +28,13 @@ Un perfil es el archivo `stacks/<stack>.md` del plugin. Su encabezado lo leen lo
 - Los comandos que verifican el código: `analyze`, `test` y `format`.
 - Los archivos generados que se dejan fuera del diff que revisa QA.
 - Las herramientas que necesita el stack y la que necesita cada destino (en Flutter: `adb` para Android, `xcrun` para iOS, que solo corre en macOS, y nada para la web).
+- Las rutas que existen una vez instaladas sus dependencias (`installed`): Vue lista `node_modules`, Laravel `vendor` y Flutter `.dart_tool/package_config.json`, y Supabase no lista ninguna. El job de construcción las comprueba antes de que empiece el agente y se detiene, sin gastar un turno del modelo, cuando falta alguna (ver [Instalar las dependencias](#instalar-las-dependencias-antes-del-agente)). Un perfil de tu repositorio agrega rutas y nunca quita una.
 - Las skills que requiere y las skills extra de cada rol.
 - Un texto con la higiene que sigue el desarrollador y lo que QA busca en el diff.
 
 Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` resuelve el perfil de tu plataforma y se lo entrega a los agentes de desarrollo y de QA.
+
+El encabezado también puede decir qué tipo de interfaz construye el stack con `interface: web`, `interface: mobile` o `interface: none`. Sin la clave el stack no tiene interfaz y sus agentes no reciben reglas de interfaz. Flutter es `mobile` (y recibe también las reglas de `web` cuando una plataforma lista el destino `web`), Vue y Laravel son `web`, Supabase es `none`. Un stack que escribes tú en `.relevo/stacks/<stack>.md` declara el suyo con la misma clave. Las reglas y cómo las recibe un agente están en `knowledge/interface/`; un proyecto agrega las suyas en `.relevo/interface.json`, que puede agregar reglas y ejemplos y nunca quitar ni bajar una del plugin (`/relevo:doctor` lo valida y avisa de un intento).
 
 ## Los perfiles que trae Relevo
 
@@ -113,7 +116,7 @@ Esta sección sigue la documentación de Supabase (guías de flujo de desarrollo
 
 ## Ajusta cómo se revisa un stack
 
-El encabezado de `.relevo/stacks/<stack>.md` puede llevar un bloque `review`, y su cuerpo una sección `## Review`. El perfil `laravel` del plugin pone los valores por defecto, así que un repositorio Laravel no necesita ninguno de los dos.
+El encabezado de `.relevo/stacks/<stack>.md` puede llevar un bloque `review`, y su cuerpo una sección `## Review`. Los perfiles `laravel` y `supabase` del plugin ponen los valores por defecto, así que un repositorio Laravel o Supabase no necesita ninguno de los dos.
 
 ```yaml
 review:
@@ -129,7 +132,51 @@ review:
 - Una clave que escribes reemplaza el valor por defecto del plugin para esa clave (`/relevo:doctor` lista las que reemplazaste). Es el único lugar donde un repositorio puede reemplazar un valor de un perfil, porque el bloque dice cómo se conduce el review y no es una verificación del código: `analyze`, `test` y `format` se siguen reemplazando solo con `checks`.
 - `serve` se arranca solo con `review.autopilot` en `precheck` o `verify`, después de que confirmaste que los datos no son de producción, en un puerto libre de `localhost`, con el script que lo registra y lo detiene. Su `url` debe estar en `localhost`, `127.0.0.1` o `[::1]`, y el comando se lee solo de este archivo en la rama base, nunca de un issue ni de un comentario.
 - La sección `## Review` es texto libre para el agente, que solo lo lee en un review. Puede añadir pasos y pedir más evidencia. No puede cambiar que tú confirmas cada línea, que se audita el log, que `decide` controla el pull request, que nunca se leen los archivos restringidos (la lista está en [Seguridad](security.es.md)), que no se sugiere un waiver ni que no se parchea código en un review: `/relevo:doctor` avisa de una línea que pida alguna de esas cosas, y el review la ignora.
+- `log` es una ruta o un glob de archivos, o `docker:<contenedor>` para el log de un contenedor; en un nombre `docker:`, `{project_id}` es el `project_id` de `supabase/config.toml`. El valor por defecto de `supabase` es `docker:supabase_db_{project_id}` con `test: supabase test db`.
 - Un review de Laravel no tiene dispositivo ni navegador. Con `review.autopilot` en `off` corres los tests del proyecto y se lo dices al review (`ran <código de salida>`); con `precheck` o `verify` el agente corre el test que ya existe para cada línea y nunca escribe uno. Una corrida de tests que pasa no escribe nada en `storage/logs`, así que lo que muestra que el código se ejercitó es la corrida registrada, no el log.
+- Un review de Supabase tampoco tiene dispositivo ni navegador, y solo toca los contenedores locales: `review.test` se rechaza si nombra `--linked`, `--db-url`, `link`, `push` o `pull`, y el review nunca lee archivos `.env` ni `supabase/.temp`, aunque la carpeta esté enlazada a un proyecto remoto. Cada línea se prueba con el archivo pgTAP de su escenario en `supabase/tests/` (`supabase test db <archivo>`); el log es el del contenedor de la base de datos, leído desde que empezó el review. Un `throws_ok` captura su denegación dentro del test y no la escribe en el log, así que la prueba de que una política deniega es la corrida registrada; un error de permiso, de row-level security o de constraints que sí llegue al log se lista como denegación esperada, y la entrada `FATAL: role "postgres" does not exist` de un `supabase db reset` como entrada de arranque esperada. Cualquier otro `FATAL`, un deadlock o cualquier otro `ERROR` es un hallazgo.
+
+## Qué lee cada revisor de QA de un perfil
+
+QA se compone de cuatro revisores (lentes), y cada uno lee solo la parte del perfil que necesita, así que ninguno carga el contexto de los demás:
+
+| Revisor | Qué lee del perfil |
+|---|---|
+| `spec` | nada: compara el código con la especificación |
+| `security` | la sección `## Security review` |
+| `code` | `## Architecture` y `## What the auditor looks for in the diff` |
+| `interface` | nada del perfil: sus reglas vienen del conocimiento de interfaz |
+
+El agente de desarrollo sigue recibiendo el cuerpo completo, ahora con la sección `## Security for the developer`, y nunca la `## Security review`. Para ver lo que recibe un revisor: `node scripts/stack-profile.mjs --platform <nombre> --lens security`.
+
+Las dos secciones de seguridad son opcionales. Un stack sin ellas funciona desde el primer día: el revisor de seguridad usa entonces las categorías genéricas de su agente (inyección, autenticación y autorización, secretos en el código, deserialización insegura, confianza en la entrada del cliente, redirecciones abiertas, dependencias nuevas). Cada elemento de una `## Security review` que trae Relevo nombra su fuente y la fecha en que se leyó (`Source: <dirección>. Read: <fecha>.`). Tu propio perfil en `.relevo/stacks/<stack>.md` puede tener las mismas secciones: su texto se suma al del plugin y no le quita nada.
+
+### Qué cubren las secciones de seguridad que trae Relevo
+
+Los cuatro stacks incluidos tienen las dos secciones, y cada elemento nombra la página oficial de la que sale y la fecha en que se leyó (2 de noviembre de 2026): Supabase (seguridad a nivel de fila, la clave secreta, vistas, funciones, políticas de almacenamiento), Laravel (asignación masiva, políticas, consultas crudas, salida sin escapar, subidas, CSRF), Vue (plantillas no confiables, `v-html`, URLs, estilos, CSRF) y Flutter (SDK y dependencias, registros, tráfico sin cifrar, enlaces profundos, el almacén de claves de la plataforma). Donde la documentación oficial de un stack no dice nada de un tema, no hay un elemento para él en lugar de uno sin fuente: en Vue son dónde se guardan los tokens, los mensajes entre ventanas y los scripts de terceros, y en Flutter los canales de plataforma. El revisor de seguridad los sigue mirando con sus categorías genéricas. Vuelve a leer las páginas antes de fiarte de un elemento: la documentación cambia.
+
+## Lectura de los tokens de diseño
+
+Para un stack con interfaz, `node scripts/design-tokens.mjs` lee los colores, estilos de texto, espacios y radios de tu sistema de diseño desde su código y muestra cada uno con el archivo y la línea de donde salió. El paso de interfaz de `think` te enseña esa tabla antes de dibujar nada.
+
+- **Solo lee las rutas que declaraste** en `design.system.tokens` de `relevo.yml`, o las que confirmaste cuando listó lo que encontró por convención (la configuración de la herramienta de estilos, una hoja de estilos con propiedades personalizadas en la raíz, un archivo Dart con nombre de tema). Nunca lee el resto del repositorio, nunca abre un archivo restringido (dice cuáles omitió), no ejecuta nada de tu código y no usa la red.
+- **Dart:** literales de color, constantes seguidas hasta su definición, un esquema de color escrito con colores explícitos, los tonos de la paleta estándar desde una tabla fija, una opacidad sobre un color conocido (marcada como derivada), clases que extienden el tema, estilos de texto, constantes de espacio y de radio, y un tema oscuro como segundo conjunto.
+- **Web:** propiedades personalizadas en la raíz y en un bloque de modo oscuro (una propiedad que remite a otra se resuelve) y las escalas literales de color, espacio y radio de la configuración de la herramienta de estilos.
+- **Nunca se adivina:** un esquema de color derivado de una semilla, un color que viene del dispositivo o de un servidor, un tono que no está en la tabla fija y una referencia que no puede seguir se listan como no resueltos con su archivo y línea. `think` te pide esos colores en lugar de inventarlos.
+- **Varias marcas o sabores** se listan como conjuntos separados y nunca se mezclan: tú eliges uno.
+
+## Skills de diseño evaluadas
+
+Relevo no instala ninguna skill de diseño y no recomienda ninguna por defecto. Se leyeron cuatro públicas el 2 de noviembre de 2026 para ver qué aportaría cada una; cualquiera puede añadirse a un rol con el mecanismo de [Skills extra por rol](#skills-extra-por-rol), y `/relevo:init` no instala ninguna. «Coste» es el tamaño del archivo que carga el agente cuando la skill está activa, a unos cuatro caracteres por token.
+
+| Skill | Licencia que declara | Para qué sirve | Encaje en un rol | Coste al cargarla |
+|---|---|---|---|---|
+| `frontend-design` (colección `anthropics/skills`) | Apache-2.0 | Dirección de arte para una interfaz web distintiva | `dev`, para una página nueva donde se quiere un estilo; empuja hacia una identidad visual fuerte, así que puede chocar con un sistema de diseño existente | unos 9 KB (2.300 tokens) |
+| Taste (`Leonxlnx/taste-skill`) | MIT | Dirección de arte para sitios web, destilada de un estudio de sitios de galería | `dev` para una landing o un sitio de marketing; no para una aplicación con sistema propio | unos 40 KB (10.000 tokens) |
+| Hallmark (`Nutlope/hallmark`) | MIT | Una skill de diseño para sitios y páginas nuevas, con modos de rediseño y auditoría | `dev` para un sitio nuevo; dice que no se use sobre un diseño existente salvo que se nombre | unos 18 KB (4.500 tokens) |
+| UI UX Pro Max (`nextlevelbuilder/ui-ux-pro-max-skill`) | MIT | Un cuerpo de guías de UI y UX, estilos, paletas y notas por stack, con búsqueda | La fuente de las [reglas de interfaz](../knowledge/interface/CURATION.md) propias de Relevo; la skill en sí añade un conjunto de datos grande | un archivo de skill de unos 16 KB (4.000 tokens) más datos de unos 3 MB, que busca un script |
+
+Qué se concluye de la lectura: las tres que dan un estilo son para sitios nuevos, y un proyecto con sistema de diseño quiere lo contrario (reutilizar sus tokens y componentes), que es lo que hace el paso de interfaz. Las reglas propias de Relevo vienen de la cuarta y se cargan por rol y presupuesto, no enteras. Lee la licencia vigente y el archivo que añadirías antes de hacerlo; son obras de terceros que cambian.
 
 ## Tu propio stack
 
@@ -172,9 +219,23 @@ Relevo trae perfiles para `flutter`, `vue`, `laravel` y `supabase`. Para cualqui
        go-version-file: ${{ needs.decide.outputs.path }}/go.mod
    ```
 
-   Instala las dependencias como prefiera tu proyecto, desde `needs.decide.outputs.path`.
+   Instala las dependencias como prefiera tu proyecto, desde `needs.decide.outputs.path`. Si tu perfil lista `installed:` (las rutas que existen después, relativas a la carpeta de la plataforma), la construcción se detiene antes del agente cuando falta alguna, y `/relevo:doctor` avisa cuando ningún paso instala las dependencias.
 
 `/relevo:doctor` avisa cuando el perfil de un stack así no tiene `analyze` o no tiene `test`, y cuando el workflow de go no tiene un paso protegido por el nombre del stack (no avisa para un stack cuyas herramientas son solo `node` y `npm`, porque el job ya instala Node). También avisa mientras el archivo no está en git.
+
+## Instalar las dependencias antes del agente
+
+El agente y QA ejecutan los comandos del perfil, y necesitan que existan las dependencias del proyecto. La plantilla no las instala, porque el gestor de paquetes y el archivo de bloqueo varían: agrega el paso de tu stack al job de construcción de `.github/workflows/relevo-go.yml`, protegido por el nombre del stack y ejecutado desde la carpeta de la plataforma. La plantilla lo muestra, comentado, para cada stack:
+
+```yaml
+- if: needs.decide.outputs.stack == 'vue'
+  working-directory: ${{ needs.decide.outputs.path }}
+  run: npm ci --ignore-scripts
+```
+
+- Instala sin los scripts de los paquetes donde la herramienta lo permita (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` no ejecuta ninguno.
+- El paso "Check the toolchain" busca, cuando las herramientas están, cada ruta que el perfil lista en `installed`. Cuando falta alguna el issue pasa a `relevo:qa-failed`, el comentario nombra la ruta y dice que se active el paso de instalación, y no se gasta ningún turno del modelo.
+- `/relevo:doctor` avisa, por cada plataforma cuyo perfil lista `installed`, cuando el workflow de go no tiene un paso activo que instale sus dependencias. Un ejemplo comentado, y una instalación en otra carpeta (los pasos que instalan OpenSpec y los scripts de Relevo), no cuentan.
 
 ## Skills extra por rol
 

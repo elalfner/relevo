@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseUsageMarker, reachedUsageLimit, readUsage, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
+import { limitsExceeded, parseUsageMarker, reachedUsageLimit, readUsage, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
 const write = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
@@ -163,4 +163,42 @@ test('sumUsage adds the figures over the runs that report each, and counts the n
   assert.deepEqual(sumUsage([{ turns: 1, cost: 0.5, notional: false }, { turns: 1, cost: 0.5, notional: true }]).notionalRuns, 1);
   assert.deepEqual(sumUsage([{ turns: 1, notional: false }]), { runs: 1, turns: 1, cost: null, tokens: null, costRuns: 0, notionalRuns: 0 });
   assert.equal(sumUsage([]).runs, 0);
+});
+
+// ---- the turns of the subagents (specialist-review-lenses, task 9.1)
+const lensNotice = (calls) => ({ type: 'system', subtype: 'task_notification', status: 'completed', usage: { total_tokens: 3000, tool_uses: calls, duration_ms: 5000 } });
+const WITH_LENSES = JSON.stringify([{ type: 'system' }, lensNotice(3), lensNotice(0), { ...result, num_turns: 90 }]);
+
+test('Scenario: Lenses use turns - the turns of the subagents are added to those of the run, and the sentence says so', () => {
+  const usage = readUsage(WITH_LENSES);
+  assert.equal(usage.subagentTurns, 5, 'tool_uses + 1 for each subagent: 4 and 1');
+  assert.equal(usage.turns, 95);
+  assert.match(usageLine(usage), /^This run used 95 turns \(5 by subagents\), about \$1\.82/);
+});
+
+test('a run without subagents is read as before, with no extra key', () => {
+  assert.deepEqual(readUsage(ARRAY), { turns: 37, cost: 1.8234, tokens: 123000, cached: null });
+});
+
+test('Scenario: A runtime that does not count subagents - the limit is applied to the total and the sentence names it', () => {
+  const usage = readUsage(WITH_LENSES);
+  const limits = { run_max_turns: 92, run_max_cost: 5 };
+  assert.deepEqual(limitsExceeded(usage, limits), [{ limit: 'limits.run_max_turns', used: 95, max: 92 }]);
+  assert.match(usageLine(usage, { limits }), /It went past limits\.run_max_turns \(92\) with 95: the runner counts only the turns of the main agent/);
+  assert.deepEqual(limitsExceeded(usage, { run_max_turns: 100, run_max_cost: 5 }), []);
+  assert.doesNotMatch(usageLine(usage, { limits: { run_max_turns: 100, run_max_cost: 5 } }), /went past/);
+  assert.deepEqual(limitsExceeded(readUsage(ARRAY), { run_max_cost: 1 }), [{ limit: 'limits.run_max_cost', used: 1.8234, max: 1 }]);
+  assert.deepEqual(limitsExceeded(null, limits), []);
+});
+
+test('run-usage.mjs reads the limits from --config and says when a run went past them', () => {
+  const log = write('lenses.json', WITH_LENSES);
+  const cfg = write('relevo.yml', 'limits:\n  run_max_turns: 92\n');
+  const r = spawnSync(process.execPath, [CLI('run-usage.mjs'), '--file', log, '--config', cfg], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /It went past limits\.run_max_turns \(92\) with 95/);
+  const bad = spawnSync(process.execPath, [CLI('run-usage.mjs'), '--file', log, '--config', join(dir, 'missing.yml')], { encoding: 'utf8' });
+  assert.equal(bad.status, 0, 'an unreadable config never fails the step');
+  assert.match(bad.stdout, /95 turns/);
+  assert.doesNotMatch(bad.stdout, /went past/);
 });

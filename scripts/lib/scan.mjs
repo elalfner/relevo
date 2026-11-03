@@ -12,17 +12,36 @@ const CREDENTIAL_PATTERNS = [
   { name: 'slack-token', re: /\bxox[baprs]-[A-Za-z0-9-]{10,}/ },
   { name: 'private-key', re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
   {
+    // A name that holds a secret, assigned a long value. The value decides (see `assignedSecret`): code that only names
+    // a secret (a variable, a call, a member) is not one.
     name: 'assigned-secret',
-    re: /\b(api[_-]?key|secret|token|password|passwd)\b["']?\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{16,}/i,
+    re: /\b(api[_-]?key|secret|token|password|passwd)\b["']?\s*[:=]\s*(["'])?([A-Za-z0-9_\-/+=]{16,})/gi,
+    accept: assignedSecret,
   },
 ];
+
+/**
+ * Is this match of the `assigned-secret` pattern a literal secret? A quoted value is. An unquoted one is only when it
+ * looks like generated text (letters mixed with digits, or `/`, `+` or `=` as in base64) and is not the start of a call
+ * (`(`), a member access (`.`) or an index (`[`): `token: someLongVariableName` and `password = readPasswordFromVault(x)` are code.
+ */
+function assignedSecret(match, text) {
+  const [whole, , quote, value] = match;
+  if (quote) return true;
+  const next = text[match.index + whole.length];
+  if (next === '(' || next === '.' || next === '[') return false;
+  return (/[A-Za-z]/.test(value) && /\d/.test(value)) || /[/+=]/.test(value);
+}
 
 // A long unbroken token is only suspicious in a configuration value, not in code.
 const OPAQUE_TOKEN_RE = /^[A-Za-z0-9+/_-]{40,}$/;
 
 /** Returns [{ name }] for every credential-looking pattern in `text`. */
 export function findCredentials(text, { strict = false } = {}) {
-  const found = CREDENTIAL_PATTERNS.filter(({ re }) => re.test(text)).map(({ name }) => ({ name }));
+  const found = CREDENTIAL_PATTERNS.filter(({ re, accept }) => {
+    if (!accept) return re.test(text);
+    return [...text.matchAll(re)].some((match) => accept(match, text));
+  }).map(({ name }) => ({ name }));
   if (strict && OPAQUE_TOKEN_RE.test(text.trim())) found.push({ name: 'opaque-token' });
   return found;
 }
