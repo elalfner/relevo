@@ -58,10 +58,12 @@ test('Scenario: Rebuild variant - qa-failed with nothing pushed has no command a
   assert.equal(step.who, 'assignee');
   assert.match(step.hint, /nothing was pushed/);
   assert.match(step.hint, /remove relevo:qa-failed and label the issue relevo:ready again/);
+  assert.match(step.hint, /\/relevo:go 37 --local --retry \(the cloud does not start\)/);
   assert.doesNotMatch(step.line, /\/relevo:fix/);
   const es = nextStep({ state: 'qa-failed', reason: 'rebuild', issue: 37, language: 'es' });
   assert.match(es.hint, /no se subió nada/);
   assert.match(es.hint, /quita relevo:qa-failed y vuelve a poner relevo:ready/);
+  assert.match(es.hint, /\/relevo:go 37 --local --retry \(la nube no arranca\)/);
 });
 
 test('pr-open waits for an approval and then goes to ship; changes-requested goes to fix', () => {

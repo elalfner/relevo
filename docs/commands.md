@@ -59,13 +59,15 @@ What to build, the path of a saved agreement, or the number of an issue to rewri
 /relevo:issue 42
 ```
 
-### `/relevo:go [issue-number] [--local] [--decision <base64>]`
+### `/relevo:go [issue-number] [--local] [--retry] [--decision <base64>]`
 
 The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `/relevo:go` in a Claude Code session builds it on your machine in a worktree of its own (so two can run at once), and `--local` builds in a separate process with the closed tool lists and the limits of the workflow (the worktree is the same; the rest differs, see below). `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
 
 ```text
 /relevo:go 42 --local
 ```
+
+`--retry` builds again an issue that is `qa-failed` and has no branch on the remote (a build that pushed nothing, for example because the safe commit refused the work), without labelling it `ready`, which would start the cloud. Run it after you resolve the cause the comment names: `/relevo:go 42 --local --retry`. It applies the same gates as a normal start, with you in the place of whoever applied `ready` (write access, or maintainer when `trust` is `public`). If the issue has a branch it refuses and sends you to `/relevo:fix 42`.
 
 #### In the session or on its own
 

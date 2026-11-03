@@ -144,3 +144,26 @@ test('Scenario: No credential - a start becomes local: nothing claimed, the issu
   // Every other decision is applied as usual.
   assert.equal(run(['--credential', 'false'], { milestone: null }).out.action, 'no-milestone');
 });
+
+function retryPlan(over, retryBy = 'persona-a') {
+  const input = join(dir, `retry-${Math.random().toString(36).slice(2)}.json`);
+  writeFileSync(input, JSON.stringify({ ...state({ labels: ['relevo:qa-failed'], ready_at: null, ready_by: null, ...over }), retry_by: retryBy }));
+  return spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7', '--retry'], { encoding: 'utf8' });
+}
+
+test('Scenario: Retry of a qa-failed issue - go-plan --retry starts it without ready', () => {
+  const r = retryPlan();
+  assert.equal(r.status, 0, r.stderr);
+  const decision = JSON.parse(r.stdout).decisions[0];
+  assert.equal(decision.action, 'start');
+  assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:qa-failed'] });
+});
+
+test('go-plan --retry needs --only, and a person without permission is denied', () => {
+  const input = join(dir, 'noonly.json');
+  writeFileSync(input, JSON.stringify(state()));
+  const noOnly = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--retry'], { encoding: 'utf8' });
+  assert.equal(noOnly.status, 2);
+  assert.match(noOnly.stderr, /--retry needs --only/);
+  assert.equal(JSON.parse(retryPlan({}, 'stranger').stdout).decisions[0].action, 'denied');
+});

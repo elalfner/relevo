@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Builds an issue on this machine, with your own Claude session, as the cloud would. Usage:
-//   node scripts/go-local.mjs <issue> [--config relevo.yml] [--dry-run]
+//   node scripts/go-local.mjs <issue> [--config relevo.yml] [--dry-run] [--retry]
+// --retry builds an issue that is `qa-failed` and has no branch, without making it `ready` (so the cloud does not start it).
 // It runs `claude -p "/relevo:go <issue>"` in a separate git worktree (so your uncommitted changes do not matter),
 // with the turn and cost limits of relevo.yml and the closed tool lists of the workflow. The worktree is removed when
 // the run ends cleanly and kept otherwise.
@@ -43,6 +44,7 @@ const result = runLocal({
   config: loaded.config,
   runner,
   dryRun: flag('dry-run'),
+  retry: flag('retry'),
   workflowPresent: existsSync('.github/workflows/relevo-go.yml'),
   exists: existsSync,
 });

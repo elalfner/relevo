@@ -19,16 +19,18 @@ const GUARD = fileURLToPath(new URL('../agent-guard.mjs', import.meta.url));
 export const GUARD_TIMEOUT_MINUTES = 50;
 
 /** What a local run will do, without doing it: the worktree and the `claude` or `agy` command. Pure. */
-export function planLocalRun({ issue, repoRoot, config }) {
+export function planLocalRun({ issue, repoRoot, config, retry = false }) {
   const base = config.branches.base;
   const worktree = worktreePath(repoRoot, issue);
   const isAntigravity = config.agent?.build === 'antigravity';
+  // A retry builds a `qa-failed` issue again: `go` plans it with the planner's --retry and the issue never becomes `ready`.
+  const prompt = `/relevo:go ${issue}${retry ? ' --retry' : ''}`;
   const command = isAntigravity
     ? ['node', [
         GUARD,
         'run',
         '--prompt',
-        `/relevo:go ${issue}`,
+        prompt,
         '--config',
         'relevo.yml',
         '--timeout-minutes',
@@ -37,7 +39,7 @@ export function planLocalRun({ issue, repoRoot, config }) {
         '--summary',
         join(tmpdir(), `relevo-guard-${basename(repoRoot)}-${issue}.json`),
       ]]
-    : ['claude', ['-p', `/relevo:go ${issue}`, ...runFlags(config)]];
+    : ['claude', ['-p', prompt, ...runFlags(config)]];
   return {
     issue,
     base,
@@ -56,7 +58,7 @@ export function planLocalRun({ issue, repoRoot, config }) {
  * Run it. Returns { status, worktree, removed, messages } and never throws for an expected problem; `messages` is
  * what to print. `dryRun` returns the plan without running anything.
  */
-export function runLocal({ issue, config, runner, workflowPresent = false, dryRun = false, exists = () => false }) {
+export function runLocal({ issue, config, runner, workflowPresent = false, dryRun = false, retry = false, exists = () => false }) {
   const messages = [];
   const say = (m) => messages.push(m);
   if (!/^\d+$/.test(String(issue))) return { status: 2, worktree: null, removed: false, messages: ['give the issue number: go-local.mjs <issue>'] };
@@ -67,7 +69,7 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
   } catch {
     return { status: 2, worktree: null, removed: false, messages: ['not inside a git repository'] };
   }
-  const plan = planLocalRun({ issue: String(issue), repoRoot, config });
+  const plan = planLocalRun({ issue: String(issue), repoRoot, config, retry });
   const isAntigravity = config.agent?.build === 'antigravity';
 
   if (dryRun) {
@@ -88,11 +90,12 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
   // The cloud may start the same issue: the variable decides.
   let variable = null;
   try {
-    variable = runner.capture('gh', ['variable', 'get', 'RELEVO_CLOUD_GO'], { cwd: repoRoot }).trim();
+    variable = retry ? null : runner.capture('gh', ['variable', 'get', 'RELEVO_CLOUD_GO'], { cwd: repoRoot }).trim();
   } catch {
     variable = null;
   }
-  if (cloudBuilds({ workflowPresent, variable })) {
+  // A retry is never `ready`, so the cloud does not start it and there is nothing to warn about.
+  if (!retry && cloudBuilds({ workflowPresent, variable })) {
     say('warning: the cloud can also build this issue (the go workflow is installed and RELEVO_CLOUD_GO is not `off`); if the issue is `ready` it may already be running. Set RELEVO_CLOUD_GO to `off` in the repository variables to build only on machines.');
   }
 

@@ -64,18 +64,20 @@ export const readyEvent = labelEvent;
  * `running` is supplied by the caller (workflow runs in progress). `ghLinks` reads issues of linked repositories
  * (`config.links` only; a repository outside the list is never asked).
  */
-export function gather({ gh, ghLinks = gh, repo, config, running = [] }) {
+export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = null }) {
   const names = resolveLabelNames(config.labels);
-  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built'];
+  // `qa-failed` issues are read only for a retry, and then only the retried one is kept.
+  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built', ...(retry ? ['qa-failed'] : [])];
 
   const byNumber = new Map();
   stateKeys.forEach((key) => {
     const found = apiJson(gh, `repos/${repo}/issues?state=open&per_page=100&labels=${encodeURIComponent(names[key])}`, { paginate: true });
-    found.filter((i) => !i.pull_request).forEach((i) => byNumber.set(i.number, normalizeIssue(i)));
+    found.filter((i) => !i.pull_request && (key !== 'qa-failed' || i.number === retry.issue)).forEach((i) => byNumber.set(i.number, normalizeIssue(i)));
   });
   const issues = [...byNumber.values()];
 
-  const candidates = issues.filter((i) => [names.ready, names.queued, names.blocked].some((n) => i.labels.includes(n)));
+  const candidates = issues.filter((i) => [names.ready, names.queued, names.blocked].some((n) => i.labels.includes(n))
+    || (retry && i.number === retry.issue && i.labels.includes(names['qa-failed'])));
   candidates.forEach((issue) => {
     const timeline = apiJson(gh, `repos/${repo}/issues/${issue.number}/timeline?per_page=100`, { paginate: true });
     const { at, by } = labelEvent(timeline, names.ready);
@@ -115,7 +117,7 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [] }) {
   });
 
   const permissions = {};
-  new Set(candidates.flatMap((i) => [i.ready_by, i.urgent_by]).filter(Boolean)).forEach((login) => {
+  new Set([...candidates.flatMap((i) => [i.ready_by, i.urgent_by]), retry?.by].filter(Boolean)).forEach((login) => {
     try {
       permissions[login] = apiJson(gh, `repos/${repo}/collaborators/${login}/permission`).permission ?? 'none';
     } catch {

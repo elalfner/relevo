@@ -151,8 +151,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'nothing was pushed, so there is no branch to fix: resolve the cause named above, then remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'no se subió nada, así que no hay rama que corregir: resuelve la causa indicada arriba, luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'nothing was pushed, so there is no branch to fix: resolve the cause named above, then build it again on your machine with /relevo:go {n} --local --retry (the cloud does not start), or remove relevo:qa-failed and label the issue relevo:ready again',
+        es: 'no se subió nada, así que no hay rama que corregir: resuelve la causa indicada arriba, luego constrúyelo de nuevo en tu máquina con /relevo:go {n} --local --retry (la nube no arranca), o quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
       },
     },
     // Nothing was built: the base branch versions a file on the restricted list, which no command of Relevo can fix.
