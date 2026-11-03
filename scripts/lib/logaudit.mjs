@@ -76,6 +76,8 @@ const API_RULES = [
 // the test), so the proof that a policy denies is the recorded run, not the log.
 const PG_LEVEL = /\b(ERROR|FATAL|PANIC):\s/;
 const PG_DENIAL = /permission denied|violates row-level security policy|violates [\w\s-]*constraint|duplicate key value/i;
+// `supabase db reset` writes this one entry while it recreates the database; it is a startup entry, not a fault.
+const PG_STARTUP = /\bFATAL:\s+role "postgres" does not exist\s*$/;
 const PG_RULES = [
   { cls: 'fatal', test: (l) => /\b(FATAL|PANIC):\s/.test(l) },
   { cls: 'deadlock', test: (l) => PG_LEVEL.test(l) && /deadlock detected/i.test(l) },
@@ -108,11 +110,16 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   });
   // Expected denials of a Postgres log: counted and listed, a finding only when no run is recorded to explain them.
   const expected = [];
+  const startup = [];
   const denialsExplained = runs.length > 0;
   String(text).split('\n').forEach((raw, idx) => {
     const line = raw.replace(ANSI_RE, '');
     const excerpt = line.trim().slice(0, MAX_EXCERPT);
     if (postgres) {
+      if (PG_STARTUP.test(line)) {
+        startup.push({ line: idx + 1, excerpt });
+        return;
+      }
       if (/\bERROR:\s/.test(line) && PG_DENIAL.test(line) && !/deadlock detected|out of memory/i.test(line)) {
         if (denialsExplained) expected.push({ line: idx + 1, excerpt });
         else add('denial', idx + 1, excerpt);
@@ -129,7 +136,7 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   });
   const counts = {};
   findings.forEach((f) => { counts[f.class] = (counts[f.class] ?? 0) + 1; });
-  const extra = { ...(unreadable.length ? { unreadable } : {}), ...(postgres ? { expected } : {}) };
+  const extra = { ...(unreadable.length ? { unreadable } : {}), ...(postgres ? { expected, startup } : {}) };
   if (findings.length > 0) return { verdict: REJECTED, findings, counts, ...extra };
   if (unreadable.length > 0) {
     return { verdict: INCONCLUSIVE, reason: `a log source could not be read (${unreadable.map((u) => `${u.file}: ${u.reason}`).join('; ')}), so the audit cannot say the log is clean`, findings, counts, unreadable };
@@ -137,7 +144,7 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   if (runs.length === 0 && String(text).trim() === '') {
     return { verdict: INCONCLUSIVE, reason: 'no test run is recorded and the log has nothing since the review started: run the tests and say so (ran <exit code>)', findings, counts };
   }
-  return { verdict: PASSED, findings, counts, ...(postgres ? { expected } : {}) };
+  return { verdict: PASSED, findings, counts, ...(postgres ? { expected, startup } : {}) };
 }
 
 /** Markdown report of an audit. */
@@ -167,7 +174,12 @@ export function auditReport(audit, { issue, scope } = {}) {
   if (audit.expected?.length > 0) {
     lines.push('', `${audit.expected.length} expected denial(s): permission, row-level security or constraint errors; they are not findings.`);
     audit.expected.slice(0, 5).forEach((e) => lines.push(`- (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
-  } else if (scope?.flavor === 'postgres' && audit.verdict === PASSED) {
+  }
+  if (audit.startup?.length > 0) {
+    lines.push('', `${audit.startup.length} expected startup entr${audit.startup.length === 1 ? 'y' : 'ies'}: \`FATAL: role "postgres" does not exist\`, which a database reset writes while it recreates the database; not a finding.`);
+    audit.startup.slice(0, 5).forEach((e) => lines.push(`- (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
+  }
+  if (!(audit.expected?.length > 0) && scope?.flavor === 'postgres' && audit.verdict === PASSED) {
     lines.push('', 'No denial appears in the log. A pgTAP test that catches a denial does not write it there: the proof is the recorded run and its assertions, not the log.');
   }
   return `${lines.join('\n')}\n`;

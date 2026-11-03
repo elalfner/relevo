@@ -104,6 +104,30 @@ test('Scenario: Other error and Fatal - a missing relation, a syntax error, a fa
   assert.deepEqual(auditApi({ text: fixture('db-log-fatal-handwritten.txt'), runs: run, flavor: 'postgres' }).counts, { fatal: 1, deadlock: 1 });
 });
 
+test('Scenario: Database reset with a good migration - the startup entry is listed, not a finding', () => {
+  const audit = auditApi({ text: fixture('db-log-reset.txt'), runs: [{ exit: 0, tests: 4, by: 'agent', line: 1 }], flavor: 'postgres' });
+  assert.equal(audit.verdict, 'REVIEW PASSED');
+  assert.equal(audit.startup.length, 1);
+  assert.match(audit.startup[0].excerpt, /role "postgres" does not exist/);
+  const report = auditReport(audit, { scope: { kind: 'api', pattern: 'docker:x', runs: 1, flavor: 'postgres' } });
+  assert.match(report, /1 expected startup entry/);
+  assert.match(report, /No denial appears in the log/);
+});
+
+test('Scenario: Database reset with a broken migration - rejected on the ERROR, the startup entry is not a finding', () => {
+  const audit = auditApi({ text: `${fixture('db-log-reset.txt')}${fixture('db-log-error.txt')}`, runs: [{ exit: 0, tests: 4, by: 'agent', line: 1 }], flavor: 'postgres' });
+  assert.equal(audit.verdict, 'REVIEW REJECTED');
+  assert.deepEqual(audit.counts, { 'database-error': 1 });
+  assert.equal(audit.startup.length, 1);
+});
+
+test('Scenario: Fatal - only the startup entry of a reset is spared; another role or message still rejects', () => {
+  const run = [{ exit: 0, tests: 4, by: 'agent', line: 1 }];
+  assert.deepEqual(auditApi({ text: `${fixture('db-log-reset.txt')}${fixture('db-log-fatal-handwritten.txt')}`, runs: run, flavor: 'postgres' }).counts, { fatal: 1, deadlock: 1 });
+  assert.deepEqual(auditApi({ text: '2026-11-03 05:00:00.000 UTC [9] FATAL:  role "app" does not exist\n', runs: run, flavor: 'postgres' }).counts, { fatal: 1 });
+  assert.equal(auditApi({ text: '2026-11-03 05:00:00.000 UTC [9] FATAL:  role "postgres" does not exist\n', runs: [], flavor: 'postgres' }).verdict, 'REVIEW PASSED');
+});
+
 test('Postgres audit: a clean slice with a recorded run passes, and with no run it proves nothing', () => {
   assert.equal(auditApi({ text: fixture('db-log-clean.txt'), runs: [{ exit: 0, tests: 2, by: 'person' }], flavor: 'postgres' }).verdict, 'REVIEW PASSED');
   assert.equal(auditApi({ text: '', runs: [{ exit: 0, tests: 2, by: 'person' }], flavor: 'postgres' }).verdict, 'REVIEW PASSED');

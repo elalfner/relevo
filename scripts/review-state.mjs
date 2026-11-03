@@ -154,7 +154,7 @@ try {
         const flavor = state.stack === 'supabase' ? 'postgres' : 'laravel';
         const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor });
         const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor === 'postgres' ? { flavor } : {}) };
-        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}) };
+        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}) };
         applyWaivers(state);
         audit.verdict = state.audit.verdict;
         save(state);
