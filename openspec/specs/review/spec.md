@@ -572,15 +572,15 @@ For the `api` adapter the review SHALL need no device, no browser and no capture
 - **THEN** the agent says that this adapter takes none and records nothing
 
 ### Requirement: The agent proves a line of an api review with an existing test
-With `review.autopilot` `precheck` or `verify`, the agent SHALL prove a line of an `api` review only by running the test that already covers its scenario (a feature test selected by a filter, or, for Supabase, a pgTAP file passed to `supabase test db`), never by writing or editing a test, and SHALL record the filter or file it used, the number of tests or assertions that ran and the exit code. A run that matched no test or no file, or whose pgTAP plan ran no assertion, SHALL be a failed proof. With `verify` a line SHALL be marked `ok (auto)` only when the exit code proves its `THEN`; a line with no covering test, or one whose test does not assert its `THEN`, SHALL stay for the person.
+With `review.autopilot` `precheck` or `verify`, the agent SHALL prove a line of an `api` review only by running the test that already covers its scenario (a feature test selected by a filter, or, for Supabase, a pgTAP file passed to `supabase test db`), never by writing or editing a test, and SHALL record the filter or file it used, the number of tests or assertions that ran and the exit code. A run that matched no test or no file, or whose pgTAP plan ran no assertion, SHALL be a failed proof. For Supabase the agent SHALL also record the names of the assertions of the file that cover the `THEN` of the line, and the proof SHALL fail unless the run has at least one covered name, every covered name appears in the pgTAP file and none of them is among the failing assertions of the run; the pull request SHALL list the covered names for each line proved. With `verify` a line SHALL be marked `ok (auto)` only when the exit code proves its `THEN`; a line with no covering test, or one whose test does not assert its `THEN`, SHALL stay for the person.
 
 #### Scenario: A test covers the line
 - **WHEN** `review.autopilot` is `verify` and the test for line 2 ran once and exited 0
 - **THEN** line 2 is `ok (auto)` and the pull request lists it with the test name
 
 #### Scenario: A pgTAP file covers the line
-- **WHEN** `review.autopilot` is `verify`, the platform is Supabase and `supabase test db supabase/tests/orders_rls.test.sql` ran 6 assertions and exited 0
-- **THEN** the line that file covers is `ok (auto)` and the pull request lists it with the file and the count
+- **WHEN** `review.autopilot` is `verify`, the platform is Supabase and `supabase test db supabase/tests/orders_rls.test.sql` ran 4 assertions, exited 0 and the run names the assertion `anon cannot insert orders` of that file as covering the line
+- **THEN** the line that file covers is `ok (auto)` and the pull request lists it with the file, the count and the covered name
 
 #### Scenario: Precheck
 - **WHEN** `review.autopilot` is `precheck` and the test for line 2 exited 0
@@ -593,6 +593,18 @@ With `review.autopilot` `precheck` or `verify`, the agent SHALL prove a line of 
 #### Scenario: No test for the line
 - **WHEN** no test of the project covers a line
 - **THEN** the agent does not write one, and the line is left to the person with a note that it has no test
+
+#### Scenario: A pgTAP run that names no covering assertion
+- **WHEN** the platform is Supabase and the run for the line exited 0 with assertions but names none as covering it
+- **THEN** `precheck` and `auto` refuse the line and say that a covering assertion must be named
+
+#### Scenario: A covered name that is not in the file
+- **WHEN** the run names `anon cannot read invoices` as covering the line and the pgTAP file has no assertion with that name
+- **THEN** the proof fails and the line stays for the person
+
+#### Scenario: A covered assertion that failed
+- **WHEN** the run names an assertion as covering the line and that assertion is among the failing ones
+- **THEN** the proof fails, whatever the exit code of the other assertions
 
 ### Requirement: The audit of an api review reads the log since the review started
 For the `api` adapter the audit SHALL read only what the project's log received since the review started, SHALL NOT truncate, delete, restart or recreate it, and SHALL report a source it could not read. When the log is made of files, the start SHALL be an offset per file recorded when the state is created, and a file that appears later SHALL be read from its start. When the log is a container's (`docker:<name>`), the start SHALL be a timestamp recorded when the state is created and the audit SHALL read what the container wrote since then.
