@@ -17,8 +17,8 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 
 ## Steps
 
-1. Preflight: `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs relevo.yml` must exit 0. If not, show its output and stop. `gh auth status` must succeed; if not, tell the person to sign in.
-2. Find the repository (`$GITHUB_REPOSITORY`, or `gh repo view --json nameWithOwner -q .nameWithOwner`).
+1. Preflight: `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs relevo.yml` must exit 0. If not, show its output and stop. `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs --access` must succeed (on a terminal it is `gh auth status`; in a session on the web, where GraphQL is blocked, it reads the repository over the REST API); if not, show its message, which names the cause.
+2. Find the repository (`$GITHUB_REPOSITORY`, or `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs repo view --json nameWithOwner -q .nameWithOwner`).
 3. Run `node ${CLAUDE_PLUGIN_ROOT}/scripts/status.mjs --repo <owner/name>`. It identifies the person from their GitHub login.
 4. Show the output as it is. If the person asks for more detail, run it again with `--json` and answer from that.
 

@@ -85,7 +85,7 @@ test('Scenario: Running status - the report is read-only and the skill runs noth
   assert.equal(parse(front).name, 'status');
   assert.equal(parse(front)['disable-model-invocation'], undefined);
   const scripts = [...body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([\w.-]+)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(scripts)].sort(), ['status.mjs', 'validate-config.mjs']);
+  assert.deepEqual([...new Set(scripts)].sort(), ['gh-web.mjs', 'status.mjs', 'validate-config.mjs']);
   scripts.forEach((s) => assert.ok(existsSync(`${root}scripts/${s}`)));
   assert.doesNotMatch(readFileSync(`${root}scripts/status.mjs`, 'utf8') + readFileSync(`${root}scripts/lib/status-data.mjs`, 'utf8'), /issue (edit|comment)|--add-label|'-X'|POST|PATCH/);
 });

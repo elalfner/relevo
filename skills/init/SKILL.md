@@ -25,7 +25,7 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 
 ### 1. Preflight
 
-Stop with a clear message, changing nothing, if `gh auth status` fails (ask the person to run `gh auth login`) or the folder is not a git repository with a GitHub remote.
+Stop with a clear message, changing nothing, if `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs --access` fails (on a terminal it is `gh auth status`: ask the person to run `gh auth login`; in a session on the web it reads the repository over REST, so show its message, which names the cause) or the folder is not a git repository with a GitHub remote.
 
 ### 2. Ask what is missing
 

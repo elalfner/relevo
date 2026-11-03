@@ -24,7 +24,7 @@ A person who works only in Claude Code on the web (a PM, for example) gets the R
 ## Impact
 
 - New: `scripts/gh-web.mjs` and `scripts/lib/gh-web.mjs` (parsing of the flags, the REST calls and the mapping to the `gh` JSON), with tests built on recorded REST responses.
-- `scripts/lib/doctor.mjs` (`ghAuth` fact), `scripts/doctor.mjs`, `scripts/init.mjs` and `scripts/lib/init.mjs` (repository name, label creation, access check), `scripts/issue-hash.mjs`, `scripts/platform-of.mjs` and `scripts/design-fetch.mjs` (`issue view`), the skills `issue`, `status`, `think`, `init` and `doctor` and the reference `skills/issue/references/update.md`.
+- `scripts/lib/doctor.mjs` (`ghAuth` fact), `scripts/doctor.mjs`, `scripts/init.mjs` and `scripts/lib/init.mjs` (repository name, label creation, access check), the skills `issue`, `status`, `think`, `init` and `doctor` and the reference `skills/issue/references/update.md`.
 - `docs/install.md`, `docs/install.es.md`, the pages of the commands and the changelog.
 - No new dependency. No change for a terminal or for the workflows. The REST search endpoint has its own rate limit (30 requests a minute when authenticated), which the similar-issues search of `/relevo:issue` stays well under.
 - Risk: a REST response that differs from the `gh` JSON in a field a script reads (for example `state` is `open` in REST and `OPEN` in `gh`); the mapping is written per field and tested against both.

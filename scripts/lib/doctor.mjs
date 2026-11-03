@@ -14,6 +14,7 @@ import { mergeRepositoryRules } from './interface-knowledge.mjs';
 import { QA_LENSES, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
+import { githubAccess } from './gh-web.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { platformFolders } from './protected-paths.mjs';
 import { restrictedListFromText } from './restricted-paths.mjs';
@@ -255,7 +256,16 @@ export function gatherFacts(p) {
   f.openspec = tryRun(() => String(p.tool('openspec', ['--version'])).trim());
   f.git = tryRun(() => Boolean(p.tool('git', ['--version'])), false);
   f.gh = tryRun(() => Boolean(p.tool('gh', ['--version'])), false);
-  f.ghAuth = f.gh ? tryRun(() => { p.tool('gh', ['auth', 'status']); return true; }, false) : false;
+  // In a remote session the sign-in status of `gh` fails with a token that works, and GraphQL is blocked: "GitHub can be
+  // reached" is a read of the repository over REST there, and the sign-in status everywhere else.
+  const env = p.env ?? process.env;
+  if (f.gh && env.CLAUDE_CODE_REMOTE === 'true') {
+    f.ghAccess = githubAccess({ env, repo: p.repo ?? undefined, api: (args) => p.tool('gh', args), git: (args) => p.tool('git', args) });
+    f.ghAuth = f.ghAccess.ok;
+    if (!f.repo && f.ghAccess.repo) f.repo = f.ghAccess.repo;
+  } else {
+    f.ghAuth = f.gh ? tryRun(() => { p.tool('gh', ['auth', 'status']); return true; }, false) : false;
+  }
   f.skills = {};
   f.manualOnlySkills = [];
   REQUIRED_SKILLS.forEach((name) => {
@@ -929,7 +939,8 @@ export function runChecks(f) {
   r.push(f.openspec ? pass('tools.openspec', `OpenSpec ${f.openspec}`) : fail('tools.openspec', 'the OpenSpec command-line tool is not installed', `install it: ${OPENSPEC_INSTALL}`));
   r.push(f.git ? pass('tools.git', 'git is installed') : fail('tools.git', 'git is not installed', 'install git'));
   r.push(f.gh ? pass('tools.gh', 'the GitHub CLI is installed') : fail('tools.gh', 'the GitHub CLI (gh) is not installed', 'install it from https://cli.github.com'));
-  if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
+  if (f.gh && f.ghAccess) r.push(f.ghAuth ? pass('tools.gh-auth', `GitHub can be reached from this web session (${f.ghAccess.repo} read over the REST API)`) : fail('tools.gh-auth', `this web session cannot reach GitHub: ${f.ghAccess.message}`, 'check that the session has access to the repository; the sign-in status of the GitHub CLI is not used in a web session'));
+  else if (f.gh) r.push(f.ghAuth ? pass('tools.gh-auth', 'signed in to GitHub') : fail('tools.gh-auth', 'the GitHub CLI is not signed in', 'run `gh auth login`'));
   r.push(...platformChecks(f));
   r.push(...recommendedSkillChecks(f));
   r.push(...laravelBoostChecks(f));
