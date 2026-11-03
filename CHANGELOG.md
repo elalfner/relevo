@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **The install page says that `gh` is limited in a web session.** A session of Claude Code on the web blocks the GraphQL API, which most `gh` subcommands use: `gh api` (REST) worked, while `gh auth status`, `gh issue list`, `gh label list` and `gh pr list` failed. Many `/relevo:` commands call those subcommands, so on the web they are not expected to work until Relevo uses the REST API there; the page names the stopgap (write the issue on github.com and label it `relevo:ready`). It also drops the wording that suggested the commands work in that session. `/relevo:issue` could not be tried by an agent, because only a person can start it.
+
 ## [0.13.0] - 2026-11-03
 
 ### Added
