@@ -721,7 +721,7 @@ For the `supabase` stack the review SHALL run `supabase test db` and `supabase d
 - **THEN** the agent does not run it, and the line is left to the person with a note that a review is local only
 
 ### Requirement: The audit of a Supabase review separates expected denials from errors
-For the `supabase` stack the audit SHALL classify what the database container logged since the review started. `FATAL`, `PANIC`, a detected deadlock and an out-of-memory message SHALL be findings. An `ERROR` whose message is a permission denial (`permission denied`), a row-level security violation (`violates row-level security policy`) or a constraint violation (`violates ... constraint`, `duplicate key`) SHALL be counted and listed in the report as an expected denial and SHALL NOT be a finding while a recorded run exited 0. Any other `ERROR` SHALL be a finding. The audit SHALL NOT assume that a pgTAP test of a policy writes its denials to the log: a denial caught by `throws_ok` is not logged, and the report SHALL say that the proof of a denial is the recorded run and its assertions, not the log. The person MAY waive a finding with a reason, as in any `api` review.
+For the `supabase` stack the audit SHALL classify what the database container logged since the review started. `FATAL`, `PANIC`, a detected deadlock and an out-of-memory message SHALL be findings, except the single entry `FATAL:  role "postgres" does not exist`, which `supabase db reset` writes while it recreates the database: that entry SHALL be counted and listed in the report as an expected startup entry and SHALL NOT be a finding. An `ERROR` whose message is a permission denial (`permission denied`), a row-level security violation (`violates row-level security policy`) or a constraint violation (`violates ... constraint`, `duplicate key`) SHALL be counted and listed in the report as an expected denial and SHALL NOT be a finding while a recorded run exited 0. Any other `ERROR` SHALL be a finding. The audit SHALL NOT assume that a pgTAP test of a policy writes its denials to the log: a denial caught by `throws_ok` is not logged, and the report SHALL say that the proof of a denial is the recorded run and its assertions, not the log. The person MAY waive a finding with a reason, as in any `api` review.
 
 #### Scenario: Denial provoked by a policy test
 - **WHEN** a run exited 0 and the slice has three `new row violates row-level security policy` errors
@@ -740,8 +740,16 @@ For the `supabase` stack the audit SHALL classify what the database container lo
 - **THEN** the verdict is `REVIEW REJECTED` and the finding can be waived by the person with a reason
 
 #### Scenario: Fatal
-- **WHEN** the slice has a `FATAL` or `PANIC` entry
+- **WHEN** the slice has a `FATAL` or `PANIC` entry other than the startup entry of a database reset
 - **THEN** the verdict is `REVIEW REJECTED`
+
+#### Scenario: Database reset with a good migration
+- **WHEN** a run exited 0 and the slice holds the log of a `supabase db reset`, with `FATAL:  role "postgres" does not exist` and no other `FATAL` or `ERROR`
+- **THEN** the report lists the entry as an expected startup entry and the verdict can be `REVIEW PASSED`
+
+#### Scenario: Database reset with a broken migration
+- **WHEN** the slice holds the log of a `supabase db reset` whose migration has a syntax error
+- **THEN** the verdict is `REVIEW REJECTED` on the `ERROR` of the migration, and the startup entry is not a finding
 
 ### Requirement: A pgTAP run is recorded with its assertions
 For the `supabase` stack a recorded run SHALL carry the file or files passed to `supabase test db` (or none for the whole suite), the number of assertions that ran, the names of the assertions that failed and the exit code. The number of assertions SHALL be read from the summary line `Files=F, Tests=N` (a passing run prints no `ok N` lines) and the failing names from `# Failed test N: "name"` lines, or from `not ok` lines when the output has them. A run whose output has no assertion (`Tests=0`, `skipped` or `No tests run!`), or whose plan was not completed (`Bad plan`, `Looks like you planned`), SHALL count as a run that ran no test. A run told by the person (`ran <exit code>`) SHALL be recorded as the person's, without assertions, and the pull request SHALL say which runs were the person's and which the agent's.
