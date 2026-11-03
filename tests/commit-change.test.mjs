@@ -63,6 +63,21 @@ test('Scenario: Credential found before pushing - refused, and the secret is nev
   assert.ok(!r.stdout.includes(secret) && !r.stderr.includes(secret));
 });
 
+test('Scenario: Code that only names a secret is committed; a literal assigned to one is refused', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'final token = someLongVariableName;\nfinal password = readPasswordFromVault(options);\n');
+  const ok = run(dir, '--message', 'feat: names', '--', 'lib/a.dart');
+  assert.equal(ok.status, 0, ok.stderr);
+  const literal = 'hunter2hunter2hunter2';
+  put(dir, 'lib/b.dart', `final password = '${literal}';\n`);
+  const before = head(dir);
+  const refused = run(dir, '--message', 'feat: literal', '--', 'lib/b.dart');
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /lib\/b\.dart:1 {2}possible credential \(assigned-secret\)/);
+  assert.ok(!refused.stdout.includes(literal) && !refused.stderr.includes(literal));
+  assert.equal(head(dir), before);
+});
+
 test('Scenario: Workflow edited - a hard-protected path is refused even when allowed, before anything is staged', () => {
   const dir = repo();
   put(dir, '.github/workflows/ci.yml', 'name: ci\n');

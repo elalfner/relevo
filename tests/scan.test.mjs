@@ -43,6 +43,49 @@ test('credential kinds', () => {
   assert.deepEqual(findCredentials('feature/31-summary'), []);
 });
 
+test('Scenario: Reference, call and member access - code that only names a secret is not a possible credential', () => {
+  [
+    'token: someLongVariableName',
+    'password = readPasswordFromVault(options)',
+    'secret = configurationObjectOfTheApp.value',
+    'secret = items[index_of_the_secret_item]',
+    'passwd = read_the_password_from_vault',
+    'api-key: the-key-of-the-current-user',
+  ].forEach((line) => assert.deepEqual(findCredentials(line), [], line));
+  assert.deepEqual(scanDiff(diff('+  password = readPasswordFromVault(options);\n+  final token = someLongVariableName;\n')), []);
+});
+
+test('Scenario: Quoted literal and unquoted literal with the look of a secret are possible credentials', () => {
+  [
+    'api_key = "abcdefghijklmnopqrstuvwx"',
+    "secret: 'someLongQuotedLiteralValue'",
+    '"token": "AbCdEfGhIjKlMnOp"',
+    'password: hunter2hunter2hunter2',
+    'token=dGhpcyBpcyBhIHRlc3Q=',
+    'API_KEY=abcdef0123456789abcdef',
+  ].forEach((line) => assert.equal(findCredentials(line)[0]?.name, 'assigned-secret', line));
+});
+
+test('a literal is found even when an earlier assignment on the line is only code', () => {
+  assert.equal(findCredentials('token: someLongVariableName; api_key=abcdefghijklmnop1234')[0]?.name, 'assigned-secret');
+});
+
+test('Scenario: Provider key - found whatever the variable is called, and the value is never in a finding', () => {
+  const secret = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';
+  const findings = scanDiff(diff(`+const harmless = "${secret}";\n`));
+  assert.equal(findings[0].detail, 'github-token');
+  const literal = 'hunter2hunter2hunter2';
+  const assigned = scanDiff(diff(`+password: ${literal}\n`));
+  assert.equal(assigned[0].detail, 'assigned-secret');
+  assert.ok(!JSON.stringify(assigned).includes(literal));
+  assert.ok(!formatFindings(assigned).includes(literal));
+});
+
+test('strict mode still flags a long opaque token in a configuration value', () => {
+  assert.equal(findCredentials('abcdefghijklmnopqrstuvwxyz0123456789ABCDEF', { strict: true })[0]?.name, 'opaque-token');
+  assert.deepEqual(findCredentials('abcdefghijklmnopqrstuvwxyz0123456789ABCDEF'), []);
+});
+
 test('Scenario: safe staging - never add everything', () => {
   assert.deepEqual(explicitStageArgs(['lib/a.dart', 'test/a_test.dart']), ['add', '--', 'lib/a.dart', 'test/a_test.dart']);
   ['.', '*', '-A', '--all', '-u'].forEach((bad) => assert.throws(() => explicitStageArgs([bad]), /refusing/));
