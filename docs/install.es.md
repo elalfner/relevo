@@ -26,7 +26,7 @@ Reinicia Claude Code en tu proyecto y ejecuta `/relevo:doctor` para ver qué fal
 
 - **El plugin, y solo el plugin.** El paquete `@elalfner/relevo` contiene el manifiesto, los scripts, las skills, los agents, los perfiles de stack, las plantillas, la licencia y el aviso. No contiene la documentación, los tests, el historial de OpenSpec, el changelog ni el material de marca; léelos en línea en el [repositorio](https://github.com/elalfner/relevo).
 - **Máquina o proyecto.** `claude plugin install relevo@relevo` (ámbito `user`, el predeterminado) deja los comandos disponibles en todos los proyectos de la máquina. `--scope project` declara el plugin en `.claude/settings.json` del repositorio, así que quien lo abra recibe el mismo plugin; `--scope local` lo deja solo para ti. `claude plugin marketplace update relevo` y `claude plugin update relevo@relevo` lo actualizan, y `relevo update` lo hace en un solo comando.
-- **OpenSpec en una sesión web.** Una sesión de Claude Code en la web empieza en un contenedor nuevo sin OpenSpec. `/relevo:init` ofrece un hook `SessionStart` en `.claude/settings.json` que lo instala cuando falta (`npm install --global @fission-ai/openspec`), solo en una sesión remota; sube el archivo. Sin él, `go` se detiene con el comando de instalación en lugar de seguir sin OpenSpec.
+- **OpenSpec y el plugin en una sesión web.** Una sesión de Claude Code en la web empieza en un contenedor nuevo sin OpenSpec y sin el plugin. `/relevo:init` ofrece dos hooks `SessionStart` en `.claude/settings.json`, solo para una sesión remota: uno instala OpenSpec cuando falta (`npm install --global @fission-ai/openspec`) y otro instala el plugin ([Trabajar en la web sin clonar](#trabajar-en-la-web-sin-clonar)); sube el archivo. Sin el primero, `go` se detiene con el comando de instalación en lugar de seguir sin OpenSpec.
 - **En los workflows.** Cada workflow descarga el mismo paquete en la versión que fija (`RELEVO_VERSION`), nunca el repositorio, y se detiene con el nombre del archivo que falta si el paquete no tiene un script. El agente de un build en la nube carga su plugin de ese mismo paquete (`--plugin-dir` sobre la carpeta desempacada), así que la versión fijada decide también las skills, no se clona nada del repositorio del plugin y no hace falta ningún token para leerlo. Cómo pasar un proyecto de una versión vieja a una nueva está en [Actualizar](upgrading.es.md). La primera línea de cada workflow, `# relevo-template: X.Y.Z`, es la versión del texto del que se copió: no es la versión fijada, y subir esa versión a mano mueve los scripts pero no el texto. Para pasarlos a una versión más nueva, cambia la versión fijada en cada workflow después de leer el changelog; `relevo update` no toca tus workflows. `/relevo:doctor` avisa de un workflow sin versión fijada, con una versión distinta de la del plugin instalado, o de la época en que clonaban el repositorio.
 
 ## Otras herramientas: Antigravity
@@ -49,19 +49,26 @@ relevo init --tools claude,antigravity --scope project
 
 ## Trabajar en la web sin clonar
 
-Quien trabaja solo en Claude Code en la web (un PM, por ejemplo) no instala nada ni clona el repositorio. Alguien lo hace una vez, desde un clon, y sube el resultado:
+Quien trabaja solo en Claude Code en la web (un PM, por ejemplo) no instala ni clona nada. Alguien lo hace una vez, desde un clon, y sube el resultado.
 
-1. Declara el plugin en el proyecto:
-   ```bash
-   claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project
-   claude plugin install relevo@relevo --scope project
-   ```
-   Esto escribe `extraKnownMarketplaces` y `enabledPlugins` (`"relevo@relevo": true`) en `.claude/settings.json`.
-2. Ejecuta `/relevo:init` (requiere permisos de admin). Acepta el hook `SessionStart` que instala OpenSpec en sesiones remotas; sin él, `go` se detiene en una sesión web.
-3. Crea el secreto del modelo (`ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN`) en los secretos de GitHub Actions, para que los builds en la nube puedan correr.
-4. Haz commit y push de `.claude/settings.json`, `relevo.yml` y los workflows a la rama por defecto. Los workflows se ejecutan desde la rama por defecto, así que con `main` por defecto y `dev` como base solo llegan a la nube cuando `dev` se promueve ([Dónde corre `go`](execution.es.md)).
+**Declarar el plugin en el proyecto no basta en la web.** Una sesión en la nube no instala los plugins que activa `.claude/settings.json`, porque añadir su marketplace exige el diálogo de confianza del espacio de trabajo, que una sesión en la nube nunca muestra ([Claude Code en la web](https://code.claude.com/docs/en/cloud-environments)). La declaración (`--scope project`) sirve para una terminal: quien clona el repositorio recibe la oferta del plugin. Para la web, el repositorio necesita además un hook `SessionStart` que instale el plugin al empezar la sesión.
 
-Desde entonces, quien abra el repositorio en Claude Code en la web tiene Relevo: `/relevo:think`, `/relevo:issue` y `/relevo:status` funcionan en la sesión, y al poner `relevo:ready` en un issue el build arranca en GitHub Actions. La revisión en un dispositivo real sigue necesitando a una persona con el dispositivo.
+1. Ejecuta `/relevo:init` (requiere permisos de admin). Ofrece, con un sí para cada uno, la declaración (`install.plugin-project`), el hook que instala OpenSpec (`install.web-hook`) y el hook que instala el plugin (`install.web-plugin-hook`). Sin el hook de OpenSpec, `go` se detiene en una sesión web; sin el del plugin no hay comandos `/relevo:`.
+2. Crea el secreto del modelo (`ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN`) en los secretos de GitHub Actions, para que los builds en la nube puedan correr.
+3. Haz commit y push de `.claude/settings.json`, `relevo.yml` y los workflows a la rama por defecto. Los workflows se ejecutan desde la rama por defecto, así que con `main` por defecto y `dev` como base solo llegan a la nube cuando `dev` se promueve ([Dónde corre `go`](execution.es.md)).
+
+El hook del plugin corre solo en una sesión remota. Añade el marketplace e instala el plugin en el ámbito del proyecto, guarda lo que imprimen en `relevo-plugin-hook.log` dentro de la carpeta temporal y nunca hace fallar la sesión:
+
+```bash
+claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project
+claude plugin install relevo@relevo --scope project
+```
+
+Desde entonces, quien abra el repositorio en Claude Code en la web tiene Relevo: `/relevo:think`, `/relevo:issue` y `/relevo:status` están disponibles en la sesión, y al poner `relevo:ready` en un issue el build arranca en GitHub Actions. La revisión en un dispositivo real sigue necesitando a una persona con el dispositivo.
+
+- **Comprobado en un repositorio sandbox.** Una sesión web nueva con el hook instaló el plugin (versión 0.12.0, ámbito de proyecto, habilitado) y mostró `relevo:doctor`, `relevo:status` y los agentes de desarrollo y de QA en su primer turno. Una sesión sin el hook no mostró ningún plugin. El build en GitHub Actions no formó parte de esa prueba.
+- **La instalación puede reordenar `.claude/settings.json`.** El comando puede reescribir el archivo con sus claves en otro orden, lo que aparece como un cambio por subir; el contenido es el mismo.
+- **Una configuración para toda la organización.** La alternativa que nombra la documentación son los ajustes gestionados por servidor de la organización (`extraKnownMarketplaces` y `enabledPlugins` en Organization settings, Claude Code, Managed settings; requiere el rol Owner). Aplican a todos los repositorios de la organización, no a uno.
 
 ## Qué necesitas
 

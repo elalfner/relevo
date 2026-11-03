@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, WEB_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { folderHash } from '../scripts/lib/role-skills.mjs';
@@ -1357,6 +1357,42 @@ test('gatherFacts reads the hook and the remote session', () => {
   const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), exists: (p) => p === '.claude/settings.json', read: () => hookSettings(WEB_HOOK_COMMAND) });
   assert.deepEqual(f.webHook, { declared: true });
   assert.equal(f.remoteSession, process.env.CLAUDE_CODE_REMOTE === 'true');
+});
+
+// ---- the Relevo plugin in web sessions
+
+test('the fact web plugin hook: present, written by hand, other hooks only, missing file, invalid JSON; the OpenSpec hook does not count', () => {
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings(WEB_PLUGIN_HOOK_COMMAND))), { declared: true });
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings('claude plugin install relevo@relevo --scope project'))), { declared: true }, 'a hook written by hand counts');
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings(WEB_HOOK_COMMAND))), { declared: false });
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings('echo hi'))), { declared: false });
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe(null)), { declared: false });
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe('{ not json')), { unreadable: true });
+});
+
+test('Scenario: A remote session without the plugin hook - a warning that says the declaration is not enough on the web; not a failure', () => {
+  const r = runChecks(healthy({ remoteSession: true, webPluginHook: { declared: false } }));
+  const check = byId(r, 'web.plugin-hook');
+  assert.equal(check.status, 'warn');
+  assert.match(check.message, /no SessionStart hook that installs the Relevo plugin/);
+  assert.match(check.fix, /\/relevo:init/);
+  assert.ok(!failing(r).includes('web.plugin-hook'));
+});
+
+test('Scenario: A remote session with the plugin hook - a passed check; unreadable - a warning', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webPluginHook: { declared: true } })), 'web.plugin-hook').status, 'pass');
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webPluginHook: { unreadable: true } })), 'web.plugin-hook').status, 'warn');
+});
+
+test('Scenario: A terminal - no check about the plugin hook, and none without the fact', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: false, webPluginHook: { declared: false } })), 'web.plugin-hook'), undefined);
+  assert.equal(byId(runChecks(healthy({ remoteSession: true })), 'web.plugin-hook'), undefined, 'no fact, no check');
+});
+
+test('gatherFacts reads the plugin hook', () => {
+  const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), exists: (p) => p === '.claude/settings.json', read: () => hookSettings(WEB_PLUGIN_HOOK_COMMAND) });
+  assert.deepEqual(f.webPluginHook, { declared: true });
+  assert.deepEqual(f.webHook, { declared: false });
 });
 
 const HOSTED_GO = GO_TEMPLATE;
