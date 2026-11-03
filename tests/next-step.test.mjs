@@ -52,6 +52,18 @@ test('qa-failed goes to fix, or says to delete the branch when it holds only the
   assert.match(spec.line, /ready again/);
 });
 
+test('Scenario: Rebuild variant - qa-failed with nothing pushed has no command and says to relabel ready', () => {
+  const step = nextStep({ state: 'qa-failed', reason: 'rebuild', issue: 37 });
+  assert.equal(step.command, null);
+  assert.equal(step.who, 'assignee');
+  assert.match(step.hint, /nothing was pushed/);
+  assert.match(step.hint, /remove relevo:qa-failed and label the issue relevo:ready again/);
+  assert.doesNotMatch(step.line, /\/relevo:fix/);
+  const es = nextStep({ state: 'qa-failed', reason: 'rebuild', issue: 37, language: 'es' });
+  assert.match(es.hint, /no se subió nada/);
+  assert.match(es.hint, /quita relevo:qa-failed y vuelve a poner relevo:ready/);
+});
+
 test('pr-open waits for an approval and then goes to ship; changes-requested goes to fix', () => {
   assert.equal(nextStep({ state: 'pr-open', issue: 3 }).command, '/relevo:ship 3');
   assert.match(nextStep({ state: 'pr-open', issue: 3 }).line, /someone other than the author approves/);

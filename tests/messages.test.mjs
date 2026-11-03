@@ -280,6 +280,24 @@ test('Scenario: Issue changed after ready - the branch was not pushed, for a rea
   assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed' }, 'es'), /no se subió; el estado no avanzó/);
 });
 
+test('Scenario: nothing pushed - unsafe and not_pushed end with the rebuild step, never /relevo:fix', () => {
+  ['unsafe', 'not_pushed'].forEach((branch_state) => {
+    const en = renderMessage('qa_failed', { ...FAILED, branch_state });
+    assert.match(en, /Your next step: nothing was pushed, so there is no branch to fix: .*relevo:ready again\./);
+    assert.doesNotMatch(en, /\/relevo:fix/);
+    const es = renderMessage('qa_failed', { ...FAILED, branch_state }, 'es');
+    assert.match(es, /Tu siguiente paso: no se subió nada/);
+    assert.doesNotMatch(es, /\/relevo:fix/);
+  });
+  assert.doesNotMatch(renderMessage('qa_failed', { ...FAILED, pushed: false }), /\/relevo:fix/, 'the older pushed: false is the same');
+});
+
+test('Scenario: pushed, kept and existing keep their next step', () => {
+  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'pushed' }), /Your next step: \/relevo:fix /);
+  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }), /\/relevo:fix /);
+  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'kept' }), /\/relevo:fix .*relevo:think/);
+});
+
 test('the platform message of the previous change no longer exists: a missing platform is a missing part of the spec', () => {
   assert.throws(() => renderMessage('platform', { issue: 1, actor: 'a', platforms: 'x' }), /unknown message kind "platform"/);
   const text = renderMessage('needs_spec', { spec_writer: 'a', issue: 3, title: 'T', missing: 'Platform: line naming one of the platforms of relevo.yml (web, api)', reason: 'missing' });

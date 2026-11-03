@@ -146,6 +146,15 @@ const TABLE = {
         es: 'la rama solo tiene la especificación: borra la rama remota y vuelve a ponerle ready al issue',
       },
     },
+    // Nothing was pushed, so there is no branch to correct: the cause is resolved first, then the issue is built again.
+    rebuild: {
+      command: null,
+      who: 'assignee',
+      hint: {
+        en: 'nothing was pushed, so there is no branch to fix: resolve the cause named above, then remove relevo:qa-failed and label the issue relevo:ready again',
+        es: 'no se subió nada, así que no hay rama que corregir: resuelve la causa indicada arriba, luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+      },
+    },
     // Nothing was built: the base branch versions a file on the restricted list, which no command of Relevo can fix.
     restricted: {
       command: null,
@@ -196,7 +205,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy'],
-  'qa-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'delete-branch', 'restricted'],
+  'qa-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'delete-branch', 'restricted', 'rebuild'],
 };
 
 const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
@@ -204,7 +213,7 @@ const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? '')
 /**
  * The next step for an issue in `state`.
  * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs` or `policy`) and of `qa-failed`
- * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, or `restricted` when the base branch versions a restricted file).
+ * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
 export function nextStep({ state, reason = null, issue = null, language = 'en' } = {}) {
