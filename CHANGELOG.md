@@ -12,6 +12,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 ### Fixed
 
 - **The Supabase audit follows the real output of the CLI.** A `throws_ok` denial is caught inside the test and never reaches the container log, so the proof that a policy denies is the recorded run and its assertions; the report says so when the log shows no denial. The pgTAP parser reads the count from `Files=F, Tests=N` and the failing names from `# Failed test N: "name"`, because a passing run prints no `ok N` lines. A `supabase db reset` inside a review no longer rejects it for `FATAL: role "postgres" does not exist`, which is listed as an expected startup entry; any other `FATAL` still does.
+- **A Supabase line is proved only by a run that names the assertions that cover it.** `review-state.mjs ran ... --covers "<name>"` records the names; `precheck ok` and `auto` refuse a run that names none, a name that is not in the pgTAP file, or an assertion that failed, and the pull request lists the names. The check is mechanical: it does not prove that a name asserts the `THEN` of the line.
 
 ### Changed
 
