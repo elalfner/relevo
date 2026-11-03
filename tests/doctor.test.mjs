@@ -900,9 +900,16 @@ test('Scenario: Vue without Playwright - doctor warns, names /relevo:init and gi
 });
 
 test('a stack without a driven review says so instead of staying silent', () => {
-  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  db:\n    stack: supabase\n    path: supabase\n' }));
+  const go = '---\nstack: go\ncommands:\n  analyze: go vet ./...\n  test: go test ./...\n  format: gofmt -w .\ntools: [go]\n---\n';
+  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  svc:\n    stack: go\n    path: svc\n', files: { '.relevo/stacks/go.md': go } }));
   assert.equal(r[0].status, 'warn');
-  assert.match(r[0].message, /driven review of the stack supabase .* is not available/);
+  assert.match(r[0].message, /driven review of the stack go .* is not available/);
+});
+
+test('Supabase has an api adapter: with an autopilot doctor says the agent runs the pgTAP file, and does not warn', () => {
+  const r = autopilotChecks(autopilotFacts({ mode: 'verify', platforms: '  db:\n    stack: supabase\n    path: supabase\n' }));
+  assert.equal(r[0].status, 'pass');
+  assert.match(r[0].message, /running the test that covers it/);
 });
 
 test('Laravel has an api adapter: with an autopilot doctor says the agent runs the tests, and does not warn', () => {
@@ -1990,6 +1997,62 @@ test('a serve command in a profile that is not tracked by git is reported', () =
   const files = { 'apps/api/vendor/autoload.php': '', 'apps/api/storage/logs/laravel.log': '', '.relevo/stacks/laravel.md': repoProfile };
   assert.equal(idIn(apiChecks(apiFacts({ files, tracked: false })), 'review.serve.api').status, 'warn');
   assert.equal(idIn(apiChecks(apiFacts({ files, tracked: true })), 'review.serve.api'), undefined);
+});
+
+// ---------- Supabase review (supabase-review-adapter)
+
+const SB = '  backend:\n    stack: supabase\n    path: backend\n';
+function sbFacts({ files = {}, statusFails = false, dockerFails = false, containers = 'supabase_db_shop\n' } = {}) {
+  const text = `limits:\n  run_max_cost: 5\nplatforms:\n${SB}`;
+  const all = { 'relevo.yml': text, ...files };
+  return gatherFacts({
+    tool: (name, args) => {
+      if (name === 'supabase' && args[0] === 'status' && statusFails) throw new Error('not running');
+      if (name === 'docker' && args[0] === 'info' && dockerFails) throw new Error('no daemon');
+      if (name === 'docker' && args[0] === 'ps') return containers;
+      return 'ok';
+    },
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in all || Object.keys(all).some((k) => k.startsWith(`${p}/`)), read: (p) => all[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const sbChecks = (f) => runChecks({ ...healthy(), ...f, config: f.config }).filter((r) => r.id.startsWith('review.'));
+const CONFIG = { 'backend/supabase/config.toml': 'project_id = "shop"\n' };
+
+test('Scenario: Stack stopped / Supabase ready - doctor notes a stopped stack and passes a running one', () => {
+  const stopped = sbChecks(sbFacts({ files: CONFIG, statusFails: true }));
+  assert.equal(idIn(stopped, 'review.supabase.backend.config').status, 'pass');
+  assert.equal(idIn(stopped, 'review.supabase.backend.stack').status, 'note');
+  assert.match(idIn(stopped, 'review.supabase.backend.stack').message, /asks before it runs `supabase start`/);
+  const running = sbChecks(sbFacts({ files: CONFIG }));
+  assert.equal(idIn(running, 'review.supabase.backend.stack').status, 'pass');
+  assert.equal(idIn(running, 'review.log.backend'), undefined);
+  assert.equal(idIn(running, 'review.api.backend.vendor'), undefined, 'a Supabase platform gets none of the Laravel checks');
+});
+
+test('Scenario: No config - doctor warns and names the folder', () => {
+  const r = idIn(sbChecks(sbFacts({ files: {} })), 'review.supabase.backend.config');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /no supabase\/config\.toml in backend/);
+  assert.match(r.fix, /cd backend && supabase init/);
+});
+
+test('Scenario: Container that does not exist - doctor warns while the stack runs', () => {
+  const r = sbChecks(sbFacts({ files: CONFIG, containers: 'supabase_db_other\n' }));
+  assert.equal(idIn(r, 'review.log.backend').status, 'warn');
+  assert.match(idIn(r, 'review.log.backend').message, /container supabase_db_shop, which does not exist/);
+});
+
+test('Scenario: Remote database in review.test - the profile is invalid and the review key is named', () => {
+  const repoProfile = '---\nstack: supabase\nreview:\n  test: supabase test db --linked\n---\n';
+  const f = sbFacts({ files: { ...CONFIG, '.relevo/stacks/supabase.md': repoProfile } });
+  const profile = runChecks({ ...healthy(), ...f, config: f.config }).find((r) => r.id === 'platform.backend.profile');
+  assert.equal(profile.status, 'fail');
+  assert.match(profile.message, /"review\.test" must not target a remote database/);
+});
+
+test('Scenario: Not a Supabase platform - doctor adds none of these checks', () => {
+  assert.deepEqual(apiChecks(apiFacts({ platforms: AP_VUE, files: {} })).filter((r) => r.id.startsWith('review.supabase.')), []);
 });
 
 // A stack the plugin does not ship: the profile is the file of the repository.

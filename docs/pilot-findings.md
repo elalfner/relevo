@@ -524,3 +524,11 @@ Read on 2026-11-02 from the Antigravity documentation; nothing was run, because 
 - **Tools**: `tools` lists the tools of the subagent. The documentation warns that a misspelled name can make the subagent hang.
 - **Execution**: subagents run asynchronously in the background and inherit the permissions of the parent.
 - **Not tried**: launching a subagent with a model tier, and what the installed version does with an unknown frontmatter key.
+
+## What a Supabase test run leaves in the logs (task 1 of `supabase-review-adapter`): not captured
+
+Date: 2026-11-02. The sandbox that built the adapter has a Docker client but no Docker daemon (`docker info` cannot reach `/var/run/docker.sock`), so `supabase start` could not run and nothing below was observed.
+
+- **Fixtures, not captures**: `tests/fixtures/supabase/` holds the pgTAP outputs and the database container logs that the tests use. They were written from the Supabase CLI and pgTAP documentation, and its README says so. The shapes they assume are: `supabase test db` prints TAP lines or a `Files=…, Tests=…` summary and exits non-zero on a failing assertion or an incomplete plan; the container `supabase_db_<project_id>` logs `ERROR:`, `FATAL:` and `PANIC:` entries with their `STATEMENT:` lines to stderr.
+- **Still to check on a machine with Docker** (tasks 1.2, 1.3 and 6.1 of the change stay open): that a failing statement and a policy denial reach the container log at the default log level; whether the host and the container clocks agree for `docker logs --since`; the exit code of `supabase status` with the stack stopped and running; and that `project_id` in `config.toml` gives the container name `supabase_db_<project_id>`. If a denial or an error does not reach the log, the audit relies on the recorded run alone and the design's first risk applies.
+- **Existing failure, not from this change**: `playwrightFacts resolves Playwright from the folder of the platform, not from where the command runs` fails in `tests/doctor.test.mjs` before and after this change.

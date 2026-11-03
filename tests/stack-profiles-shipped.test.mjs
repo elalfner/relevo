@@ -31,6 +31,16 @@ test('Scenario: Defaults of Laravel - the review block has the log under storage
   assert.deepEqual(p.targets, {}, 'Targets: None is unchanged');
 });
 
+test('Scenario: Defaults of Supabase - the review block has the container log and supabase test db and no serve; the commands and tools are unchanged', () => {
+  const p = profile('supabase');
+  assert.deepEqual(p.review, { log: 'docker:supabase_db_{project_id}', test: 'supabase test db' });
+  assert.equal(p.review.serve, undefined);
+  assert.match(p.reviewBody, /pgTAP file of its scenario/);
+  assert.match(p.reviewBody, /Never add `--linked` or `--db-url`/);
+  assert.doesNotMatch(p.body, /pgTAP file of its scenario/);
+  assert.deepEqual([p.commands.analyze, p.commands.test, p.tools], ['supabase db lint', 'supabase test db', ['supabase', 'docker']]);
+});
+
 test('Scenario: Laravel profile - analyze is Pint in test mode, test is php artisan test, format is Pint, no targets', () => {
   const p = profile('laravel');
   assert.equal(p.commands.analyze, 'vendor/bin/pint --test');

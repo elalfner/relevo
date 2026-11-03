@@ -100,6 +100,18 @@ test('Scenario: A test covers the line - with precheck or verify the api brief s
   assert.doesNotMatch(reviewBrief({ issue: { number: 42, title: 'Birthday list', body: BODY }, autopilot: 'verify' }), /existing test/);
 });
 
+test('Supabase brief - an api review of supabase speaks of the local stack and pgTAP files, in both languages', () => {
+  const issue = { number: 42, title: 'Orders', body: BODY };
+  assert.match(reviewBrief({ issue, kind: 'api', stack: 'supabase' }), /run `supabase test db` yourself against the local stack.*ran <exit code>/);
+  assert.match(reviewBrief({ issue, kind: 'api', stack: 'supabase', language: 'es' }), /corre tú `supabase test db` contra el stack local.*ran <código>/);
+  ['precheck', 'verify'].forEach((autopilot) => {
+    const brief = reviewBrief({ issue, kind: 'api', stack: 'supabase', autopilot });
+    assert.match(brief, /existing pgTAP file of each line.*never writes one/);
+    assert.match(brief, /a line with no pgTAP file stays for you/);
+  });
+  assert.match(reviewBrief({ issue, kind: 'api', stack: 'laravel' }), /run the project's tests yourself/);
+});
+
 test('the script takes --kind', () => {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-brief-'));
   writeFileSync(join(dir, 'body.md'), BODY);

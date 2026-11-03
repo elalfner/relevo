@@ -516,3 +516,13 @@ test('a path of installed stays inside the folder of the platform, and the list 
   assert.match(parseProfile('---\nstack: vue\ninstalled: [../x]\n---\n').errors.join(' '), /not a path inside the folder of the platform/);
   assert.match(parseProfile('---\nstack: vue\ninstalled: x\n---\n').errors.join(' '), /"installed" must be a list of names/);
 });
+
+test('Scenario: Defaults of Supabase / Remote database in test - a container log is valid, a test command that targets a remote database is not', () => {
+  const ok = parseProfile(REVIEW_PROFILE('review:\n  log: docker:supabase_db_{project_id}\n  test: supabase test db\n'));
+  assert.deepEqual(ok.errors, []);
+  assert.equal(ok.profile.review.log, 'docker:supabase_db_{project_id}');
+  ['supabase test db --linked', 'supabase test db --db-url postgres://x', 'supabase test db --db-url=postgres://x', 'supabase db push', 'supabase link'].forEach((cmd) => {
+    assert.match(parseProfile(REVIEW_PROFILE(`review:\n  test: ${cmd}\n`)).errors.join(' '), /"review\.test" must not target a remote database/, cmd);
+  });
+  assert.match(parseProfile(REVIEW_PROFILE('review:\n  log: docker:bad name\n')).errors.join(' '), /"review\.log" names a container as docker:<name>/);
+});

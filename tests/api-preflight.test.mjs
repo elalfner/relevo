@@ -85,3 +85,55 @@ test('the script reads the folder it runs in and never an environment file', () 
   assert.equal(out.install, 'composer install');
   assert.ok([0, 3].includes(r.status), `exit ${r.status}: PHP and Composer are found on a machine that has them`);
 });
+
+// ---------- the Supabase branch (supabase-review-adapter)
+
+import { supabasePreflight } from '../scripts/lib/api-preflight.mjs';
+
+const sbDeps = ({ tools = ['supabase', 'docker'], config = true, docker = 0, stack = 0 } = {}) => ({
+  which: (t) => tools.includes(t),
+  exists: () => config,
+  run: (command) => ({ status: command === 'docker' ? docker : stack }),
+});
+
+test('Scenario: Supabase ready - the CLI, Docker, the config and a running stack pass with exit 0 and no confirmation', () => {
+  const r = supabasePreflight({ cwd: '/p' }, sbDeps());
+  assert.deepEqual([r.ok, r.check, r.exit], [true, 'ready', 0]);
+});
+
+test('Scenario: Supabase tool missing - exit 3 names the tool and the command for the person', () => {
+  const cli = supabasePreflight({ cwd: '/p' }, sbDeps({ tools: ['docker'] }));
+  assert.deepEqual([cli.ok, cli.exit], [false, 3]);
+  assert.match(cli.detail, /supabase not found/);
+  assert.match(cli.install, /brew install supabase/);
+  const docker = supabasePreflight({ cwd: '/p' }, sbDeps({ tools: ['supabase'] }));
+  assert.match(docker.install, /Docker/);
+});
+
+test('Scenario: Missing config - exit 5 and nothing else runs', () => {
+  const r = supabasePreflight({ cwd: '/p' }, { ...sbDeps({ config: false }), run: () => { throw new Error('must not run a command'); } });
+  assert.deepEqual([r.ok, r.check, r.exit, r.install], [false, 'config', 5, 'supabase init']);
+});
+
+test('Scenario: Docker not running - exit 4 before any test', () => {
+  const r = supabasePreflight({ cwd: '/p' }, sbDeps({ docker: 1 }));
+  assert.deepEqual([r.ok, r.check, r.exit], [false, 'docker', 4]);
+  assert.match(r.detail, /start Docker/);
+});
+
+test('Scenario: Local stack stopped - exit 7 is ready but asks before supabase start', () => {
+  const r = supabasePreflight({ cwd: '/p' }, sbDeps({ stack: 1 }));
+  assert.deepEqual([r.ok, r.check, r.exit, r.install], [true, 'stack_stopped', 7, 'supabase start']);
+});
+
+test('the script takes --stack, refuses an unknown one, and Laravel stays the default', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-sbpre-'));
+  const bad = spawnSync('node', [CLI, '--stack', 'django'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(bad.status, 2);
+  const none = spawnSync(process.execPath, [CLI, '--stack', 'supabase'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
+  assert.equal(none.status, 3);
+  assert.equal(JSON.parse(none.stdout).check, 'tool');
+  const laravel = spawnSync(process.execPath, [CLI], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
+  assert.equal(laravel.status, 3);
+  assert.match(JSON.parse(laravel.stdout).detail, /php and composer/);
+});

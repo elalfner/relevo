@@ -1,0 +1,21 @@
+Connecting to local database...
+supabase/tests/orders_rls.test.sql .. 
+1..6
+ok 1 - owner can read own orders
+ok 2 - owner can insert own orders
+not ok 3 - anon cannot read orders
+# Failed test 3: "anon cannot read orders"
+#         have: 1
+#         want: 0
+ok 4 - other user cannot update orders
+ok 5 - update policy keeps user_id
+ok 6 - view is security invoker
+# Looks like you failed 1 test of 6
+Failed 1/6 subtests 
+
+Test Summary Report
+-------------------
+supabase/tests/orders_rls.test.sql (Wstat: 0 Tests: 6 Failed: 1)
+  Failed test:  3
+Files=1, Tests=6,  1 wallclock secs
+Result: FAIL

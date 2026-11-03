@@ -71,6 +71,17 @@ const API_RULES = [
   { cls: 'server-error', test: (l) => /\bHTTP\/\d(?:\.\d)?"? 5\d\d\b|\bresponse 5\d\d\b|\b500 Internal Server Error\b/.test(l) },
 ];
 
+// The classes of a Supabase review, read from the log of the local database container. A policy test (pgTAP `throws_ok`,
+// `set role anon`) provokes permission, row-level-security and constraint errors on purpose, so those are expected denials.
+const PG_LEVEL = /\b(ERROR|FATAL|PANIC):\s/;
+const PG_DENIAL = /permission denied|violates row-level security policy|violates [\w\s-]*constraint|duplicate key value/i;
+const PG_RULES = [
+  { cls: 'fatal', test: (l) => /\b(FATAL|PANIC):\s/.test(l) },
+  { cls: 'deadlock', test: (l) => PG_LEVEL.test(l) && /deadlock detected/i.test(l) },
+  { cls: 'out-of-memory', test: (l) => /\bout of memory\b/i.test(l) },
+  { cls: 'database-error', test: (l) => /\bERROR:\s/.test(l) && !/deadlock detected|out of memory/i.test(l) && !PG_DENIAL.test(l) },
+];
+
 /**
  * Audit the slice of the Laravel log of an api review, with the test runs recorded in the state ([{ exit, tests, by, line,
  * filter, failing }]). The latest run of each line (or filter) counts, so a run repeated after a fix replaces the one before.
@@ -78,7 +89,8 @@ const API_RULES = [
  * was exercised, and only an empty slice with no run at all is inconclusive.
  * Returns { verdict, findings, counts, reason? }.
  */
-export function auditApi({ text = '', runs = [], unreadable = [] } = {}) {
+export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel' } = {}) {
+  const postgres = flavor === 'postgres';
   const latest = new Map();
   runs.forEach((r) => latest.set(r.line ?? r.filter ?? '*', r));
   const findings = [];
@@ -93,22 +105,38 @@ export function auditApi({ text = '', runs = [], unreadable = [] } = {}) {
     const what = r.failing?.length ? r.failing.join(', ') : `the run${r.filter ? ` filtered by ${r.filter}` : ''} exited ${r.exit}${r.tests === 0 ? ' and ran no test' : ''}`;
     add('test-failure', 0, `${what} (${r.by ?? 'person'})`.slice(0, MAX_EXCERPT));
   });
+  // Expected denials of a Postgres log: counted and listed, a finding only when no run is recorded to explain them.
+  const expected = [];
+  const denialsExplained = runs.length > 0;
   String(text).split('\n').forEach((raw, idx) => {
     const line = raw.replace(ANSI_RE, '');
+    const excerpt = line.trim().slice(0, MAX_EXCERPT);
+    if (postgres) {
+      if (/\bERROR:\s/.test(line) && PG_DENIAL.test(line) && !/deadlock detected|out of memory/i.test(line)) {
+        if (denialsExplained) expected.push({ line: idx + 1, excerpt });
+        else add('denial', idx + 1, excerpt);
+        return;
+      }
+      PG_RULES.forEach((rule) => {
+        if (rule.test(line)) add(rule.cls, idx + 1, excerpt);
+      });
+      return;
+    }
     API_RULES.forEach((rule) => {
-      if (rule.test(line)) add(rule.cls, idx + 1, line.trim().slice(0, MAX_EXCERPT));
+      if (rule.test(line)) add(rule.cls, idx + 1, excerpt);
     });
   });
   const counts = {};
   findings.forEach((f) => { counts[f.class] = (counts[f.class] ?? 0) + 1; });
-  if (findings.length > 0) return { verdict: REJECTED, findings, counts, ...(unreadable.length ? { unreadable } : {}) };
+  const extra = { ...(unreadable.length ? { unreadable } : {}), ...(postgres ? { expected } : {}) };
+  if (findings.length > 0) return { verdict: REJECTED, findings, counts, ...extra };
   if (unreadable.length > 0) {
-    return { verdict: INCONCLUSIVE, reason: `a log file could not be read (${unreadable.map((u) => `${u.file}: ${u.reason}`).join('; ')}), so the audit cannot say the log is clean`, findings, counts, unreadable };
+    return { verdict: INCONCLUSIVE, reason: `a log source could not be read (${unreadable.map((u) => `${u.file}: ${u.reason}`).join('; ')}), so the audit cannot say the log is clean`, findings, counts, unreadable };
   }
   if (runs.length === 0 && String(text).trim() === '') {
     return { verdict: INCONCLUSIVE, reason: 'no test run is recorded and the log has nothing since the review started: run the tests and say so (ran <exit code>)', findings, counts };
   }
-  return { verdict: PASSED, findings, counts };
+  return { verdict: PASSED, findings, counts, ...(postgres ? { expected } : {}) };
 }
 
 /** Markdown report of an audit. */
@@ -120,7 +148,8 @@ export function auditReport(audit, { issue, scope } = {}) {
   }
   if (scope?.kind === 'api') {
     lines.push(`Scope: what ${scope.pattern} received since the review started, and the test runs of the review (${scope.runs ?? 0} recorded).`, '');
-    if (audit.findings.length === 0) lines.push('The log slice has no unhandled exception, server error, database error or lazy-loading violation, and no recorded run failed.');
+    if (audit.findings.length === 0 && scope.flavor === 'postgres') lines.push('The log slice has no fatal entry, deadlock, out-of-memory or database error, and no recorded run failed.');
+    else if (audit.findings.length === 0) lines.push('The log slice has no unhandled exception, server error, database error or lazy-loading violation, and no recorded run failed.');
   } else if (scope?.pids?.length) {
     lines.push(`Scope: only the processes of \`${scope.package}\` (pid ${scope.pids.join(', ')}); other apps' log lines were ignored.`, '');
   } else {
@@ -133,6 +162,10 @@ export function auditReport(audit, { issue, scope } = {}) {
   } else {
     lines.push(`${audit.findings.length} finding(s):`, '');
     audit.findings.forEach((f, i) => lines.push(`${i + 1}. **${f.class}** (log line ${f.line}): \`${f.excerpt.replace(/`/g, "'")}\`${f.waived ? ` — WAIVED by the reviewer: ${f.reason}` : ''}`));
+  }
+  if (audit.expected?.length > 0) {
+    lines.push('', `${audit.expected.length} expected denial(s): permission, row-level security or constraint errors that a policy test provokes on purpose; they are not findings.`);
+    audit.expected.slice(0, 5).forEach((e) => lines.push(`- (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
   }
   return `${lines.join('\n')}\n`;
 }
