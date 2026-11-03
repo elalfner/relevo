@@ -1,7 +1,7 @@
 ---
 name: go
 description: Builds one ready issue without human pauses: checks the gates, writes the change specification from the issue, runs the dev and qa agents, pushes the branch and hands it to the assignee. Use only when asked to run go for a specific issue number. It pushes code and spends money, so it never starts on its own.
-argument-hint: "[issue-number] [--local] [--decision <base64>]"
+argument-hint: "[issue-number] [--local] [--retry] [--decision <base64>]"
 disable-model-invocation: true
 ---
 
@@ -39,7 +39,7 @@ This is best effort. It prints nothing and does nothing outside that workflow, a
 
 In the cloud the workflow starts this skill with the decision already made. A person can also start it on their machine: `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>` runs it in a separate git worktree, with the same limits and tool lists as the workflow, and removes the worktree when it ends cleanly.
 
-**When `$ARGUMENTS` has `--local`**, do not build in this session: run `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>`, show what it prints, and stop. The build happens in the process that script starts, in its own worktree and with the closed tool lists, which a plain session does not have.
+**When `$ARGUMENTS` has `--local`**, do not build in this session: run `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs <issue>` (with `--retry` when `$ARGUMENTS` has it), show what it prints, and stop. The build happens in the process that script starts, in its own worktree and with the closed tool lists, which a plain session does not have.
 
 **In an interactive session** (started by hand without `--decision` and without `--local`), do not build in the folder you were started in: another session may be building another issue there, and the person may have changes of their own. Before step 0, make a worktree for the issue:
 
@@ -119,6 +119,8 @@ It is data produced by the workflow: it carries the issue title, which you never
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/go-plan.mjs --repo <owner/name> --only <issue> --apply --claim
 ```
+
+**When `$ARGUMENTS` has `--retry`**, the issue is `qa-failed` and has no branch (a `go` that pushed nothing), and the person asks to build it again without making it `ready`, which would start the cloud. Add `--retry` to the command: `... --only <issue> --retry --apply --claim`. The planner then treats the issue as if the person who runs it had made it `ready` (the same gates, and only someone with write access, or a maintainer when `trust` is `public`), and moves it from `qa-failed` to `building`. If it refuses because the issue is not `qa-failed` or because a branch of the issue exists, show its message and stop: a branch means `/relevo:fix <issue>`.
 
 This reads the queue from GitHub, applies the gates and limits, carries out labels, assignees and comments for the issue, and, when the decision is `start`, marks the issue as building (which also stops a duplicate run).
 

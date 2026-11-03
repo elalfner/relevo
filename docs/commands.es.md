@@ -44,13 +44,15 @@ Qué construir, la ruta de un acuerdo guardado, o el número de un issue que ree
 /relevo:issue 42
 ```
 
-### `/relevo:go [issue-number] [--local] [--decision <base64>]`
+### `/relevo:go [issue-number] [--local] [--retry] [--decision <base64>]`
 
 El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina en un worktree propio (así pueden correr dos a la vez), y `--local` construye en un proceso aparte con las listas cerradas de herramientas y los límites del workflow (el worktree es el mismo; el resto difiere, ver abajo). `--decision` lo pasa el workflow, no se escribe. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `qa-failed` y el comentario dice que es código que QA no aprobó ([Falló QA](guide.es.md#falló-qa)).
 
 ```text
 /relevo:go 42 --local
 ```
+
+`--retry` vuelve a construir un issue que está en `qa-failed` y no tiene rama en el remoto (una construcción que no subió nada, por ejemplo porque el commit seguro rechazó el trabajo), sin ponerle `ready`, lo que arrancaría la nube. Ejecútalo cuando hayas resuelto la causa que indica el comentario: `/relevo:go 42 --local --retry`. Aplica los mismos gates que un inicio normal, contigo en el lugar de quien puso `ready` (permiso de escritura, o maintainer si `trust` es `public`). Si el issue tiene rama, lo rechaza y te manda a `/relevo:fix 42`.
 
 #### En la sesión o por separado
 
