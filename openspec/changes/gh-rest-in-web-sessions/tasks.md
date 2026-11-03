@@ -35,11 +35,11 @@
 
 ## 6. Documentation
 
-- [ ] 6.1 `docs/install.md` and `docs/install.es.md`: the limit narrows to the commands that are not covered; the stopgap stays for them
-- [ ] 6.2 The pages of `issue`, `status`, `think`, `init` and `doctor` (both languages) say what changes in a web session; changelog under Unreleased
+- [x] 6.1 `docs/install.md` and `docs/install.es.md`: the limit narrows to the commands that are not covered; the stopgap stays for them
+- [x] 6.2 The pages of `issue`, `status`, `think`, `init` and `doctor` (both languages) say what changes in a web session; changelog under Unreleased
 
 ## 7. Check in a real web session
 
 - [ ] 7.1 In a new web session on the sandbox repository, with the version that has this change: `/relevo:doctor` and `/relevo:status` pass the access check; a person types `/relevo:issue` and creates a small issue with a milestone and an assignee without labelling it `ready`; `/relevo:think <n>` reads it; record the result
-- [ ] 7.2 Run the same commands on a terminal and compare with the output before this change
-- [ ] 7.3 Run `npm test`; the only failure allowed is the one that comes from a preinstalled Playwright in the environment
+- [x] 7.2 Run the same commands on a terminal and compare with the output before this change
+- [x] 7.3 Run `npm test`; the only failure allowed is the one that comes from a preinstalled Playwright in the environment

@@ -4,9 +4,20 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **The commands that write and read issues work in a session of Claude Code on the web.** A web session blocks GitHub's GraphQL API, so `gh issue ...`, `gh repo view` and `gh auth status` failed there while `gh api` (REST) worked, and a person who works only on the web could not use `/relevo:issue`, `/relevo:status`, `/relevo:think`, `/relevo:init` or `/relevo:doctor`. A new script, `scripts/gh-web.mjs`, takes the arguments of the `gh` subcommands those commands use (`issue view`, `issue list`, `issue create`, `issue edit`, `repo view`, `label create`) and answers them over REST in a remote session, with the JSON that `gh` gives; on a terminal and on the Actions runners it runs `gh` unchanged. A subcommand, flag or `--json` field it does not cover stops and names it, and an error shows the status and message of GitHub without the token. In a web session "GitHub can be reached" is a read of the repository over REST (`gh-web.mjs --access`), and `doctor`, `init` and `status` no longer stop at the sign-in status of `gh`. Checked in a web session on a sandbox repository: an issue created with a milestone and an assignee, its body and labels changed, issues listed and searched, a label created, `doctor` and `init` reading the repository, `status` printing its report.
+- **The spec records the plugin hook for web sessions** (`init-doctor`), which shipped in 0.13.0 without one.
+
 ### Changed
 
-- **The install page says that `gh` is limited in a web session.** A session of Claude Code on the web blocks the GraphQL API, which most `gh` subcommands use: `gh api` (REST) worked, while `gh auth status`, `gh issue list`, `gh label list` and `gh pr list` failed. Many `/relevo:` commands call those subcommands, so on the web they are not expected to work until Relevo uses the REST API there; the page names the stopgap (write the issue on github.com and label it `relevo:ready`). It also drops the wording that suggested the commands work in that session. `/relevo:issue` could not be tried by an agent, because only a person can start it.
+- **The install page says what works on the web and what does not.** The commands above work; `/relevo:go`, `/relevo:fix`, `/relevo:ship` and `/relevo:review` still call `gh pr` and `gh issue comment`, which fail the same way in a web session and are not covered yet. The page no longer suggests that every command works there.
+
+### Known limits
+
+- A person typing `/relevo:issue` in a web session has not been tried, because only a person can start it; the script it calls was run there.
+- `/relevo:status` cannot read the `RELEVO_CLOUD_GO` variable through the proxy of a web session (the Actions path is refused) and says so in its report.
+- A body written from a web session may end with an attribution line that the environment adds; the script does not add it.
 
 ## [0.13.0] - 2026-11-03
 
