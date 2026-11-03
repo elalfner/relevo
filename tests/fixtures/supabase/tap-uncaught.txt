@@ -1,0 +1,16 @@
+Connecting to local database...
+psql:/home/dev/app/supabase/tests/uncaught.test.sql:3: ERROR:  relation "public.no_such_table" does not exist
+LINE 1: select * from public.no_such_table;
+                      ^
+/home/dev/app/supabase/tests/uncaught.test.sql .. 
+Dubious, test returned 3 (wstat 768, 0x300)
+Failed 1/1 subtests 
+
+Test Summary Report
+-------------------
+/home/dev/app/supabase/tests/uncaught.test.sql (Wstat: 768 (exited 3) Tests: 0 Failed: 0)
+  Non-zero exit status: 3
+  Parse errors: Bad plan.  You planned 1 tests but ran 0.
+Files=1, Tests=0,  0 wallclock secs ( 0.01 usr +  0.00 sys =  0.01 CPU)
+Result: FAIL
+error running container: exit 1

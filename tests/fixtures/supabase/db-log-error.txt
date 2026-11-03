@@ -1,6 +1,2 @@
-2026-11-02 10:05:11.001 UTC [301] ERROR:  relation "invoices" does not exist at character 15
-2026-11-02 10:05:11.001 UTC [301] STATEMENT:  select * from invoices
-2026-11-02 10:05:12.010 UTC [302] ERROR:  syntax error at or near "creat" at character 1
-2026-11-02 10:05:13.020 UTC [303] FATAL:  terminating connection due to administrator command
-2026-11-02 10:05:14.030 UTC [304] ERROR:  deadlock detected
-2026-11-02 10:05:14.030 UTC [304] DETAIL:  Process 304 waits for ShareLock on transaction 991; blocked by process 305.
+192.168.107.1 2026-11-03 05:00:01.688 UTC [219] postgres@postgres ERROR:  syntax error at or near "tabel" at character 8
+192.168.107.1 2026-11-03 05:00:01.688 UTC [219] postgres@postgres STATEMENT:  create tabel public.broken (id int)

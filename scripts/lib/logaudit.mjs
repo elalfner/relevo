@@ -71,8 +71,9 @@ const API_RULES = [
   { cls: 'server-error', test: (l) => /\bHTTP\/\d(?:\.\d)?"? 5\d\d\b|\bresponse 5\d\d\b|\b500 Internal Server Error\b/.test(l) },
 ];
 
-// The classes of a Supabase review, read from the log of the local database container. A policy test (pgTAP `throws_ok`,
-// `set role anon`) provokes permission, row-level-security and constraint errors on purpose, so those are expected denials.
+// The classes of a Supabase review, read from the log of the local database container. Permission, row-level-security and
+// constraint errors are expected denials. A pgTAP `throws_ok` does not write its denial to the log (the error is caught in
+// the test), so the proof that a policy denies is the recorded run, not the log.
 const PG_LEVEL = /\b(ERROR|FATAL|PANIC):\s/;
 const PG_DENIAL = /permission denied|violates row-level security policy|violates [\w\s-]*constraint|duplicate key value/i;
 const PG_RULES = [
@@ -164,8 +165,10 @@ export function auditReport(audit, { issue, scope } = {}) {
     audit.findings.forEach((f, i) => lines.push(`${i + 1}. **${f.class}** (log line ${f.line}): \`${f.excerpt.replace(/`/g, "'")}\`${f.waived ? ` — WAIVED by the reviewer: ${f.reason}` : ''}`));
   }
   if (audit.expected?.length > 0) {
-    lines.push('', `${audit.expected.length} expected denial(s): permission, row-level security or constraint errors that a policy test provokes on purpose; they are not findings.`);
+    lines.push('', `${audit.expected.length} expected denial(s): permission, row-level security or constraint errors; they are not findings.`);
     audit.expected.slice(0, 5).forEach((e) => lines.push(`- (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
+  } else if (scope?.flavor === 'postgres' && audit.verdict === PASSED) {
+    lines.push('', 'No denial appears in the log. A pgTAP test that catches a denial does not write it there: the proof is the recorded run and its assertions, not the log.');
   }
   return `${lines.join('\n')}\n`;
 }

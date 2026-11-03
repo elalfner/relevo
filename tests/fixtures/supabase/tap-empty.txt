@@ -1,3 +1,13 @@
 Connecting to local database...
-Files=0, Tests=0,  0 wallclock secs
-Result: NOTESTS
+psql:/home/dev/app/supabase/tests/noassert.test.sql:3: ERROR:  # No tests run!
+CONTEXT:  PL/pgSQL function _finish(integer,integer,integer,boolean) line 12 at RAISE
+SQL function "finish" statement 1
+/home/dev/app/supabase/tests/noassert.test.sql .. skipped: (no reason given)
+
+Test Summary Report
+-------------------
+/home/dev/app/supabase/tests/noassert.test.sql (Wstat: 768 (exited 3) Tests: 0 Failed: 0)
+  Non-zero exit status: 3
+Files=1, Tests=0,  1 wallclock secs ( 0.01 usr +  0.00 sys =  0.01 CPU)
+Result: FAIL
+error running container: exit 1
