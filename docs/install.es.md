@@ -47,6 +47,22 @@ relevo init --tools claude,antigravity --scope project
 - **`relevo init` no es `/relevo:init`.** El comando deja en su sitio los archivos de Relevo para una herramienta; la skill prepara las etiquetas, las reglas y los workflows del repositorio. Haz las dos cosas.
 - **Qué cambia respecto de Claude Code:** la construcción en la nube y lo que puede hacer cumplir ([Seguridad](security.es.md#qué-agente-construye)), y `/relevo:go <n> --local`, que inicia `claude`, o `agy` cuando `agent.build` es `antigravity`, en un worktree aparte; en una sesión de Antigravity `/relevo:go <n>` ya construye en un worktree aislado propio. Una construcción completa con Antigravity, local o en la nube, no se ha probado de extremo a extremo.
 
+## Trabajar en la web sin clonar
+
+Quien trabaja solo en Claude Code en la web (un PM, por ejemplo) no instala nada ni clona el repositorio. Alguien lo hace una vez, desde un clon, y sube el resultado:
+
+1. Declara el plugin en el proyecto:
+   ```bash
+   claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project
+   claude plugin install relevo@relevo --scope project
+   ```
+   Esto escribe `extraKnownMarketplaces` y `enabledPlugins` (`"relevo@relevo": true`) en `.claude/settings.json`.
+2. Ejecuta `/relevo:init` (requiere permisos de admin). Acepta el hook `SessionStart` que instala OpenSpec en sesiones remotas; sin él, `go` se detiene en una sesión web.
+3. Crea el secreto del modelo (`ANTHROPIC_API_KEY` o `CLAUDE_CODE_OAUTH_TOKEN`) en los secretos de GitHub Actions, para que los builds en la nube puedan correr.
+4. Haz commit y push de `.claude/settings.json`, `relevo.yml` y los workflows a la rama por defecto. Los workflows se ejecutan desde la rama por defecto, así que con `main` por defecto y `dev` como base solo llegan a la nube cuando `dev` se promueve ([Dónde corre `go`](execution.es.md)).
+
+Desde entonces, quien abra el repositorio en Claude Code en la web tiene Relevo: `/relevo:think`, `/relevo:issue` y `/relevo:status` funcionan en la sesión, y al poner `relevo:ready` en un issue el build arranca en GitHub Actions. La revisión en un dispositivo real sigue necesitando a una persona con el dispositivo.
+
 ## Qué necesitas
 
 - **Claude Code**, donde corre el plugin.

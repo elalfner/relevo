@@ -47,6 +47,22 @@ relevo init --tools claude,antigravity --scope project
 - **`relevo init` is not `/relevo:init`.** The command puts Relevo's files for a tool in place; the skill sets up the labels, the rules and the workflows of the repository. Do both.
 - **What differs from Claude Code:** the cloud build and what it can enforce ([Security](security.md#which-agent-builds)), and `/relevo:go <n> --local`, which starts `claude`, or `agy` when `agent.build` is `antigravity`, in a separate worktree; in an Antigravity session `/relevo:go <n>` already builds in an isolated worktree of its own. A full build with Antigravity, local or in the cloud, has not been tried end to end.
 
+## Work on the web without cloning
+
+A person who works only in Claude Code on the web (a PM, for example) does not install anything or clone the repository. Someone does this once, from a clone, and commits the result:
+
+1. Declare the plugin in the project:
+   ```bash
+   claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project
+   claude plugin install relevo@relevo --scope project
+   ```
+   This writes `extraKnownMarketplaces` and `enabledPlugins` (`"relevo@relevo": true`) into `.claude/settings.json`.
+2. Run `/relevo:init` (it needs admin rights). Accept the `SessionStart` hook that installs OpenSpec in remote sessions; without it `go` stops in a web session.
+3. Create the model secret (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) in the GitHub Actions secrets, so the cloud builds can run.
+4. Commit and push `.claude/settings.json`, `relevo.yml` and the workflows to the default branch. The workflows run from the default branch, so with `main` as default and `dev` as base they reach the cloud only after `dev` is promoted ([Where `go` runs](execution.md#which-branch-the-cloud-reads)).
+
+From then on, anyone who opens the repository in Claude Code on the web gets Relevo: `/relevo:think`, `/relevo:issue` and `/relevo:status` work in the session, and labelling an issue `relevo:ready` starts the build in GitHub Actions. The review on a real device still needs a person with the device.
+
 ## What you need
 
 - **Claude Code**, where the plugin runs.
