@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-03
+
 ### Added
 
 - **The commands that write and read issues work in a session of Claude Code on the web.** A web session blocks GitHub's GraphQL API, so `gh issue ...`, `gh repo view` and `gh auth status` failed there while `gh api` (REST) worked, and a person who works only on the web could not use `/relevo:issue`, `/relevo:status`, `/relevo:think`, `/relevo:init` or `/relevo:doctor`. A new script, `scripts/gh-web.mjs`, takes the arguments of the `gh` subcommands those commands use (`issue view`, `issue list`, `issue create`, `issue edit`, `repo view`, `label create`) and answers them over REST in a remote session, with the JSON that `gh` gives; on a terminal and on the Actions runners it runs `gh` unchanged. A subcommand, flag or `--json` field it does not cover stops and names it, and an error shows the status and message of GitHub without the token. In a web session "GitHub can be reached" is a read of the repository over REST (`gh-web.mjs --access`), and `doctor`, `init` and `status` no longer stop at the sign-in status of `gh`. Checked in a web session on a sandbox repository: an issue created with a milestone and an assignee, its body and labels changed, issues listed and searched, a label created, `doctor` and `init` reading the repository, `status` printing its report.
