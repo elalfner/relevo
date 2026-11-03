@@ -124,10 +124,10 @@ try {
       const tapSource = flag('tap');
       const tap = tapSource === undefined ? null : parseTap(readFileSync(tapSource === '-' ? 0 : tapSource, 'utf8'));
       const failing = tap ? [...tap.failing, ...(flag('failing')?.split(',').filter(Boolean) ?? [])] : flag('failing')?.split(',').filter(Boolean);
-      const state = recordRun(load(), { exit, by: flag('by'), filter: flag('filter'), tests: tap ? tap.assertions : flag('tests'), line: flag('line'), failing, incomplete: tap ? !tap.planComplete : false });
+      const state = recordRun(load(), { exit, by: flag('by'), filter: flag('filter'), tests: tap ? tap.assertions : flag('tests'), line: flag('line'), failing, covers: flag('covers')?.split(',').map((n) => n.trim()).filter(Boolean), incomplete: tap ? !tap.planComplete : false });
       save(state);
       const last = state.runs.at(-1);
-      console.log(`recorded: run by the ${last.by}${last.line ? ` for line ${last.line}` : ''}, exit ${last.exit}${last.tests !== undefined ? `, ${last.tests} ${state.stack === 'supabase' ? 'assertion(s)' : 'test(s)'}` : ''}${last.incomplete ? ' (the plan was not completed)' : ''}`);
+      console.log(`recorded: run by the ${last.by}${last.line ? ` for line ${last.line}` : ''}, exit ${last.exit}${last.tests !== undefined ? `, ${last.tests} ${state.stack === 'supabase' ? 'assertion(s)' : 'test(s)'}` : ''}${last.covers?.length ? `, covering ${last.covers.join(', ')}` : ''}${last.incomplete ? ' (the plan was not completed)' : ''}`);
       break;
     }
     case 'started-stack': {

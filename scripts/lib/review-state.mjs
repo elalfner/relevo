@@ -2,6 +2,8 @@
 // Implements "Pull request only after verification" of openspec/specs/review/spec.md.
 
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 export const STATUSES = ['pending', 'ok', 'fail'];
 
@@ -168,6 +170,7 @@ export function recordRun(state, run) {
     ...(tests !== undefined ? { tests } : {}),
     ...(run.line !== undefined ? { line: Number(run.line) } : {}),
     ...(run.failing?.length ? { failing: run.failing } : {}),
+    ...(run.covers?.length ? { covers: run.covers } : {}),
   });
   return state;
 }
@@ -190,6 +193,27 @@ function assertProvedByRun(state, id) {
   if (!run) throw new Error(`line ${id} has no test run of the agent: run its test and record it with "ran <exit code> --by agent --line ${id} --tests <n> --filter <name>"`);
   if (run.exit !== 0) throw new Error(`the last run for line ${id} exited ${run.exit}: it does not prove the line`);
   if (!(run.tests >= 1)) throw new Error(`the last run for line ${id} ran no test (${run.tests ?? 'count not given'}): a filter that matches nothing proves nothing`);
+  if (state.stack === 'supabase') assertCoversThen(state, id, run);
+}
+
+/**
+ * A Supabase line is proved only when the run names the assertions of the pgTAP file that cover its THEN, every name is in
+ * the file and none of them failed. The check is mechanical: it cannot tell whether a name really asserts the THEN.
+ */
+function assertCoversThen(state, id, run) {
+  const names = run.covers ?? [];
+  if (names.length === 0) throw new Error(`the last run for line ${id} names no covering assertion: record it with "ran <exit code> --by agent --line ${id} --filter <file> --tap <output> --covers \"<assertion name>\""`);
+  const failed = names.filter((n) => (run.failing ?? []).includes(n));
+  if (failed.length > 0) throw new Error(`the assertion "${failed[0]}" that covers line ${id} failed: it does not prove the line`);
+  let text;
+  try {
+    text = readFileSync(resolve(state.cwd ?? '.', run.filter ?? ''), 'utf8');
+  } catch {
+    throw new Error(`the pgTAP file of line ${id} (${run.filter ?? 'none recorded'}) cannot be read: the covering assertion cannot be checked`);
+  }
+  const body = text.replace(/''/g, "'");
+  const missing = names.find((n) => !body.includes(n));
+  if (missing !== undefined) throw new Error(`the assertion "${missing}" is not in ${run.filter}: name an assertion the file has`);
 }
 
 /** The "Test runs" section of the pull request body: which runs were the person's and which the agent's; empty with none. */
@@ -198,7 +222,7 @@ export function runsSection(state) {
   if (runs.length === 0) return '';
   const pg = state.stack === 'supabase';
   const what = (r) => (r.tests !== undefined ? `, ${r.tests} ${pg ? 'assertion(s)' : 'test(s)'}` : (pg && r.by === 'person' ? ', no assertions counted' : ''));
-  return ['## Test runs', '', ...runs.map((r) => `- by the ${r.by}${r.line ? ` for line ${r.line}` : ''}${r.filter ? `, ${pg ? 'file' : 'filter'} \`${String(r.filter).replace(/`/g, "'")}\`` : ''}: exit ${r.exit}${what(r)}${r.incomplete ? ' (the plan was not completed)' : ''}`), ''].join('\n');
+  return ['## Test runs', '', ...runs.map((r) => `- by the ${r.by}${r.line ? ` for line ${r.line}` : ''}${r.filter ? `, ${pg ? 'file' : 'filter'} \`${String(r.filter).replace(/`/g, "'")}\`` : ''}: exit ${r.exit}${what(r)}${r.covers?.length ? `, covers ${r.covers.map((n) => `\`${String(n).replace(/`/g, "'")}\``).join(', ')}` : ''}${r.incomplete ? ' (the plan was not completed)' : ''}`), ''].join('\n');
 }
 
 /** The agent's own result for a line, apart from the person's confirmation. Modes precheck and verify only. */

@@ -393,7 +393,7 @@ test('a lock file or a generated file in conflict is regenerated with the tool, 
 });
 
 test('Scenario: Supabase ready / Local stack stopped - the skill names the Supabase preflight, the pgTAP run, the started stack and the local-only rule', () => {
-  ['api-preflight.mjs --stack supabase', 'supabase test db', 'started-stack', '--tap', 'supabase-command.mjs', '--stack <the stack of the platform>'].forEach((x) => assert.ok(body.includes(x), `the skill never names ${x}`));
+  ['api-preflight.mjs --stack supabase', 'supabase test db', 'started-stack', '--tap', '--covers', 'supabase-command.mjs', '--stack <the stack of the platform>'].forEach((x) => assert.ok(body.includes(x), `the skill never names ${x}`));
   assert.match(body, /never add `--linked` or `--db-url`/);
   assert.match(body, /Exit `7` is not a stop/);
   assert.match(body, /only if `started-stack` was recorded/);

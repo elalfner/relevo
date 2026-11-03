@@ -22,6 +22,8 @@ function project(autopilot = 'off', { dockerLog = '', dockerStatus = 0 } = {}) {
   mkdirSync(join(dir, 'bin'), { recursive: true });
   writeFileSync(join(dir, 'change', 'specs', 'cap', 'spec.md'), SPEC);
   writeFileSync(join(dir, 'supabase', 'config.toml'), 'project_id = "shop"\n');
+  mkdirSync(join(dir, 'supabase', 'tests'), { recursive: true });
+  writeFileSync(join(dir, 'supabase', 'tests', 'orders_rls.test.sql'), "select throws_ok($$insert into public.orders (user_id) values (gen_random_uuid())$$, '42501', 'new row violates row-level security policy', 'anon cannot insert orders');\nselect has_table('public', 'orders', 'orders exists');\nselect ok(true, 'it''s fine');\n");
   writeFileSync(join(dir, 'docker.out'), dockerLog);
   writeFileSync(join(dir, 'docker.args'), '');
   writeFileSync(join(dir, 'bin', 'docker'), `#!/bin/sh\necho "$@" >> "${dir}/docker.args"\nif [ ${dockerStatus} -ne 0 ]; then echo "Error: No such container: supabase_db_shop" >&2; exit ${dockerStatus}; fi\ncat "${dir}/docker.out" >&2\n`);
@@ -189,10 +191,40 @@ test('Supabase review: a line is proved only by a run of the agent with at least
   assert.match(r.run('precheck', '1', 'ok').stderr, /no test run of the agent/);
   r.run('ran', '0', '--by', 'agent', '--line', '1', '--tap', join(FIX, 'tap-empty.txt'));
   assert.match(r.run('auto', '1', 'file ran').stderr, /ran no test/);
-  r.run('ran', '0', '--by', 'agent', '--line', '1', '--filter', 'supabase/tests/orders_rls.test.sql', '--tap', join(FIX, 'tap-pass.txt'));
-  assert.equal(r.run('auto', '1', 'supabase/tests/orders_rls.test.sql: 4 assertions').status, 0);
+  const FILE = 'supabase/tests/orders_rls.test.sql';
+  const ran = (...extra) => r.run('ran', '0', '--by', 'agent', '--line', '1', '--filter', FILE, '--tap', join(FIX, 'tap-pass.txt'), ...extra);
+  ran();
+  assert.match(r.run('auto', '1', 'x').stderr, /names no covering assertion/);
+  assert.match(r.run('precheck', '1', 'ok').stderr, /names no covering assertion/);
+  const named = ran('--covers', 'anon cannot insert orders');
+  assert.match(named.stdout, /covering anon cannot insert orders/);
+  assert.equal(r.run('auto', '1', `${FILE}: 4 assertions`).status, 0);
   const list = r.run('runs-list').stdout;
-  assert.match(list, /file `supabase\/tests\/orders_rls.test.sql`: exit 0, 4 assertion\(s\)/);
+  assert.match(list, /file `supabase\/tests\/orders_rls.test.sql`: exit 0, 4 assertion\(s\), covers `anon cannot insert orders`/);
+});
+
+test('Scenario: A covered name that is not in the file, or a quote that is doubled in the file', () => {
+  const r = project('verify');
+  r.run('confirm-env');
+  const FILE = 'supabase/tests/orders_rls.test.sql';
+  const ran = (...extra) => r.run('ran', '0', '--by', 'agent', '--line', '1', '--filter', FILE, '--tap', join(FIX, 'tap-pass.txt'), ...extra);
+  ran('--covers', 'anon cannot read invoices');
+  assert.match(r.run('precheck', '1', 'ok').stderr, /"anon cannot read invoices" is not in supabase\/tests\/orders_rls.test.sql/);
+  ran('--covers', 'anon cannot insert orders, it\'s fine');
+  assert.equal(r.run('precheck', '1', 'ok').status, 0);
+  r.run('ran', '0', '--by', 'agent', '--line', '2', '--filter', 'supabase/tests/gone.test.sql', '--tap', join(FIX, 'tap-pass.txt'), '--covers', 'x');
+  assert.match(r.run('precheck', '2', 'ok').stderr, /cannot be read/);
+});
+
+test('Scenario: A covered assertion that failed - the proof fails', () => {
+  const r = project('verify');
+  r.run('confirm-env');
+  r.run('ran', '1', '--by', 'agent', '--line', '1', '--filter', 'supabase/tests/orders_rls.test.sql', '--tap', join(FIX, 'tap-fail.txt'), '--covers', 'orders is gone');
+  assert.match(r.run('auto', '1', 'x').stderr, /exited 1/);
+  const state = r.show();
+  state.runs[0].exit = 0;
+  writeFileSync(join(r.dir, 'evidence', 'review-state.json'), JSON.stringify(state));
+  assert.match(r.run('auto', '1', 'x').stderr, /"orders is gone" that covers line 1 failed/);
 });
 
 test('Scenario: Run told by the person - recorded as the person\'s, without assertions', () => {
