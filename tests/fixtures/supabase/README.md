@@ -12,3 +12,4 @@ Captured on 2026-11-03 from a real run: Supabase CLI 2.122.0, Postgres 17.11, Do
 - `db-log-error.txt`: a migration with a syntax error applied by `supabase db reset`.
 - `db-log-clean.txt`: NOT captured; still written from the documentation. Lines carry no client address or `user@db` prefix, unlike the real ones.
 - `db-log-denials-handwritten.txt` and `db-log-fatal-handwritten.txt`: NOT captured. No capture holds a denial (`throws_ok` does not log) or a `FATAL` / deadlock, so these are written in the real line format for the tests of those classes.
+- `db-log-reset.txt`: an excerpt of the container log of a `supabase db reset` with a good migration (CLI 2.122.0, Postgres 17.11, captured 2026-11-03): the startup with `FATAL:  role "postgres" does not exist`, and the end with the migration statements. The ~1,250 lines between them were cut, and the `realtime.schema_migrations` error was removed because the capture excluded the realtime service.
