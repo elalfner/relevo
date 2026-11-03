@@ -165,7 +165,7 @@ test('init offers the plugin hook for web sessions on a yes, through the same sc
 });
 
 test('doctor says it checks the OpenSpec hook in a web session', () => {
-  assert.match(load('doctor').meta.description, /in a web session whether the repository installs OpenSpec and the Relevo plugin/);
+  assert.match(load('doctor').meta.description, /in a web session whether it can reach GitHub.*whether the repository installs OpenSpec and the Relevo plugin/);
 });
 
 test('Scenario: Init asks for the runner labels only for a self-hosted runner, and never whether it is ephemeral', () => {
@@ -213,4 +213,22 @@ test('Scenario: Restricted files - init shows the exact entries and writes them 
   assert.match(init, /If the person declines, write nothing for it and go on/);
   assert.match(init, /Never open a restricted file to decide any of this/);
   assert.match(load('doctor').body, /Never open a restricted file/);
+});
+
+test('the commands of the person who writes issues reach GitHub through the REST-capable script, not through gh issue or gh repo', () => {
+  assert.ok(existsSync(new URL('../scripts/gh-web.mjs', import.meta.url)), 'the script the skills run exists');
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+  for (const path of ['skills/issue/SKILL.md', 'skills/issue/references/update.md', 'skills/think/SKILL.md']) {
+    const text = read(path);
+    assert.doesNotMatch(text, /`gh (issue|repo|label) /, `${path} still calls gh issue/repo/label directly`);
+    assert.match(text, /scripts\/gh-web\.mjs/, `${path} names the script`);
+  }
+  const status = read('skills/status/SKILL.md');
+  assert.doesNotMatch(status, /`gh repo view/);
+  assert.doesNotMatch(status, /`gh auth status` must succeed/);
+  assert.match(status, /gh-web\.mjs` --access` must succeed|gh-web\.mjs --access` must succeed/);
+  assert.match(status, /Never run `gh issue edit`/, 'the list of what status never writes stays');
+  const init = read('skills/init/SKILL.md');
+  assert.doesNotMatch(init, /if `gh auth status` fails/);
+  assert.match(init, /gh-web\.mjs --access/);
 });
