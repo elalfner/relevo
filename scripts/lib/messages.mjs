@@ -18,6 +18,7 @@ const REQUIRED = {
   built: ['assignee', 'issue', 'title', 'tasks_done', 'tasks_total', 'branch', 'scenarios'],
   qa_failed: ['assignee', 'issue', 'title', 'finding', 'branch'],
   toolchain_missing: ['assignee', 'issue', 'title', 'tools', 'platform'],
+  installed_missing: ['assignee', 'issue', 'title', 'paths', 'platform'],
   needs_spec: ['spec_writer', 'issue', 'title', 'missing'],
   changes_requested: ['author', 'issue', 'reviewer', 'summary'],
   needs_reviewer: ['spec_writer', 'issue', 'title', 'pr'],
@@ -50,6 +51,7 @@ const STATE_OF = {
   built: 'built',
   qa_failed: 'qa-failed',
   toolchain_missing: 'qa-failed',
+  installed_missing: 'qa-failed',
   needs_spec: 'needs-spec',
   changes_requested: 'changes-requested',
   approved: 'pr-open',
@@ -66,16 +68,20 @@ const CATALOG = {
       'Built from the issue text: {{issue_hash_short}}',
       'What to test: {{scenarios}} scenarios (checklist below)',
       'Riskiest area, check it first: {{risk}}',
+      'Inputs to confirm before you test: {{inputs_to_confirm}}',
       'Your next step: {{command}}',
       'Expected by: {{due}}',
+      '{{qa_notes_line}}',
       '',
       '{{checklist}}',
+      '{{qa_notes_marker}}',
     ],
     qa_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" failed QA ❌',
       '',
-      'What happened: QA still rejected it after the retries{{reason_suffix}}.',
+      'What happened: {{happened}}',
       'Finding: {{finding}}{{location_suffix}}',
+      '{{class_line}}',
       '{{branch_line}}',
       'Full QA report: {{log_url}}',
       '{{next_line}}',
@@ -84,6 +90,12 @@ const CATALOG = {
       '@{{assignee}} #{{issue}} "{{title}}" was not built: the runner has no {{tools}} ❌',
       '',
       'What happened: the build job checked the toolchain of platform {{platform}} before the agent started, and {{tools}} is not on the path of the runner. Nothing was built and no model turns were spent.',
+      '{{next_line}}',
+    ],
+    installed_missing: [
+      '@{{assignee}} #{{issue}} "{{title}}" was not built: the dependencies of platform {{platform}} are not installed ❌',
+      '',
+      'What happened: the build job checked platform {{platform}} before the agent started, and {{paths}} does not exist after the install step. Nothing was built and no model turns were spent.',
       '{{next_line}}',
     ],
     needs_spec: [
@@ -235,16 +247,20 @@ const CATALOG = {
       'Construida con el texto del issue: {{issue_hash_short}}',
       'Qué probar: {{scenarios}} escenarios (checklist abajo)',
       'Zona más riesgosa, revísala primero: {{risk}}',
+      'Insumos que debes confirmar antes de probar: {{inputs_to_confirm}}',
       'Tu siguiente paso: {{command}}',
       'Esperada para: {{due}}',
+      '{{qa_notes_line}}',
       '',
       '{{checklist}}',
+      '{{qa_notes_marker}}',
     ],
     qa_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" no pasó QA ❌',
       '',
-      'Qué pasó: QA la rechazó otra vez tras los reintentos{{reason_suffix}}.',
+      'Qué pasó: {{happened}}',
       'Hallazgo: {{finding}}{{location_suffix}}',
+      '{{class_line}}',
       '{{branch_line}}',
       'Reporte completo de QA: {{log_url}}',
       '{{next_line}}',
@@ -253,6 +269,12 @@ const CATALOG = {
       '@{{assignee}} #{{issue}} "{{title}}" no se construyó: el runner no tiene {{tools}} ❌',
       '',
       'Qué pasó: el job de build comprobó el toolchain de la plataforma {{platform}} antes de que empezara el agente, y {{tools}} no está en el path del runner. No se construyó nada y no se gastó ningún turno del modelo.',
+      '{{next_line}}',
+    ],
+    installed_missing: [
+      '@{{assignee}} #{{issue}} "{{title}}" no se construyó: las dependencias de la plataforma {{platform}} no están instaladas ❌',
+      '',
+      'Qué pasó: el job de build revisó la plataforma {{platform}} antes de que empezara el agente, y {{paths}} no existe después del paso de instalación. No se construyó nada y no se gastó ningún turno del modelo.',
       '{{next_line}}',
     ],
     needs_spec: [
@@ -421,6 +443,29 @@ function shorten(value) {
   return text.length > MAX_VALUE_LENGTH ? `${text.slice(0, MAX_VALUE_LENGTH)}… (truncated; see the full log)` : text;
 }
 
+const FINDING_CLASSES = ['fixable', 'input', 'spec', 'policy'];
+
+// The finding classes that the developer agent cannot correct are also the reasons of the next step of `qa-failed`.
+// Only work that was kept on the branch has a next step of its own for them.
+function classReason(values) {
+  return values.branch_state === 'kept' && ['input', 'spec', 'policy'].includes(values.finding_class) ? values.finding_class : null;
+}
+
+// One line that says what kind of finding stopped the run, when the developer agent could not correct it.
+function classLine(values, es) {
+  if (!present(values.finding_class)) return '';
+  if (!FINDING_CLASSES.includes(values.finding_class)) throw new Error(`message "qa_failed" has an unknown finding_class "${values.finding_class}"`);
+  if (values.finding_class === 'fixable') return '';
+  const skipped = values.retries_skipped === true;
+  const what = {
+    input: es ? 'algo que el agente de desarrollo no puede aportar: un insumo del que depende el issue' : 'something the developer agent cannot supply: an input that the issue depends on',
+    spec: es ? 'una decisión que la especificación no toma' : 'a decision that the specification does not make',
+    policy: es ? 'algo que una corrida sin supervisión no puede hacer, como una ruta protegida o una dependencia que el issue no permitió' : 'something an unattended run may not do, such as a protected path or a dependency the issue did not allow',
+  }[values.finding_class];
+  if (es) return `Qué tipo de hallazgo: necesita ${what}${skipped ? ', así que se omitieron los reintentos' : ''}.`;
+  return `What kind of finding: it needs ${what}${skipped ? ', so the retries were skipped' : ''}.`;
+}
+
 export function renderMessage(kind, data = {}, language = 'en') {
   if (!REQUIRED[kind]) throw new Error(`unknown message kind "${kind}"`);
   const values = { ...data };
@@ -450,6 +495,21 @@ export function renderMessage(kind, data = {}, language = 'en') {
       : `The Relevo build ended${none ? ' without an outcome' : ''}${after}. ${none ? 'The reason is' : 'The result is'} in the latest comment of this issue.`;
   }
   if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
+  // Advisory notes of the QA lenses: how many, the lens of the first three, and all of them in a hidden marker for the review.
+  if (kind === 'built' && Array.isArray(values.qa_notes) && values.qa_notes.length > 0) {
+    const notes = values.qa_notes.filter((n) => n && present(n.lens) && present(n.text)).map((n) => ({ lens: String(n.lens), text: String(n.text).replace(/\s+/g, ' ').trim() }));
+    if (notes.length > 0) {
+      // No markup in the visible line: a note is text, never HTML or the end of a comment.
+      const short = (t) => { const c = t.replace(/[<>]/g, ''); return c.length > 90 ? `${c.slice(0, 89).trimEnd()}…` : c; };
+      const named = notes.slice(0, 3).map((n) => `${n.lens}: ${short(n.text)}`).join('; ');
+      const more = notes.length > 3 ? (es ? ` y ${notes.length - 3} más` : ` and ${notes.length - 3} more`) : '';
+      values.qa_notes_line = es
+        ? `QA dejó ${notes.length} ${notes.length === 1 ? 'nota' : 'notas'} para ti (${named}${more}); están en el checklist.`
+        : `QA left ${notes.length} advisory ${notes.length === 1 ? 'note' : 'notes'} for you (${named}${more}); they are in the checklist.`;
+      // JSON that cannot close the comment: < and > are escaped.
+      values.qa_notes_marker = `<!-- relevo:qa-notes ${JSON.stringify(notes).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')} -->`;
+    }
+  }
   // Urgent does not skip dependencies: an urgent issue that is blocked says so.
   if (kind === 'blocked_notice' && values.urgent === true) {
     values.urgent_note = es ? 'La etiqueta de urgente no salta las dependencias: empieza primero en la cola cuando se fusionen.' : 'The urgent label does not skip dependencies: it goes first in the queue once they are merged.';
@@ -457,18 +517,19 @@ export function renderMessage(kind, data = {}, language = 'en') {
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {
-    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? qaFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : null;
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? classReason(values) ?? qaFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
     const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
     if (!present(values.command) && step.command) values.command = step.command;
-    if (kind === 'toolchain_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;
+    if (kind === 'toolchain_missing' || kind === 'installed_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
     if (kind === 'qa_failed') {
       // For kept work the next step says what the command does and the other way forward; the others are the bare command.
-      const kept = step.reason === 'kept';
+      const kept = ['kept', 'input', 'spec', 'policy'].includes(step.reason);
       values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}${kept ? ` (${step.hint})` : ''}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
     }
   }
   if (kind === 'qa_failed') {
+    values.class_line = classLine(values, es);
     const location = present(values.file) ? `${values.file}${present(values.line) ? `:${values.line}` : ''}` : '';
     values.location_suffix = location ? ` (${location})` : '';
     // `pushed: false` is the older way to say that the branch was not pushed because of a credential or a marker.
@@ -494,6 +555,10 @@ export function renderMessage(kind, data = {}, language = 'en') {
     };
     values.branch_line = branchLines[state];
     values.reason_suffix = present(values.reason) ? ` (${values.reason})` : '';
+    // When no finding could be corrected by the developer agent the retries were never run, so the line says that.
+    values.happened = values.retries_skipped === true
+      ? (es ? 'QA la rechazó y ningún hallazgo lo puede corregir el agente de desarrollo, así que no se hicieron reintentos.' : 'QA rejected it and no finding can be corrected by the developer agent, so there were no retries.')
+      : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`);
   }
 
   const lines = CATALOG[pickLanguage(language)][kind];
@@ -502,7 +567,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
     const names = [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
     const optionalEmpty = names.some((n) => !present(values[n]) && !n.endsWith('_suffix'));
     if (names.length > 0 && optionalEmpty) return;
-    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
+    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
   });
 
   // Collapse repeated blank lines and trim the ends.

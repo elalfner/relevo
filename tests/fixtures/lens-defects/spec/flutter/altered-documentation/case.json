@@ -1,0 +1,10 @@
+{
+ "lens": "spec",
+ "stack": "flutter",
+ "case": "altered-documentation",
+ "description": "The glossary entry written in the diff is not the one the issue approved.",
+ "expected": {
+  "lens": "spec",
+  "finding": "GLOSSARY|documentation|differs|reworded|Order total"
+ }
+}

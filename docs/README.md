@@ -26,6 +26,7 @@ New here? Read [Get started](get-started.md), then [How it works](how-it-works.m
 
 - [Built with OpenSpec and mattpocock/skills](built-with.md): how the project was specified and thought through.
 - [Pilot findings](pilot-findings.md): what the two pilots found and how it was fixed. In English only.
+- [Evaluation of the QA lenses](lens-evaluation.md): how the lenses did on defects put into small changes on purpose, and the limits of that evidence.
 - [Specifications](../openspec/specs): the specifications, as they stand now.
 
 ## Brand

@@ -1,0 +1,9 @@
+<!-- Proposal: option A. Tokens: --app-primary (lib/theme/colors.dart:3), --app-surface (lib/theme/colors.dart:4). -->
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>
+:root{--app-surface:#ffffff;--app-ink:#1a1a1a;--app-primary:#1d4ed8}
+@media (prefers-color-scheme: dark){:root{--app-surface:#111111;--app-ink:#f2f2f2;--app-primary:#9db8ff}}
+body{margin:0;background:var(--app-surface);color:var(--app-ink);font:16px/1.5 sans-serif}
+main{padding:16px;max-width:100%}
+button{min-width:44px;min-height:44px;background:var(--app-primary);color:#fff;border:0}
+@media (prefers-color-scheme: dark){button{color:#000}}
+</style></head><body><main><h1>Orders</h1><section aria-label="empty"><p>No orders yet.</p><button type="button">Create an order</button></section></main></body></html>

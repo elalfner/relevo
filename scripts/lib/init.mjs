@@ -492,6 +492,10 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   if (hasSupabase) {
     items.push(item('manual.supabase-mcp', 'manual', 'To explore your Supabase database in Claude Code or Antigravity during /relevo:think, consider connecting the Supabase MCP server (see https://supabase.com/docs/guides/ai-tools)'));
   }
+  // The model and the effort of a role are accepted with Antigravity and never written to the agents it renders: say so, and go on.
+  if (facts.config?.agent?.build === 'antigravity' && (facts.config.agents_given ?? []).length > 0) {
+    items.push(item('warn.agent-settings', 'warning', `Not applied with this agent: ${facts.config.agents_given.join(', ')} (agent.build is antigravity, which does not apply the model or the effort of a role)`));
+  }
   items.push(item('manual.push', 'manual', 'Commit and push the new files to the default branch: a workflow only runs from there'));
 
   return items;
@@ -499,7 +503,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
 
 /** Plain-text plan, shown before anything is changed. */
 export function renderPlan(items) {
-  const tag = { ok: 'ok     ', todo: 'will do', differs: 'differs', manual: 'by hand' };
+  const tag = { ok: 'ok     ', todo: 'will do', differs: 'differs', manual: 'by hand', warning: 'warning' };
   const todo = items.filter((i) => i.status === 'todo').length;
   const indent = (text) => text.split('\n').map((l) => `          ${l}`);
   const lines = items.flatMap((i) => [

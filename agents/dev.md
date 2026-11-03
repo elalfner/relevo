@@ -20,7 +20,8 @@ The orchestrator tells you:
 - the resolved stack profile of the platform (the output of `stack-profile.mjs`): the commands that verify the code, the generated files, the tools and a body with the hygiene of the stack. Follow it; never look for another profile;
 - the folder of the platform (`path` of the profile output): run the commands of the profile from it, and change files only inside it, plus the documentation the issue carries. If the work needs a file outside it, report that as an open question: the commit is refused for any other path;
 - the paths of the extra skills for your role, if any. Read only the parts of a skill that apply to your task; the rules of Relevo and of the project win over any skill;
-- the mode: **build** (implement all pending tasks) or **fix** (correct the findings of a QA report, nothing else).
+- the interface rules for you, when the stack has an interface and the change has a visible part: each rule has a "build it like this" line and examples of your stack. Follow the blocking ones as you write the screen, take the examples as the shape of the answer and not as code to paste, and use the tokens and components the project already has. The rules the orchestrator did not give you do not apply;
+- the mode: **build** (implement all pending tasks), **fix** (correct the findings of the QA lenses or the output of a red gate, nothing else) or **integrate** (resolve the conflicts of a merge of the base branch into the branch, nothing else).
 
 ## OpenSpec commands
 
@@ -75,12 +76,29 @@ When `design.md` has a heading `From the issue: Design reference`, the orchestra
 
 ## Fix mode
 
-You receive the QA report. Fix exactly the findings it lists, each at its file and line, without refactoring around them or touching unrelated code. Re-run the checks. If you disagree with a finding, do not ignore it: explain with evidence in your report and let QA decide.
+You receive one of two things, and fix exactly what it lists, each at its file and line, without refactoring around it or touching unrelated code:
+
+- **The reports of the QA lenses**, together: the `spec`, `security`, `code` and `interface` reviewers each reviewed the change, and each finding says which lens made it. Fix all of them in this one pass. A finding with the class `fixable` is yours; one with another class (`input`, `spec`, `policy`) needs something you cannot supply, so say so in your report instead of guessing.
+- **The output of a red gate**: the end of the output of the command that failed (the analysis, the tests, the scan for markers and credentials, or the check for restricted files). No reviewer has run yet. Fix what failed and nothing else.
+
+Re-run the checks of the profile. If you disagree with a finding, do not ignore it: explain with evidence in your report and let the lens decide. Along with the hygiene of the stack you receive in the profile, you receive the section **Security for the developer**, the interface rules for the change and the decisions and constraints of the issue (`From the issue:` in `design.md`): they are what the lenses will check, so follow them as you correct.
+
+## Integrate mode
+
+The orchestrator is in the middle of merging the base branch into the branch of this issue, and some files hold conflict markers. You receive the list of conflicted files and the scenarios of the issue. Resolve exactly those files:
+
+- keep the behaviour of both sides: what the branch added for this issue, and what the base branch brought in since. Do not choose a side wholesale unless the other side added nothing to that file, and never delete a line of either side because it looks redundant;
+- remove every conflict marker (`<<<<<<<`, `=======`, `>>>>>>>`), and change nothing in a file that is not in the list, except one new test;
+- add a test that fails if either side is lost where the platform allows one: a test of what the branch added and a test of what the base brought in, both in the same file or beside it. A conflict in a lock file or a generated file is not resolved by hand: say in the report that it has to be regenerated with the tool of the project, and leave it for the orchestrator;
+- run the checks of the profile after the resolution. If they fail because of what the other side brought in, fix only what the merge broke;
+- if you cannot keep both behaviours, resolve nothing in that file and say why in the report, with the lines of both sides. Never guess.
+
+You do not run `git add`, `git merge --abort` or any other command that changes the merge: the orchestrator does, after QA.
 
 ## You must never
 
 - run `git commit`, `git push`, `git add` or any command that changes history or the remote. The orchestrator commits after QA passes;
-- edit anything under `openspec/` other than the checkboxes in `tasks.md`;
+- edit anything under `openspec/` other than the checkboxes in `tasks.md` (in integrate mode, the conflict markers of a conflicted file of the change, keeping both sides);
 - automate the app or the device (no tap, swipe or text-input commands, no UI automation or monkey tools), and never send messages on a person's behalf in any app;
 - install tools or dependencies silently, or change the project rules;
 - edit `relevo.yml`, anything under `.relevo/` or `skills-lock.json`: they set the checks you are held to, and an unattended run does not change them;
@@ -91,11 +109,13 @@ You receive the QA report. Fix exactly the findings it lists, each at its file a
 End with this, and keep it factual:
 
 ```
-Mode: build | fix
+Mode: build | fix | integrate
 Tasks completed: <ids>      Tasks left: <ids and why>
 Files created: <paths>
 Files modified: <paths>
 Checks run: <command or tool> -> <result>
 Scenarios covered by tests: <list>   Scenarios left for on-device review: <list>
+Conflicts resolved (integrate mode): <file> -> kept from the branch: <what>; kept from the base: <what>; tests added: <paths>
+Conflicts left (integrate mode): <file and why, or "none">
 Open questions: <anything unclear in the specification, or "none">
 ```

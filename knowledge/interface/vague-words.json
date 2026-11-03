@@ -1,0 +1,5 @@
+{
+ "about": "Words that describe how something should look without saying what to build. The issue check warns about them (never fails) so that the question is asked before the build. English is the fallback for any other language.",
+ "en": ["discreet", "discreetly", "subtle", "subtly", "modern", "clean", "elegant", "elegantly", "nice", "nicely", "pretty", "beautiful", "sleek", "intuitive", "friendly", "professional", "minimal", "polished", "smooth", "smoothly", "spacious", "compact", "playful", "fancy", "attractive", "slick", "tasteful", "unobtrusive", "delightful", "crisp", "soft", "sober", "look and feel", "good-looking"],
+ "es": ["discreto", "discreta", "discretamente", "sutil", "moderno", "moderna", "limpio", "limpia", "elegante", "bonito", "bonita", "lindo", "linda", "bello", "bella", "estético", "estética", "intuitivo", "intuitiva", "amigable", "profesional", "minimalista", "pulido", "pulida", "fluido", "fluida", "espacioso", "espaciosa", "compacto", "compacta", "juguetón", "atractivo", "atractiva", "sobrio", "sobria", "agradable", "suave", "de buen gusto"]
+}

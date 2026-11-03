@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { missingTools, RUNNER_TOOLS } from '../scripts/lib/toolchain-check.mjs';
+import { missingInstalled, missingTools, RUNNER_TOOLS } from '../scripts/lib/toolchain-check.mjs';
 import { renderMessage } from '../scripts/lib/messages.mjs';
 import { nextStep } from '../scripts/lib/next-step.mjs';
 
@@ -40,12 +40,14 @@ test('the script exits 1 and names the missing tool when flutter is not on the p
   const dir = project();
   const r = run(dir, ['--platform', 'app']);
   assert.equal(r.status, 1);
-  assert.deepEqual(JSON.parse(r.stdout), { platform: 'app', stack: 'flutter', tools: ['flutter'], missing: ['flutter'] });
+  assert.deepEqual(JSON.parse(r.stdout), { platform: 'app', stack: 'flutter', tools: ['flutter'], missing: ['flutter'], installed: ['.dart_tool/package_config.json'], missing_installed: [] });
 });
 
 test('Scenario: A complete toolchain - the script exits 0 and the missing list is empty', () => {
   const dir = project();
   stub(dir, 'flutter');
+  mkdirSync(join(dir, '.dart_tool'));
+  writeFileSync(join(dir, '.dart_tool', 'package_config.json'), '{}');
   const r = run(dir, ['--platform', 'app']);
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout).missing, []);
@@ -103,4 +105,61 @@ test('the build job reports a missing tool without needing jq to do it', () => {
   const step = go.slice(go.indexOf('- name: Check the toolchain'), go.indexOf('# relevo:agent-step begin')).replace(/^\s*#.*$/gm, '');
   assert.doesNotMatch(step, /(?<![-\w])jq\b/, 'the --jq flag of gh is built in; the jq binary is not called');
   assert.match(step, /toolchain_missing/);
+});
+
+// --- installed paths (spec: go, "Installed dependencies are checked before the agent starts")
+test('Scenario: Dependencies were not installed - the path is listed and the script exits 1 when the tools are there', () => {
+  const dir = project();
+  stub(dir, 'flutter');
+  const r = run(dir, ['--platform', 'app']);
+  assert.equal(r.status, 1);
+  assert.deepEqual(JSON.parse(r.stdout).missing, []);
+  assert.deepEqual(JSON.parse(r.stdout).missing_installed, ['.dart_tool/package_config.json']);
+});
+
+test('the paths exist after the install step, so the script exits 0', () => {
+  const dir = project();
+  stub(dir, 'flutter');
+  mkdirSync(join(dir, '.dart_tool'));
+  writeFileSync(join(dir, '.dart_tool', 'package_config.json'), '{}');
+  const r = run(dir, ['--platform', 'app']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(JSON.parse(r.stdout).missing_installed, []);
+});
+
+test('without the tools the installed paths are not reported, because nothing could have been installed', () => {
+  const dir = project();
+  assert.deepEqual(JSON.parse(run(dir, ['--platform', 'app']).stdout).missing_installed, []);
+});
+
+test('Scenario: A profile that lists no paths - no check is made', () => {
+  const dir = project();
+  stub(dir, 'flutter');
+  mkdirSync(join(dir, '.relevo', 'stacks'), { recursive: true });
+  // a stack of the repository's own: the plugin's `flutter` keeps its path, so test the library with an empty list
+  assert.deepEqual(missingInstalled([], () => false), []);
+  assert.deepEqual(missingInstalled(undefined, () => false), []);
+});
+
+test('the paths are looked for in the folder of the platform, not at the root', () => {
+  const dir = project();
+  stub(dir, 'flutter');
+  writeFileSync(join(dir, 'relevo.yml'), readFileSync(join(dir, 'relevo.yml'), 'utf8').replace(/platforms:[\s\S]*?(?=\n[a-z]|$)/, 'platforms:\n  app:\n    stack: flutter\n    path: apps/mobile\n'));
+  mkdirSync(join(dir, 'apps', 'mobile', '.dart_tool'), { recursive: true });
+  const before = run(dir, ['--platform', 'app']);
+  assert.deepEqual(JSON.parse(before.stdout).missing_installed, ['.dart_tool/package_config.json']);
+  writeFileSync(join(dir, 'apps', 'mobile', '.dart_tool', 'package_config.json'), '{}');
+  assert.equal(run(dir, ['--platform', 'app']).status, 0);
+});
+
+test('a path is reported once, in the order of the profile', () => {
+  assert.deepEqual(missingInstalled(['node_modules', 'vendor', 'node_modules'], (p) => p === 'vendor'), ['node_modules']);
+});
+
+test('the build job posts a message of its own for the dependencies, without needing jq to do it', () => {
+  const go = readFileSync(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+  const step = go.slice(go.indexOf('- name: Check the toolchain'), go.indexOf('- name: Start the progress report')).replace(/^\s*#.*$/gm, '');
+  assert.match(step, /missing_installed/);
+  assert.match(step, /render-message\.mjs" installed_missing/);
+  assert.doesNotMatch(step, /(?<![-\w])jq\b/);
 });

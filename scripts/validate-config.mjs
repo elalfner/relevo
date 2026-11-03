@@ -27,6 +27,17 @@ const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const result = loadConfig(readFileSync(target, 'utf8'), profileLookups({ pluginRoot, read }));
 
 if (result.ok) {
+  ['tokens', 'components', 'references'].forEach((key) => {
+    result.config.design.system[key].forEach((entry) => {
+      if (!existsSync(resolve(dirname(target), entry))) {
+        result.errors.push({ path: `design.system.${key}`, message: `design.system.${key} points to "${entry}", which does not exist` });
+        result.ok = false;
+      }
+    });
+  });
+}
+
+if (result.ok) {
   result.config.qa.rules_from.forEach((file) => {
     if (!existsSync(resolve(dirname(target), file))) {
       result.warnings.push({ path: 'qa.rules_from', message: `qa.rules_from points to "${file}", which does not exist` });

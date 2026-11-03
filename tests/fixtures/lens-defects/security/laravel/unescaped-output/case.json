@@ -1,0 +1,10 @@
+{
+ "lens": "security",
+ "stack": "laravel",
+ "case": "unescaped-output",
+ "description": "A Blade view prints a comment written by a user without escaping it.",
+ "expected": {
+  "lens": "security",
+  "finding": "unescaped|XSS|\\{!!|escape"
+ }
+}

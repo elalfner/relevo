@@ -7,13 +7,14 @@
 // that ask for what a review never changes ({ platform, stack, review, review_replaced, notes, warnings }).
 // The profile is the plugin's stacks/<stack>.md plus the repository's .relevo/stacks/<stack>.md, with the
 // `platforms.<name>.checks` of relevo.yml applied. The agents receive this output; they do not look for profiles.
+// With `--lens spec|security|code|interface` it prints only the sections that QA lens reads ({ platform, stack, lens, sections }).
 //   exit 0: printed   exit 1: the stack has no profile (or a profile is invalid)   exit 2: bad usage or invalid relevo.yml
 
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
-import { resolveProfile } from './lib/stack-profile.mjs';
+import { LENSES, lensText, resolveProfile } from './lib/stack-profile.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -55,6 +56,13 @@ if (arg('role') === 'review') {
   console.log(JSON.stringify({ platform: name, stack: profile.stack, review: profile.review, review_replaced: profile.reviewReplaced ?? [], notes: profile.reviewBody, warnings: profile.reviewWarnings }, null, 2));
   process.exit(0);
 }
+if (arg('lens') !== undefined) {
+  if (!LENSES.includes(arg('lens'))) fail(`--lens must be one of: ${LENSES.join(', ')}`, 2);
+  // Only the sections that lens reads: `spec` and `interface` get none from the stack, `code` the architecture and what the
+  // auditor looks for, `security` the section Security review.
+  console.log(JSON.stringify({ platform: name, stack: profile.stack, lens: arg('lens'), sections: lensText(profile, arg('lens')) }, null, 2));
+  process.exit(0);
+}
 if (arg('role') !== undefined) fail('--role can only be "issue" or "review"', 2);
 console.log(JSON.stringify({
   platform: name,
@@ -65,6 +73,7 @@ console.log(JSON.stringify({
   commands: profile.commands,
   generated: profile.generated,
   tools: profile.tools,
+  installed: profile.installed,
   requires_skills: profile.requires_skills,
   skills: profile.skills,
   plugin_skills: profile.pluginSkills,

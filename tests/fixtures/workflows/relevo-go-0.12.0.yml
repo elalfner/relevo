@@ -1,0 +1,488 @@
+# relevo-template: 0.12.0
+# Relevo: builds an issue when someone with write access labels it `relevo:ready`.
+# Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
+#
+# Two jobs. `decide` is light (Node and the plugin's scripts, about half a minute): it runs the gates, claims the
+# issue and comments when there is nothing to build. Only when the decision is `start` does `build` install the
+# toolchain and run the agent, so an issue that is blocked, queued or incomplete never pays for that setup.
+#
+# Needs: a model credential secret (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN), and a relevo.yml at the
+# repository root.
+# Keep the numbers in claude_args in line with limits.run_max_turns and limits.run_max_cost.
+# Where the numbers disagree the lower one wins, so this file can only make a run cheaper than relevo.yml says.
+
+# Runner: `runs-on` comes from `runner.labels` in relevo.yml (`/relevo:init` writes it into this file, `/relevo:doctor` checks it).
+# The runner needs git, gh and jq; Node and the tools of the job are installed per job. A self-hosted runner is assumed to
+# persist between jobs, so the job puts its tools under $RUNNER_TEMP and removes what it adds to the workspace.
+
+name: relevo-go
+
+# The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
+# were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
+env:
+  RELEVO_VERSION: '0.12.0'
+  # The version of OpenSpec that the job installs for itself.
+  OPENSPEC_VERSION: '1.14.3'
+
+on:
+  issues:
+    types: [labeled]
+  # The queue workflow (relevo-queue.yml) starts waiting issues through this trigger.
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number to build
+        required: true
+
+# One run per issue: a repeated label event waits for the first run and then finds the issue already building.
+concurrency:
+  group: relevo-go-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  decide:
+    # The repository variable RELEVO_CLOUD_GO set to `off` pauses the cloud: a ready label starts nothing and the issue
+    # stays ready for a local run (/relevo:go <n>). It is read at run time, so changing it needs no pull request.
+    if: vars.RELEVO_CLOUD_GO != 'off' && (github.event_name == 'workflow_dispatch' || (github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      decision_b64: ${{ steps.plan.outputs.decision_b64 }}
+      # The platform the issue is for (empty unless the decision is `start`): the build job installs only its toolchain.
+      platform: ${{ steps.plan.outputs.platform }}
+      stack: ${{ steps.plan.outputs.stack }}
+      path: ${{ steps.plan.outputs.path }}
+    steps:
+      # The repository holds relevo.yml; the plugin holds the scripts that apply the gates.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the Relevo scripts
+        # The published package at the version pinned above; no repository is cloned for them. A package without the
+        # script this job runs stops the run here, before anything is changed.
+        run: |
+          mkdir -p .relevo-plugin
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
+          for f in scripts/go-plan.mjs; do
+            [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
+
+      # Applies the gates and, when the decision is `start`, claims the issue (relevo:building). Any other decision
+      # (needs-spec, blocked, queued, denied, no milestone, no assignee) is applied here with its comment.
+      - name: Gates and claim
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Only needed when `links` in relevo.yml lists a private repository: a read-only token (issues, pull
+          # requests and contents) stored as the secret RELEVO_LINKS_TOKEN. Here it reads the issues the dependencies
+          # name; the step "Fetch the references of the issue" of the build reads files with it. It is used only to
+          # read, never to write, and an empty value is fine (public repositories are read without it).
+          GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          # relevo:credential begin
+          # Without a model credential the cloud cannot build: the issue stays ready and a comment says to run it locally.
+          HAS_CREDENTIAL: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          # relevo:credential end
+        run: node .relevo-plugin/scripts/go-plan.mjs --repo "$GITHUB_REPOSITORY" --only "$ISSUE" --apply --claim --credential "$HAS_CREDENTIAL" --github-output "$GITHUB_OUTPUT"
+
+      # See the same step in `build`. A failure before the issue is claimed (the plugin cannot be cloned, the
+      # scripts fail) leaves it ready or queued with nobody told.
+      - name: Report a run that ended without an outcome
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
+          if [ "$JOB_STATUS" = "success" ]; then
+            exit 0
+          fi
+          if ! printf '%s\n' "$labels" | grep -qxE 'relevo:(ready|queued|building)'; then
+            exit 0
+          fi
+          assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+
+      # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
+      - name: Remove what this job added
+        if: always()
+        run: rm -rf .relevo-plugin
+
+  build:
+    needs: decide
+    if: needs.decide.outputs.action == 'start'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The agent runs the project's own checks (QA runs them), so the toolchain of the stack of the platform of the
+      # issue is installed here. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
+      # (`needs.decide.outputs.path`), so an issue for the front does not install the back's tools: a step whose stack
+      # is not the issue's is skipped and costs nothing. The names are the `stack` of relevo.yml. Change the versions
+      # and the caching to suit the project; `/relevo:doctor` fails when a Flutter, Laravel or Supabase platform has no
+      # active step below, because every build would fail QA after spending the run.
+      - if: needs.decide.outputs.stack == 'flutter'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - if: needs.decide.outputs.stack == 'laravel'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer
+      # Supabase: the CLI runs the checks of the profile against containers on the runner, which already has Docker.
+      - if: needs.decide.outputs.stack == 'supabase'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      # Vue needs only Node, which this job installed above; to cache the packages, uncomment:
+      #   - if: needs.decide.outputs.stack == 'vue'
+      #     uses: actions/setup-node@v4
+      #     with:
+      #       node-version: 22
+      #       cache: npm
+      #       cache-dependency-path: ${{ needs.decide.outputs.path }}/package-lock.json
+      # Another stack, including one of your own (Go, Python...): add a step guarded by its name, and its dependencies
+      # below. `/relevo:doctor` warns when a stack that only your repository defines has no such step.
+      # Installing the dependencies is the project's choice, because the package manager and the lockfile vary. Do it
+      # from the folder of the platform, for example:
+      #   - if: needs.decide.outputs.stack == 'vue'
+      #     working-directory: ${{ needs.decide.outputs.path }}
+      #     run: npm ci --ignore-scripts
+      # Install dependencies without package scripts where the tool offers it, so a dependency cannot run code
+      # while it is installed: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`,
+      # `composer install --no-scripts`. `flutter pub get` and `dart pub get` run no install-time scripts of
+      # the packages, so they need no such option.
+
+      - name: Install OpenSpec
+        # Under the temporary folder of the job, at the pinned version: nothing global is left on a runner that persists.
+        run: |
+          npm install --prefix "$RUNNER_TEMP/openspec" "@fission-ai/openspec@$OPENSPEC_VERSION" --no-fund --no-audit
+          echo "$RUNNER_TEMP/openspec/node_modules/.bin" >> "$GITHUB_PATH"
+        env:
+          OPENSPEC_TELEMETRY: '0'
+
+      # Stops before the agent, without spending a model turn, when the runner lacks a tool that the profile of the
+      # platform lists (the Flutter SDK, PHP and Composer, ...): otherwise the developer writes the code and QA only
+      # finds out at the end, after a full run. The package is unpacked outside the workspace on purpose: the agent needs
+      # a clean working tree. The agent loads its plugin from this same folder (--plugin-dir), so a package without
+      # .claude-plugin/plugin.json stops the run here too. If you renamed the labels in relevo.yml, change the names below too.
+      - name: Check the toolchain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          PLATFORM: ${{ needs.decide.outputs.platform }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/relevo"
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo"
+          for f in scripts/toolchain-check.mjs scripts/render-message.mjs scripts/design-fetch.mjs .claude-plugin/plugin.json; do
+            [ -f "$RUNNER_TEMP/relevo/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
+          if result=$(node "$RUNNER_TEMP/relevo/scripts/toolchain-check.mjs" --platform "$PLATFORM" --plugin-root "$RUNNER_TEMP/relevo"); then
+            exit 0
+          fi
+          # No jq here: the tool that is missing may be jq itself, and the comment must still be posted.
+          missing=$(printf '%s' "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).missing.join(", "))')
+          [ -n "$missing" ] || { echo "::error::The toolchain check failed: $result"; exit 1; }
+          title=$(gh issue view "$ISSUE" --json title --jq .title)
+          assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
+          body=$(ASSIGNEE="$assignee" TITLE="$title" TOOLS="$missing" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, title: e.TITLE, tools: e.TOOLS, platform: e.PLATFORM}))' \
+            | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" toolchain_missing --config relevo.yml)
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue comment "$ISSUE" --body "$body"
+          echo "::error::The runner has no $missing, so nothing was built"
+          exit 1
+
+      # One comment on the issue shows the phase, the tasks and the minutes of the run, and the Relevo scripts of this
+      # package edit it every 30 seconds from here, beside the agent, until the job ends. It lives outside the agent
+      # block on purpose: it serves any agent. Nothing is written in the workspace (the agent needs a clean tree): the
+      # state is under $RUNNER_TEMP, and RELEVO_PROGRESS_DIR tells the go skill where to announce its phase. The step
+      # never fails the job, and a package without the script simply shows no progress. --max-minutes is the
+      # timeout-minutes of this job plus a margin: the check ends by itself even if this job is cancelled.
+      - name: Start the progress report
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          DECISION: ${{ needs.decide.outputs.decision_b64 }}
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/progress.mjs"
+          [ -f "$script" ] || exit 0
+          dir="$RUNNER_TEMP/relevo-progress"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          echo "RELEVO_PROGRESS_DIR=$dir" >> "$GITHUB_ENV"
+          RELEVO_PROGRESS_DIR="$dir" nohup node "$script" watch --issue "$ISSUE" --decision "$DECISION" --max-minutes 65 > "$dir/watch.log" 2>&1 &
+          exit 0
+
+      # Fetches what the issue points to (its Design reference, and the Code pointers that name a file of a linked
+      # repository) before the agent starts, into .relevo-design/, which git ignores. This is the only step of this job
+      # that gets RELEVO_LINKS_TOKEN: a read-only token (issues, pull requests and contents) that reads the files of
+      # the private repositories in `links`, never writes, and never reaches the agent. An empty value is fine (public
+      # repositories are read without it). A refused reference does not fail the step: the manifest lists it and the
+      # agent sends the issue back to needs-spec with the reason. Any other failure stops the job here.
+      - name: Fetch the references of the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_LINKS_TOKEN: ${{ secrets.RELEVO_LINKS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: |
+          code=0
+          node "$RUNNER_TEMP/relevo/scripts/design-fetch.mjs" --issue "$ISSUE" --repo "$GITHUB_REPOSITORY" || code=$?
+          [ "$code" -le 1 ] || exit "$code"
+          echo "RELEVO_REFERENCES=$GITHUB_WORKSPACE/.relevo-design/manifest.json" >> "$GITHUB_ENV"
+
+      # relevo:agent-step begin
+      - id: agent
+        uses: anthropics/claude-code-action@v1
+        env:
+          OPENSPEC_TELEMETRY: '0'
+          GH_TOKEN: ${{ github.token }}
+          # Without this the agent may start a subagent in the background and end the run before it finishes,
+          # leaving the issue stuck on building with no comment (seen in the pilot, see docs/pilot-findings.md).
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+        with:
+          # Credentials: choose ONE of the next two lines.
+          # a) API key (default):
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # b) Subscription: create a token with `claude setup-token` and store it as the secret CLAUDE_CODE_OAUTH_TOKEN.
+          #    The command prints the token over two lines; remove all whitespace before storing it, for example
+          #    `pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN`. Then replace the line above with:
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          # The queue starts builds with `gh workflow run`, so the actor is the Actions bot and the action refuses
+          # it unless it is allowed. Only this one bot: never '*', which would let outside apps start runs.
+          allowed_bots: github-actions
+          # The plugin is not installed from a marketplace: --plugin-dir in claude_args loads the package that the step
+          # "Check the toolchain" unpacked at RELEVO_VERSION, so one pin decides the scripts and the skills, nothing is
+          # cloned and no token is needed to read the plugin repository.
+          # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed:
+          # only the tools in --allowedTools, and no web access (nothing to fetch, nowhere to send a secret).
+          # Do not set allowed_non_write_users or show_full_output here, and never widen allowed_bots: they open the run to
+          # strangers or print tool results (possibly secrets) to the log.
+          # The decision the `decide` job already made travels with the prompt, encoded so that the issue title in it
+          # is never read as an instruction. The skill decodes it and skips its own planning step.
+          prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }} --decision ${{ needs.decide.outputs.decision_b64 }}
+          # relevo:restricted begin
+          # Files that no agent reads (docs/security.md): Read denials for the file tools, and the sandbox read denials, which apply
+          # only where a person enables the sandbox: it is NOT enabled here. Written from the base list and `restricted_paths` of
+          # relevo.yml by /relevo:init, so do not edit this block by hand.
+          # The action merges this input into the user-level settings of the runner, outside the repository, one top-level key
+          # at a time: that is why it carries the whole `permissions` and `sandbox` objects.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Read(**/.env)",
+                  "Read(**/.env.*.local)",
+                  "Read(**/.env.local)",
+                  "Read(**/.env.development)",
+                  "Read(**/.env.production)",
+                  "Read(**/.env.staging)",
+                  "Read(**/.env.test)",
+                  "Read(**/.env.testing)",
+                  "Read(**/.env.dev)",
+                  "Read(**/.env.prod)",
+                  "Read(**/.env.qa)",
+                  "Read(**/.env.ci)",
+                  "Read(**/.env.preview)",
+                  "Read(**/*.pem)",
+                  "Read(**/*.key)",
+                  "Read(**/*.p12)",
+                  "Read(**/*.pfx)",
+                  "Read(**/*.p8)",
+                  "Read(**/*.ppk)",
+                  "Read(**/*.keystore)",
+                  "Read(**/*.jks)",
+                  "Read(**/id_rsa)",
+                  "Read(**/id_dsa)",
+                  "Read(**/id_ecdsa)",
+                  "Read(**/id_ed25519)",
+                  "Read(**/.npmrc)",
+                  "Read(**/.netrc)",
+                  "Read(**/.pypirc)",
+                  "Read(**/.git-credentials)",
+                  "Read(**/.pgpass)",
+                  "Read(**/.htpasswd)",
+                  "Read(**/google-services.json)",
+                  "Read(**/GoogleService-Info.plist)",
+                  "Read(**/key.properties)",
+                  "Read(/${{ github.workspace }}/secrets/**)"
+                ]
+              },
+              "sandbox": {
+                "filesystem": {
+                  "denyRead": [
+                    "**/.env",
+                    "**/.env.*.local",
+                    "**/.env.local",
+                    "**/.env.development",
+                    "**/.env.production",
+                    "**/.env.staging",
+                    "**/.env.test",
+                    "**/.env.testing",
+                    "**/.env.dev",
+                    "**/.env.prod",
+                    "**/.env.qa",
+                    "**/.env.ci",
+                    "**/.env.preview",
+                    "**/*.pem",
+                    "**/*.key",
+                    "**/*.p12",
+                    "**/*.pfx",
+                    "**/*.p8",
+                    "**/*.ppk",
+                    "**/*.keystore",
+                    "**/*.jks",
+                    "**/id_rsa",
+                    "**/id_dsa",
+                    "**/id_ecdsa",
+                    "**/id_ed25519",
+                    "**/.npmrc",
+                    "**/.netrc",
+                    "**/.pypirc",
+                    "**/.git-credentials",
+                    "**/.pgpass",
+                    "**/.htpasswd",
+                    "**/google-services.json",
+                    "**/GoogleService-Info.plist",
+                    "**/key.properties",
+                    "/${{ github.workspace }}/secrets"
+                  ]
+                }
+              }
+            }
+          # relevo:restricted end
+          claude_args: >-
+            --max-turns 100
+            --max-budget-usd 5
+            --plugin-dir ${{ runner.temp }}/relevo
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task"
+            --disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)"
+      # relevo:agent-step end
+
+      # The scripts of the next two steps come from the plugin package. It is unpacked into the workspace only now, after the agent has
+      # finished, because the agent's preflight needs a clean working tree and a checkout inside it would not be.
+      - name: Install the Relevo scripts for the reports
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p .relevo-plugin
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
+          for f in scripts/run-usage.mjs scripts/usage-limit.mjs; do
+            [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
+          done
+
+      # What the run used, read from the agent's execution log. The format of that log is not documented, so the
+      # reader is tolerant: when it finds nothing it posts nothing, and this step can never fail the job.
+      - name: Report what the run used
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          # With a subscription token and no API key the cost is notional.
+          ONLY_SUBSCRIPTION: ${{ secrets.ANTHROPIC_API_KEY == '' && secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          [ -n "$EXECUTION_FILE" ] || exit 0
+          flag=""; [ "$ONLY_SUBSCRIPTION" = "true" ] && flag="--subscription"
+          line=$(node .relevo-plugin/scripts/run-usage.mjs --file "$EXECUTION_FILE" $flag)
+          [ -n "$line" ] && gh issue comment "$ISSUE" --body "$line"
+          exit 0
+
+      # A run can end without telling anyone: the plugin cannot be cloned, the login fails, preflight stops, the
+      # run reached --max-turns or --max-budget-usd (the runner cuts it; the agent cannot see those counters and
+      # does not stop itself), or the agent ends its session early (all seen in the pilot, see docs/pilot-findings.md). If the issue is still
+      # ready or building after the agent step, no outcome was recorded, so say so on the issue.
+      # If you renamed the labels in relevo.yml, change the names below too.
+      - name: Report a run that ended without an outcome
+        id: no_outcome
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        run: |
+          labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
+          # A run the queue dispatched that fails before it claims the issue leaves it `queued`: report that
+          # too, or the queue would dispatch it again every 30 minutes. A run that ends normally leaves it queued
+          # on purpose (no capacity), so that case is only reported when the job failed.
+          if ! printf '%s\n' "$labels" | grep -qxE 'relevo:(ready|building)'; then
+            if ! { [ "$JOB_STATUS" != "success" ] && printf '%s\n' "$labels" | grep -qx 'relevo:queued'; }; then
+              exit 0
+            fi
+          fi
+          assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          # A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
+          if [ -n "$EXECUTION_FILE" ] && node .relevo-plugin/scripts/usage-limit.mjs --file "$EXECUTION_FILE"; then
+            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:qa-failed\`: $RUN_URL"
+          else
+            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          fi
+          echo "reported=true" >> "$GITHUB_OUTPUT"
+
+      # The progress report ends here, after every report above so that its last line is true: first the check is asked to
+      # stop and waited for (so that it cannot write over the closing), then the comment is replaced by one line. Neither
+      # step can fail the job, and neither does anything when the report never started.
+      - name: Stop the progress report
+        if: always()
+        continue-on-error: true
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/progress.mjs"
+          [ -f "$script" ] && [ -n "$RELEVO_PROGRESS_DIR" ] || exit 0
+          node "$script" stop --wait 20
+          exit 0
+
+      - name: Close the progress comment
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NO_OUTCOME: ${{ steps.no_outcome.outputs.reported }}
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/progress.mjs"
+          [ -f "$script" ] && [ -n "$RELEVO_PROGRESS_DIR" ] || exit 0
+          outcome=result
+          [ "$NO_OUTCOME" = "true" ] && outcome=none
+          node "$script" close --issue "$ISSUE" --outcome "$outcome" --run-url "$RUN_URL"
+          exit 0
+
+      # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
+      - name: Remove what this job added
+        if: always()
+        run: rm -rf .relevo-plugin

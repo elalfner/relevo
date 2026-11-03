@@ -5,7 +5,7 @@
 import { antigravityToolsOf } from './tools.mjs';
 
 export const PLUGIN_NAME = 'relevo';
-export const COPIED_DIRS = ['scripts', 'stacks', 'templates'];
+export const COPIED_DIRS = ['scripts', 'stacks', 'knowledge', 'templates'];
 export const COPIED_FILES = ['LICENSE', 'NOTICE'];
 
 // The skill `go` tells the agent to wait for each subagent. In Antigravity the call returns at once and the result
@@ -14,7 +14,7 @@ export const COPIED_FILES = ['LICENSE', 'NOTICE'];
 const FOREGROUND_HEADING = '## Subagents run in the foreground';
 const FOREGROUND_FOR_ANTIGRAVITY = `${FOREGROUND_HEADING}
 
-Call \`relevo-dev\` and \`relevo-qa\` with \`invoke_subagent\`, one at a time. In Antigravity, subagents run in the background and the report arrives later as a message. After calling \`invoke_subagent\`, do NOT poll with \`manage_subagents\` or loop in any way; simply output that you are waiting for the subagent's report and end your turn without further tool calls. Antigravity will automatically reactivate you when the subagent finishes. Once reactivated with the subagent report, verify it, terminate the subagent using \`manage_subagents\` (\`Action: "kill"\`, \`ConversationIds: ["<subagent_id>"]\`) to free context, and proceed to the next step. If you cannot get a report or the subagent fails, take the failure path.
+Call \`relevo-dev\` and each QA lens (\`relevo-qa-spec\`, \`relevo-qa-security\`, \`relevo-qa-code\`, \`relevo-qa-interface\`) with \`invoke_subagent\`, one at a time, never two together. In Antigravity, subagents run in the background and the report arrives later as a message. After calling \`invoke_subagent\`, do NOT poll with \`manage_subagents\` or loop in any way; simply output that you are waiting for the subagent's report and end your turn without further tool calls. Antigravity will automatically reactivate you when the subagent finishes. Once reactivated with the subagent report, verify it, terminate the subagent using \`manage_subagents\` (\`Action: "kill"\`, \`ConversationIds: ["<subagent_id>"]\`) to free context, and proceed to the next step. If you cannot get a report or the subagent fails, take the failure path.
 `;
 
 const WHERE_RUNS_HEADING = '## Where it runs';
@@ -47,7 +47,8 @@ function checkPluginDir(dir) {
 /** The text of a skill, an agent or a reference, as Antigravity needs it. */
 export function adaptText(text, { pluginDir }) {
   let out = String(text).split('${CLAUDE_PLUGIN_ROOT}').join(pluginDir);
-  out = out.replace(/relevo:(dev|qa)(?![\w-])/g, 'relevo-$1');
+  // The developer agent, the former QA agent and the four lenses: `relevo:qa-security` becomes `relevo-qa-security`.
+  out = out.replace(/relevo:(dev|qa(?:-(?:spec|security|code|interface))?)(?![\w-])/g, 'relevo-$1');
   for (const [from, to] of Object.entries(TOOL_WORDS)) out = out.split(`\`${from}\``).join(`\`${to}\``);
   if (out.includes(FOREGROUND_HEADING)) {
     const re = new RegExp(`${FOREGROUND_HEADING}\\n\\n[^\\n]*\\n`);

@@ -1,0 +1,13 @@
+Connecting to local database...
+/home/dev/app/supabase/tests/orders_rls.test.sql .. 
+# Failed test 1: "orders is gone"
+# Looks like you failed 1 test of 4
+Failed 1/4 subtests 
+
+Test Summary Report
+-------------------
+/home/dev/app/supabase/tests/orders_rls.test.sql (Wstat: 0 Tests: 4 Failed: 1)
+  Failed test:  1
+Files=1, Tests=4,  0 wallclock secs ( 0.01 usr +  0.01 sys =  0.02 CPU)
+Result: FAIL
+error running container: exit 1

@@ -1,0 +1,70 @@
+{
+ "about": "Rules that read differently in Flutter. The lines replace the common ones; the examples are in Dart.",
+ "rules": {
+  "focus-visible": {
+   "build": "Wrap custom focusable widgets in Focus or FocusableActionDetector and draw a visible focus decoration from the Theme; keep the traversal order with FocusTraversalGroup.",
+   "review": "On a build that accepts a keyboard (web, desktop, a connected keyboard), tab through the screen: each focused widget shows a visible decoration.",
+   "examples": [
+    {"stack": "flutter", "good": "FocusableActionDetector(onShowFocusHighlight: (v) => setState(() => focused = v), child: DecoratedBox(decoration: BoxDecoration(border: focused ? Border.all(width: 2, color: scheme.primary) : null), child: child))", "bad": "GestureDetector(onTap: open, child: Text('Open'))  // no focus, no highlight"}
+   ]
+  },
+  "accessible-name": {
+   "build": "Give every icon-only control a tooltip or a Semantics label in the language of the product; wrap a tappable custom widget in Semantics(button: true).",
+   "review": "Each IconButton has a tooltip or a label; a GestureDetector around a custom widget has Semantics with the button role.",
+   "examples": [
+    {"stack": "flutter", "good": "IconButton(tooltip: 'Close menu', icon: const Icon(Icons.close), onPressed: close)", "bad": "IconButton(icon: const Icon(Icons.close), onPressed: close)"},
+    {"stack": "flutter", "good": "Semantics(button: true, label: 'Add to cart', child: GestureDetector(onTap: add, child: const CartIcon()))", "bad": "GestureDetector(onTap: add, child: const CartIcon())"}
+   ]
+  },
+  "readable-text-size": {
+   "build": "Take text styles from Theme.of(context).textTheme and let the system text scale apply; never fix a height that a larger text would overflow.",
+   "review": "Set the system text size to the largest and open the screen: text is larger and nothing overflows or is clipped.",
+   "examples": [
+    {"stack": "flutter", "good": "Text(label, style: Theme.of(context).textTheme.bodyLarge)", "bad": "Text(label, style: const TextStyle(fontSize: 11))"},
+    {"stack": "flutter", "good": "final scaler = MediaQuery.textScalerOf(context); final height = scaler.scale(14) + 24;", "bad": "SizedBox(height: 40, child: Text(label))  // clips at a larger text size"}
+   ]
+  },
+  "form-labels": {
+   "build": "Give each TextField a labelText, which stays visible, and use hintText only as a hint; group fields in a Form with validators.",
+   "review": "Each TextField has a labelText; a field with only a hintText fails.",
+   "examples": [
+    {"stack": "flutter", "good": "TextFormField(decoration: const InputDecoration(labelText: 'Email'), validator: validateEmail)", "bad": "TextField(decoration: const InputDecoration(hintText: 'Email'))"}
+   ]
+  },
+  "no-double-submit": {
+   "build": "Set onPressed to null while the request runs and show a progress indicator in the button.",
+   "review": "Tap the submit button twice quickly: the second tap does nothing and the button shows progress.",
+   "examples": [
+    {"stack": "flutter", "good": "FilledButton(onPressed: loading ? null : save, child: loading ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save'))", "bad": "FilledButton(onPressed: save, child: const Text('Save'))  // stays active while loading"}
+   ]
+  },
+  "loading-indicators": {
+   "build": "Handle the waiting, error and data states of the future or stream; keep the final size of the content with a placeholder.",
+   "review": "Delay the data: a placeholder of the final size shows, then the content; an error shows an error state.",
+   "examples": [
+    {"stack": "flutter", "good": "if (snapshot.connectionState == ConnectionState.waiting) return const SkeletonCard();", "bad": "return Text(snapshot.data!.title);  // crashes while waiting"}
+   ]
+  },
+  "target-size-touch": {
+   "build": "Keep the minimum interactive size of the platform (48 dp); enlarge the hit area of a small icon with padding or constraints instead of shrinking the target.",
+   "review": "Measure the smallest tappable widget: none is smaller than 48 dp on Android or 44 pt on iOS.",
+   "examples": [
+    {"stack": "flutter", "good": "IconButton(constraints: const BoxConstraints(minWidth: 48, minHeight: 48), icon: const Icon(Icons.edit, size: 20), onPressed: edit)", "bad": "SizedBox(width: 24, height: 24, child: InkWell(onTap: edit, child: const Icon(Icons.edit)))"}
+   ]
+  },
+  "errors-announced": {
+   "build": "Show the error in the field's errorText, which is announced with the field, or wrap a message that appears alone in Semantics(liveRegion: true).",
+   "review": "With the screen reader on, an invalid field announces its error text.",
+   "examples": [
+    {"stack": "flutter", "good": "TextFormField(validator: (v) => v == null || v.isEmpty ? 'Enter an email address' : null)", "bad": "Text('Enter an email address', style: TextStyle(color: Colors.red))  // not tied to the field"}
+   ]
+  },
+  "stable-layout": {
+   "build": "Reserve the size of content that loads later with an AspectRatio or a SizedBox of the final size.",
+   "review": "Throttle the data: content around the late item does not move when it arrives.",
+   "examples": [
+    {"stack": "flutter", "good": "AspectRatio(aspectRatio: 16 / 9, child: Image.network(url, fit: BoxFit.cover))", "bad": "Image.network(url)  // the height is unknown until it loads"}
+   ]
+  }
+ }
+}

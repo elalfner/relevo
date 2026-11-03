@@ -1,0 +1,5 @@
+Connecting to local database...
+/home/dev/app/supabase/tests/orders_rls.test.sql .. ok
+All tests successful.
+Files=1, Tests=4,  0 wallclock secs ( 0.00 usr +  0.01 sys =  0.01 CPU)
+Result: PASS
