@@ -404,6 +404,14 @@ function tasksInfo(values, es) {
   return es ? ` (${values.tasks_done} de ${values.tasks_total} tareas hechas)` : ` (${values.tasks_done} of ${values.tasks_total} tasks done)`;
 }
 
+// The next step of a qa_failed message when no recovery is given: what the branch holds decides it. When nothing was pushed
+// (`unsafe`, `not_pushed` or the older `pushed: false`) there is no branch to fix, so the issue is built again.
+function qaFailedReason(values) {
+  if (values.branch_state === 'kept') return 'kept';
+  const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
+  return state === 'unsafe' || state === 'not_pushed' ? 'rebuild' : 'fix';
+}
+
 function present(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
@@ -449,7 +457,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {
-    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? (values.branch_state === 'kept' ? 'kept' : 'fix') : kind === 'toolchain_missing' ? 'toolchain' : null;
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? qaFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : null;
     const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
     if (!present(values.command) && step.command) values.command = step.command;
     if (kind === 'toolchain_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;

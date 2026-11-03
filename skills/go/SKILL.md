@@ -287,4 +287,4 @@ End with the next step, from the same table the comments use:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state <built|needs-spec|qa-failed|blocked|queued> --issue <issue>
 ```
 
-Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch` for `qa-failed`. For the other gate decisions (`denied`, `no-milestone`, `no-assignee`) the comment already says what to do.
+Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch|rebuild` for `qa-failed` (`rebuild` when the branch was not pushed: `unsafe` or `not_pushed`, there is no branch to fix). For the other gate decisions (`denied`, `no-milestone`, `no-assignee`) the comment already says what to do.
