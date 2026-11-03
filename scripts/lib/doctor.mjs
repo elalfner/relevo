@@ -6,11 +6,12 @@
 //   runChecks(facts)     pure: turns the facts into a list of results
 // The probes are injected so everything here is testable without a network.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { loadConfig } from './config.mjs';
+import { mergeRepositoryRules } from './interface-knowledge.mjs';
+import { QA_LENSES, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
@@ -21,7 +22,7 @@ import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
 import { testDatabase } from './api-preflight.mjs';
-import { ROLES, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
+import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
 export const SKILL_INSTALL = {
@@ -84,6 +85,8 @@ const TOOL_INSTALL = {
 };
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// A name of the former QA agent (the lenses are `relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code` and `relevo:qa-interface`).
+const STALE_QA_RE = /relevo:qa(?![-\w])/;
 const pass = (id, message) => ({ id, status: 'pass', message });
 const fail = (id, message, fix) => ({ id, status: 'fail', message, fix });
 const warn = (id, message, fix) => ({ id, status: 'warn', message, fix });
@@ -281,6 +284,19 @@ export function gatherFacts(p) {
   f.configErrors = loaded && !loaded.ok ? loaded.errors.map((e) => e.message) : [];
   f.rulesFilesMissing = (f.config?.qa?.rules_from ?? []).filter((file) => !p.exists(file));
   f.rulesFileMissing = f.rulesFilesMissing.length > 0;
+  // The QA lenses: the four agent files of the plugin, and any file of the repository that still names the former agent.
+  f.lensAgentsMissing = QA_LENSES.filter((l) => !existsSync(resolve(PLUGIN_ROOT, `agents/qa-${l}.md`)));
+  const stale = [];
+  const rulesFiles = (f.config?.qa?.rules_from ?? []);
+  const candidates = [...rulesFiles, ...(f.platformFacts ?? []).map((e) => `.relevo/stacks/${e.stack}.md`)];
+  candidates.forEach((file) => {
+    const text = p.exists(file) ? tryRun(() => String(p.read(file)), '') : '';
+    if (STALE_QA_RE.test(text)) stale.push(file);
+  });
+  f.staleQaReferences = stale;
+  // The design system and the rules a repository adds for the interface (interface-decisions-upfront).
+  f.designSystemMissing = ['tokens', 'components', 'references'].flatMap((key) => (f.config?.design?.system?.[key] ?? []).filter((entry) => !p.exists(entry)).map((entry) => ({ key, entry })));
+  f.interfaceFile = p.exists('.relevo/interface.json') ? tryRun(() => p.read('.relevo/interface.json'), null) : null;
 
   gatherPlatforms(f, p, tryRun);
 
@@ -540,14 +556,24 @@ function gatherPlatforms(f, p, tryRun) {
       });
       // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
       const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
-      if (adapter.supported && adapter.kind === 'api') {
+      if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
+        // A Supabase review runs pgTAP against the local containers: the config, whether the stack runs, and its log container.
+        const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
+        const hasConfig = p.exists(at('supabase/config.toml'));
+        const dockerOk = entry.tools.find((t) => t.tool === 'docker')?.ok === true;
+        const running = hasConfig && dockerOk ? tryRun(() => { p.tool('supabase', ['status', '--workdir', platform.path || '.']); return true; }, false) : null;
+        const projectId = hasConfig ? /^\s*project_id\s*=\s*["']([^"']+)["']/m.exec(tryRun(() => p.read(at('supabase/config.toml')), '') ?? '')?.[1] ?? null : null;
+        const logName = resolved.profile.review?.log?.startsWith('docker:') ? resolved.profile.review.log.slice('docker:'.length).replaceAll('{project_id}', projectId ?? '') : null;
+        const containers = running && logName ? tryRun(() => String(p.tool('docker', ['ps', '--format', '{{.Names}}'])).split('\n').map((n) => n.trim()).filter(Boolean), null) : null;
+        entry.supabase = { config: hasConfig, running, projectId, logContainer: logName, logContainerFound: containers === null ? null : containers.includes(logName) };
+      } else if (adapter.supported && adapter.kind === 'api') {
         const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
         const xml = ['phpunit.xml', 'phpunit.xml.dist'].find((n) => p.exists(at(n)));
         entry.api = { vendor: p.exists(at('vendor/autoload.php')), database: testDatabase(xml ? tryRun(() => p.read(at(xml)), null) : null) };
       }
       // The review block of the profile: where the log is, and whether the folder it names exists.
       const logPattern = resolved.profile.review?.log;
-      if (logPattern) {
+      if (logPattern && !logPattern.startsWith('docker:')) {
         const segments = logPattern.split('/').filter(Boolean);
         const literal = segments.findIndex((s) => /[*?]/.test(s));
         const dir = (literal === -1 ? segments.slice(0, -1) : segments.slice(0, literal)).join('/');
@@ -563,6 +589,11 @@ function gatherPlatforms(f, p, tryRun) {
       }
     }
     f.platformFacts.push(entry);
+  });
+  // A platform with an interface needs a browser automation library for the preview check of `think`; its absence is only a note.
+  f.interfaceBrowser = {};
+  f.platformFacts.filter((e) => e.profile?.interface && e.profile.interface !== 'none').forEach((e) => {
+    f.interfaceBrowser[e.name] = playwrightFacts(e.path, { tool: p.tool, exists: p.exists }).playwright;
   });
 
   // The skills a stack works better with: only for a stack that has a recommendation, and only when a platform uses it.
@@ -768,6 +799,15 @@ function platformChecks(f) {
       const db = e.api.database;
       if (db.safe) r.push(pass(`review.api.${e.name}.database`, `platform ${e.name}: the tests use in-memory SQLite`));
       else r.push(note(`review.api.${e.name}.database`, `platform ${e.name}: ${db.reason}; the review asks for your written confirmation that it is not production before it runs a test`));
+    }
+    if (e.supabase) {
+      const sb = e.supabase;
+      const inDir = e.path && e.path !== '.' ? `cd ${e.path} && ` : '';
+      if (!sb.config) r.push(warn(`review.supabase.${e.name}.config`, `platform ${e.name} has no supabase/config.toml in ${e.path || '.'}, so the review cannot run supabase test db`, `run \`${inDir}supabase init\`, or point the platform's path at the folder that holds supabase/`));
+      else r.push(pass(`review.supabase.${e.name}.config`, `platform ${e.name}: supabase/config.toml exists`));
+      if (sb.config && sb.running === false) r.push(note(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is not running; the review asks before it runs \`supabase start\``));
+      else if (sb.running) r.push(pass(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is running`));
+      if (sb.logContainerFound === false) r.push(warn(`review.log.${e.name}`, `platform ${e.name}: review.log names the container ${sb.logContainer}, which does not exist while the local stack is running, so the audit would read no log`, 'check review.log in the profile; the database container is supabase_db_<project_id>'));
     }
     (e.profile.reviewReplaced ?? []).forEach((key) => {
       r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));
@@ -983,6 +1023,9 @@ export function runChecks(f) {
 
   r.push(...pluginInstallChecks(f));
   r.push(...toolchainChecks(f));
+  r.push(...lensChecks(f));
+  r.push(...interfaceChecks(f));
+  r.push(...installStepChecks(f));
   r.push(...runnerChecks(f));
   if (f.pluginMarketplace && f.pluginRepoPrivate === true && !f.pluginMarketplaceHasToken) {
     r.push(fail('automation.plugin-clone', `the plugin repository (${f.pluginMarketplace}) is private, so the runner cannot clone it without a credential`, 'store a read-only token as RELEVO_PLUGIN_TOKEN and use the private-repository line in relevo-go.yml'));
@@ -1052,8 +1095,74 @@ function toolchainChecks(f) {
   return [...known, ...own];
 }
 
+/** The QA lenses: settings an agent does not apply, the four agent files, the profile of each platform for each lens, stale names. */
+function lensChecks(f) {
+  const r = [];
+  const given = f.config?.agents_given ?? [];
+  if (f.config?.agent?.build === 'antigravity' && given.length > 0) {
+    r.push(warn('agents.settings', `${given.join(', ')} ${given.length === 1 ? 'is' : 'are'} not applied with this agent: agent.build is antigravity, which accepts the model and the effort of a role and does not write them to the agents it renders`, 'nothing to fix; remove the settings or use the Claude agent if you want them applied'));
+  }
+  if (f.lensAgentsMissing !== undefined) {
+    r.push(f.lensAgentsMissing.length === 0
+      ? pass('qa.lens-agents', 'the plugin has the four QA lens agents')
+      : fail('qa.lens-agents', `the plugin lacks the QA lens agent${f.lensAgentsMissing.length === 1 ? '' : 's'} ${f.lensAgentsMissing.map((l) => `qa-${l}`).join(', ')}`, 'update the plugin to the current version'));
+  }
+  (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
+    const bad = LENSES.filter((l) => { try { lensText(e.profile, l); return false; } catch { return true; } });
+    r.push(bad.length === 0
+      ? pass(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} resolves for every QA lens`)
+      : fail(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} cannot be resolved for the lens${bad.length === 1 ? '' : 'es'} ${bad.join(', ')}`, 'check .relevo/stacks and stacks/ for the stack'));
+  });
+  (f.staleQaReferences ?? []).forEach((file) => r.push(warn(`qa.stale-reference.${file}`, `${file} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
+  (f.workflows ? Object.entries(f.workflows) : []).filter(([, w]) => w?.present && typeof w.text === 'string' && STALE_QA_RE.test(w.text)).forEach(([name]) => r.push(warn(`qa.stale-reference.${name}`, `workflow ${name} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
+  return r;
+}
+
+/** The design system paths, the rules file of the repository and the browser for the previews. Never a failure for the browser. */
+function interfaceChecks(f) {
+  const r = [];
+  (f.designSystemMissing ?? []).forEach(({ key, entry }) => r.push(fail(`interface.design-system.${key}`, `design.system.${key} points to "${entry}", which does not exist`, 'fix the path in relevo.yml or create the folder')));
+  if (f.interfaceFile != null) {
+    const merged = mergeRepositoryRules(JSON.parse(readFileSync(resolve(PLUGIN_ROOT, 'knowledge/interface/rules.json'), 'utf8')).rules, f.interfaceFile);
+    if (merged.problems.length === 0 && merged.attempts.length === 0) r.push(pass('interface.rules-file', `.relevo/interface.json is valid and adds ${merged.added.length} rule${merged.added.length === 1 ? '' : 's'}`));
+    merged.problems.forEach((x) => r.push(fail('interface.rules-file', `.relevo/interface.json${x.id ? ` rule "${x.id}"` : ''}: ${x.problems.join('; ')}`, 'fix the file; a rule needs every field of knowledge/interface/rules.json')));
+    merged.attempts.forEach((x) => r.push(warn('interface.rules-file', `.relevo/interface.json rule "${x.id}" ${x.attempt}; the rule of the plugin is kept`, 'write a project exception in the rules file that QA reads (qa.rules_from) instead')));
+  }
+  Object.entries(f.interfaceBrowser ?? {}).forEach(([name, ok]) => {
+    if (!ok) r.push(warn(`interface.browser.${name}`, `platform ${name} has an interface, but no browser automation library resolves from it, so the previews of the interface step cannot be checked (a check that does not run is reported as not checked)`, `optional: ${'`npm install -D playwright && npx playwright install chromium`'} in the platform folder`));
+  });
+  return r;
+}
+
 // The tools that the build job already has: it installs Node for Relevo itself.
 const NODE_TOOLS = ['node', 'npm'];
+
+// The commands that install the dependencies of a stack. A stack that is not listed is judged by any of them.
+const INSTALL_COMMANDS = {
+  vue: /\b(?:npm\s+(?:ci|install|i)|pnpm\s+(?:install|i)|yarn(?:\s+install)?|bun\s+install)\b/,
+  laravel: /\bcomposer\s+(?:install|update)\b/,
+  flutter: /\b(?:flutter|dart)\s+pub\s+get\b/,
+};
+const ANY_INSTALL = new RegExp([...Object.values(INSTALL_COMMANDS)].map((re) => re.source).join('|'));
+
+/**
+ * When a profile lists the paths that exist once the dependencies are installed, does the build job of the go workflow
+ * have an active step that installs them? Without one the build stops before the agent, so this is a warning that names
+ * the platform and what to enable. Nothing is said when the profile lists no paths, when the step is there, or when the
+ * go workflow is not installed. Only active lines count: a commented example installs nothing.
+ */
+function installStepChecks(f) {
+  const go = f.workflows?.['relevo-go.yml'];
+  if (!go?.present || typeof go.text !== 'string') return [];
+  // An install into another folder (the steps that install OpenSpec and the Relevo scripts) puts nothing in the folder of the platform.
+  const active = go.text.split('\n').filter((l) => !/^\s*#/.test(l) && !/--global|\s-g\b|--prefix|RUNNER_TEMP/.test(l)).join('\n');
+  return (f.platformFacts ?? []).filter((e) => (e.profile?.installed ?? []).length > 0)
+    .filter((e) => !(INSTALL_COMMANDS[e.stack] ?? ANY_INSTALL).test(active))
+    .map((e) => {
+      const guard = `needs.decide.outputs.stack == '${e.stack}'`;
+      return warn(`automation.install.${e.name}`, `the go workflow has no active step that installs the dependencies of platform ${e.name} (${e.stack}), and its profile expects ${e.profile.installed.join(', ')} before the agent starts, so every cloud build would stop there`, `enable an install step in the build job of relevo-go.yml, guarded by ${guard} and run from the folder of the platform (${e.path ?? '.'}), for example npm ci --ignore-scripts; the template has the example commented`);
+    });
+}
 
 const HOSTED_RUNNER = ['ubuntu-latest'];
 

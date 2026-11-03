@@ -65,6 +65,49 @@ test('when a credential stopped the push, the message says the branch was NOT pu
   assert.match(renderMessage('qa_failed', base), /is pushed/);
 });
 
+const classBase = { assignee: 'persona-b', issue: 48, title: 'Sign-in screen', finding: 'the key is the vendor test key', file: 'src/config.ts', line: 28, branch: 'feature/48-sign-in', branch_state: 'kept', tasks_done: 6, tasks_total: 8 };
+
+test('Scenario: Nothing the developer can fix - the comment says the class, that the retries were skipped, and the next step', () => {
+  const en = renderMessage('qa_failed', { ...classBase, finding_class: 'input', retries_skipped: true });
+  assert.match(en, /What kind of finding: it needs something the developer agent cannot supply: an input that the issue depends on, so the retries were skipped\./);
+  assert.match(en, /What happened: QA rejected it and no finding can be corrected by the developer agent, so there were no retries\./);
+  assert.match(en, /Your next step: \/relevo:fix 48 \(supply what is missing/);
+  const es = renderMessage('qa_failed', { ...classBase, finding_class: 'input', retries_skipped: true }, 'es');
+  assert.match(es, /Qué tipo de hallazgo: necesita algo que el agente de desarrollo no puede aportar/);
+  assert.match(es, /así que se omitieron los reintentos\./);
+  assert.match(es, /Tu siguiente paso: \/relevo:fix 48/);
+});
+
+test('each class that the developer agent cannot fix has its own next step', () => {
+  const step = (finding_class) => renderMessage('qa_failed', { ...classBase, finding_class, retries_skipped: true });
+  assert.match(step('spec'), /Your next step: \/relevo:issue 48 \(decide what the specification leaves open/);
+  assert.match(step('policy'), /Your next step: \/relevo:issue 48 \(the work needs something an unattended run may not do/);
+  assert.match(step('policy'), /Allow-paths:/);
+});
+
+test('Scenario: A mixed report - the class is named without saying that the retries were skipped', () => {
+  const text = renderMessage('qa_failed', { ...classBase, finding_class: 'input' });
+  assert.match(text, /What kind of finding: it needs something the developer agent cannot supply: an input that the issue depends on\./);
+  assert.doesNotMatch(text, /retries were skipped/);
+});
+
+test('a fixable class, or no class, adds no line and leaves the next step as it was', () => {
+  const plain = renderMessage('qa_failed', classBase);
+  assert.doesNotMatch(plain, /What kind of finding/);
+  assert.equal(renderMessage('qa_failed', { ...classBase, finding_class: 'fixable' }), plain);
+  assert.match(plain, /Your next step: \/relevo:fix 48 \(it checks and corrects the work that was kept/);
+});
+
+test('a class has a step of its own only when the work was kept on the branch', () => {
+  const text = renderMessage('qa_failed', { ...classBase, branch_state: 'pushed', finding_class: 'spec', retries_skipped: true });
+  assert.match(text, /What kind of finding/);
+  assert.match(text, /Your next step: \/relevo:fix 48/);
+});
+
+test('an unknown class is refused', () => {
+  assert.throws(() => renderMessage('qa_failed', { ...classBase, finding_class: 'urgent' }), /unknown finding_class "urgent"/);
+});
+
 test('budget failures carry their reason', () => {
   const text = renderMessage('qa_failed', {
     assignee: 'b', issue: 1, title: 't', finding: 'stopped', branch: 'f', reason: 'budget exceeded',
@@ -304,4 +347,64 @@ test('the progress messages render in each language, with the minutes as given a
   assert.throws(() => renderMessage('run_progress', { minutes: 1 }), /needs "phase"/);
   assert.match(renderMessage('run_progress_closed', { minutes: 3, run_url: 'https://example.invalid/r' }), /ended after 3 min\.[\s\S]*Run: https:\/\/example\.invalid\/r$/);
   assert.match(renderMessage('run_progress_closed', { outcome: 'none' }, 'es'), /terminó sin resultado\./);
+});
+
+test('qa_failed for a restricted file on the base branch does not send the person to /relevo:fix', () => {
+  const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed', recovery: 'restricted', reason: 'restricted file in the diff' });
+  assert.match(text, /versioned on the base branch/);
+  assert.doesNotMatch(text, /\/relevo:fix/);
+});
+
+// ---- advisory notes of the QA lenses (specialist-review-lenses)
+const NOTE_BUILT = { assignee: 'ana', issue: 7, title: 'Orders', tasks_done: 3, tasks_total: 3, branch: 'feature/7-orders', scenarios: 4, checklist: '- [ ] one\n- [ ] two' };
+
+test('Scenario: Notes in the hand-off - the message says how many notes there are, names the lens of the first three, and carries all in a hidden marker', () => {
+  const notes = [1, 2, 3, 4, 5].map((n) => ({ lens: n % 2 ? 'interface' : 'spec', text: `note ${n}` }));
+  const en = renderMessage('built', { ...NOTE_BUILT, qa_notes: notes });
+  assert.match(en, /QA left 5 advisory notes for you \(interface: note 1; spec: note 2; interface: note 3 and 2 more\); they are in the checklist\./);
+  const marker = /<!-- relevo:qa-notes (\[.*\]) -->/.exec(en);
+  assert.deepEqual(JSON.parse(marker[1]).map((n) => n.text), ['note 1', 'note 2', 'note 3', 'note 4', 'note 5']);
+  assert.match(renderMessage('built', { ...NOTE_BUILT, qa_notes: notes }, 'es'), /QA dejó 5 notas para ti \(interface: note 1; spec: note 2; interface: note 3 y 2 más\); están en el checklist\./);
+});
+
+test('one note is singular, and a note cannot close the comment', () => {
+  assert.match(renderMessage('built', { ...NOTE_BUILT, qa_notes: [{ lens: 'spec', text: 'x' }] }), /QA left 1 advisory note for you/);
+  const t = renderMessage('built', { ...NOTE_BUILT, qa_notes: [{ lens: 'spec', text: 'a --> <script> b' }] });
+  assert.equal((t.match(/-->/g) ?? []).length, 1, 'only the end of the marker closes the comment');
+  assert.doesNotMatch(t, /<script>/);
+});
+
+test('Scenario: A build without notes - the message is unchanged', () => {
+  const plain = renderMessage('built', NOTE_BUILT);
+  assert.doesNotMatch(plain, /advisory|relevo:qa-notes/);
+  assert.equal(renderMessage('built', { ...NOTE_BUILT, qa_notes: [] }), plain);
+});
+
+test('Scenario: The next step for `inputs` and `policy` reaches the needs-spec message in both languages', () => {
+  const base = { spec_writer: 'ana', issue: 48, title: 'Sign-in screen', missing: 'the schema file cannot be read' };
+  const inputs = renderMessage('needs_spec', { ...base, reason: 'inputs' });
+  assert.match(inputs, /Your next step: \/relevo:issue 48: an input of the issue is not available/);
+  const policy = renderMessage('needs_spec', { ...base, reason: 'policy', missing: 'task 3.2 changes CLAUDE.md' }, 'es');
+  assert.match(policy, /Tu siguiente paso: \/relevo:issue 48: una tarea necesita algo/);
+  assert.match(policy, /task 3\.2 changes CLAUDE\.md/);
+});
+
+test('Scenario: The install step is missing - the message names the path, says nothing was built and says to enable the step', () => {
+  const data = { assignee: 'persona-b', issue: 12, title: 'Reports', paths: 'node_modules', platform: 'web' };
+  const en = renderMessage('installed_missing', data);
+  assert.match(en, /\bnode_modules\b/);
+  assert.match(en, /no model turns were spent/);
+  assert.match(en, /Your next step: enable the step that installs the dependencies/);
+  const es = renderMessage('installed_missing', data, 'es');
+  assert.match(es, /no se gastó ningún turno del modelo/);
+  assert.match(es, /Tu siguiente paso: activa el paso que instala las dependencias/);
+  assert.throws(() => renderMessage('installed_missing', { ...data, paths: '' }), /needs "paths"/);
+});
+
+test('Scenario: An input that a person confirms - the hand-off lists it, and a build without one is as it was', () => {
+  const base = { assignee: 'persona-b', issue: 31, title: 'Sign-in', tasks_done: 4, tasks_total: 4, branch: 'feature/31-sign-in', scenarios: 6 };
+  const text = renderMessage('built', { ...base, inputs_to_confirm: 'RECAPTCHA_SITE_KEY (the key of the login screen)' });
+  assert.match(text, /Inputs to confirm before you test: RECAPTCHA_SITE_KEY \(the key of the login screen\)/);
+  assert.match(renderMessage('built', { ...base, inputs_to_confirm: 'LLAVE (la llave)' }, 'es'), /Insumos que debes confirmar antes de probar: LLAVE \(la llave\)/);
+  assert.doesNotMatch(renderMessage('built', base), /Inputs to confirm/);
 });

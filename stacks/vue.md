@@ -6,6 +6,7 @@ commands:
   format: npx --no-install prettier --write src/
 generated: ['dist/**', '*.tsbuildinfo', 'src/auto-imports.d.ts', 'src/components.d.ts']
 tools: [node, npm]
+installed: [node_modules]
 requires_skills: []
 skills:
   dev: []
@@ -15,6 +16,7 @@ skills:
 skills_when_installed:
   dev: [vue-best-practices, vue-testing-best-practices]
   qa: [vue-best-practices, vue-testing-best-practices]
+interface: web
 targets:
   web: ""
 ---
@@ -67,6 +69,26 @@ Do not spend time re-checking what `analyze` already enforces: read its output.
 ## Targets
 
 - `web`: needs a browser; no extra tool. The review of a web target is always driven by the agent (`review.autopilot` must be `precheck` or `verify`) with a Playwright script that `qa` reads first; Playwright is a development dependency of the project: `/relevo:init` offers to add it (`npm install -D playwright`) and its Chromium (`npx playwright install chromium`), and the review never installs Playwright itself.
+
+## Security for the developer
+
+While you write, keep to these. Each comes from the official documentation named in its line.
+
+- A component template is never built from content the user wrote or a third party supplied: that is arbitrary JavaScript execution. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- `v-html` and `innerHTML` render only HTML that is known to be safe; anything a user can influence is sanitized first. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- A URL a user supplies, bound to `href`, is sanitized so that it cannot run `javascript:`. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- A style object a user can influence is limited to the properties meant to be set, because free styles can hide or overlay content. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- A form submission carries the CSRF token the backend asks for. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+
+## Security review
+
+Check the diff against each item. Report one only with the line that breaks it.
+
+- A component template is never built from content the user wrote or a third party supplied: that is arbitrary JavaScript execution. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- `v-html` and `innerHTML` render only HTML that is known to be safe; anything a user can influence is sanitized first. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- A URL a user supplies, bound to `href`, is sanitized so that it cannot run `javascript:`. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- A style object a user can influence is limited to the properties meant to be set, because free styles can hide or overlay content. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
+- A form submission carries the CSRF token the backend asks for. Source: https://vuejs.org/guide/best-practices/security.html. Read: 2026-11-02.
 
 ## Questions for the issue writer
 

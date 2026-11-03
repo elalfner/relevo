@@ -1,0 +1,919 @@
+{
+ "about": "Words of a change (English and Spanish) that make a rule relevant. A tag matches when one of its words appears in the text.",
+ "tags": {
+  "animation": {
+   "en": [
+    "animation",
+    "animate",
+    "animated",
+    "transition"
+   ],
+   "es": [
+    "animación",
+    "animacion",
+    "animar",
+    "transición",
+    "transicion"
+   ]
+  },
+  "async": {
+   "en": [
+    "loading",
+    "fetch",
+    "request",
+    "async",
+    "submit",
+    "api",
+    "save",
+    "saving"
+   ],
+   "es": [
+    "carga",
+    "cargando",
+    "petición",
+    "peticion",
+    "solicitud",
+    "guardar",
+    "enviar",
+    "envío"
+   ]
+  },
+  "authentication": {
+   "en": [
+    "login",
+    "log in",
+    "sign in",
+    "sign-in",
+    "sign up",
+    "password",
+    "passkey",
+    "authentication",
+    "otp"
+   ],
+   "es": [
+    "iniciar sesión",
+    "inicio de sesión",
+    "contraseña",
+    "autenticación",
+    "registro",
+    "código"
+   ]
+  },
+  "badges": {
+   "en": [
+    "badge",
+    "pill",
+    "tag"
+   ],
+   "es": [
+    "insignia",
+    "etiqueta",
+    "badge"
+   ]
+  },
+  "buttons": {
+   "en": [
+    "button",
+    "cta",
+    "action"
+   ],
+   "es": [
+    "botón",
+    "boton",
+    "acción",
+    "accion"
+   ]
+  },
+  "cards": {
+   "en": [
+    "card",
+    "tile"
+   ],
+   "es": [
+    "tarjeta",
+    "card"
+   ]
+  },
+  "carousel": {
+   "en": [
+    "carousel",
+    "slider",
+    "slideshow"
+   ],
+   "es": [
+    "carrusel",
+    "slider"
+   ]
+  },
+  "chips": {
+   "en": [
+    "chip",
+    "chips",
+    "filter chip"
+   ],
+   "es": [
+    "chip",
+    "chips"
+   ]
+  },
+  "colour": {
+   "en": [
+    "color",
+    "colour",
+    "palette",
+    "dark mode",
+    "theme"
+   ],
+   "es": [
+    "color",
+    "colores",
+    "paleta",
+    "modo oscuro",
+    "tema"
+   ]
+  },
+  "containers": {
+   "en": [
+    "container",
+    "panel",
+    "modal body"
+   ],
+   "es": [
+    "contenedor",
+    "panel"
+   ]
+  },
+  "counts": {
+   "en": [
+    "count",
+    "counter",
+    "unread"
+   ],
+   "es": [
+    "contador",
+    "conteo",
+    "no leídos"
+   ]
+  },
+  "custom-controls": {
+   "en": [
+    "custom control",
+    "custom dropdown",
+    "custom select",
+    "toggle",
+    "switch"
+   ],
+   "es": [
+    "control personalizado",
+    "selector personalizado",
+    "interruptor"
+   ]
+  },
+  "dates": {
+   "en": [
+    "date",
+    "calendar",
+    "time"
+   ],
+   "es": [
+    "fecha",
+    "calendario",
+    "hora"
+   ]
+  },
+  "delete": {
+   "en": [
+    "delete",
+    "remove",
+    "discard"
+   ],
+   "es": [
+    "eliminar",
+    "borrar",
+    "quitar",
+    "descartar"
+   ]
+  },
+  "destructive": {
+   "en": [
+    "delete",
+    "irreversible",
+    "destroy",
+    "cancel subscription"
+   ],
+   "es": [
+    "eliminar",
+    "borrar",
+    "irreversible",
+    "cancelar suscripción"
+   ]
+  },
+  "dialogs": {
+   "en": [
+    "dialog",
+    "modal",
+    "popup",
+    "sheet",
+    "confirm"
+   ],
+   "es": [
+    "diálogo",
+    "dialogo",
+    "modal",
+    "ventana emergente",
+    "confirmar"
+   ]
+  },
+  "drag": {
+   "en": [
+    "drag",
+    "drop",
+    "reorder",
+    "sortable"
+   ],
+   "es": [
+    "arrastrar",
+    "soltar",
+    "reordenar"
+   ]
+  },
+  "errors": {
+   "en": [
+    "error",
+    "validation",
+    "invalid",
+    "failure",
+    "fail"
+   ],
+   "es": [
+    "error",
+    "validación",
+    "validacion",
+    "inválido",
+    "falla",
+    "fallo"
+   ]
+  },
+  "filters": {
+   "en": [
+    "filter",
+    "facet"
+   ],
+   "es": [
+    "filtro",
+    "filtrar"
+   ]
+  },
+  "forms": {
+   "en": [
+    "form",
+    "input",
+    "field",
+    "checkbox",
+    "radio",
+    "select",
+    "textarea"
+   ],
+   "es": [
+    "formulario",
+    "campo",
+    "casilla",
+    "selector"
+   ]
+  },
+  "gestures": {
+   "en": [
+    "swipe",
+    "gesture",
+    "pinch",
+    "long press"
+   ],
+   "es": [
+    "deslizar",
+    "gesto",
+    "pellizcar",
+    "pulsación larga"
+   ]
+  },
+  "headings": {
+   "en": [
+    "heading",
+    "title",
+    "section"
+   ],
+   "es": [
+    "encabezado",
+    "título",
+    "titulo",
+    "sección",
+    "seccion"
+   ]
+  },
+  "icons": {
+   "en": [
+    "icon"
+   ],
+   "es": [
+    "icono",
+    "ícono"
+   ]
+  },
+  "images": {
+   "en": [
+    "image",
+    "photo",
+    "picture",
+    "avatar",
+    "thumbnail",
+    "banner"
+   ],
+   "es": [
+    "imagen",
+    "foto",
+    "avatar",
+    "miniatura"
+   ]
+  },
+  "inputs": {
+   "en": [
+    "input",
+    "field",
+    "keyboard",
+    "phone number",
+    "email"
+   ],
+   "es": [
+    "campo",
+    "teclado",
+    "teléfono",
+    "telefono",
+    "correo"
+   ]
+  },
+  "interactive": {
+   "en": [
+    "click",
+    "tap",
+    "press",
+    "button",
+    "link",
+    "control"
+   ],
+   "es": [
+    "clic",
+    "toque",
+    "pulsar",
+    "botón",
+    "enlace",
+    "control"
+   ]
+  },
+  "labels": {
+   "en": [
+    "label",
+    "caption"
+   ],
+   "es": [
+    "etiqueta",
+    "leyenda"
+   ]
+  },
+  "layers": {
+   "en": [
+    "z-index",
+    "overlay",
+    "dropdown",
+    "popover"
+   ],
+   "es": [
+    "capa",
+    "superposición",
+    "menú desplegable"
+   ]
+  },
+  "layout": {
+   "en": [
+    "layout",
+    "grid",
+    "column",
+    "sidebar",
+    "header",
+    "footer",
+    "page"
+   ],
+   "es": [
+    "diseño",
+    "disposición",
+    "cuadrícula",
+    "columna",
+    "barra lateral",
+    "encabezado",
+    "pie"
+   ]
+  },
+  "lists": {
+   "en": [
+    "list",
+    "feed",
+    "table",
+    "items",
+    "results"
+   ],
+   "es": [
+    "lista",
+    "listado",
+    "tabla",
+    "resultados"
+   ]
+  },
+  "loading": {
+   "en": [
+    "loading",
+    "skeleton",
+    "spinner",
+    "progress",
+    "lazy"
+   ],
+   "es": [
+    "cargando",
+    "carga",
+    "esqueleto",
+    "progreso"
+   ]
+  },
+  "media": {
+   "en": [
+    "video",
+    "audio",
+    "media",
+    "player",
+    "image gallery"
+   ],
+   "es": [
+    "video",
+    "vídeo",
+    "audio",
+    "reproductor",
+    "galería"
+   ]
+  },
+  "menus": {
+   "en": [
+    "menu",
+    "dropdown",
+    "navigation"
+   ],
+   "es": [
+    "menú",
+    "menu",
+    "desplegable",
+    "navegación"
+   ]
+  },
+  "mobile-web": {
+   "en": [
+    "mobile web",
+    "responsive",
+    "phone"
+   ],
+   "es": [
+    "web móvil",
+    "responsivo",
+    "teléfono"
+   ]
+  },
+  "motion": {
+   "en": [
+    "motion",
+    "animation",
+    "parallax",
+    "scroll effect"
+   ],
+   "es": [
+    "movimiento",
+    "animación",
+    "paralaje"
+   ]
+  },
+  "navigation": {
+   "en": [
+    "navigation",
+    "navbar",
+    "nav",
+    "tabs",
+    "breadcrumb",
+    "route",
+    "menu",
+    "back button"
+   ],
+   "es": [
+    "navegación",
+    "pestañas",
+    "ruta",
+    "migas",
+    "menú",
+    "botón atrás"
+   ]
+  },
+  "numbers": {
+   "en": [
+    "number",
+    "price",
+    "amount",
+    "quantity",
+    "currency"
+   ],
+   "es": [
+    "número",
+    "numero",
+    "precio",
+    "monto",
+    "cantidad",
+    "moneda"
+   ]
+  },
+  "overlays": {
+   "en": [
+    "overlay",
+    "modal",
+    "dialog",
+    "toast",
+    "tooltip",
+    "popover",
+    "sticky header",
+    "banner"
+   ],
+   "es": [
+    "superposición",
+    "modal",
+    "diálogo",
+    "aviso",
+    "tooltip",
+    "encabezado fijo"
+   ]
+  },
+  "pages": {
+   "en": [
+    "page",
+    "screen",
+    "view",
+    "landing",
+    "route"
+   ],
+   "es": [
+    "página",
+    "pagina",
+    "pantalla",
+    "vista",
+    "ruta"
+   ]
+  },
+  "parallax": {
+   "en": [
+    "parallax",
+    "scroll-jacking",
+    "scroll effect"
+   ],
+   "es": [
+    "paralaje",
+    "efecto de scroll"
+   ]
+  },
+  "passwords": {
+   "en": [
+    "password",
+    "pin",
+    "passcode"
+   ],
+   "es": [
+    "contraseña",
+    "clave",
+    "pin"
+   ]
+  },
+  "performance": {
+   "en": [
+    "performance",
+    "slow",
+    "bundle",
+    "lazy",
+    "image size",
+    "font"
+   ],
+   "es": [
+    "rendimiento",
+    "lento",
+    "paquete",
+    "fuente"
+   ]
+  },
+  "placeholder": {
+   "en": [
+    "placeholder",
+    "sample data",
+    "mock data",
+    "lorem"
+   ],
+   "es": [
+    "marcador",
+    "datos de ejemplo",
+    "datos de prueba",
+    "lorem"
+   ]
+  },
+  "reorder": {
+   "en": [
+    "reorder",
+    "drag",
+    "sort order"
+   ],
+   "es": [
+    "reordenar",
+    "arrastrar",
+    "orden"
+   ]
+  },
+  "responsive": {
+   "en": [
+    "responsive",
+    "mobile",
+    "tablet",
+    "breakpoint",
+    "narrow",
+    "small screen",
+    "width"
+   ],
+   "es": [
+    "responsivo",
+    "móvil",
+    "movil",
+    "tableta",
+    "punto de quiebre",
+    "pantalla pequeña",
+    "ancho"
+   ]
+  },
+  "routes": {
+   "en": [
+    "route",
+    "page",
+    "lazy route"
+   ],
+   "es": [
+    "ruta",
+    "página"
+   ]
+  },
+  "routing": {
+   "en": [
+    "route",
+    "router",
+    "url",
+    "deep link",
+    "back"
+   ],
+   "es": [
+    "ruta",
+    "enrutador",
+    "enlace profundo",
+    "atrás"
+   ]
+  },
+  "scripts": {
+   "en": [
+    "script",
+    "third-party",
+    "analytics",
+    "widget embed"
+   ],
+   "es": [
+    "script",
+    "terceros",
+    "analítica",
+    "analitica"
+   ]
+  },
+  "search": {
+   "en": [
+    "search",
+    "autocomplete",
+    "typeahead",
+    "find"
+   ],
+   "es": [
+    "búsqueda",
+    "busqueda",
+    "buscar",
+    "autocompletar"
+   ]
+  },
+  "status": {
+   "en": [
+    "status",
+    "state",
+    "badge",
+    "notification",
+    "alert"
+   ],
+   "es": [
+    "estado",
+    "notificación",
+    "notificacion",
+    "alerta"
+   ]
+  },
+  "steps": {
+   "en": [
+    "step",
+    "wizard",
+    "stepper",
+    "onboarding",
+    "checkout"
+   ],
+   "es": [
+    "paso",
+    "asistente",
+    "incorporación",
+    "pago"
+   ]
+  },
+  "sticky": {
+   "en": [
+    "sticky",
+    "fixed header",
+    "fixed bar",
+    "pinned"
+   ],
+   "es": [
+    "fijo",
+    "barra fija",
+    "encabezado fijo",
+    "anclado"
+   ]
+  },
+  "tables": {
+   "en": [
+    "table",
+    "grid",
+    "data table",
+    "columns"
+   ],
+   "es": [
+    "tabla",
+    "columnas"
+   ]
+  },
+  "text": {
+   "en": [
+    "text",
+    "copy",
+    "paragraph",
+    "font",
+    "typography",
+    "label",
+    "title"
+   ],
+   "es": [
+    "texto",
+    "párrafo",
+    "parrafo",
+    "fuente",
+    "tipografía",
+    "tipografia",
+    "título",
+    "titulo"
+   ]
+  },
+  "theme": {
+   "en": [
+    "theme",
+    "dark mode",
+    "design token",
+    "style"
+   ],
+   "es": [
+    "tema",
+    "modo oscuro",
+    "tokens de diseño",
+    "estilo"
+   ]
+  },
+  "toasts": {
+   "en": [
+    "toast",
+    "snackbar",
+    "notification"
+   ],
+   "es": [
+    "toast",
+    "snackbar",
+    "notificación",
+    "notificacion"
+   ]
+  },
+  "toggles": {
+   "en": [
+    "toggle",
+    "switch",
+    "checkbox"
+   ],
+   "es": [
+    "interruptor",
+    "casilla",
+    "alternar"
+   ]
+  },
+  "tooltips": {
+   "en": [
+    "tooltip",
+    "hover",
+    "popover"
+   ],
+   "es": [
+    "tooltip",
+    "al pasar",
+    "globo"
+   ]
+  },
+  "urls": {
+   "en": [
+    "url",
+    "link",
+    "deep link",
+    "long identifier"
+   ],
+   "es": [
+    "url",
+    "enlace",
+    "identificador largo"
+   ]
+  },
+  "user-content": {
+   "en": [
+    "user content",
+    "user-generated",
+    "comment",
+    "username",
+    "free text",
+    "description"
+   ],
+   "es": [
+    "contenido del usuario",
+    "comentario",
+    "nombre de usuario",
+    "texto libre",
+    "descripción"
+   ]
+  },
+  "validation": {
+   "en": [
+    "validation",
+    "validate",
+    "required",
+    "invalid"
+   ],
+   "es": [
+    "validación",
+    "validar",
+    "obligatorio",
+    "inválido"
+   ]
+  },
+  "video": {
+   "en": [
+    "video",
+    "autoplay",
+    "stream"
+   ],
+   "es": [
+    "video",
+    "vídeo",
+    "reproducción automática"
+   ]
+  },
+  "wizard": {
+   "en": [
+    "wizard",
+    "multi-step",
+    "stepper"
+   ],
+   "es": [
+    "asistente",
+    "varios pasos"
+   ]
+  },
+  "zoom": {
+   "en": [
+    "zoom",
+    "text size",
+    "large text",
+    "accessibility size"
+   ],
+   "es": [
+    "zoom",
+    "tamaño de texto",
+    "texto grande"
+   ]
+  }
+ }
+}

@@ -1,0 +1,2 @@
+192.168.107.1 2026-11-03 04:59:19.004 UTC [280] postgres@postgres LOG:  statement: create extension if not exists pgtap with schema extensions
+192.168.107.1 2026-11-03 04:59:19.464 UTC [280] postgres@postgres LOG:  statement: drop extension if exists pgtap

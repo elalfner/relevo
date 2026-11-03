@@ -142,6 +142,43 @@ When the screen has to look like something, point to it. One bullet per referenc
 - Example code goes in a fenced block in the same section.
 - `go` copies the section to the design, adds a scenario "Matches the reference <name>" for each bullet, and QA checks the code against it. In the review that scenario is a line you confirm by looking at your screen. If a reference cannot be fetched, the issue goes back to its writer saying which one.
 
+**A preview chosen in `think`.** When you chose one of the HTML previews that `think` drew, `issue` writes it here as example code, in a bullet that says what must match. For the web: the structure, the tokens and the states, not the sample text or exact pixel values. For a mobile sketch: the layout, the spacing, the states and the role of each colour, and that its markup is not to be reproduced (the sketch is approximate, not a render of the app); the decision with its table of states goes in `Decisions`.
+
+````markdown
+## Design reference
+
+- Preview A (approved in `think`): the structure, the tokens `--app-primary` and `--app-surface`, and the five states; not the sample names
+
+```html
+<!-- Proposal: option A. Tokens: --app-primary (lib/theme/colors.dart:3) -->
+<main>…</main>
+```
+````
+
+Limits of example code, which has its own: it is not counted for the 8,000-character warning of the text. One block over 16 KB gets a warning and over 32 KB fails, all the blocks together over 32 KB get a warning, and a body over 65,536 characters (what GitHub accepts) fails. For a larger file, commit it and point to it with a bullet, or commit a picture of the sketch and point to that.
+
+**Vague appearance words.** The check warns, and never fails, when a scenario, decision, constraint or reference bullet says how something should look without saying what to build (for example "discreet", "modern", "clean"). `issue` shows each warning and asks which value, token or reference is meant. A sentence that gives a number with a unit, a token in backticks or a reference is not flagged. If you mean the word, say so and it stays. The lists exist for English and Spanish; any other language uses the English list.
+### 9. External inputs (optional)
+
+When the work needs something that is not in the repository (a key, a file, an endpoint, another repository), say so. A script checks what it can before the build starts, so that the issue does not spend a build and a retry on something that cannot succeed:
+
+```markdown
+## External inputs
+
+- file: `design/logo.svg`: the logo of the login screen
+- link: `acme/api:schema/schema.graphqls`: the schema that the types are generated from
+- secret: `RECAPTCHA_SITE_KEY`: the key of the login screen
+- variable: `API_URL`: the address of the backend
+- manual: the terms of use: the client sends the text
+```
+
+- One bullet per input, `<kind>: <name>: <what it is for>`. The kinds are `file` (a path of this repository), `link` (`owner/repo:path` of a linked repository), `secret` and `variable` (the name of a secret or a variable of the repository) and `manual` (anything a person has to confirm).
+- `file` must exist on the base branch when the build starts, and a `link` names a repository that is in `links` of `relevo.yml`. Write a path, an `owner/repo:path` and the name of a secret or a variable in backticks.
+- Write the **name** of a secret or a variable, never its value. Only its presence is checked, and the value is never read, printed or stored. A name that is not in backticks is refused, because a long name looks like a value to the credential scan.
+- `manual` never blocks the build: the hand-off lists it for a person to confirm. An input of a kind that the build job cannot check (a secret that the job cannot see, for example) is treated the same way.
+- A missing input sends the issue back to `needs-spec` with the reason `inputs`, before the agent starts and without spending a model turn. The comment names each missing input.
+- The section is optional. `/relevo:issue` asks for the inputs of the work and writes it.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.

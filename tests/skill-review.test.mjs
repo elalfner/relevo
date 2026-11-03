@@ -81,7 +81,8 @@ test('it admits it cannot attach images (spec: Screenshots attached by the perso
 test('it synchronises with the base branch and re-runs QA when the merge changed something', () => {
   assert.match(body, /git merge --no-edit origin\/<base>/);
   assert.match(body, /git merge --abort/);
-  assert.match(body, /launch the `relevo:qa` agent again/);
+  assert.match(body, /follow `\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/go\/references\/qa-run\.md` on the result after the synchronisation/);
+  assert.match(body, /the gate and the active lenses/);
 });
 
 test('the skill mentions neither private sources nor personal data', () => {
@@ -224,10 +225,10 @@ test('the Flutter driver rules are written down', () => {
 });
 
 test('Scenario: Origin not allowed / Script reaches the file system - QA reads the script before the runner, the runner is the only way to run it', () => {
-  const qa = autopilot.indexOf('launch `relevo:qa` on the script, read-only');
+  const qa = autopilot.indexOf('launch `relevo:qa-code` on the script, read-only');
   const run = autopilot.indexOf('web-review.mjs --script');
   assert.ok(qa > 0 && run > qa, 'QA comes before the runner');
-  assert.match(autopilot, /Only if it answers `QA PASSED`, record that exact script with `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/review-state\.mjs qa-pass evidence\/review-web\.mjs`/);
+  assert.match(autopilot, /Only if it answers `QA PASSED` \(this is a review of a script, so only the `code` lens runs, with no gate\), record that exact script with `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/review-state\.mjs qa-pass evidence\/review-web\.mjs`/);
   assert.ok(autopilot.indexOf('qa-pass') < autopilot.indexOf('web-review.mjs --script'), 'qa-pass comes before the runner');
   assert.match(autopilot, /a refused script is not run in any other way/);
   assert.match(autopilot, /can reach only `localhost`, the address under review and `review\.allowed_origins`/);
@@ -289,7 +290,7 @@ test('Scenario: Capture saved / Each capture proves the state it shows - capture
 });
 
 test('Scenario: Script edited after QA - any change needs QA and qa-pass again', () => {
-  assert.match(autopilot, /Any change to the script afterwards, even one port, needs `relevo:qa` and `qa-pass` again/);
+  assert.match(autopilot, /Any change to the script afterwards, even one port, needs `relevo:qa-code` and `qa-pass` again/);
 });
 
 test('Scenario: Capture after the agreement - captures belong to the walk; after agreeing the agent does not drive again', () => {
@@ -360,4 +361,43 @@ test('Scenario: A failed go left its worktree - review asks who holds the branch
   assert.match(step1, /scripts\/branch-worktree\.mjs --branch <branch>/);
   assert.match(step1, /If it exits 1 it prints the path of that worktree/);
   assert.match(step1, /leave the issue as `built`, change nothing/);
+});
+
+// --- a conflict with the base branch (spec: review, "Synchronise with the base branch first")
+const sync = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('### 2.'));
+
+test('Scenario: The agent resolves a conflict - review asks whether it may, hands it over in integrate mode, stages the result and runs QA before committing the merge', () => {
+  assert.match(sync, /If the merge conflicts, do not stop yet/);
+  assert.match(sync, /conflict-scope\.mjs --handoff --within "<path of the platform>" --change "<change_id>" --allow/);
+  assert.match(sync, /launch `relevo:dev` in \*\*integrate\*\* mode with the list of conflicted files/);
+  assert.match(sync, /`git add <the conflicted files and the files it created>`/);
+  assert.match(sync, /run the QA step below on this uncommitted merge/);
+  assert.match(sync, /with the retries of `qa\.retries`/);
+  assert.ok(sync.indexOf('git commit --no-edit') > sync.indexOf('run the QA step below on this uncommitted merge'), 'the merge is committed only after QA passes');
+});
+
+test('Scenario: The conflict cannot be resolved - the merge is aborted, the branch is left as it was and the issue stays built', () => {
+  assert.match(sync, /If QA still rejects after the retries, or no finding could be fixed by the agent, run `git merge --abort` \(it also removes the files that were staged\), leave the issue as `built`/);
+  assert.match(sync, /If a marker remains, or a conflict was left, run `git merge --abort`, leave the issue as `built`/);
+  assert.match(sync, /qa-findings\.mjs/);
+  assert.match(sync, /Nothing is pushed in this step/);
+});
+
+test('Scenario: A conflict outside the folder of the platform - review does not hand it to the agent, aborts and says which files and why', () => {
+  assert.match(sync, /If it exits 1, a conflicted file is outside the folder of the platform and the change, or is a protected path, a restricted file or a dependency file that the issue does not allow: run `git merge --abort`/);
+  assert.match(sync, /tell the person which files conflict and why the script refused each, and stop/);
+});
+
+test('a lock file or a generated file in conflict is regenerated with the tool, never edited by hand', () => {
+  assert.match(sync, /regenerated now with the tool of the project \(for the install of dependencies, ask the person first\), never by hand/);
+});
+
+test('Scenario: Supabase ready / Local stack stopped - the skill names the Supabase preflight, the pgTAP run, the started stack and the local-only rule', () => {
+  ['api-preflight.mjs --stack supabase', 'supabase test db', 'started-stack', '--tap', 'supabase-command.mjs', '--stack <the stack of the platform>'].forEach((x) => assert.ok(body.includes(x), `the skill never names ${x}`));
+  assert.match(body, /never add `--linked` or `--db-url`/);
+  assert.match(body, /Exit `7` is not a stop/);
+  assert.match(body, /only if `started-stack` was recorded/);
+  assert.match(body, /expected denials/);
+  const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
+  assert.ok(source.includes("case 'started-stack'"), 'review-state has no "started-stack" command');
 });

@@ -12,16 +12,17 @@ export const AUTOPILOT_MODES = ['off', 'precheck', 'verify'];
 export const KINDS = ['device', 'browser', 'api'];
 
 /**
- * `kind` is the kind of the review adapter. An api review also keeps `log` (the snapshot of the log files when it
- * started) and `runs` (the test runs, by the person or by the agent).
+ * `kind` is the kind of the review adapter. An api review also keeps `log` (the snapshot of the log files, or the
+ * time a container's log is read from, when it started), `runs` (the test runs, by the person or by the agent) and the
+ * `stack` it reviews. A Supabase review also records, as `started_stack`, that the agent started the local stack.
  */
-export function newState(items, { autopilot = 'off', kind = 'device', log = null } = {}) {
+export function newState(items, { autopilot = 'off', kind = 'device', log = null, stack = null } = {}) {
   if (!AUTOPILOT_MODES.includes(autopilot)) throw new Error(`autopilot must be one of ${AUTOPILOT_MODES.join(', ')}`);
   if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(', ')}`);
   return {
     autopilot,
     kind,
-    ...(kind === 'api' ? { log, runs: [] } : {}),
+    ...(kind === 'api' ? { log, runs: [], ...(stack ? { stack } : {}) } : {}),
     envConfirmed: false,
     items: items.map((i) => ({ id: i.id, title: i.title, status: 'pending', note: null, precheck: null, auto: null })),
     captures: [],
@@ -158,13 +159,24 @@ export function recordRun(state, run) {
   const tests = run.tests === undefined ? undefined : Number(run.tests);
   if (tests !== undefined && (!Number.isInteger(tests) || tests < 0)) throw new Error('--tests is the number of tests that ran');
   state.runs ??= [];
+  // A pgTAP plan that was not completed is a failed run, whatever the exit code said.
+  const incomplete = run.incomplete === true;
   state.runs.push({
-    exit, by,
+    exit: incomplete && exit === 0 ? 1 : exit, by,
+    ...(incomplete ? { incomplete: true } : {}),
     ...(run.filter ? { filter: run.filter } : {}),
     ...(tests !== undefined ? { tests } : {}),
     ...(run.line !== undefined ? { line: Number(run.line) } : {}),
     ...(run.failing?.length ? { failing: run.failing } : {}),
   });
+  return state;
+}
+
+/** The agent started the local Supabase stack for this review, so it is the one to stop it. */
+export function markStackStarted(state) {
+  if (state.kind !== 'api' || state.stack !== 'supabase') throw new Error('started-stack is for a Supabase review');
+  assertDriving(state);
+  state.started_stack = true;
   return state;
 }
 
@@ -184,7 +196,9 @@ function assertProvedByRun(state, id) {
 export function runsSection(state) {
   const runs = state.runs ?? [];
   if (runs.length === 0) return '';
-  return ['## Test runs', '', ...runs.map((r) => `- by the ${r.by}${r.line ? ` for line ${r.line}` : ''}${r.filter ? `, filter \`${String(r.filter).replace(/`/g, "'")}\`` : ''}: exit ${r.exit}${r.tests !== undefined ? `, ${r.tests} test(s)` : ''}`), ''].join('\n');
+  const pg = state.stack === 'supabase';
+  const what = (r) => (r.tests !== undefined ? `, ${r.tests} ${pg ? 'assertion(s)' : 'test(s)'}` : (pg && r.by === 'person' ? ', no assertions counted' : ''));
+  return ['## Test runs', '', ...runs.map((r) => `- by the ${r.by}${r.line ? ` for line ${r.line}` : ''}${r.filter ? `, ${pg ? 'file' : 'filter'} \`${String(r.filter).replace(/`/g, "'")}\`` : ''}: exit ${r.exit}${what(r)}${r.incomplete ? ' (the plan was not completed)' : ''}`), ''].join('\n');
 }
 
 /** The agent's own result for a line, apart from the person's confirmation. Modes precheck and verify only. */

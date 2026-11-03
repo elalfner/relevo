@@ -1,0 +1,10 @@
+{
+ "lens": "security",
+ "stack": "supabase",
+ "case": "table-without-policy",
+ "description": "A migration creates a table in the exposed schema and never enables row level security.",
+ "expected": {
+  "lens": "security",
+  "finding": "row level security|RLS|polic"
+ }
+}

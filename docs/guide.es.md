@@ -18,7 +18,7 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | `in-review` | `/relevo:review <n>` para continuar; si algo falla, `/relevo:fix <n>` | la persona asignada |
 | `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub; o pon `relevo:ship` al issue | quien aprueba |
 | `needs-spec` | `/relevo:issue <n>`; si la pregunta necesita explorarse, antes `/relevo:think #<n>` | quien escribe la spec |
-| `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready` | la persona asignada |
+| `qa-failed` | `/relevo:fix <n>`; si la rama solo tiene la especificación, bórrala y vuelve a poner `ready`; si QA encontró algo que solo una persona puede aportar o decidir, `/relevo:issue <n>` después | la persona asignada |
 | `changes-requested` | `/relevo:fix <n>` | el autor |
 | `needs-reviewer` | ninguno: asigna un revisor, o pide a alguien que lo tome | quien escribe la spec |
 | `ship` | ninguno: el workflow de ship lo está fusionando; si se detiene, su comentario dice por qué y se quita la etiqueta | nadie |
@@ -40,6 +40,24 @@ El issue pasa a `changes-requested` y se avisa al autor. Ejecuta `/relevo:fix <n
 
 El issue pasa a `qa-failed` y se avisa a la persona asignada, con el primer hallazgo. Cuando la construcción en la nube fue rechazada tras los reintentos (o dejó tareas sin terminar), el trabajo no se pierde: la rama lo guarda como un commit `wip: rejected by QA`, y el comentario dice que es código que QA no aprobó. Ejecuta `/relevo:fix <n>`: toma el hallazgo de ese comentario como el defecto, así que no tienes que describirlo, y corre las comprobaciones que QA no pudo correr. Para repensar el issue, usa `/relevo:think` y luego `/relevo:issue <n>`. Si el comentario dice, en cambio, que no se construyó porque el runner no tiene una herramienta (por ejemplo `flutter`), el job de build se detuvo antes del agente y no se gastó ningún turno del modelo: activa el paso del toolchain en `relevo-go.yml`, quita `relevo:qa-failed` y vuelve a poner `ready`. Si el commit seguro rechazó el trabajo (una ruta protegida, un archivo restringido, un archivo fuera de la plataforma, un marcador o una posible credencial), no se sube nada y el comentario lo dice; entonces no hay rama que corregir: resuelve la causa que indica el comentario, quita `relevo:qa-failed` y vuelve a poner `ready`. Si la rama tiene código que escribiste tú, ejecuta `/relevo:fix <n>` y describe lo que encontró QA. Si solo tiene la especificación (la construcción falló antes de escribir código), borra la rama remota y vuelve a poner `ready`.
 
+### Quién lo rechazó: la puerta o uno de los revisores
+
+QA ya no es un solo agente. Primero un script (la **puerta**) ejecuta una sola vez el análisis, los tests y los escaneos, sin modelo; después cuatro revisores (las **lentes**) miran cada uno lo que le toca. El comentario nombra al que detuvo la construcción:
+
+| Dice | Qué significa | Qué hacer |
+|---|---|---|
+| la puerta está roja | falló el análisis, un test, el escaneo de marcadores temporales y credenciales o la comprobación de archivos restringidos; no corrió ningún revisor | `/relevo:fix <n>`; el comentario trae el final de la salida que falló |
+| automated validation could not run | falta una herramienta que el perfil necesita en el runner | instálala (el agente de desarrollo no puede); no se revisó nada |
+| `spec` | el código no hace lo que dice un escenario, una tarea, una decisión o una restricción del issue, o toca un archivo fuera de la plataforma, un archivo de configuración o una dependencia que el issue no permite | lee el hallazgo; `/relevo:fix <n>` o cambia el issue |
+| `security` | un problema de seguridad en el diff, con la línea que lo muestra | `/relevo:fix <n>` |
+| `code` | un test débil, un resto olvidado o lo que el perfil del stack lista como defecto | `/relevo:fix <n>` |
+| `interface` | el cambio rompe una regla de interfaz o no coincide con una referencia de diseño | `/relevo:fix <n>`. En el **último** intento este revisor solo aconseja: sus hallazgos no bloquean |
+| lens report invalid | un revisor no respondió con la forma esperada dos veces | vuelve a ejecutarlo; el código no tenía nada malo |
+
+Cuando la puerta está roja, el agente de desarrollo lo corrige antes de que corra cualquier revisor, y eso gasta uno de los intentos, así que el total sigue siendo `qa.retries + 1`.
+
+**Las notas consultivas.** Cuando la construcción pasa, QA todavía puede dejarte notas: los hallazgos del revisor `interface` en el último intento y los escenarios que solo una persona en un dispositivo puede confirmar. El comentario `built` dice cuántas hay y nombra el revisor de las tres primeras, y `/relevo:review` añade cada una al checklist, pendiente, con el revisor que dudó. Mira esas primero.
+
 ### Se acabó la cuota
 
 Una ejecución en la nube que se detiene por un límite de uso o un crédito vacío lo dice en el último comentario. El issue no se pierde: vuelve a poner `ready` más tarde, o constrúyelo en tu máquina con `/relevo:go <n> --local`. Con una suscripción la cuota se comparte con el uso interactivo de la misma cuenta, así que un día muy activo puede agotarla.
@@ -57,6 +75,27 @@ La etiqueta solo cuenta si quien la puso podía marcar el issue como `ready`: ac
 ### El issue volvió a needs-spec
 
 Lee el último comentario: dice qué falta. Si falta información, ejecuta `/relevo:issue <n>` y complétala. Si hay una pregunta abierta, decídela, antes con `/relevo:think #<n>` si necesitas explorar. Después vuelve a poner `ready`.
+
+El comentario dice por qué, y el build se detuvo antes de que empezara el agente, así que no se gastó ningún turno del modelo:
+
+- **`missing`**: no se pudo leer una referencia del issue (un archivo de diseño, un repositorio enlazado). Corrige la referencia o el acceso de `RELEVO_LINKS_TOKEN`.
+- **`inputs`**: el issue declara en su sección `External inputs` algo que no está: un archivo que no existe en la rama base o una variable que no está definida. Agrégalo, o escribe qué debe hacer el issue sin eso. Un secreto o una entrada manual que el job no puede comprobar no es motivo para detenerse: aparece en el aviso de entrega como `Inputs to confirm before you test`.
+- **`policy`**: una tarea de la especificación cambia una ruta protegida o un archivo restringido, o agrega una dependencia que el issue no permite. Agrega el manifiesto a `Allow-paths:` si la dependencia es intencional, o cambia la tarea. Una ejecución sin supervisión nunca edita un archivo protegido.
+
+### Una rama que tiene conflictos con la base
+
+`/relevo:review <n>` primero mezcla la rama base en la rama. Cuando hay archivos en conflicto, los conflictos dentro de las rutas que el cambio puede tocar se entregan al agente de desarrollo en su modo de integración; luego QA revisa el resultado y solo después se hace el commit del merge. Un conflicto en cualquier otro archivo, o uno que QA no acepta, termina con el merge abortado y sin cambios, y la revisión te dice qué archivos resolver tú. `/relevo:status` muestra, para una rama atrasada respecto a la base, si el merge tendría conflictos y en qué archivos.
+
+## Cómo leer la revisión de una vista previa
+
+Cuando `think` te muestra una vista previa en HTML, te dice el resultado de la revisión automática de cada elemento:
+
+- **pass**: se midió y está dentro del umbral.
+- **fail**: está fuera del umbral y `think` nombra el elemento. Corrige el archivo y revisa otra vez, como máximo dos veces; si sigue fallando ves la vista previa con el elemento que falla nombrado.
+- **not checked**: la revisión no pudo decidir (texto sobre una imagen, un degradado o un color parcialmente transparente). No es un pass: míralo tú.
+- **approximate**: un valor vino de una aproximación, como un color derivado por opacidad, así que la relación no es exacta.
+
+Si la máquina no tiene automatización de navegador, no se revisó nada y `think` lo dice; nunca muestra como revisada una vista previa que no lo fue. Una vista previa móvil es un boceto aproximado en un marco de teléfono: comprueba que el texto cabe, que los objetivos táctiles son suficientemente grandes y que el contraste se sostiene, y no dice nada de cómo se verá realmente la app. La revisión en el dispositivo es donde se decide la apariencia.
 
 ## Fix o un issue nuevo
 

@@ -7,7 +7,7 @@ Distributed as a Claude Code plugin named `relevo`:
 | Command | What it does |
 |---|---|
 | `/relevo:init` | Sets up config (including the [platforms and their stacks](stacks.md)), labels, branch protection and workflows (idempotent, shows a plan first) |
-| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `issue`. `grill-with-docs` is published so that only you can launch it, so when it is time `think` asks you to run `/grill-with-docs` in the same conversation. It writes no files: the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
+| `/relevo:think` | Prepares the context before any issue exists: it runs the `openspec-explore` skill and then the `grill-with-docs` skill, one after the other, in the same conversation. The skills do the work; `think` only chains them and hands off to `issue`. `grill-with-docs` is published so that only you can launch it, so when it is time `think` asks you to run `/grill-with-docs` in the same conversation. It writes nothing to the repository (the only files it ever writes are HTML previews, outside it, after your yes): the glossary entries and decision records it settles travel in the issue's `Documentation` section, so nobody has to commit them by hand |
 | `/relevo:issue` | Turns an idea into issues that pass the spec check: asks only what is missing, checks, shows, then creates (never starts a build). With an issue number it rewrites that issue instead, only while it is not queued, being built or built |
 | `/relevo:go` | Builds a ready issue: spec check, build, QA with one retry (runs automatically in the cloud). It verifies the issue text is the one that was approved, refuses protected paths, and says what to do when the branch already exists |
 | `/relevo:review` | Guided on-device review: the person drives, the agent captures and audits logs |
@@ -28,11 +28,26 @@ No arguments. Looks at the repository, proposes the platforms, the settings and 
 
 ### `/relevo:think [idea or #issue]`
 
-An idea, or the number of an issue that came back with an open question. It explores, then interviews you, and ends with the agreement that `/relevo:issue` turns into issues. It writes no file.
+An idea, or the number of an issue that came back with an open question. It explores, then interviews you, and ends with the agreement that `/relevo:issue` turns into issues. It writes nothing to the repository.
 
 ```text
 /relevo:think show who has a birthday today on the home screen
 /relevo:think #42
+```
+
+**When the idea has something you will see** (a screen, a form, a list) and the project has an interface, `think` adds an interface step between the exploration and the interview. It reads your design system from the paths in `design.system` (or asks you to confirm the ones it finds), shows you the table of tokens it read, asks only the appearance questions the conversation has not answered, and shows two or three options as text wireframes with their states: loading with and without data, empty, error, narrow width, long content. Each choice is recorded as a decision with its reason and the discarded options.
+
+For a stack with a web or mobile interface it can then offer HTML previews of the finalists. It asks first, naming a folder outside the repository, and writes nothing without a yes; the files are never committed. Before you see a preview, a script opens it in a headless browser, offline and without scripts, and checks overflow, text contrast and target size. A mobile preview is a labelled approximate sketch, not a render of the app.
+
+```text
+You:    /relevo:think a screen that lists the customer's orders
+Claude: I read the tokens from lib/theme (12 colours, 2 unresolved: the primary colour comes from a seed). What is your primary colour?
+You:    #1d4ed8
+Claude: Two options for the reload while rows are on screen. A: keep the rows and show a thin progress bar … B: dim the rows and show a spinner … (table of states for each)
+You:    A
+Claude: Recorded D4: A, because the rows stay readable; discarded B. May I write two previews to /tmp/relevo-previews/ (not committed)?
+You:    yes
+Claude: Checked both. Preview A: pass. Preview B: fail (the button is 40 dp, needs 48), fixed and checked again: pass.
 ```
 
 ### `/relevo:issue [what to build, the path of a saved agreement, or the number of an issue to update]`
@@ -67,7 +82,7 @@ Use the session when you want to watch and step in; use `--local` to leave it ru
 
 ### `/relevo:review [issue-number]`
 
-The number of a `built` issue. It starts the review on the device, in a browser or, for a backend such as Laravel, with the project's tests, shows a short brief, the shot list (none for a backend) and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
+The number of a `built` issue. It starts the review on the device, in a browser or, for a backend such as Laravel or Supabase, with the project's tests, shows a short brief, the shot list (none for a backend) and the checklist, and waits for you. You write `ok 1 2`, `fail 3 <what happened>`, `capture <name>`, `waive <n> <reason>` or `done`.
 
 ```text
 /relevo:review 42
@@ -95,7 +110,9 @@ The number of a `pr-open` issue whose pull request someone other than the author
 
 No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting. When a read from GitHub fails (for example a 403 on the repository variable that pauses the cloud), the report says which one under "Could not read" and that it may be incomplete, and an empty answer reads "Nothing is waiting on you. (from what could be read)".
 
-The daily digest posted by the digest workflow has the same content for the team, plus one line with the usage of the cloud runs of the last seven days when they left a usage marker ([what it counts](execution.md#what-a-cloud-run-reports)). `/relevo:status` itself does not show it.
+The daily digest posted by the digest workflow has the same content for the team, plus one line with the usage of the cloud runs of the last seven days when they left a usage marker ([what it counts](execution.md#what-a-cloud-run-reports)). `/relevo:status` itself does not show that line.
+
+`/relevo:status` and the digest also print, for the runs of the last seven days, how many ended in each outcome class and the seconds of each phase of a build, and say how many runs have no record ([what it counts](execution.md#what-a-cloud-run-reports)). For a branch that has fallen behind the base branch, the alert says whether merging the base would conflict and in which files; it asks the clone it runs in, changes nothing, and says it does not know when the git of that clone cannot tell (it needs git 2.38 or later).
 
 The digest also ends with the time of each stage of an issue, as the median of the stages that finished in the last seven days and how many they were, for example `Stages, last 7 days (median): gate 13 s (4), build 6 min (3), waiting for you 3 h (3), device review 24 h (2)`. [What it counts](execution.md#how-long-each-stage-takes).
 
@@ -144,6 +161,16 @@ A Laravel platform has no screen, so its review has no device, no browser and no
 - **The database matters.** Before it runs a test the review reads the database that `phpunit.xml` declares, never your `.env`. In-memory SQLite, which a new project uses, needs nothing; any other database needs your written confirmation that it is not production.
 - **A server is optional.** Add a `serve` block to the `review` block of `.relevo/stacks/laravel.md` ([Stacks and platforms](stacks.md)) and, with `precheck` or `verify`, the agent can start it on a free local port for the lines that need requests. Without it, no server is started.
 - **Missing dependencies stop it**: when there is no `vendor/`, the review gives the `composer install` command for you to run and installs nothing.
+
+## Reviewing a Supabase database
+
+A Supabase platform has no screen either, so its review has no device, no browser and no screenshot. The checklist has one line per scenario, and you still confirm every line.
+
+- **It only touches the local database.** The review runs `supabase test db` against the local containers, never with `--linked` or `--db-url`, and never runs `link`, `db push` or `db pull`, even when the folder is linked to a remote project. It does not read `.env` files or `supabase/.temp`, and it asks no confirmation about the database because it can only be the local one.
+- **With `review.autopilot` `off`** (the default) you run `supabase test db` in your terminal and tell the review the result: `ran <exit code>`. Then you write `ok` or `fail` for each line.
+- **With `precheck` or `verify`** the agent runs the pgTAP file in `supabase/tests/` that already covers each line, records the file, how many assertions ran and the exit code, and never writes a test. A file that does not exist or that ran no assertion proves nothing, and a line with no pgTAP file stays for you. The pull request says which runs were yours and which were the agent's.
+- **The audit reads the log of the database container since the review started**, `supabase_db_<project_id>`, and never restarts or empties it. A `throws_ok` catches its denial inside the test, so it is not written to the log: the proof that a policy denies is the recorded run and its assertions, not the log. A permission, row-level-security or constraint error that does reach the log is an expected denial, counted in the report and not a finding. A `FATAL`, a deadlock, an out-of-memory message or any other `ERROR` (a missing table, a syntax error) is a finding. A clean run with a quiet log is `REVIEW PASSED`, and no run at all is `REVIEW INCONCLUSIVE`.
+- **The local stack must be running.** If it is stopped, with `off` you run `supabase start`; with `precheck` or `verify` the agent lists `supabase start` in the plan of the walk and runs it only after you confirm, and stops it at the end only if it started it. A missing CLI, a stopped Docker or a missing `supabase/config.toml` stops the review with the command for you to run.
 
 ## Letting the agent help with the review
 

@@ -75,17 +75,21 @@ export function parseCodePointers(body) {
  */
 export function parseDesign(body) {
   const found = section(body, 'Design reference');
-  if (!found) return { present: false, references: [], code: 0, problems: [] };
+  if (!found) return { present: false, references: [], code: 0, blocks: [], problems: [] };
   let code = 0;
   let inFence = false;
   const references = [];
   const problems = [];
+  // The size of each fenced block of example code, in characters, fences included.
+  const blocks = [];
   found.text.split('\n').forEach((line) => {
     if (FENCE_RE.test(line)) {
-      if (!inFence) code += 1;
+      if (!inFence) { code += 1; blocks.push(0); }
+      blocks[blocks.length - 1] += line.length + 1;
       inFence = !inFence;
       return;
     }
+    if (inFence) blocks[blocks.length - 1] += line.length + 1;
     if (inFence || !/^\s*[-*+]\s+/.test(line)) return;
     const bullet = line.replace(/^\s*[-*+]\s+/, '').trim();
     const tick = bullet.match(/^`([^`]+)`\s*(?::\s*(.*))?$/);
@@ -118,7 +122,85 @@ export function parseDesign(body) {
     if (match === '') problems.push(`"${target}" does not say what must match (structure, spacing, typography, colour, states)`);
     references.push(ref);
   });
-  return { present: true, references, code, problems };
+  return { present: true, references, code, blocks, problems };
+}
+
+export const INPUT_KINDS = ['file', 'link', 'secret', 'variable', 'manual'];
+const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * The "External inputs" section: a bullet per input the work depends on, `- <kind>: <name>: <what it is for>`, with
+ * <kind> one of INPUT_KINDS. A name that has a colon or a slash (a path, `owner/repo:path`) is written in backticks.
+ *   file      a path of this repository, which must exist on the base branch when the build starts
+ *   link      `owner/repo:path` of a linked repository
+ *   secret    the name of a secret of the repository, in backticks; only its presence is ever checked
+ *   variable  the name of a variable of the repository, in backticks; only its presence is ever checked
+ *   manual    anything else that a person has to confirm (a key a customer must send, an account); it never blocks
+ * Returns { present, inputs: [{ kind, name, purpose, repo?, path? }], problems }.
+ */
+export function parseExternalInputs(body) {
+  const found = section(body, 'External inputs');
+  if (!found) return { present: false, inputs: [], problems: [] };
+  const inputs = [];
+  const problems = [];
+  let inFence = false;
+  found.text.split('\n').forEach((line) => {
+    if (FENCE_RE.test(line)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence || !/^\s*[-*+]\s+/.test(line)) return;
+    const bullet = line.replace(/^\s*[-*+]\s+/, '').trim();
+    if (/^<.*>$/.test(bullet.split(':')[0].trim())) return; // the placeholder of the template is reported as template text
+    const head = bullet.match(/^([A-Za-z]+)\s*:\s*(.*)$/);
+    if (!head) {
+      problems.push(`"${bullet.slice(0, 60)}" is not an input: write kind: name: what it is for`);
+      return;
+    }
+    const kind = head[1].toLowerCase();
+    if (!INPUT_KINDS.includes(kind)) {
+      problems.push(`"${bullet.slice(0, 60)}" has the kind "${head[1]}", which does not exist: use ${INPUT_KINDS.join(', ')}`);
+      return;
+    }
+    const rest = head[2].trim();
+    // A name is written in backticks so that it is never mistaken for a value (the credential scan reads
+    // `secret: <long text>` as an assignment).
+    if ((kind === 'secret' || kind === 'variable') && !rest.startsWith('`')) {
+      problems.push(`"${bullet.slice(0, 60)}": write the name of a ${kind} in backticks, so that it is never mistaken for a value`);
+      return;
+    }
+    const parts = rest.match(/^`([^`]+)`\s*(?::\s*(.*))?$/) ?? rest.match(/^([^:]+?)\s*(?::\s*(.*))?$/);
+    const name = (parts?.[1] ?? '').trim();
+    const purpose = (parts?.[2] ?? '').trim();
+    if (name === '') {
+      problems.push(`"${bullet.slice(0, 60)}" has no name after the kind`);
+      return;
+    }
+    const input = { kind, name, purpose };
+    if (kind === 'file' && leavesRepository(name)) {
+      problems.push(`"${name}" leaves the repository: use a path inside it`);
+      return;
+    }
+    if (kind === 'link') {
+      if (!REPO_FILE_RE.test(name)) {
+        problems.push(`"${name}" is not owner/repo:path`);
+        return;
+      }
+      const [repo, ...path] = name.split(':');
+      Object.assign(input, { repo, path: path.join(':') });
+      if (leavesRepository(input.path)) {
+        problems.push(`"${name}" leaves the repository: use a path inside it`);
+        return;
+      }
+    }
+    if ((kind === 'secret' || kind === 'variable') && !ENV_NAME_RE.test(name)) {
+      problems.push(`"${name}" is not a valid ${kind} name: use letters, digits and underscores`);
+      return;
+    }
+    if (purpose === '') problems.push(`"${name}" does not say what it is for`);
+    inputs.push(input);
+  });
+  return { present: true, inputs, problems };
 }
 
 /**
@@ -228,5 +310,6 @@ export function parseIssueBody(body) {
 
   const design = parseDesign(body);
   const codePointers = parseCodePointers(body);
-  return { design, codePointers, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
+  const externalInputs = parseExternalInputs(body);
+  return { design, codePointers, externalInputs, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
 }

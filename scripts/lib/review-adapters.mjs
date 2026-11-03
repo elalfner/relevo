@@ -11,9 +11,11 @@ const ADAPTERS = {
   'vue/web': { kind: 'browser', log: 'the browser runner', capture: 'capture(name, check) of the browser runner', driver: 'playwright', needs: ['playwright'] },
   // A stack with no targets is keyed `<stack>/-`: a backend has nothing to drive and nothing to capture, only tests and a log.
   'laravel/-': { kind: 'api', log: 'storage/logs', capture: null, driver: 'php artisan test', needs: ['php', 'composer'] },
+  // Supabase: the tests are pgTAP files run by the CLI against the local containers, and the log is the database container's.
+  'supabase/-': { kind: 'api', log: 'docker:supabase_db_{project_id}', capture: null, driver: 'supabase test db', needs: ['supabase', 'docker'] },
 };
 
-const EXISTING = 'flutter on android, flutter on web, vue on web and laravel (api)';
+const EXISTING = 'flutter on android, flutter on web, vue on web, laravel (api) and supabase (api)';
 const NEXT_STEP = `The adapters that exist are ${EXISTING}. The issue stays built. Open the pull request by hand after reading the diff, or ask for an adapter for this stack. A stack that has an adapter can tune its review in the "review" block of .relevo/stacks/<stack>.md.`;
 
 const NOT_AVAILABLE = {

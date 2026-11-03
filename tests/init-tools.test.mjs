@@ -59,7 +59,7 @@ test('project scope writes the plugin, the copies and a record of every file', (
   const r = installAntigravity({ packageRoot, scope: 'project', root, home: tmp(), ...fakeTools({ home: tmp() }) });
   assert.equal(r.code, 0, r.lines.join('\n'));
   const dir = pluginDirFor({ scope: 'project', root });
-  for (const p of ['plugin.json', 'skills/go/SKILL.md', 'agents/relevo-qa.md', 'scripts/go-plan.mjs', 'stacks', 'templates', 'LICENSE']) assert.ok(existsSync(join(dir, p)), p);
+  for (const p of ['plugin.json', 'skills/go/SKILL.md', 'agents/relevo-qa-code.md', 'scripts/go-plan.mjs', 'stacks', 'templates', 'LICENSE']) assert.ok(existsSync(join(dir, p)), p);
   const record = readRecord(dir);
   assert.equal(record.tool, 'antigravity');
   assert.equal(record.package, version);

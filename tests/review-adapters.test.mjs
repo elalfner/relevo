@@ -37,10 +37,17 @@ test('Scenario: Laravel - a stack with no targets is the api adapter, and the re
   assert.equal(adapterFor({ stack: 'laravel', target: 'api' }).supported, false);
 });
 
+test('Scenario: Supabase - a stack with no targets is the api adapter driven by supabase test db, and the review needs no autopilot', () => {
+  const a = adapterFor({ stack: 'supabase', target: null });
+  assert.deepEqual([a.supported, a.kind, a.driver, a.capture, a.needs, a.log], [true, 'api', 'supabase test db', null, ['supabase', 'docker'], 'docker:supabase_db_{project_id}']);
+  assert.equal(needsAutopilot(a), false);
+  assert.equal(adapterFor({ stack: 'supabase', target: 'web' }).supported, false);
+});
+
 test('Scenario: No adapter - the message names the adapters that exist, that the issue stays built and how to tune', () => {
-  const r = adapterFor({ stack: 'supabase', target: null }).reason;
+  const r = adapterFor({ stack: 'django', target: null }).reason;
   assert.match(r, /names no target to review/);
-  assert.match(r, /flutter on android.*vue on web.*laravel \(api\)/);
+  assert.match(r, /flutter on android.*vue on web.*laravel \(api\) and supabase \(api\)/);
   assert.match(r, /issue stays built/);
   assert.match(r, /"review" block of \.relevo\/stacks/);
 });

@@ -1,0 +1,2 @@
+192.168.107.1 2026-11-03 05:00:01.688 UTC [219] postgres@postgres ERROR:  syntax error at or near "tabel" at character 8
+192.168.107.1 2026-11-03 05:00:01.688 UTC [219] postgres@postgres STATEMENT:  create tabel public.broken (id int)

@@ -514,3 +514,40 @@ Run from this branch on the same project as above, with a `relevo.yml` of one pl
 - **A clean run, a quiet log**: `init` recorded 0 log files, the agent's run of one test (`--filter`, exit 0, 1 test) let `auto 1` mark the line, and the audit printed `REVIEW PASSED` with an empty slice.
 - **An error in the slice**: after a test that calls `Log::error`, the audit printed `REVIEW REJECTED` with the entry, and `decide` refused the pull request with "the log audit found problems", even with the person's agreement.
 - **Not tried**: the run from the sandbox with `npm pack github:elalfner/relevo#dev` (the branch is not on `dev`), a model-written review (the skill was followed by hand), `review.autopilot` `off` with a person, a `serve` block, and a database other than in-memory SQLite. Task 6.1 stays open for those.
+
+## Antigravity subagents: model and effort (spike S2 of `specialist-review-lenses`, documentation only)
+
+Read on 2026-11-02 from the Antigravity documentation; nothing was run, because no Antigravity is installed in the session.
+
+- **Model**: a custom subagent's frontmatter has `model` with the values `inherit` (default), `flash` or `pro`. It is a tier, not a model name.
+- **Effort**: no property in the frontmatter. `/effort` changes the effort of the active model for the whole session.
+- **Tools**: `tools` lists the tools of the subagent. The documentation warns that a misspelled name can make the subagent hang.
+- **Execution**: subagents run asynchronously in the background and inherit the permissions of the parent.
+- **Not tried**: launching a subagent with a model tier, and what the installed version does with an unknown frontmatter key.
+
+## What a Supabase test run leaves in the logs (task 1 of `supabase-review-adapter`)
+
+Date: 2026-11-03. Captured on a machine with Docker: Supabase CLI 2.122.0, Postgres 17.11, a fresh `supabase init` project with a table, two RLS policies and pgTAP files. The fixtures in `tests/fixtures/supabase/` are these captures (the README lists them). Tasks 1.2 and 1.3 are covered below; task 6.1 is the section below.
+
+- **Denials do not reach the log**: a `throws_ok` that provokes a permission or row-level-security error is caught inside the test, and the container log at the default level shows no `ERROR` for it. A passing run writes only `create extension if not exists pgtap` and `drop extension if exists pgtap`. The design's first risk applies: the audit cannot tell, from the log, that a policy denied anything; the recorded run is the only evidence.
+- **Errors outside `throws_ok` do reach the log**: an uncaught statement writes `ERROR:` and `STATEMENT:`. A failing assertion writes nothing (it is a result, not an error). A migration with a syntax error writes `ERROR:  syntax error at or near ...` and `STATEMENT:` (from `supabase db reset`, which also writes a thousand lines of startup, among them a `FATAL: role "postgres" does not exist`).
+- **Line format**: `<client ip> <timestamp> UTC [pid] <user>@<db> LOG|ERROR|STATEMENT:  ...`. Entries of the server itself have no client or user prefix.
+- **`supabase test db` output**: stdout carries the TAP summary, stderr carries `Connecting to local database...`, psql errors and `error running container: exit N`. A pass prints no `ok N` line, only `Files=F, Tests=N` and `Result: PASS`. A failure prints `# Failed test N: "name"` and `Failed K/M subtests`.
+- **Exit codes of `supabase test db`**: all files 1 when any fails; one file 0 when it passes; a file that does not exist 1 (`Cannot detect source`, a Perl trace); no files in `supabase/tests` 1 (`no pgTAP tests found`); a file with `plan(0)` or no assertion 1 (`No tests run!`, `skipped`); an incomplete plan 1 (`Bad plan`).
+- **Clock**: the host and the container agree to the second (`date -u` on both, same machine); `docker logs --since <ISO timestamp>` filtered as expected. Not tried: a host whose clock drifts from a remote Docker daemon.
+- **Container name and status**: `project_id = "<folder name>"` in `config.toml` gives `supabase_db_<project_id>`. `supabase status` exits 0 with the stack running and 1 with it stopped (`StatusDbInspectError: No such container: supabase_db_<project_id>`); its output is JSON.
+- **Port clash**: a second Supabase project on the machine makes `supabase start` fail on ports 54321-54324; `config.toml` ports must be changed. The preflight cannot tell this from "stack not running".
+- **Not tried**: `supabase start` with every default service (the capture excluded studio, realtime, storage, vector, edge-runtime and others, so the `realtime.schema_migrations` error at startup is an artifact).
+
+### Task 6.1: the review run by hand with `review.autopilot` `verify`
+
+Date: 2026-11-03. A project outside the repository with `relevo.yml` (one Supabase platform), the pgTAP file of the capture above and a change with three scenarios (an anonymous insert, the policies present, an empty list with no pgTAP file). The scripts were called in the order of the skill; no model drove the skill, so what a model does with it is still the follow-up of the workflow section.
+
+- **Worked as designed**: `review-adapter.mjs` and `stack-profile.mjs --role review` printed the Supabase defaults and notes; `api-preflight.mjs --stack supabase` exited 7 with the stack stopped and 0 running; `init` resolved the container `supabase_db_sbtest` from `config.toml`; `precheck` was refused with no run of the agent, and `precheck` and `auto` passed after a run with 4 assertions; the whole suite was recorded; `supabase-command.mjs` refused `--linked`; `git status --porcelain` showed no change from the runs; the audit gave `REVIEW PASSED` with a quiet log; `decide` refused the third line (no pgTAP file) until the person confirms it.
+- **Caught**: a migration with a syntax error applied by `supabase db reset` (`database-error`, with its statement), and a policy dropped so that the covering test failed (`test-failure` naming the failing assertion). A finding can be waived with a reason.
+- **Noise**: `supabase db reset` inside the slice writes `FATAL: role "postgres" does not exist` while it recreates the database, so the audit rejects with a `fatal` that the person has to waive. The capture also excluded the realtime service, which logs a `realtime.schema_migrations` error at startup; with the default stack that line may not appear.
+- **Not caught**: `auto` trusts that the pgTAP file asserts the `THEN` of the line; the script only checks that the run exited 0 with at least one assertion. A file that passes for the wrong reason proves the line.
+- **Order**: `started-stack` is refused until `confirm-env` has been recorded; the skill lists them in the other order.
+- **Not tried**: a model following the skill, a stack the review did not start itself being left running, and a remote Docker daemon.
+
+- **Existing failure, not from this change**: `playwrightFacts resolves Playwright from the folder of the platform, not from where the command runs` fails in `tests/doctor.test.mjs` before and after this change.

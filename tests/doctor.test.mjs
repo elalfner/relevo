@@ -900,9 +900,16 @@ test('Scenario: Vue without Playwright - doctor warns, names /relevo:init and gi
 });
 
 test('a stack without a driven review says so instead of staying silent', () => {
-  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  db:\n    stack: supabase\n    path: supabase\n' }));
+  const go = '---\nstack: go\ncommands:\n  analyze: go vet ./...\n  test: go test ./...\n  format: gofmt -w .\ntools: [go]\n---\n';
+  const r = autopilotChecks(autopilotFacts({ mode: 'precheck', platforms: '  svc:\n    stack: go\n    path: svc\n', files: { '.relevo/stacks/go.md': go } }));
   assert.equal(r[0].status, 'warn');
-  assert.match(r[0].message, /driven review of the stack supabase .* is not available/);
+  assert.match(r[0].message, /driven review of the stack go .* is not available/);
+});
+
+test('Supabase has an api adapter: with an autopilot doctor says the agent runs the pgTAP file, and does not warn', () => {
+  const r = autopilotChecks(autopilotFacts({ mode: 'verify', platforms: '  db:\n    stack: supabase\n    path: supabase\n' }));
+  assert.equal(r[0].status, 'pass');
+  assert.match(r[0].message, /running the test that covers it/);
 });
 
 test('Laravel has an api adapter: with an autopilot doctor says the agent runs the tests, and does not warn', () => {
@@ -1053,6 +1060,50 @@ test('Scenario: A toolchain that is only a comment - it counts as missing; the c
   assert.equal(toolchain(withGo('jobs:\n  build:\n    steps:\n      # - uses: subosito/flutter-action@v2\n')).status, 'fail');
   assert.equal(toolchain(withGo(GO_TEMPLATE)).status, 'pass');
   assert.equal(toolchain(withGo('steps:\n  - uses: subosito/flutter-action@v2\n')).status, 'pass', 'a project that installs it its own way, unguarded, passes');
+});
+
+// --- the install step (spec: init-doctor, "`doctor` warns when the dependencies are never installed")
+const readPlugin = (path) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
+const vuePlatform = (name = 'web') => ({ ...flutterPlatform({ name }), stack: 'vue', profile: resolveProfile({ platform: { stack: 'vue' }, pluginRoot: PLUGIN_ROOT, read: readPlugin }).profile });
+const installWarning = (over, name = 'app') => runChecks(over).find((r) => r.id === `automation.install.${name}`);
+
+test('Scenario: A workflow without an install step - a Vue platform gets a warning that names the platform and the step', () => {
+  assert.deepEqual(vuePlatform().profile.installed, ['node_modules']);
+  const warning = installWarning(withGo(GO_TEMPLATE, [vuePlatform()]), 'web');
+  assert.equal(warning.status, 'warn');
+  assert.match(warning.message, /no active step that installs the dependencies of platform web \(vue\).*node_modules.*every cloud build would stop there/);
+  assert.match(warning.fix, /guarded by needs\.decide\.outputs\.stack == 'vue'.*npm ci --ignore-scripts/);
+});
+
+test('Scenario: A workflow with the step - doctor says nothing about it, and a commented example does not count', () => {
+  const active = GO_TEMPLATE.replace('      # Install dependencies without package scripts', "      - if: needs.decide.outputs.stack == 'vue'\n        run: npm ci --ignore-scripts\n      # Install dependencies without package scripts");
+  assert.equal(installWarning(withGo(active, [vuePlatform()]), 'web'), undefined);
+  assert.equal(installWarning(withGo(GO_TEMPLATE, [vuePlatform()]), 'web').status, 'warn', 'the commented example in the template installs nothing');
+});
+
+test('the template leaves the install step to the project, shows how for each stack, and doctor warns until it is enabled', () => {
+  assert.equal(installWarning(withGo(GO_TEMPLATE)).status, 'warn', 'a Flutter platform is warned about until the step is active');
+  assert.match(GO_TEMPLATE, /#\s+run: flutter pub get/);
+  assert.match(GO_TEMPLATE, /#\s+run: composer install --no-scripts/);
+  const active = GO_TEMPLATE.replace(/^ {6}# {3}(- if: needs\.decide\.outputs\.stack == 'flutter')\n {6}# {5}(working-directory[^\n]*)\n {6}# {5}(run: flutter pub get)/m, '      $1\n        $2\n        $3');
+  assert.notEqual(active, GO_TEMPLATE, 'the fixture activates the Flutter example');
+  assert.equal(installWarning(withGo(active)), undefined);
+});
+
+test('Scenario: A stack that lists no paths - doctor makes no check', () => {
+  const noPaths = { ...vuePlatform(), profile: { ...vuePlatform().profile, installed: [] } };
+  assert.equal(installWarning(withGo(GO_TEMPLATE, [noPaths]), 'web'), undefined);
+});
+
+test('a global install is not an install of the dependencies of the platform', () => {
+  assert.equal(installWarning(withGo('steps:\n  - run: npm install --global @fission-ai/openspec\n', [vuePlatform()]), 'web').status, 'warn');
+  assert.equal(installWarning(withGo('steps:\n  - run: npm ci --ignore-scripts\n', [vuePlatform()]), 'web'), undefined);
+});
+
+test('a project that builds on machines only, or has no workflow text, gets no install warning', () => {
+  const none = healthy({ platformFacts: [vuePlatform()], workflows: { ...healthy().workflows, 'relevo-go.yml': { present: false, enabled: null } } });
+  assert.equal(installWarning(none, 'web'), undefined);
+  assert.equal(installWarning(healthy({ platformFacts: [vuePlatform()] }), 'web'), undefined);
 });
 
 test('Scenario: A project that builds on machines only - nothing is said about the toolchain', () => {
@@ -1566,6 +1617,16 @@ test('Scenario: Text and pin agree - the check passes', () => {
   assert.equal(w.status, 'pass');
 });
 
+test('Scenario: An older workflow - the text of the 0.12.0 template, which has no check before the agent, is a warning and never a failure', () => {
+  const old = readFileSync(new URL('./fixtures/workflows/relevo-go-0.12.0.yml', import.meta.url), 'utf8');
+  assert.ok(!old.includes('Check the issue before the agent'), 'the fixture is the template from before the check');
+  const stamp = (/^# relevo-template: (\d+\.\d+\.\d+)\s*$/m.exec(old) ?? [])[1];
+  assert.equal(stamp, '0.12.0');
+  const res = runChecks(healthy({ pluginPins: { 'relevo-go.yml': '0.13.0' }, pluginStamps: { 'relevo-go.yml': stamp } }));
+  assert.equal(res.find((r) => r.id === 'automation.workflow-text').status, 'warn', 'the doctor says the text is older than the scripts it runs');
+  assert.equal(exitCode(res), 0, 'and does not fail');
+});
+
 test('a stamp ahead of the pin is not a problem, and several files with the same fault are one result', () => {
   assert.equal(textOf({ pluginPins: { 'relevo-go.yml': '0.7.0' }, pluginStamps: { 'relevo-go.yml': '0.8.0' } }).status, 'pass');
   const wf = { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true }, 'relevo-sla.yml': { present: true, enabled: true } };
@@ -1938,6 +1999,62 @@ test('a serve command in a profile that is not tracked by git is reported', () =
   assert.equal(idIn(apiChecks(apiFacts({ files, tracked: true })), 'review.serve.api'), undefined);
 });
 
+// ---------- Supabase review (supabase-review-adapter)
+
+const SB = '  backend:\n    stack: supabase\n    path: backend\n';
+function sbFacts({ files = {}, statusFails = false, dockerFails = false, containers = 'supabase_db_shop\n' } = {}) {
+  const text = `limits:\n  run_max_cost: 5\nplatforms:\n${SB}`;
+  const all = { 'relevo.yml': text, ...files };
+  return gatherFacts({
+    tool: (name, args) => {
+      if (name === 'supabase' && args[0] === 'status' && statusFails) throw new Error('not running');
+      if (name === 'docker' && args[0] === 'info' && dockerFails) throw new Error('no daemon');
+      if (name === 'docker' && args[0] === 'ps') return containers;
+      return 'ok';
+    },
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in all || Object.keys(all).some((k) => k.startsWith(`${p}/`)), read: (p) => all[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const sbChecks = (f) => runChecks({ ...healthy(), ...f, config: f.config }).filter((r) => r.id.startsWith('review.'));
+const CONFIG = { 'backend/supabase/config.toml': 'project_id = "shop"\n' };
+
+test('Scenario: Stack stopped / Supabase ready - doctor notes a stopped stack and passes a running one', () => {
+  const stopped = sbChecks(sbFacts({ files: CONFIG, statusFails: true }));
+  assert.equal(idIn(stopped, 'review.supabase.backend.config').status, 'pass');
+  assert.equal(idIn(stopped, 'review.supabase.backend.stack').status, 'note');
+  assert.match(idIn(stopped, 'review.supabase.backend.stack').message, /asks before it runs `supabase start`/);
+  const running = sbChecks(sbFacts({ files: CONFIG }));
+  assert.equal(idIn(running, 'review.supabase.backend.stack').status, 'pass');
+  assert.equal(idIn(running, 'review.log.backend'), undefined);
+  assert.equal(idIn(running, 'review.api.backend.vendor'), undefined, 'a Supabase platform gets none of the Laravel checks');
+});
+
+test('Scenario: No config - doctor warns and names the folder', () => {
+  const r = idIn(sbChecks(sbFacts({ files: {} })), 'review.supabase.backend.config');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /no supabase\/config\.toml in backend/);
+  assert.match(r.fix, /cd backend && supabase init/);
+});
+
+test('Scenario: Container that does not exist - doctor warns while the stack runs', () => {
+  const r = sbChecks(sbFacts({ files: CONFIG, containers: 'supabase_db_other\n' }));
+  assert.equal(idIn(r, 'review.log.backend').status, 'warn');
+  assert.match(idIn(r, 'review.log.backend').message, /container supabase_db_shop, which does not exist/);
+});
+
+test('Scenario: Remote database in review.test - the profile is invalid and the review key is named', () => {
+  const repoProfile = '---\nstack: supabase\nreview:\n  test: supabase test db --linked\n---\n';
+  const f = sbFacts({ files: { ...CONFIG, '.relevo/stacks/supabase.md': repoProfile } });
+  const profile = runChecks({ ...healthy(), ...f, config: f.config }).find((r) => r.id === 'platform.backend.profile');
+  assert.equal(profile.status, 'fail');
+  assert.match(profile.message, /"review\.test" must not target a remote database/);
+});
+
+test('Scenario: Not a Supabase platform - doctor adds none of these checks', () => {
+  assert.deepEqual(apiChecks(apiFacts({ platforms: AP_VUE, files: {} })).filter((r) => r.id.startsWith('review.supabase.')), []);
+});
+
 // A stack the plugin does not ship: the profile is the file of the repository.
 const ownProfile = (over = {}) => ({ ...FLUTTER, stack: 'go', layers: ['repository'], commands: {}, tools: ['go'], targets: {}, ignored: [], ...over });
 const ownPlatform = (profileOver = {}, over = {}) => ({ name: 'app', stack: 'go', path: '.', targets: [], profile: ownProfile(profileOver), errors: [], tools: [], targetTools: [], repositoryLayerTracked: true, ...over });
@@ -2117,4 +2234,78 @@ test('Scenario: A workflow copied before the denials existed has no block - the 
 test('Scenario: A workflow for another agent has no Claude step - nothing is judged', () => {
   assert.equal(restrictedBlockState('name: x\njobs: {}\n'), null);
   assert.equal(restrictedBlockState(''), null);
+});
+
+// ---- the QA lenses (specialist-review-lenses)
+test('Scenario: Antigravity - doctor warns that an agent setting is not applied, names it, and does not fail', () => {
+  const r = runChecks(healthy({ config: { ...config, agent: { build: 'antigravity' }, agents_given: ['agents.qa.security.model'] } }));
+  const w = byId(r, 'agents.settings');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /agents\.qa\.security\.model is not applied with this agent/);
+  assert.equal(byId(runChecks(healthy({ config: { ...config, agent: { build: 'claude' }, agents_given: ['agents.dev.model'] } })), 'agents.settings'), undefined, 'Claude with every setting applied: no warning');
+});
+
+test('Scenario: Antigravity with settings - the only finding that the lenses add is the warning that the settings are not applied', () => {
+  const base = runChecks(healthy({ config: { ...config, agent: { build: 'antigravity' } }, lensAgentsMissing: [] }));
+  const given = runChecks(healthy({ config: { ...config, agent: { build: 'antigravity' }, agents_given: ['agents.dev.model', 'agents.qa.interface.effort'] }, lensAgentsMissing: [] }));
+  const ids = new Set(base.map((c) => c.id));
+  const added = given.filter((c) => !ids.has(c.id));
+  assert.deepEqual(added.map((c) => c.id), ['agents.settings']);
+  assert.equal(added[0].status, 'warn');
+  assert.equal(given.filter((c) => c.status === 'fail').length, base.filter((c) => c.status === 'fail').length, 'nothing new fails');
+});
+
+test('Scenario: A plugin without a lens agent - doctor names it and says to update the plugin', () => {
+  const missing = byId(runChecks(healthy({ lensAgentsMissing: ['security'] })), 'qa.lens-agents');
+  assert.equal(missing.status, 'fail');
+  assert.match(missing.message, /lacks the QA lens agent qa-security/);
+  assert.match(missing.fix, /update the plugin/);
+  assert.equal(byId(runChecks(healthy({ lensAgentsMissing: [] })), 'qa.lens-agents').status, 'pass');
+});
+
+test('the profile of each platform resolves for every lens', () => {
+  assert.equal(byId(runChecks(healthy()), 'qa.lens-profile.app')?.status ?? 'pass', 'pass');
+});
+
+test('Scenario: A stale reference - a file that still names relevo:qa is reported with what replaced it, and relevo:qa-code is not stale', () => {
+  const r = runChecks(healthy({ staleQaReferences: ['CLAUDE.md'] }));
+  const w = byId(r, 'qa.stale-reference.CLAUDE.md');
+  assert.equal(w.status, 'warn');
+  assert.match(w.fix, /relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface/);
+  const wf = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'allowed: relevo:qa and more' } } }));
+  assert.equal(byId(wf, 'qa.stale-reference.relevo-go.yml').status, 'warn');
+  const fine = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'relevo:qa-code relevo:qa-spec' } } }));
+  assert.equal(byId(fine, 'qa.stale-reference.relevo-go.yml'), undefined);
+});
+
+// ---- the interface (interface-decisions-upfront)
+test('Scenario: design.system points to a path that does not exist - a failure that names the key and the path', () => {
+  const r = runChecks(healthy({ designSystemMissing: [{ key: 'tokens', entry: 'lib/theme' }] }));
+  const check = byId(r, 'interface.design-system.tokens');
+  assert.equal(check.status, 'fail');
+  assert.match(check.message, /design\.system\.tokens points to "lib\/theme"/);
+  assert.equal(byId(runChecks(healthy({ designSystemMissing: [] })), 'interface.design-system.tokens'), undefined);
+});
+
+const ruleOf = (over = {}) => ({ id: 'brand-logo', category: 'brand', title: 'Logo', principle: 'p', applies: 'all', weight: 'advisory', check: 'person', core: false, touches: ['images'], ask: 'q', build: 'b', review: 'r', examples: [], source: { work: 'this project', numbers: [] }, ...over });
+
+test('Scenario: .relevo/interface.json - valid, with a missing field, or trying to lower a rule', () => {
+  const file = (rules) => JSON.stringify({ rules });
+  assert.equal(byId(runChecks(healthy({ interfaceFile: file([ruleOf()]) })), 'interface.rules-file').status, 'pass');
+  const missing = ruleOf();
+  delete missing.review;
+  const bad = runChecks(healthy({ interfaceFile: file([missing]) })).filter((x) => x.id === 'interface.rules-file');
+  assert.equal(bad[0].status, 'fail');
+  assert.match(bad[0].message, /lacks "review"/);
+  const lowered = runChecks(healthy({ interfaceFile: file([ruleOf({ id: 'color-contrast', weight: 'advisory', applies: 'all', core: true, category: 'accessibility' })]) })).filter((x) => x.id === 'interface.rules-file');
+  assert.equal(lowered[0].status, 'warn');
+  assert.match(lowered[0].message, /lowers the weight/);
+  assert.equal(byId(runChecks(healthy({ interfaceFile: '{nope' })), 'interface.rules-file').status, 'fail');
+  assert.equal(byId(runChecks(healthy({ interfaceFile: null })), 'interface.rules-file'), undefined);
+});
+
+test('Scenario: a platform with an interface and no browser automation - a note, never a failure', () => {
+  const r = runChecks(healthy({ interfaceBrowser: { app: false } }));
+  assert.equal(byId(r, 'interface.browser.app').status, 'warn');
+  assert.equal(byId(runChecks(healthy({ interfaceBrowser: { app: true } })), 'interface.browser.app'), undefined);
 });

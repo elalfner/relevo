@@ -84,3 +84,51 @@ test('Scenario: Branch already exists - the content of the branch decides the re
   assert.equal(recoveryForBranch('spec-only'), 'delete-branch');
   assert.equal(recoveryForBranch('empty'), 'delete-branch');
 });
+
+// ---- merge probe (build-preflight-gates, group 7)
+import { probeMerge } from '../scripts/lib/merge-probe.mjs';
+
+function mergeFixture() {
+  const w = fixture();
+  const commit = (branchName, from, path, text) => {
+    git(w, 'switch', '-q', '-c', branchName, from);
+    put(w, path, text);
+    git(w, 'add', '.');
+    git(w, 'commit', '-qm', branchName);
+    git(w, 'push', '-q', 'origin', branchName);
+    git(w, 'switch', '-q', 'main');
+  };
+  // main moves on: README.md changes, and a feature branch changes it too (conflict) or another file (clean).
+  commit('feature/41-conflicting', 'main', 'README.md', 'theirs\n');
+  commit('feature/42-clean', 'main', 'other.txt', 'x\n');
+  put(w, 'README.md', 'mine\n');
+  git(w, 'add', '.');
+  git(w, 'commit', '-qm', 'main moves');
+  git(w, 'push', '-q', 'origin', 'main');
+  return w;
+}
+const mergeWork = mergeFixture();
+const merge = (cwd, branch) => JSON.parse(spawnSync('node', [CLI, '--merge', 'main', branch], { cwd, encoding: 'utf8' }).stdout);
+
+test('Scenario: the base branch conflicts with the feature branch - conflict, with the files', () => {
+  assert.deepEqual(merge(mergeWork, 'feature/41-conflicting'), { result: 'conflict', files: ['README.md'] });
+});
+
+test('Scenario: the base branch merges cleanly - clean, and the tree is untouched', () => {
+  const before = git(mergeWork, 'status', '--porcelain');
+  assert.deepEqual(merge(mergeWork, 'feature/42-clean'), { result: 'clean', files: [] });
+  assert.equal(git(mergeWork, 'status', '--porcelain'), before);
+});
+
+test('Scenario: a git that cannot probe - unknown, never clean', () => {
+  assert.deepEqual(probeMerge(() => ({ status: 129, stdout: '' }), 'a', 'b'), { result: 'unknown', files: [] });
+  assert.deepEqual(probeMerge(() => { throw new Error('no git'); }, 'a', 'b'), { result: 'unknown', files: [] });
+});
+
+test('a branch that is not on the remote cannot be probed - unknown', () => {
+  assert.equal(merge(mergeWork, 'feature/99-nothing').result, 'unknown');
+});
+
+test('--merge needs a base and a branch', () => {
+  assert.equal(spawnSync('node', [CLI, '--merge', 'main'], { cwd: mergeWork, encoding: 'utf8' }).status, 2);
+});

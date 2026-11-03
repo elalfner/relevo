@@ -319,3 +319,58 @@ test('Scenario: Private linked repository in the cloud - the references are fetc
   assert.match(text, /GH_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(build, /RELEVO_LINKS_TOKEN: a read-only token \(issues, pull requests and contents\)[^]*never reaches the agent/);
 });
+
+// --- the check before the agent (spec: go, "A refused reference ends the run before the agent starts")
+const preflightStep = () => {
+  const build = jobText('build');
+  const from = build.indexOf('- name: Check the issue before the agent');
+  assert.ok(from > -1, 'the build job has the step');
+  return { build, from, step: build.slice(from, build.indexOf('# relevo:agent-step begin')) };
+};
+
+test('Scenario: A reference cannot be read - the check step runs after the fetch and before the agent, and ends the job so no agent step runs', () => {
+  const { build, from, step } = preflightStep();
+  assert.ok(build.indexOf('- name: Fetch the references of the issue') < from, 'after the fetch');
+  assert.ok(from < build.indexOf('# relevo:agent-step begin'), 'before the agent');
+  assert.match(step, /build-preflight\.mjs/);
+  assert.match(step, /--stage issue/);
+  assert.match(step, /--manifest "\$RELEVO_REFERENCES"/, 'it reads what the fetcher refused');
+  assert.match(step, /render-message\.mjs" needs_spec/, 'the comment is the needs-spec message');
+  assert.match(step, /--add-label relevo:needs-spec/);
+  assert.match(step, /exit 1\s*$/, 'the step ends the job after it commented, as the toolchain check does');
+});
+
+test('Scenario: An older workflow or package - without the script the step does nothing and the agent takes the needs-spec path itself', () => {
+  const { step } = preflightStep();
+  assert.match(step, /\[ -f "\$script" \] \|\| exit 0/);
+  assert.match(step, /if \[ "\$code" -gt 1 \]/, 'a check that cannot run never stops a build');
+  const skill = readFileSync(`${root}skills/go/SKILL.md`, 'utf8');
+  assert.match(skill, /take the `needs-spec` path described below with `reason` `missing`/, 'the agent still has the path');
+});
+
+test('Scenario: A secret is never shown - the step maps no secret and reads only the names of the variables', () => {
+  const { step } = preflightStep();
+  assert.doesNotMatch(step, /secrets\./, 'no secret is mapped into the step');
+  assert.doesNotMatch(step, /toJSON\(secrets\)/);
+  assert.match(step, /VARIABLES: \$\{\{ toJSON\(vars\) \}\}/);
+  assert.doesNotMatch(step, /RELEVO_LINKS_TOKEN|GH_LINKS_TOKEN/, 'the token for linked repositories stays in the fetch step');
+});
+
+test('the inputs that a person has to confirm are passed on to the hand-off and the check never prints a value', () => {
+  const { step } = preflightStep();
+  assert.match(step, /RELEVO_INPUTS_TO_CONFIRM=/);
+});
+
+test('the Antigravity workflow has the same step, because it is outside the blocks of the agent', async () => {
+  const { agentWorkflow } = await import('../scripts/lib/agent-workflow.mjs');
+  const blocks = readFileSync(`${root}templates/agents/antigravity-step.yml`, 'utf8');
+  const rendered = agentWorkflow(workflow, 'build', blocks);
+  assert.ok(rendered.includes('- name: Check the issue before the agent'));
+  assert.ok(rendered.indexOf('- name: Check the issue before the agent') < rendered.indexOf('- name: Install the Antigravity CLI'));
+});
+
+test('the usage step gives the run-usage script the folder of the run, so phases and class reach the record', () => {
+  const step = workflow.slice(workflow.indexOf('- name: Report what the run used'), workflow.indexOf('- name: Report a run that ended without an outcome', workflow.indexOf('- name: Report what the run used')));
+  assert.match(step, /--progress-dir "?\$RELEVO_PROGRESS_DIR/);
+  assert.match(step, /continue-on-error: true/);
+});

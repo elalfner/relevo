@@ -1,0 +1,10 @@
+{
+ "lens": "spec",
+ "stack": "vue",
+ "case": "task-without-implementation",
+ "description": "A task is checked off and the code that it names does not exist.",
+ "expected": {
+  "lens": "spec",
+  "finding": "1\\.2|task|reset"
+ }
+}

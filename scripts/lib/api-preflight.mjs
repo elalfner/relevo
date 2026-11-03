@@ -68,3 +68,24 @@ export function apiPreflight({ cwd }, deps) {
   if (!database.safe) return { ...base, ok: true, check: 'database', detail: database.reason, database, needs_confirm: true, exit: EXIT.database };
   return { ...base, ok: true, check: 'ready', detail: 'PHP and Composer found, dependencies installed, tests use in-memory SQLite', database, exit: 0 };
 }
+
+// Exit codes of the Supabase review: 3 a tool is missing, 4 Docker does not answer, 5 no supabase/config.toml, 7 the local
+// stack is stopped. 7 is not a stop: the review asks before it starts the stack.
+export const SUPABASE_EXIT = { tool: 3, docker: 4, config: 5, stack_stopped: 7 };
+
+/**
+ * Check a Supabase review. deps: which(tool) -> boolean, exists(path), run(command, args) -> { status }.
+ * Returns { ok, check, detail, install, exit }. It reads no environment file and starts nothing.
+ */
+export function supabasePreflight({ cwd }, deps) {
+  const base = { install: null };
+  const missing = ['supabase', 'docker'].filter((t) => !deps.which(t));
+  if (missing.length > 0) {
+    const install = missing.includes('supabase') ? 'brew install supabase/tap/supabase (or see https://supabase.com/docs/guides/cli)' : 'install Docker (https://docs.docker.com/get-docker/)';
+    return { ...base, ok: false, check: 'tool', detail: `${missing.join(' and ')} not found on the path`, install, exit: SUPABASE_EXIT.tool };
+  }
+  if (!deps.exists(`${cwd}/supabase/config.toml`)) return { ...base, ok: false, check: 'config', detail: 'there is no supabase/config.toml in this folder: run it from the folder of the platform, or run supabase init', install: 'supabase init', exit: SUPABASE_EXIT.config };
+  if (deps.run('docker', ['info']).status !== 0) return { ...base, ok: false, check: 'docker', detail: 'the Docker daemon does not answer: start Docker', install: 'start Docker Desktop or the Docker service', exit: SUPABASE_EXIT.docker };
+  if (deps.run('supabase', ['status']).status !== 0) return { ...base, ok: true, check: 'stack_stopped', detail: 'the local Supabase stack is not running', install: 'supabase start', exit: SUPABASE_EXIT.stack_stopped };
+  return { ...base, ok: true, check: 'ready', detail: 'the Supabase CLI and Docker are there and the local stack is running', exit: 0 };
+}
