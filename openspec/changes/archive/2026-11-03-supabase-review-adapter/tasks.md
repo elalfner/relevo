@@ -3,8 +3,8 @@
 ## 1. Check what the design leaves unverified
 
 - [x] 1.1 On a project from `supabase init` with a table, an RLS policy and a pgTAP file that tests the policy with `throws_ok` and `set role anon`, run `supabase start` and `supabase test db`; read `docker logs supabase_db_<project_id>` for the run, for a deliberately failing assertion and for a migration with a syntax error, and note in `docs/pilot-findings.md` which lines each writes at the default log level; keep the outputs as fixtures for the audit tests. If Docker is not available in the sandbox, say so there and write the fixtures from the Supabase CLI and pgTAP documentation, marked as not captured from a run.
-- [ ] 1.2 (open: the sandbox has no Docker daemon, see docs/pilot-findings.md) On the same project, record the exit code and the TAP output of `supabase test db` for: all files, one file, a file that does not exist, a file with no assertion and a plan that is not completed; and compare the clock of `docker logs --since` with the host's. The shapes go into the parser of task 3.2 and the timestamp rule of task 3.1.
-- [ ] 1.3 (open: needs a running stack) Read `supabase/config.toml` of the fresh project for `project_id` and check how the container name is built (`supabase_db_<project_id>`), and what `supabase status` exits with when the stack is stopped and when it runs; the values go into tasks 2.1 and 4.1.
+- [x] 1.2 (done 2026-11-03, see docs/pilot-findings.md) On the same project, record the exit code and the TAP output of `supabase test db` for: all files, one file, a file that does not exist, a file with no assertion and a plan that is not completed; and compare the clock of `docker logs --since` with the host's. The shapes go into the parser of task 3.2 and the timestamp rule of task 3.1.
+- [x] 1.3 (done 2026-11-03, see docs/pilot-findings.md) Read `supabase/config.toml` of the fresh project for `project_id` and check how the container name is built (`supabase_db_<project_id>`), and what `supabase status` exits with when the stack is stopped and when it runs; the values go into tasks 2.1 and 4.1.
 
 ## 2. The adapter and the profile
 
@@ -34,7 +34,7 @@
 
 ## 6. Whole change
 
-- [ ] 6.1 (open: needs Docker) Run the review by hand on the project of task 1.1 with `review.autopilot` `verify`, calling the scripts in the order the skill gives, and record in `docs/pilot-findings.md` what was caught and what was not tried; if Docker is not available in the sandbox, record that this is a follow-up for a machine that has it.
+- [x] 6.1 (done 2026-11-03, see docs/pilot-findings.md) Run the review by hand on the project of task 1.1 with `review.autopilot` `verify`, calling the scripts in the order the skill gives, and record in `docs/pilot-findings.md` what was caught and what was not tried; if Docker is not available in the sandbox, record that this is a follow-up for a machine that has it.
 - [ ] 6.2 (`openspec validate --all` passes; `npm test` has one failure that exists without this change, the `playwrightFacts` test in `tests/doctor.test.mjs`) Run `npm test` and `openspec validate --all` and verify both pass.
 
 ## Workflow follow-up
