@@ -32,7 +32,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - The result in a real cloud run (queued issues start right after a `built`) has to be checked by a person; the tests cover the shape of the workflow, not GitHub's behavior.
 - A repository with an older `relevo-go.yml` keeps the delay until it takes the new file.
 - The gate of `relevo-go.yml` (`HAS_CREDENTIAL`) still passes with either secret, so a repository whose secret and line disagree starts the build and fails inside the action; `doctor` and `init` now report it before, but the gate does not stop it.
-- The switch of the credential line was checked with the real template and the historical 0.12.0 workflow, and the plan with the same wiring as `scripts/init.mjs`; the command itself has not been run against a real repository.
+- The switch of the credential line was checked with the real template and the historical 0.12.0 workflow, and the plan with the same wiring as `scripts/init.mjs`; the command was afterwards run against a real repository, where it behaved as the plan said.
 - A workflow edited so far that it has neither credential line active is not judged by `doctor`, and `init` leaves it as the merge gives it.
 
 ## [0.14.2] - 2026-11-04
