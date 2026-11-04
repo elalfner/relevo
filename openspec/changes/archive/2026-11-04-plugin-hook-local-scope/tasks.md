@@ -26,6 +26,6 @@
 
 ## 5. Check in a real web session
 
-- [ ] 5.1 In a new web session on the sandbox repository, with the version that has this change and the updated hook: after the first message `/relevo:doctor` is available, the plugin is listed at the local scope, `git status` shows no change, and no pull request is opened
+- [x] 5.1 In a new web session on the sandbox repository, with the version that has this change and the updated hook: after the first message `/relevo:doctor` is available, the plugin is listed at the local scope, `git status` shows no change, and no pull request is opened (done on 2026-11-04 with 0.14.2: the hook of the sandbox branch was updated by `web-hook.mjs --hook plugin`, a new web session ran `/relevo:doctor` from the plugin 0.14.2 with no warning about the hook or its scope, and no pull request or branch appeared in the sandbox)
 - [x] 5.2 Run `/relevo:init` on a repository with the older hook: the plan shows the update, and a second run reports it as in place (done in a web session: the plan line, the update by `web-hook.mjs --hook plugin`, then the line as in place and "nothing changed")
 - [x] 5.3 Run `npm test`; the only failure allowed is the one that comes from a preinstalled Playwright in the environment
