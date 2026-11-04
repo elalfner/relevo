@@ -374,3 +374,27 @@ test('the usage step gives the run-usage script the folder of the run, so phases
   assert.match(step, /--progress-dir "?\$RELEVO_PROGRESS_DIR/);
   assert.match(step, /continue-on-error: true/);
 });
+
+test('Scenario: A finished build starts the queue - a job of its own, after the labels, with the only actions: write', () => {
+  const requeue = jobText('requeue');
+  assert.match(requeue, /needs: \[decide, build\]/);
+  assert.match(requeue, /if: always\(\) && vars\.RELEVO_CLOUD_GO != 'off' && \(needs\.build\.result != 'skipped' \|\| needs\.decide\.result == 'failure'\)/);
+  assert.match(requeue, /gh workflow run relevo-queue\.yml --repo "\$GITHUB_REPOSITORY"/);
+  assert.match(requeue, /continue-on-error: true/);
+  assert.match(requeue, /::warning::The queue was not started/);
+  assert.match(requeue, /permissions:\n {6}actions: write\n/);
+  assert.doesNotMatch(requeue, /uses:|contents:|issues:|pull-requests:/, 'no checkout, no other permission');
+});
+
+test('Scenario: Permissions of the jobs - only the job that starts the queue can write actions, never the one that runs the agent', () => {
+  assert.doesNotMatch(workflow.slice(0, workflow.indexOf('\njobs:')), /^\s*actions:/m);
+  assert.doesNotMatch(jobText('decide'), /^\s*actions:/m);
+  assert.doesNotMatch(jobText('build'), /^\s*actions:/m);
+  assert.equal([...workflow.matchAll(/^\s+actions: write$/gm)].length, 1);
+});
+
+test('Scenario: No build ran - a decision that builds nothing does not start the queue', () => {
+  const cond = /if: (always\(\) && .*)$/m.exec(jobText('requeue'))[1];
+  assert.match(cond, /needs\.build\.result != 'skipped'/);
+  assert.doesNotMatch(cond, /needs\.decide\.result != 'skipped'|success\(\)/);
+});
