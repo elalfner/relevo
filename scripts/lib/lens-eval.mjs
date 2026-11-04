@@ -143,7 +143,8 @@ export function estimate(cases, opts, root = process.cwd()) {
   return { runs, inTok, outTok, usd };
 }
 
-export async function evaluate(cases, opts, runner, root = process.cwd()) {
+// `now` is the clock in milliseconds; tests pass a fake one.
+export async function evaluate(cases, opts, runner, root = process.cwd(), now = Date.now) {
   const lensInfo = {};
   const rows = [];
   for (const c of cases) {
@@ -152,20 +153,24 @@ export async function evaluate(cases, opts, runner, root = process.cwd()) {
     lensInfo[lens].text ??= lensPrompt(lensInfo[lens].body, opts, root);
     const row = { id: c.id, lens };
     for (const variant of ['bad', 'good']) {
+      const started = now();
       const r = await runner({ lens, model: lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]), lensText: lensInfo[lens].text, stack: c.meta.stack, files: c[variant] });
-      row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0, report: r.report };
+      const seconds = Math.max(0, (now() - started) / 1000);
+      row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0, seconds, report: r.report };
     }
     rows.push(row);
   }
   const per = {};
   for (const r of rows) {
-    const p = (per[r.lens] ??= { cases: 0, found: 0, falsePositives: 0, cost: 0 });
+    const p = (per[r.lens] ??= { cases: 0, found: 0, falsePositives: 0, cost: 0, seconds: 0 });
     p.cases++;
     if (r.bad.matched) p.found++;
     if (r.good.rejected) p.falsePositives++;
     p.cost += r.bad.cost + r.good.cost;
+    p.seconds += r.bad.seconds + r.good.seconds;
   }
-  return { rows, per, total: Object.values(per).reduce((s, p) => s + p.cost, 0) };
+  const sum = (key) => Object.values(per).reduce((s, p) => s + p[key], 0);
+  return { rows, per, total: sum('cost'), totalSeconds: sum('seconds') };
 }
 
 // Stub that spends nothing: rejects every bad variant with the expected text, passes every good one.
@@ -196,9 +201,9 @@ export function renderReport(result, opts, est, date) {
   const lines = [`# Lens evaluation ${date}`, '', `- Mode: ${opts.dryRun ? 'dry run (stub, no model)' : 'real'}`,
     `- Rule removed: ${opts.withoutRule ?? 'none'}`, `- Skill added: ${opts.withSkill ?? 'none'}`,
     `- Estimated cost: ${est.usd == null ? `${est.inTok} input tokens, ${est.outTok} output tokens (no prices given)` : `${est.usd.toFixed(2)} USD`}`, '',
-    '| Lens | Defects found | Good variants flagged | Cost (USD) |', '| --- | --- | --- | --- |'];
-  for (const [lens, p] of Object.entries(result.per)) lines.push(`| ${lens} | ${p.found}/${p.cases} | ${p.falsePositives}/${p.cases} | ${p.cost.toFixed(2)} |`);
-  lines.push('', `Total cost: ${result.total.toFixed(2)} USD`, '', '## Cases', '');
+    '| Lens | Defects found | Good variants flagged | Cost (USD) | Time (s) | Time per run (s) |', '| --- | --- | --- | --- | --- | --- |'];
+  for (const [lens, p] of Object.entries(result.per)) lines.push(`| ${lens} | ${p.found}/${p.cases} | ${p.falsePositives}/${p.cases} | ${p.cost.toFixed(2)} | ${p.seconds.toFixed(1)} | ${(p.seconds / (2 * p.cases)).toFixed(1)} |`);
+  lines.push('', `Total cost: ${result.total.toFixed(2)} USD`, `Total time: ${(result.totalSeconds ?? 0).toFixed(1)} s (the lenses run one at a time, so this is the time of one pass over every case)`, '', '## Cases', '');
   for (const r of result.rows) lines.push(`- ${r.id}: bad ${r.bad.matched ? 'found' : r.bad.rejected ? 'rejected for another reason' : 'missed'}; good ${r.good.rejected ? 'FLAGGED' : 'passed'}`);
   // What the lens said where the result is not the expected one, to tell a fault of the lens from a fault of the fixture.
   const cut = (t) => String(t ?? '').trim().slice(0, 1500);
