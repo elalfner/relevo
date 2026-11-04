@@ -187,3 +187,48 @@ test('a merge that drops the relevo:restricted block is not safe to write', asyn
   const r = upgradeWorkflow({ ours: dropped, current: { version: '0.2.0', template: tpl, blocks: null }, candidates: [{ version: '0.1.0', template: dropped, blocks: null }], render: (t) => t, merge: () => ({ ok: true, text: dropped }) });
   assert.notEqual(r.status, 'update');
 });
+
+// ---- the credential line of an installed go workflow
+
+const go = readFileSync(`${root}templates/workflows/relevo-go.yml`, 'utf8');
+const old = readFileSync(`${root}tests/fixtures/workflows/relevo-go-0.12.0.yml`, 'utf8');
+const installed = (text) => withRestricted(text, restrictedList({}));
+const plan = (ours, credential, versions = { '0.12.0': old, '9.9.9': go }) => planUpgrades({
+  files: ['relevo-go.yml'], ours: { 'relevo-go.yml': ours }, templates: { 'relevo-go.yml': go }, agentBlocks: null, labels: undefined, build: 'claude', credential,
+  source: { versions: () => Object.keys(versions), read: (v) => versions[v] }, restricted: restrictedList({}),
+})['relevo-go.yml'];
+const subscriptionOf = (text) => text.replace(/^( {10})anthropic_api_key: .*$/m, '$1# anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}').replace(/^( {10})# claude_code_oauth_token:/m, '$1claude_code_oauth_token:');
+
+test('Scenario: Switch an installed workflow - the API key line becomes the token line, shown as a diff', () => {
+  const r = plan(installed(old), 'subscription');
+  assert.equal(r.status, 'update');
+  assert.match(r.text, /^ {10}claude_code_oauth_token: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}/m);
+  assert.doesNotMatch(r.text, /^ {10}anthropic_api_key:/m);
+  assert.match(unifiedDiff(installed(old), r.text), /^\+ {10}claude_code_oauth_token:/m);
+});
+
+test('Scenario: A subscription workflow is kept - init runs again with no answer or the same one, and nothing changes', () => {
+  const ours = subscriptionOf(installed(go));
+  assert.match(ours, /^ {10}claude_code_oauth_token:/m);
+  assert.equal(plan(ours, null).status, 'current');
+  assert.equal(plan(ours, 'subscription').status, 'current');
+  const older = plan(subscriptionOf(installed(old)), null);
+  assert.equal(older.status, 'update');
+  assert.match(older.text, /^ {10}claude_code_oauth_token:/m, 'an update of the template keeps the token line');
+  assert.doesNotMatch(older.text, /<<<<<<<|^ {10}anthropic_api_key:/m);
+});
+
+test('an explicit answer for the other mode switches a line the person had switched', () => {
+  const r = plan(subscriptionOf(installed(go)), 'api_key');
+  assert.equal(r.status, 'update');
+  assert.match(r.text, /^ {10}anthropic_api_key:/m);
+});
+
+test('Scenario: Historical bases - the base chosen does not depend on the credential', () => {
+  for (const ours of [installed(old), subscriptionOf(installed(old))]) {
+    const bases = ['api_key', 'subscription', null].map((credential) => plan(ours, credential).from);
+    assert.equal(new Set(bases).size, 1, `the same base in every mode (${bases})`);
+    assert.equal(bases[0], '0.12.0');
+    ['api_key', 'subscription'].forEach((credential) => assert.notEqual(plan(ours, credential).status, 'conflict'));
+  }
+});

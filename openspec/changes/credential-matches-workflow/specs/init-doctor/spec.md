@@ -66,7 +66,7 @@ When `relevo-go.yml` exists and the credential in force differs from its active 
 
 #### Scenario: Historical bases
 - **WHEN** the closest published base is an older template
-- **THEN** the base is rendered with the same credential as the current template, so the choice of the base does not change
+- **THEN** the base is rendered with the credential line the file has today, so the choice of the base does not depend on the credential in force
 
 ### Requirement: The guide gives the command that stores a subscription token whole
 Where `init` and the guide tell the person to store `CLAUDE_CODE_OAUTH_TOKEN`, they SHALL give the literal command `pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN` and say that `claude setup-token` prints the token over two lines and that an incomplete token gives the same authentication error as a missing one.

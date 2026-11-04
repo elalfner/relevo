@@ -18,6 +18,16 @@ export function credentialMode(secretNames = []) {
   return { mode: 'none', usable: false };
 }
 
+/**
+ * The credential the `go` workflow passes to the action, read from its text: the line that is not commented out.
+ * 'subscription' | 'api_key' | null (neither line is active, for example after a hand edit).
+ */
+export function activeCredentialLine(text = '') {
+  if (/^\s*claude_code_oauth_token:/m.test(text)) return 'subscription';
+  if (/^\s*anthropic_api_key:/m.test(text)) return 'api_key';
+  return null;
+}
+
 /** Does the cloud build? The go workflow is on the default branch and the variable is not `off`. */
 export function cloudBuilds({ workflowPresent, variable = null }) {
   return Boolean(workflowPresent) && String(variable ?? '').trim().toLowerCase() !== 'off';

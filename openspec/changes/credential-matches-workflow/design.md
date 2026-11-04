@@ -28,8 +28,8 @@ See `proposal.md` for the motivation. What exists today and shapes the approach:
 **1. The credential in force has a fixed order: explicit answer, then the only secret that exists, then the active line of an installed workflow, then `api_key`.**
 The secret outweighs the installed line because in the reported case the line is what is wrong and the secret is what the person did. The installed line outweighs the default so that a run with both secrets, or none, cannot undo a deliberate switch. Alternative: take the line first. Rejected: it would leave the reported repository as it is and `init` would have nothing to offer.
 
-**2. `render` in `planUpgrades` applies `credentialLine` with the credential in force, to the current template and to every base.**
-All three sides of the merge must share the credential, otherwise it is a difference in every run. This is one change in one function. Alternative: switch the line after the merge on `ours`. Rejected: the merge result then hides the switch from the diff the person confirms, and a new template that moves the credential lines would conflict silently.
+**2. `planUpgrades` renders the published bases with the credential line the file has today, and the current template with the credential in force.**
+If all three sides shared one credential, the merge would read the file's line as the person's own edit and keep it, so nothing would ever switch (found while implementing). With the bases following the file, a difference between the file and the credential in force is a change of the template side, which the merge applies; a line the person switched is the same on the base and the file, so it is kept; and the choice of the base (`chooseBase`) no longer depends on the credential. A text with no credential lines (an older base, another workflow) is left as it is. Alternative: switch the line after the merge on `ours`. Rejected: the merge result then hides the switch from the diff the person confirms, and a new template that moves the credential lines would conflict silently.
 
 **3. `credentialLine` accepts a workflow that already has the other mode active.**
 Today it throws when the exact default lines are missing. For a switched file it needs to recognise either state by the active-line pattern that `doctor` already uses, and to throw only when neither line exists. The active-line detection moves to a shared helper so that `doctor` and `init` cannot disagree on what "active" means.
@@ -45,7 +45,7 @@ The literal `pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN
 
 ## Risks / Trade-offs
 
-- [`render` is shared by every merge: a base rendered with a different credential could change which base is closest] → render bases and current with the same credential, and run the merge test over every template in `tests/fixtures/workflows/` for both modes.
+- [The merge is shared by every update: a base rendered with a different credential could change which base is closest] → the bases follow the file's own line, so the choice does not depend on the credential; the merge test runs over the historical template in `tests/fixtures/workflows/` for both modes.
 - [Deducing from a secret name could surprise a person who stores both secrets for a reason] → with both, nothing is deduced and the installed line decides.
 - [The warning of `doctor` assumes the workflow text was read] → `gatherFacts` already keeps it; when it could not be read the check says nothing instead of guessing.
 - [A person on a self-hosted runner or a fork has secrets that the listing cannot see] → unchanged from today: `doctor` already treats an unlisted secret as unknown.

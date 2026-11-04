@@ -15,7 +15,7 @@ import { homedir } from 'node:os';
 import { gatherFacts, readOnlyGh, vueWebFacts, WORKFLOW_FILES } from './lib/doctor.mjs';
 import { findRepo, isRemote } from './lib/gh-web.mjs';
 import { ghClient } from './lib/gh-client.mjs';
-import { applyPlan, planInit, renderPlan, skipItems } from './lib/init.mjs';
+import { applyPlan, planInit, renderPlan, resolveCredential, skipItems } from './lib/init.mjs';
 import { findRestrictedFiles, restrictedList } from './lib/restricted-paths.mjs';
 import { planUpgrades, publishedTemplates, unifiedDiff } from './lib/workflow-upgrade.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
@@ -94,7 +94,7 @@ const upgrades = (file) => {
   try {
     const state = planUpgrades({
       files: [file], ours: current.workflows, templates: templates.workflows, agentBlocks: templates.agentBlocks,
-      labels: facts.config?.runner?.labels ?? answers.runnerLabels, build: answers.agentBuild ?? 'claude', from: arg('from') ?? null, source, restricted: restrictedList(facts.config),
+      labels: facts.config?.runner?.labels ?? answers.runnerLabels, credential: resolveCredential({ answer: answers.credential, secrets: facts.secrets, installed: current.workflows['relevo-go.yml'] }).credential, build: answers.agentBuild ?? 'claude', from: arg('from') ?? null, source, restricted: restrictedList(facts.config),
     })[file];
     return state.status === 'update' ? { ...state, diff: unifiedDiff(current.workflows[file], state.text) } : state;
   } catch (err) {

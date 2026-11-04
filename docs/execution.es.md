@@ -39,6 +39,7 @@ Un repositorio con el workflow de `go` pero sin `ANTHROPIC_API_KEY` ni `CLAUDE_C
 
 - Con una suscripción la cuota se comparte entre todas las ejecuciones y el uso interactivo de la cuenta dueña del token, por eso `/relevo:init` pone `limits.concurrent_agents` en 1.
 - El modo se deduce del nombre del secreto. Si existen los dos, `/relevo:doctor` avisa y dice cuál usa el workflow.
+- El secreto y la línea de credencial de `relevo-go.yml` (la que no está comentada) deben ser del mismo modo. Si solo existe un secreto y el workflow pasa el otro, una construcción en la nube se detiene sin credencial, así que `/relevo:doctor` avisa antes de la primera construcción y dice qué línea poner. `/relevo:init` cambia esa línea por ti, y respeta una que ya cambiaste.
 - Lee los términos vigentes de Anthropic sobre el uso automatizado de una suscripción, y el README de `claude-code-action`, antes de apoyar a un equipo en un token de suscripción. Relevo no los juzga; `/relevo:doctor` deja un recordatorio de una línea.
 
 ## Qué instala el build

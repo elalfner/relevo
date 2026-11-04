@@ -4,6 +4,16 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`/relevo:doctor` warns when the only model secret does not match the credential line of `relevo-go.yml`.** With only `CLAUDE_CODE_OAUTH_TOKEN` and `anthropic_api_key` active in the workflow (or the other way round), the cloud build stopped inside `claude-code-action` with no credential and the issue ended in `relevo:qa-failed`, with no warning before. The new result `execution.credential-line` says which line to put. With both secrets or none, and with a workflow that has neither line active, nothing is added.
+- **`/relevo:init` takes the credential from the secret when it is not answered.** In order: the answer, the only model secret that exists, the credential line of an installed `relevo-go.yml`, and an API key (said in the plan). An answer that contradicts the only secret that exists is shown as a step for the person instead of as fine.
+- **The command that stores a subscription token whole** (`pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN`) is in the plan of `init`, in the guide (English and Spanish) and in the report of the skill: `claude setup-token` prints the token over two lines, and an incomplete token gives the same authentication error as a missing one.
+
+### Fixed
+
+- **`/relevo:init` can now switch the credential line of a workflow that is already installed.** The merge rendered the current template and the published bases with the same line, so a change of credential was invisible to it and the plan said "up to date". The bases now carry the line the file has and the current template the credential in force, so the switch is a change the merge applies and shows as a diff, and a line the person switched by hand is kept.
+
 ## [0.14.2] - 2026-11-04
 
 ### Added

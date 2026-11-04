@@ -39,6 +39,7 @@ A repository with the `go` workflow but no `ANTHROPIC_API_KEY` or `CLAUDE_CODE_O
 
 - With a subscription the quota is shared by every run and by the interactive use of the account that owns the token, so `/relevo:init` sets `limits.concurrent_agents` to 1 for it.
 - The mode is deduced from the name of the secret. If both exist, `/relevo:doctor` warns and says which one the workflow uses.
+- The secret and the credential line of `relevo-go.yml` (the one that is not commented out) must be for the same mode. If only one secret exists and the workflow passes the other one, a cloud build stops with no credential, so `/relevo:doctor` warns before the first build and says which line to put. `/relevo:init` switches that line for you, and keeps one you already switched.
 - Read the current Anthropic terms on automated use of a subscription, and the README of `claude-code-action`, before relying on a subscription token for a team. Relevo does not judge them; `/relevo:doctor` leaves a one-line reminder.
 
 ## What the build installs
