@@ -498,14 +498,27 @@ export const WEB_HOOK_COMMAND = '[ "$CLAUDE_CODE_REMOTE" = "true" ] && ! command
 // The `SessionStart` hook that installs the Relevo plugin in a session of Claude Code on the web. A cloud session does
 // not install the plugins that `enabledPlugins` of the repository turns on (it never shows the workspace trust dialog
 // that adding their marketplace needs), so without this hook a person who opens the repository there finds no /relevo:
-// commands. It does nothing outside a remote session; the output goes to a log, and `|| true` keeps a failure from failing the hook.
-export const WEB_PLUGIN_HOOK_COMMAND = '[ "$CLAUDE_CODE_REMOTE" = "true" ] && { claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope project && claude plugin install relevo@relevo --scope project; } >"${TMPDIR:-/tmp}/relevo-plugin-hook.log" 2>&1 || true';
+// commands. It installs at the local scope: at the project scope the CLI rewrites the tracked .claude/settings.json (its keys
+// in another order), the session sees a change to commit and opens a pull request for it, while the local scope writes
+// .claude/settings.local.json, which Claude Code keeps out of git. It does nothing outside a remote session; the output goes
+// to a log, and `|| true` keeps a failure from failing the hook.
+export const WEB_PLUGIN_HOOK_COMMAND = '[ "$CLAUDE_CODE_REMOTE" = "true" ] && { claude plugin marketplace add elalfner/relevo --sparse .claude-plugin --scope local && claude plugin install relevo@relevo --scope local; } >"${TMPDIR:-/tmp}/relevo-plugin-hook.log" 2>&1 || true';
 
 /** Does a `SessionStart` entry install OpenSpec? The package name is what is matched, so a hook written by hand counts. */
 const installsOpenspec = (entry) => (entry?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('@fission-ai/openspec'));
 
 /** Does a `SessionStart` entry install the Relevo plugin? The install command is what is matched, so a hook written by hand counts. */
 const installsPlugin = (entry) => (entry?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes('claude plugin install relevo@relevo'));
+
+/**
+ * The scope at which a command that installs the Relevo plugin installs it: the `--scope` flag of the install command,
+ * and `project` (the default of the CLI) when it has none.
+ */
+export function pluginInstallScope(command) {
+  const install = /claude plugin install relevo@relevo([^&;|}\n]*)/.exec(String(command ?? ''));
+  if (!install) return null;
+  return /--scope[ =](\w+)/.exec(install[1])?.[1] ?? 'project';
+}
 
 /**
  * Whether the committed settings file has a `SessionStart` entry that `matches`: { declared } or, when the file is not
@@ -525,8 +538,18 @@ function sessionStartDeclaration(p, matches) {
 /** Whether the repository has a `SessionStart` hook that installs OpenSpec. */
 export const webHookDeclaration = (p) => sessionStartDeclaration(p, installsOpenspec);
 
-/** Whether the repository has a `SessionStart` hook that installs the Relevo plugin. */
-export const webPluginHookDeclaration = (p) => sessionStartDeclaration(p, installsPlugin);
+/**
+ * Whether the repository has a `SessionStart` hook that installs the Relevo plugin, and at which scope: { declared, scope,
+ * command } with `scope` `local` when every such command installs at the local scope and `project` otherwise, `command`
+ * the first of them as written. A hook that installs at the project scope rewrites the tracked settings file.
+ */
+export function webPluginHookDeclaration(p) {
+  const found = sessionStartDeclaration(p, installsPlugin);
+  if (!found.declared) return found;
+  const settings = JSON.parse(p.read('.claude/settings.json'));
+  const commands = settings.hooks.SessionStart.flatMap((e) => (e?.hooks ?? []).map((h) => h?.command)).filter((c) => pluginInstallScope(c) !== null);
+  return { declared: true, scope: commands.every((c) => pluginInstallScope(c) === 'local') ? 'local' : 'project', command: commands.find((c) => pluginInstallScope(c) !== 'local') ?? commands[0] };
+}
 
 /** Reads a file: the plugin's own files from disk, the repository's through the probes. Null when absent. */
 function readerFor(p, tryRun) {
@@ -1292,7 +1315,11 @@ function webHookChecks(f) {
 function webPluginHookChecks(f) {
   if (!f.remoteSession || !f.webPluginHook) return [];
   if (f.webPluginHook.unreadable) return [warn('web.plugin-hook', '.claude/settings.json is not valid JSON, so it cannot be checked whether it installs the Relevo plugin in web sessions', 'fix the file; /relevo:init then offers the hook')];
-  if (f.webPluginHook.declared) return [pass('web.plugin-hook', 'the repository installs the Relevo plugin at the start of a web session (SessionStart hook in .claude/settings.json)')];
+  if (f.webPluginHook.declared) {
+    const r = [pass('web.plugin-hook', 'the repository installs the Relevo plugin at the start of a web session (SessionStart hook in .claude/settings.json)')];
+    if (f.webPluginHook.scope === 'project') r.push(warn('web.plugin-hook-scope', 'the hook that installs the Relevo plugin installs it at the project scope, which rewrites the tracked .claude/settings.json (its keys in another order): a web session sees a change to commit and may open a pull request for it', 'run /relevo:init: it shows the hook that installs at the local scope and replaces the older one after a yes, and you commit .claude/settings.json'));
+    return r;
+  }
   return [warn('web.plugin-hook', 'this is a web session and the repository has no SessionStart hook that installs the Relevo plugin: a cloud session does not load the plugins a repository declares, so whoever opens it there next finds no /relevo: commands', 'run /relevo:init to add the hook and commit .claude/settings.json; the declaration in .claude/settings.json alone is not enough on the web')];
 }
 

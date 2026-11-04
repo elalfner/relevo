@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, pluginInstallScope, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { folderHash } from '../scripts/lib/role-skills.mjs';
@@ -1362,8 +1362,12 @@ test('gatherFacts reads the hook and the remote session', () => {
 // ---- the Relevo plugin in web sessions
 
 test('the fact web plugin hook: present, written by hand, other hooks only, missing file, invalid JSON; the OpenSpec hook does not count', () => {
-  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings(WEB_PLUGIN_HOOK_COMMAND))), { declared: true });
-  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings('claude plugin install relevo@relevo --scope project'))), { declared: true }, 'a hook written by hand counts');
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings(WEB_PLUGIN_HOOK_COMMAND))), { declared: true, scope: 'local', command: WEB_PLUGIN_HOOK_COMMAND });
+  assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings('claude plugin install relevo@relevo --scope project'))), { declared: true, scope: 'project', command: 'claude plugin install relevo@relevo --scope project' }, 'a hook written by hand counts, and says its scope');
+  assert.equal(webPluginHookDeclaration(settingsProbe(hookSettings('claude plugin install relevo@relevo'))).scope, 'project', 'no flag is the project scope, the default of the CLI');
+  assert.equal(webPluginHookDeclaration(settingsProbe(hookSettings('claude plugin install relevo@relevo --scope=local'))).scope, 'local');
+  assert.equal(webPluginHookDeclaration(settingsProbe(hookSettings(WEB_PLUGIN_HOOK_COMMAND, 'claude plugin install relevo@relevo --scope project'))).scope, 'project', 'one older command is enough');
+  assert.equal(pluginInstallScope('echo hi'), null);
   assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings(WEB_HOOK_COMMAND))), { declared: false });
   assert.deepEqual(webPluginHookDeclaration(settingsProbe(hookSettings('echo hi'))), { declared: false });
   assert.deepEqual(webPluginHookDeclaration(settingsProbe(null)), { declared: false });
@@ -1391,8 +1395,30 @@ test('Scenario: A terminal - no check about the plugin hook, and none without th
 
 test('gatherFacts reads the plugin hook', () => {
   const f = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), exists: (p) => p === '.claude/settings.json', read: () => hookSettings(WEB_PLUGIN_HOOK_COMMAND) });
-  assert.deepEqual(f.webPluginHook, { declared: true });
+  assert.deepEqual(f.webPluginHook, { declared: true, scope: 'local', command: WEB_PLUGIN_HOOK_COMMAND });
   assert.deepEqual(f.webHook, { declared: false });
+});
+
+// ---- the scope of the plugin hook (plugin-hook-local-scope)
+
+test('Scenario: A remote session with an older hook - a warning that names the cause and /relevo:init; not a failure', () => {
+  const r = runChecks(healthy({ remoteSession: true, webPluginHook: { declared: true, scope: 'project', command: 'claude plugin install relevo@relevo --scope project' } }));
+  const check = byId(r, 'web.plugin-hook-scope');
+  assert.equal(check.status, 'warn');
+  assert.match(check.message, /project scope/);
+  assert.match(check.message, /rewrites the tracked \.claude\/settings\.json/);
+  assert.match(check.fix, /\/relevo:init/);
+  assert.ok(!failing(r).includes('web.plugin-hook-scope'));
+  assert.equal(byId(r, 'web.plugin-hook').status, 'pass', 'the hook still installs the plugin');
+});
+
+test('Scenario: A remote session with the current hook - no warning about the scope', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webPluginHook: { declared: true, scope: 'local', command: WEB_PLUGIN_HOOK_COMMAND } })), 'web.plugin-hook-scope'), undefined);
+  assert.equal(byId(runChecks(healthy({ remoteSession: true, webPluginHook: { declared: true } })), 'web.plugin-hook-scope'), undefined, 'a fixture with no scope reads as current');
+});
+
+test('Scenario: A terminal - nothing about the scope of the hook', () => {
+  assert.equal(byId(runChecks(healthy({ remoteSession: false, webPluginHook: { declared: true, scope: 'project' } })), 'web.plugin-hook-scope'), undefined);
 });
 
 // ---- GitHub access in a remote session (web-sessions)
