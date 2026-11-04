@@ -17,7 +17,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
 import { BASE_PATTERNS } from './restricted-paths.mjs';
-import { runnerLine } from './init.mjs';
+import { activeCredentialLine } from './execution-mode.mjs';
+import { credentialLine, hasCredentialLines, runnerLine } from './init.mjs';
 
 const PIN_RE = /^(\s*RELEVO_VERSION:\s*)(['"]?)([\w.+-]+)\2[ \t]*$/m;
 const STAMP_RE = /^# relevo-template: (\d+\.\d+\.\d+)[ \t]*$/m;
@@ -167,18 +168,22 @@ export function publishedTemplates({ exec, tmp = mkdtempSync(join(tmpdir(), 'rel
 
 /**
  * The state of each workflow of the repository that exists and differs from what `init` would write. `ours` and
- * `templates` map a file name to its text; `repo` brings `runnerLabels` and `build`; `restricted` is the list of restricted files (`restrictedList(config)`); `source` is `publishedTemplates`.
+ * `templates` map a file name to its text; `credential` is the credential in force (`api_key` or `subscription`; null leaves the template's); `repo` brings `runnerLabels` and `build`; `restricted` is the list of restricted files (`restrictedList(config)`); `source` is `publishedTemplates`.
  */
-export function planUpgrades({ files, ours, templates, agentBlocks, labels, build, from = null, source, merge, restricted = BASE_PATTERNS }) {
+export function planUpgrades({ files, ours, templates, agentBlocks, labels, build, credential = null, from = null, source, merge, restricted = BASE_PATTERNS }) {
+  // The bases carry the credential line the file has today, and the current template the credential in force: a
+  // difference between the two is then a change the merge applies, and a line the person switched by hand is kept. The
+  // choice of the base does not depend on the credential. A text with no credential lines (an older base, another file) is left as it is.
+  const switched = (template, mode) => (mode !== null && hasCredentialLines(template) ? credentialLine(template, mode) : template);
   const render = (template, blocks) => runnerLine(withRestricted(agentWorkflow(template, build, blocks), restricted), labels);
   const versions = files.some((f) => ours[f] != null) ? source.versions() : [];
   const out = {};
   files.filter((f) => ours[f] != null).forEach((file) => {
     const candidates = versions.map((version) => {
       const template = source.read(version, `templates/workflows/${file}`);
-      return template === null ? null : { version, template, blocks: build === 'claude' ? null : source.read(version, `templates/agents/${build}-step.yml`) };
+      return template === null ? null : { version, template: switched(template, activeCredentialLine(ours[file])), blocks: build === 'claude' ? null : source.read(version, `templates/agents/${build}-step.yml`) };
     }).filter(Boolean);
-    out[file] = upgradeWorkflow({ ours: ours[file], current: { template: templates[file], blocks: agentBlocks }, candidates, from, render, merge, normalize: (text) => withRestricted(text, restricted) });
+    out[file] = upgradeWorkflow({ ours: ours[file], current: { template: switched(templates[file], credential ?? activeCredentialLine(ours[file])), blocks: agentBlocks }, candidates, from, render, merge, normalize: (text) => withRestricted(text, restricted) });
   });
   return out;
 }

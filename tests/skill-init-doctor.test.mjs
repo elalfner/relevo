@@ -240,3 +240,11 @@ test('init says that the plugin hook installs at the local scope and updates an 
   assert.match(body, /show the command that is there and the command that replaces it, and ask for a yes to it alone/);
   assert.match(body, /replaces only that command and keeps every other setting and hook/);
 });
+
+test('Scenario: the credential is taken from the secret when unanswered, a contradiction is a step for the person, and doctor names the mismatch result', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  const doctor = readFileSync(new URL('../skills/doctor/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /leaves this unanswered, `init` takes the credential from the model secret that exists/);
+  assert.match(init, /contradicts the only secret that exists is shown in the plan/);
+  assert.match(doctor, /`execution\.credential-line`/);
+});

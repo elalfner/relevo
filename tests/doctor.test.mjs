@@ -808,6 +808,39 @@ test('Both credentials - a warning that says which one the workflow uses when it
   assert.equal(byId(runChecks(healthy({ secrets: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] })), 'execution.credential').status, 'warn');
 });
 
+const withLine = (line) => {
+  const workflows = Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: true, enabled: true }]));
+  workflows['relevo-go.yml'].text = `with:\n  ${line}\n`;
+  return workflows;
+};
+const API_LINE = 'anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}';
+const TOKEN_LINE = 'claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}';
+
+test('Scenario: Subscription secret, API key line - doctor warns and says which line to put', () => {
+  const results = runChecks(healthy({ secrets: ['CLAUDE_CODE_OAUTH_TOKEN'], workflows: withLine(API_LINE) }));
+  const r = byId(results, 'execution.credential-line');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /only CLAUDE_CODE_OAUTH_TOKEN exists, but the workflow passes anthropic_api_key/);
+  assert.ok(r.fix.includes(`replace the line \`${API_LINE}\` with \`${TOKEN_LINE}\``));
+  assert.match(byId(results, 'automation.secret').message, /workflow does not use it: see execution\.credential-line/);
+});
+
+test('Scenario: API key secret, subscription line - doctor warns the other way', () => {
+  const r = byId(runChecks(healthy({ secrets: ['ANTHROPIC_API_KEY'], workflows: withLine(TOKEN_LINE) })), 'execution.credential-line');
+  assert.equal(r.status, 'warn');
+  assert.ok(r.fix.includes(`replace the line \`${TOKEN_LINE}\` with \`${API_LINE}\``));
+});
+
+test('Scenario: Secret and line agree, both secrets, no secret, or no active line - no mismatch warning', () => {
+  const none = (secrets, workflows) => byId(runChecks(healthy(workflows ? { secrets, workflows } : { secrets })), 'execution.credential-line');
+  assert.equal(none(['CLAUDE_CODE_OAUTH_TOKEN'], withLine(TOKEN_LINE)), undefined);
+  assert.equal(none(['ANTHROPIC_API_KEY'], withLine(API_LINE)), undefined);
+  assert.equal(none(['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'], withLine(TOKEN_LINE)), undefined);
+  assert.equal(none([], withLine(API_LINE)), undefined);
+  assert.equal(none(['CLAUDE_CODE_OAUTH_TOKEN'], withLine('# anthropic_api_key: x')), undefined, 'an edited workflow with no active line is not judged');
+  assert.equal(none(['CLAUDE_CODE_OAUTH_TOKEN'], undefined), undefined, 'the text of the workflow is unknown');
+});
+
 test('Scenario: No credential - the go workflow is installed, so doctor warns that a ready label only leaves a comment', () => {
   const results = runChecks(healthy({ secrets: [] }));
   const secret = byId(results, 'automation.secret');

@@ -15,7 +15,7 @@ import { QA_LENSES, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { githubAccess } from './gh-web.mjs';
-import { credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
+import { activeCredentialLine, credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { platformFolders } from './protected-paths.mjs';
 import { restrictedListFromText } from './restricted-paths.mjs';
 import { restrictedBlockState } from './agent-workflow.mjs';
@@ -740,6 +740,24 @@ function gatherPlatforms(f, p, tryRun) {
   }
 }
 
+const LINE_TEXT = {
+  api_key: 'anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}',
+  subscription: 'claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
+};
+const SECRET_OF = { api_key: 'ANTHROPIC_API_KEY', subscription: 'CLAUDE_CODE_OAUTH_TOKEN' };
+
+/**
+ * When exactly one model secret exists and the credential line the go workflow has active is the other one:
+ * { secret, used, wanted } (wanted is the mode of the secret). null when they agree, when both or neither secret
+ * exists, or when the workflow is unknown or has no active line.
+ */
+function credentialMismatch(f) {
+  const { mode } = credentialMode(f.secrets ?? []);
+  if (mode !== 'api_key' && mode !== 'subscription') return null;
+  const used = activeCredentialLine(f.workflows?.['relevo-go.yml']?.text ?? '');
+  return used !== null && used !== mode ? { secret: SECRET_OF[mode], used, wanted: mode } : null;
+}
+
 /**
  * Where `go` builds: the credential mode from the secret names, the repository variable that pauses the cloud, a
  * reminder about the policy for a subscription, and the quota warning for a subscription with many agents.
@@ -754,12 +772,18 @@ function executionChecks(f) {
   const installed = Boolean(goWorkflow?.present);
   // The credential line the workflow uses, when its text is known (the one that is not commented out).
   const text = goWorkflow?.text ?? '';
-  const used = /^\s*claude_code_oauth_token:/m.test(text) ? 'subscription' : /^\s*anthropic_api_key:/m.test(text) ? 'api_key' : null;
+  const used = activeCredentialLine(text);
 
   if (mode === 'both') r.push(warn('execution.credential', `both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN exist${used ? `; the workflow uses the ${used === 'api_key' ? 'API key' : 'subscription token'}` : ''}`, 'keep only the secret the workflow uses, so that it is clear which account pays'));
   else if (mode === 'api_key') r.push(pass('execution.credential', 'the cloud builds with an API key: run_max_cost is a real ceiling on spending'));
   else if (mode === 'subscription') r.push(note('execution.credential', 'the cloud builds with a subscription token: run_max_cost is only a notional ceiling, and the quota is shared with the use of the account that owns the token'));
   else r.push(pass('execution.credential', installed ? 'no model credential: the cloud cannot build (see the warning about the secret)' : 'no model credential and no go workflow: go builds on machines only'));
+
+  const mismatch = credentialMismatch(f);
+  if (mismatch) {
+    r.push(warn('execution.credential-line', `only ${mismatch.secret} exists, but the workflow passes ${LINE_TEXT[mismatch.used].split(':')[0]} (${SECRET_OF[mismatch.used]}), so a cloud build stops with no credential`,
+      `in .github/workflows/relevo-go.yml replace the line \`${LINE_TEXT[mismatch.used]}\` with \`${LINE_TEXT[mismatch.wanted]}\` (or run /relevo:init)`));
+  }
 
   if (mode === 'subscription' || (mode === 'both' && used === 'subscription')) {
     r.push(note('execution.policy', 'reminder: read the current Anthropic terms on automated use of a subscription token (and the README of claude-code-action) before relying on it for a team'));
@@ -1045,7 +1069,10 @@ export function runChecks(f) {
   else if (f.config?.agent?.build === 'antigravity') {
     if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('automation.secret', 'a model credential secret exists (GEMINI_API_KEY)'));
     else r.push(warn('automation.secret', 'no GEMINI_API_KEY secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add a key made only for Relevo, in its own Google Cloud project with a quota, to the repository secrets (init never touches it); for local builds nothing is needed'));
-  } else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) r.push(pass('automation.secret', 'a model credential secret exists'));
+  } else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) {
+    const mismatch = credentialMismatch(f);
+    r.push(pass('automation.secret', mismatch ? `a model credential secret exists (${mismatch.secret}), but the workflow does not use it: see execution.credential-line` : 'a model credential secret exists'));
+  }
   else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
 
   // One result per cause: the workflows in the same state, with the same status and the same fix, are one result that names them.

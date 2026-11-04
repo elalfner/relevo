@@ -58,7 +58,11 @@ gh secret set ANTHROPIC_API_KEY
 gh secret list
 ```
 
-`gh` asks for the value without showing it. If you use a Claude subscription instead, run `claude setup-token` and store the token the same way, with the name `CLAUDE_CODE_OAUTH_TOKEN`.
+`gh` asks for the value without showing it. If you use a Claude subscription instead, run `claude setup-token`, copy the token, and store it with the name `CLAUDE_CODE_OAUTH_TOKEN`. The command prints the token over two lines, and a token stored incomplete fails with the same authentication error as a missing one, so remove all whitespace as you store it:
+
+```bash
+pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN
+```
 
 - **You should see**: `gh secret list` shows the name of the secret, never its value.
 - **If not**: you need admin rights on the repository to create a secret; run the command inside the clone, or add `--repo owner/name`. The difference between the two credentials is in [Where `go` runs](execution.md).
