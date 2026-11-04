@@ -95,6 +95,9 @@ test('run-usage.mjs reads the folder of the run: phases and class in the marker,
   writeClass(dir, 'built');
   const built = spawnSync('node', [RUN_USAGE, '--file', log, '--progress-dir', dir], { encoding: 'utf8' }).stdout;
   assert.equal(parseUsageMarker(bot(built.slice(built.indexOf('<!--')))).class, 'built');
+  const early = fresh();
+  const ended = spawnSync('node', [RUN_USAGE, '--file', log, '--progress-dir', early], { encoding: 'utf8' }).stdout;
+  assert.equal(parseUsageMarker(bot(ended.slice(ended.indexOf('<!--')))).class, 'other', 'a run that ended before any phase still has a class');
   const none = spawnSync('node', [RUN_USAGE, '--file', log], { encoding: 'utf8' }).stdout;
   assert.equal(parseUsageMarker(bot(none.slice(none.indexOf('<!--')))).class, undefined);
 });

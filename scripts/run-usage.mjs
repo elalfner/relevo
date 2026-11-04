@@ -39,8 +39,8 @@ try {
   if (dir) {
     const log = readPhaseLog(dir);
     phases = log.length ? phaseSeconds(log, Date.now()) : null;
-    // A run that wrote no class ended some other way than the ones `go` names.
-    outcomeClass = readClass(dir) ?? (log.length ? 'other' : null);
+    // A run that wrote no class ended some other way than the ones `go` names, even one that never announced a phase.
+    outcomeClass = readClass(dir) ?? 'other';
   }
 } catch {
   phases = null;
