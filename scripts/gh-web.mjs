@@ -9,6 +9,7 @@
 //   node scripts/gh-web.mjs repo view --json nameWithOwner -q .nameWithOwner
 //   node scripts/gh-web.mjs label create name --color ededed --description d --force
 // exit 0: done   exit 1: refused or failed (the message says what and why)
+//   node scripts/gh-web.mjs api repos/owner/name/milestones      (`gh api` is passed to `gh` as it is, in every session)
 // Any other subcommand or flag in a remote session stops with a message that names it and makes no request.
 
 import { execFileSync, spawnSync } from 'node:child_process';

@@ -15,7 +15,7 @@ You write issues; you never build, assign work to the build queue or touch code.
 
 Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. The skeleton, with a comment on every section, is `${CLAUDE_PLUGIN_ROOT}/templates/issue.md`; the long explanation of the format is online (docs/issue-format.md in the repository) and is not installed with the plugin.
 
-**GitHub from the web.** Read and write issues with `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs issue ...`, which takes the arguments of `gh issue`: on a terminal it runs `gh`, and in a session of Claude Code on the web, where GraphQL is blocked and `gh issue` fails with `HTTP 403`, it answers over the REST API. If it says that a flag is not covered, do not fall back to `gh issue`; tell the person what it said. The `gh api` calls below work in both.
+**GitHub from the web.** Read and write issues with `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs issue ...`, which takes the arguments of `gh issue`: on a terminal it runs `gh`, and in a session of Claude Code on the web, where GraphQL is blocked and `gh issue` fails with `HTTP 403`, it answers over the REST API. If it says that a flag is not covered, do not fall back to `gh issue`; tell the person what it said. The `gh api` calls below (milestones, permissions, the user) work in both: call them as `gh api ...`, and if you send them through the script as `gh-web.mjs api ...` it passes them to `gh api` unchanged.
 
 ## 1. What you already know
 

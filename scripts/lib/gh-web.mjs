@@ -355,11 +355,13 @@ function access(rest, io) {
 
 /**
  * Runs one command. io: { env, api, git, passthrough, readFile, out, err }. Returns the exit code.
- * Outside a remote session the real `gh` runs with the same arguments.
+ * Outside a remote session, and for `gh api` in any session, the real `gh` runs with the same arguments.
  */
 export function main(argv, io) {
   if (argv[0] === '--access') return access(argv.slice(1), io);
-  if (!isRemote(io.env)) return io.passthrough(argv);
+  // `gh api` is the REST API itself: it works in a web session, so it goes to `gh` as it is in every session. A skill that
+  // sends all its GitHub calls through this script, `api` ones included, then keeps working.
+  if (!isRemote(io.env) || argv[0] === 'api') return io.passthrough(argv);
   try {
     const parsed = parseArgs(argv);
     const repoFlag = parsed.flags.repo;

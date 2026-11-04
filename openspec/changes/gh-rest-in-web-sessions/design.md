@@ -55,6 +55,8 @@ A field that is asked for and not in the table stops the command (Decision 5). A
 
 **8. The plugin hook gets its spec here.** The hook shipped in 0.13.0 (`install.web-plugin-hook`, `web.plugin-hook`) without a delta; this change adds it to `init-doctor` so the spec matches the code. No code changes for it.
 
+**9. `gh api` goes through unchanged.** The first real use of `/relevo:issue` on the web (0.14.0) sent the milestone lookup, a `gh api` call, through the script as well, the script refused it, and the issue was created without a milestone. The skill says that `gh api` works in both kinds of session, but a model that routes every GitHub call through the script will include `api` too. The script now hands `api` to `gh` in every session, since REST is what the web allows. Alternative: refuse it and tell the skill harder. Rejected: it keeps a trap that only the wording of a skill avoids.
+
 ## Risks / Trade-offs
 
 - **A REST response differs from the `gh` JSON in a field a script reads.** Mitigation: the table above, tests that run the mapped output through `can-edit-issue`, `issue-hash`, `platform-of`, `design-fetch` and the update flow of `/relevo:issue`, and recorded responses taken from the sandbox repository.
