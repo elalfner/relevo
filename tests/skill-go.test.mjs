@@ -346,6 +346,16 @@ test('Scenario: every exit records one class of the outcome, the seven classes o
   assert.match(body, /best-effort command/);
 });
 
+test('Scenario: every exit of the skill names the class it records', () => {
+  const at = (re) => assert.match(body, re);
+  at(/Record the class `other`, report the decision and its reason in one line/);
+  at(/reason` `missing` and the class `inputs`/);
+  at(/`ambiguous`, record the class `other`/);
+  at(/reason` `policy`, the class `policy`/);
+  at(/Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, and `other` for every other reason/);
+  at(/Record the class `built`, then move the issue to `built`/);
+});
+
 test('Scenario: the reference of QA exists and names each step, and go, fix and review read it', () => {
   assert.ok(existsSync(root('skills/go/references/qa-run.md')));
   [
