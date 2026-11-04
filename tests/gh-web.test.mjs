@@ -297,3 +297,14 @@ test('the script client is the real gh on a terminal and the REST version in a r
   assert.deepEqual(calls[0].args.slice(0, 4), ['api', '-X', 'POST', 'repos/o/r/labels']);
   assert.throws(() => remote(['pr', 'merge', '5']), /"gh pr merge" is not covered/);
 });
+
+test('gh api goes to gh as it is in every session, so a skill that routes it through the script keeps working', () => {
+  for (const env of [REMOTE, {}]) {
+    const r = run(['api', 'repos/elalfner/relevo-sandbox/milestones', '--jq', '.[].title'], { env });
+    assert.deepEqual(r.passed, [['api', 'repos/elalfner/relevo-sandbox/milestones', '--jq', '.[].title']]);
+    assert.equal(r.code, 7, 'the exit code of gh comes back');
+    assert.deepEqual(r.calls, [], 'the REST client of the script is not used for it');
+    assert.equal(r.out + r.err, '');
+  }
+  assert.match(run(['pr', 'merge', '5']).err, /"gh pr merge" is not covered/, 'other subcommands are still refused');
+});

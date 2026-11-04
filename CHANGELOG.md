@@ -4,6 +4,21 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-04
+
+### Added
+
+- **The install page says that the `/relevo:` commands appear after the first message of a web session.** A new session of Claude Code on the web has not started its container when it is opened, so the list that `/` shows has only the commands of the app; the hook installs the plugin when the session starts, and the commands show up once it has processed a first message (or after `/reload-plugins`).
+
+### Fixed
+
+- **`/relevo:issue` on the web no longer loses the milestone.** In the first use of 0.14.0 on a web session the skill listed the milestones with `gh-web.mjs api repos/.../milestones`, which the script refused, so it told the person that it could not list them and the issue was created without one. `gh api` is the REST API itself and works on the web, so the script now passes `api` to `gh` unchanged in every session; the skill says so, and a test covers it. Other subcommands that the script does not cover are still refused by name.
+
+### Known limits
+
+- The person who runs `/relevo:issue` still has to type it: no agent can start that skill, so the fix was checked by running the same call in a web session, and the second real use is the check that it offers the milestones.
+- On a web session the install of the plugin can rewrite `.claude/settings.json` with its keys in another order, and the session may then commit that change and open a pull request for it (the sandbox repository got one). The content is the same. Installing at another scope may avoid it and has not been tried.
+
 ## [0.14.0] - 2026-11-03
 
 ### Added

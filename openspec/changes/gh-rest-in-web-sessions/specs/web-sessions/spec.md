@@ -35,6 +35,17 @@ Outside a remote session the same commands SHALL call the GitHub CLI with the ar
 - **WHEN** `CLAUDE_CODE_REMOTE` is not `true` and a command reads issue 42
 - **THEN** the GitHub CLI runs with the same arguments and its output reaches the command as it is
 
+### Requirement: Calls to the REST API itself go through unchanged
+A call of the form `gh api ...` sent through the script SHALL be passed to `gh api` with the same arguments in every session, remote or not, and its output and exit code SHALL come back unchanged, because the REST API is what a web session allows.
+
+#### Scenario: Listing the milestones from a web session
+- **WHEN** a command sends `api repos/owner/name/milestones` through the script in a remote session
+- **THEN** `gh api` runs with those arguments and the titles of the milestones come back
+
+#### Scenario: A subcommand that is not covered
+- **WHEN** a command sends `pr merge 5` through the script in a remote session
+- **THEN** it is still refused with a message that names it
+
 ### Requirement: The REST output has the shape the commands already read
 The data a command receives in a remote session SHALL have the shape the GitHub CLI gives for the same fields: the state of an issue is `OPEN` or `CLOSED`, labels and assignees are lists of objects with a `name` or a `login`, and the comments are in the order they were written. A field that is asked for and has no value SHALL be present and empty, not missing.
 
