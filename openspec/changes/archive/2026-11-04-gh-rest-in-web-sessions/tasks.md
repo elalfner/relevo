@@ -40,11 +40,11 @@
 
 ## 7. Check in a real web session
 
-- [ ] 7.1 In a new web session on the sandbox repository, with the version that has this change: `/relevo:doctor` and `/relevo:status` pass the access check; a person types `/relevo:issue` and creates a small issue with a milestone and an assignee without labelling it `ready`; `/relevo:think <n>` reads it; record the result
+- [x] 7.1 In a new web session on the sandbox repository, with the version that has this change: `/relevo:doctor` and `/relevo:status` pass the access check; a person types `/relevo:issue` and creates a small issue with a milestone and an assignee without labelling it `ready`; `/relevo:think <n>` reads it; record the result
 - [x] 7.2 Run the same commands on a terminal and compare with the output before this change
 - [x] 7.3 Run `npm test`; the only failure allowed is the one that comes from a preinstalled Playwright in the environment
 
 ## 8. Patch 0.14.1
 
 - [x] 8.1 `gh api` through the script goes to `gh` unchanged in every session (found in the first use of `/relevo:issue` on the web, where the milestone lookup was refused and the issue had no milestone); test, and one sentence in the issue skill
-- [ ] 8.2 Publish 0.14.1 and have a person run `/relevo:issue` again on the sandbox: the milestone list is offered and the issue is created with the milestone chosen
+- [x] 8.2 Publish 0.14.1 and have a person run `/relevo:issue` again on the sandbox: the milestone list is offered and the issue is created with the milestone chosen (done on 2026-11-04: issue 72 was created with the milestone `Pilot 1`, the assignee and no `ready`; the first run with 0.14.0, issue 71, had no milestone, which is what 0.14.1 fixed)
