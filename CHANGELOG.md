@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-11-04
+
 ### Added
 
 - **`/relevo:doctor` warns when the only model secret does not match the credential line of `relevo-go.yml`.** With only `CLAUDE_CODE_OAUTH_TOKEN` and `anthropic_api_key` active in the workflow (or the other way round), the cloud build stopped inside `claude-code-action` with no credential and the issue ended in `relevo:qa-failed`, with no warning before. The new result `execution.credential-line` says which line to put. With both secrets or none, and with a workflow that has neither line active, nothing is added.
@@ -13,6 +15,12 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 ### Fixed
 
 - **`/relevo:init` can now switch the credential line of a workflow that is already installed.** The merge rendered the current template and the published bases with the same line, so a change of credential was invisible to it and the plan said "up to date". The bases now carry the line the file has and the current template the credential in force, so the switch is a change the merge applies and shows as a diff, and a line the person switched by hand is kept.
+
+### Known limits
+
+- The gate of `relevo-go.yml` (`HAS_CREDENTIAL`) still passes with either secret, so a repository whose secret and line disagree starts the build and fails inside the action; `doctor` and `init` now report it before, but the gate does not stop it.
+- The switch of the credential line was checked with the real template and the historical 0.12.0 workflow, and the plan with the same wiring as `scripts/init.mjs`; the command itself has not been run against a real repository.
+- A workflow edited so far that it has neither credential line active is not judged by `doctor`, and `init` leaves it as the merge gives it.
 
 ## [0.14.2] - 2026-11-04
 
