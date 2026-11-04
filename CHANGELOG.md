@@ -4,6 +4,15 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- **The plugin hook for web sessions no longer rewrites `.claude/settings.json`.** The hook of 0.13.0 and 0.14.x installed the plugin at the project scope, which makes the CLI rewrite the tracked file with its keys in another order (`hooks`, `enabledPlugins`, `extraKnownMarketplaces`). A web session saw a change to commit and opened a pull request for it (the sandbox got one, #70), and every later session did the same. The hook that `/relevo:init` writes now installs at the local scope (`--scope local` on both `claude plugin` commands): in a new container the plugin is installed and enabled, the entries go to `.claude/settings.local.json`, which Claude Code keeps out of git, and no tracked file changes. `/relevo:init` updates an older hook, showing the command that is there and the one that replaces it and changing only that command after a yes; `/relevo:doctor` warns about an older hook in a web session (`web.plugin-hook-scope`). The declaration for a terminal does not change.
+
+### Known limits
+
+- The result in a real web session on a repository that already has the updated hook has to be checked by a person: no pull request is opened and `git status` shows no change.
+- The ignore of `.claude/settings.local.json` is set by Claude Code, not by Relevo; it held in every test.
+
 ## [0.14.1] - 2026-11-04
 
 ### Added

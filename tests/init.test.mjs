@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { REQUIRED_SKILLS, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, recommendedSkillFacts } from '../scripts/lib/doctor.mjs';
-import { mergeWebHook, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
+import { mergeWebHook, pluginCommandAtLocalScope, applyPlan, manualChecklist, planInit, pushScopeBody, renderConfig, renderPlan, rulesetBody, skipItems } from '../scripts/lib/init.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { claudeProposal, mergeAgyDenials, mergeClaudeDenials, missingClaudeEntries, restrictedFacts } from '../scripts/lib/restricted-settings.mjs';
 import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
@@ -447,10 +447,11 @@ test('Scenario: A repository that already has the plugin hook - reported as in p
   assert.equal(get(plan(bare()), 'install.web-plugin-hook'), undefined, 'without the fact there is no line');
 });
 
-test('the plugin hook runs only in a remote session, installs at the project scope and never fails the session', () => {
+test('the plugin hook runs only in a remote session, installs at the local scope and never fails the session', () => {
   assert.match(WEB_PLUGIN_HOOK_COMMAND, /^\[ "\$CLAUDE_CODE_REMOTE" = "true" \]/);
-  assert.match(WEB_PLUGIN_HOOK_COMMAND, /claude plugin marketplace add elalfner\/relevo --sparse \.claude-plugin --scope project/);
-  assert.match(WEB_PLUGIN_HOOK_COMMAND, /claude plugin install relevo@relevo --scope project/);
+  assert.match(WEB_PLUGIN_HOOK_COMMAND, /claude plugin marketplace add elalfner\/relevo --sparse \.claude-plugin --scope local/);
+  assert.match(WEB_PLUGIN_HOOK_COMMAND, /claude plugin install relevo@relevo --scope local/);
+  assert.doesNotMatch(WEB_PLUGIN_HOOK_COMMAND, /--scope project/);
   assert.match(WEB_PLUGIN_HOOK_COMMAND, /\|\| true$/);
 });
 
@@ -467,6 +468,52 @@ test('Scenario: Both hooks in one file - each is added next to the other setting
   assert.deepEqual(both.hooks.SessionStart.map((e) => e.hooks[0].command), ['echo hi', WEB_PLUGIN_HOOK_COMMAND, WEB_HOOK_COMMAND]);
   assert.throws(() => mergeWebHook(before, 'nope'), /unknown hook/);
   assert.throws(() => mergeWebHook('{ not json', 'plugin'));
+});
+
+// ---- the plugin hook at the local scope (plugin-hook-local-scope)
+
+const OLDER_HOOK = WEB_PLUGIN_HOOK_COMMAND.replaceAll('--scope local', '--scope project');
+
+test('Scenario: An older hook - an update line with both commands, never applied by the script', () => {
+  const it = get(plan(bare({ webPluginHook: { declared: true, scope: 'project', command: OLDER_HOOK } })), 'install.web-plugin-hook');
+  assert.equal(it.status, 'todo');
+  assert.equal(it.install, true);
+  assert.equal(it.hook, WEB_PLUGIN_HOOK_COMMAND);
+  assert.equal(it.current, OLDER_HOOK);
+  assert.match(renderPlan([it]), /\[will do\] Update the hook that installs the Relevo plugin in a web session so that it installs at the local scope/);
+  const calls = [];
+  applyPlan([it], { repo: 'o/r', io: { gh: (a) => calls.push(a), write: (p) => calls.push(p), append: (p) => calls.push(p) } });
+  assert.deepEqual(calls, []);
+});
+
+test('Scenario: Run again - the current hook is reported as in place', () => {
+  assert.equal(get(plan(bare({ webPluginHook: { declared: true, scope: 'local', command: WEB_PLUGIN_HOOK_COMMAND } })), 'install.web-plugin-hook').status, 'ok');
+});
+
+test('Scenario: Other hooks in the file - only the plugin hook changes, in place, and a second run changes nothing', () => {
+  const before = JSON.stringify({ attribution: { commit: '' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo bye' }] }], SessionStart: [{ hooks: [{ type: 'command', command: WEB_HOOK_COMMAND }] }, { hooks: [{ type: 'command', command: OLDER_HOOK }] }, { hooks: [{ type: 'command', command: 'echo hi' }] }] } });
+  const after = mergeWebHook(before, 'plugin');
+  const j = JSON.parse(after);
+  assert.deepEqual(j.attribution, { commit: '' });
+  assert.deepEqual(j.hooks.Stop, JSON.parse(before).hooks.Stop);
+  assert.deepEqual(j.hooks.SessionStart.map((e) => e.hooks[0].command), [WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, 'echo hi']);
+  assert.equal(mergeWebHook(after, 'plugin'), after);
+});
+
+test('a hook written by hand has its two plugin commands moved to the local scope and nothing else of it', () => {
+  assert.equal(pluginCommandAtLocalScope('claude plugin install relevo@relevo'), 'claude plugin install relevo@relevo --scope local');
+  assert.equal(
+    pluginCommandAtLocalScope('echo a && claude plugin marketplace add elalfner/relevo --scope project && claude plugin install relevo@relevo --scope project || true'),
+    'echo a && claude plugin marketplace add elalfner/relevo --scope local && claude plugin install relevo@relevo --scope local || true',
+  );
+  assert.equal(pluginCommandAtLocalScope(WEB_PLUGIN_HOOK_COMMAND), WEB_PLUGIN_HOOK_COMMAND, 'a current hook is left as it is');
+  assert.equal(pluginCommandAtLocalScope('echo hi'), 'echo hi');
+});
+
+test('an older hook in a file that cannot be read is never rewritten, and the OpenSpec hook is not moved by the plugin merge', () => {
+  assert.throws(() => mergeWebHook('{ not json', 'plugin'));
+  const text = JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: WEB_HOOK_COMMAND }] }] } });
+  assert.equal(mergeWebHook(text), text);
 });
 
 // ---- the agent that builds in the cloud

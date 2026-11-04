@@ -11,7 +11,7 @@ import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
 import { restrictedList } from './restricted-paths.mjs';
 import { claudeProposalText } from './restricted-settings.mjs';
-import { isVueWeb, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
+import { isVueWeb, pluginInstallScope, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -35,7 +35,17 @@ const RESTRICTED_AGY_DETAIL = 'It adds the rules shown to permissions.deny in ~/
 
 const WEB_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it installs OpenSpec when it is missing (npm install --global @fission-ai/openspec); on a terminal it does nothing. The file is left for you to commit.';
 
-const WEB_PLUGIN_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it adds the Relevo marketplace and installs the plugin (claude plugin marketplace add, then claude plugin install, at the project scope), because a cloud session does not load the plugins a repository only declares; on a terminal it does nothing. The file is left for you to commit.';
+const WEB_PLUGIN_HOOK_DETAIL = 'It adds a SessionStart hook to .claude/settings.json of this repository, keeping what the file already has. In a session of Claude Code on the web it adds the Relevo marketplace and installs the plugin (claude plugin marketplace add, then claude plugin install, at the local scope, so that no file the repository tracks changes), because a cloud session does not load the plugins a repository only declares; on a terminal it does nothing. The file is left for you to commit.';
+const WEB_PLUGIN_HOOK_UPDATE_DETAIL = 'The hook that installs the Relevo plugin in a web session installs it at the project scope, which rewrites the tracked .claude/settings.json (its keys in another order), so a web session sees a change to commit and may open a pull request for it. This replaces only that command with one that installs at the local scope, keeping every other setting and hook of the file. The file is left for you to commit.';
+
+/** The command of a hook that installs the Relevo plugin, moved to the local scope: the flags of its two `claude plugin` commands, and nothing else of it. */
+export function pluginCommandAtLocalScope(command) {
+  if (pluginInstallScope(command) !== 'project') return command;
+  const moved = command
+    .replace(/(claude plugin marketplace add elalfner\/relevo[^&;|}\n]*?)--scope[ =]project/g, '$1--scope local')
+    .replace(/(claude plugin install relevo@relevo)([^&;|}\n]*)/, (m, head, rest) => (/--scope[ =]/.test(rest) ? `${head}${rest.replace(/--scope[ =]project/, '--scope local')}` : `${head} --scope local${rest}`));
+  return pluginInstallScope(moved) === 'local' ? moved : command;
+}
 
 const WEB_HOOKS = {
   openspec: { command: WEB_HOOK_COMMAND, marker: '@fission-ai/openspec' },
@@ -55,7 +65,18 @@ export function mergeWebHook(text, kind = 'openspec') {
   if (settings === null || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('.claude/settings.json is not a JSON object');
   const current = settings.hooks?.SessionStart;
   if (current !== undefined && !Array.isArray(current)) throw new Error('hooks.SessionStart in .claude/settings.json is not a list');
-  if ((current ?? []).some((e) => (e?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes(hook.marker)))) return text;
+  if ((current ?? []).some((e) => (e?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.includes(hook.marker)))) {
+    // A plugin hook that installs at the project scope is moved to the local scope, in place; anything else is left as it is.
+    if (kind !== 'plugin') return text;
+    let changed = false;
+    const updated = current.map((e) => ({ ...e, hooks: (e?.hooks ?? []).map((h) => {
+      const moved = typeof h?.command === 'string' ? pluginCommandAtLocalScope(h.command) : h?.command;
+      if (moved === h?.command) return h;
+      changed = true;
+      return { ...h, command: moved };
+    }) }));
+    return changed ? `${JSON.stringify({ ...settings, hooks: { ...settings.hooks, SessionStart: updated } }, null, 2)}\n` : text;
+  }
   const hooks = { ...(settings.hooks ?? {}), SessionStart: [...(current ?? []), { hooks: [{ type: 'command', command: hook.command }] }] };
   return `${JSON.stringify({ ...settings, hooks }, null, 2)}\n`;
 }
@@ -386,7 +407,8 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
 
   // The Relevo plugin in the sessions of Claude Code on the web: a cloud session does not load the plugins a repository
   // declares, so it is installed from a hook at the start of the session.
-  if (facts.webPluginHook?.declared) items.push(item('install.web-plugin-hook', 'ok', 'The repository installs the Relevo plugin at the start of a web session (.claude/settings.json)'));
+  if (facts.webPluginHook?.declared && facts.webPluginHook.scope === 'project') items.push(item('install.web-plugin-hook', 'todo', 'Update the hook that installs the Relevo plugin in a web session so that it installs at the local scope and no longer rewrites .claude/settings.json (the changed file is left for you to commit)', { install: true, command: `node \${CLAUDE_PLUGIN_ROOT}/scripts/web-hook.mjs --hook plugin`, hook: WEB_PLUGIN_HOOK_COMMAND, current: facts.webPluginHook.command, detail: WEB_PLUGIN_HOOK_UPDATE_DETAIL }));
+  else if (facts.webPluginHook?.declared) items.push(item('install.web-plugin-hook', 'ok', 'The repository installs the Relevo plugin at the start of a web session (.claude/settings.json)'));
   else if (facts.webPluginHook?.unreadable) items.push(item('install.web-plugin-hook', 'manual', '.claude/settings.json is not valid JSON: fix it, then run init again to add the hook that installs the Relevo plugin in web sessions'));
   else if (facts.webPluginHook) items.push(item('install.web-plugin-hook', 'todo', 'Add a hook that installs the Relevo plugin at the start of a web session of Claude Code, so that whoever opens the repository on the web finds the /relevo: commands (the changed .claude/settings.json is left for you to commit)', { install: true, command: `node \${CLAUDE_PLUGIN_ROOT}/scripts/web-hook.mjs --hook plugin`, hook: WEB_PLUGIN_HOOK_COMMAND, detail: WEB_PLUGIN_HOOK_DETAIL }));
 

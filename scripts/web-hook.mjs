@@ -20,12 +20,13 @@ const what = kind === 'plugin' ? 'the Relevo plugin' : 'OpenSpec';
 try {
   const before = existsSync(path) ? readFileSync(path, 'utf8') : null;
   const after = mergeWebHook(before, kind);
+  const updated = kind === 'plugin' && before !== null && after !== before && before.includes('claude plugin install relevo@relevo');
   if (after === before) {
     console.log(`${path} already installs ${what} at the start of a web session; nothing changed`);
   } else {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, after);
-    console.log(`${path} now installs ${what} at the start of a web session; the file is left for you to commit`);
+    console.log(updated ? `${path} updated: the hook now installs ${what} at the local scope; the file is left for you to commit` : `${path} now installs ${what} at the start of a web session; the file is left for you to commit`);
   }
 } catch (err) {
   console.error(`could not add the hook to ${path}: ${err.message}`);
