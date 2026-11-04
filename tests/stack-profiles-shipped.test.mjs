@@ -178,6 +178,55 @@ test('the Laravel questions cover the ones the plan listed', () => {
   ['error', 'authorised', 'reversible', 'twice'].forEach((word) => assert.match(q, new RegExp(word, 'i'), word));
 });
 
+test('Scenario: Every shipped profile asks it / Laravel - the question of volume is in the questions, not in the body', () => {
+  const p = profile('laravel');
+  assert.match(p.questions, /How many rows can the collection[^\n]*hold, and does that number grow\?/);
+  assert.doesNotMatch(p.body, /How many rows can the collection/);
+});
+
+test('Scenario: Every shipped profile asks it / The agents do not receive it - Vue and Flutter ask how many items a list can show, and their bodies do not carry the question', () => {
+  ['vue', 'flutter'].forEach((stack) => {
+    const p = profile(stack);
+    assert.match(p.questions, /How many items can a list or grid on this screen show, and does that number grow\?/, stack);
+    assert.doesNotMatch(p.body, /How many items can a list or grid/, stack);
+  });
+});
+
+test('Scenario: Every shipped profile asks it - each of the four profiles has one question about volume and growth', () => {
+  ['flutter', 'vue', 'laravel', 'supabase'].forEach((stack) => {
+    const asked = profile(stack).questions.split('\n').filter((l) => /grow/i.test(l) && /how many/i.test(l));
+    assert.equal(asked.length, 1, `${stack} asks one question about volume and growth`);
+  });
+});
+
+test('Scenario: Client call in a loop / Unbounded query / Rule for the developer - the Supabase body asks for one query per set of related rows and for a limit on growing tables, and its review section is unchanged', () => {
+  const p = profile('supabase');
+  const hygiene = p.body.slice(p.body.indexOf('## Hygiene for the developer'), p.body.indexOf('## What the auditor looks for in the diff'));
+  const auditor = p.body.slice(p.body.indexOf('## What the auditor looks for in the diff'));
+  assert.match(hygiene, /Read related rows in one query[^\n]*embedded relation[^\n]*never by calling the client inside a loop/);
+  assert.match(hygiene, /Give a query on a table that can grow a limit or a range[^\n]*a table the issue declares small and fixed needs none/);
+  assert.match(hygiene, /joins-and-nesting\. Read: \d{4}-\d{2}-\d{2}\./);
+  assert.match(hygiene, /using-modifiers-range\. Read: \d{4}-\d{2}-\d{2}\./);
+  assert.match(auditor, /\*\*Client Call in a Loop\*\*:[^\n]*inside a loop or a `map`[^\n]*earlier call/);
+  assert.match(auditor, /\*\*Unbounded Reads\*\*:[^\n]*can grow with no limit and no range/);
+  assert.match(auditor, /\*\*Missing Indexes\*\*/, 'the old items stay');
+  assert.match(p.reviewBody, /pgTAP file of its scenario/);
+  assert.match(p.reviewBody, /Never add `--linked` or `--db-url`/);
+});
+
+test('Scenario: Rule for the developer / Rule for the auditor - the Laravel body asks for pagination and looks for an endpoint that returns every row', () => {
+  const p = profile('laravel');
+  assert.match(p.body, /Paginate a collection that a caller reads and that can grow/);
+  assert.match(p.body, /`paginate\(\)`/);
+  assert.match(p.body, /never return a whole table or relation to a caller/);
+  assert.match(p.body, /Source: https:\/\/laravel\.com\/docs\/12\.x\/pagination\. Read: \d{4}-\d{2}-\d{2}\./);
+  const auditor = p.body.slice(p.body.indexOf('## What the auditor looks for in the diff'));
+  assert.match(auditor, /\*\*Queries\*\*:[^\n]*every row of a table or relation[^\n]*no limit or page[^\n]*can grow/);
+  // A bounded collection: the rule says a collection the issue declares small and fixed needs no page.
+  assert.match(p.body, /A collection the issue declares small and fixed needs no page/);
+  ['## Verification', '## Hygiene for the developer', '## What the auditor looks for in the diff'].forEach((h) => assert.ok(p.body.includes(h), h));
+});
+
 test('the bodies carry nothing from a private origin', () => {
   ['vue', 'laravel', 'flutter'].forEach((stack) => {
     assert.doesNotMatch(readFileSync(`${ROOT}/stacks/${stack}.md`, 'utf8'), /jira|atlassian|urban|funcionario/i, stack);

@@ -4,6 +4,37 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **The stack profiles ask how much data a list or table will hold, and look for two more mistakes in the diff.** The questions for the issue writer of `flutter`, `vue`, `laravel` and `supabase` now include how many items or rows a list, table or collection can hold and whether that number grows; the answer becomes a `Constraints` line, which already binds the developer and QA. The `laravel` profile tells the developer to paginate a collection that can grow, and QA looks for an endpoint that returns every row of a table or relation with no limit or page. The `supabase` profile tells the developer to read related rows in one query and not to call the client inside a loop, and to give a query on a table that can grow a limit or a range; QA looks for both. A collection or table that the issue declares small and fixed is not reported. The bodies of `flutter` and `vue` do not change.
+
+### Known limits
+
+- The documentation of Supabase that was read does not say whether the Data API cuts a read at a maximum number of rows, so the `supabase` profile makes no claim about it: it asks for a limit or a range because an unbounded read is slow, not because it is truncated.
+- Nothing measures performance: a limit such as "under two seconds" is still checked by a person on a device. Caches, a CDN, a load balancer, connection pooling and the size of the bundle are not part of the profiles.
+
+## [0.14.3] - 2026-11-04
+
+### Added
+
+- **The `requeue` job of `relevo-go.yml`.** It runs after `decide` and `build`, holds only `actions: write` and runs no agent and no project code; it never fails the run.
+- **`/relevo:doctor` warns when the only model secret does not match the credential line of `relevo-go.yml`.** With only `CLAUDE_CODE_OAUTH_TOKEN` and `anthropic_api_key` active in the workflow (or the other way round), the cloud build stopped inside `claude-code-action` with no credential and the issue ended in `relevo:qa-failed`, with no warning before. The new result `execution.credential-line` says which line to put. With both secrets or none, and with a workflow that has neither line active, nothing is added.
+- **`/relevo:init` takes the credential from the secret when it is not answered.** In order: the answer, the only model secret that exists, the credential line of an installed `relevo-go.yml`, and an API key (said in the plan). An answer that contradicts the only secret that exists is shown as a step for the person instead of as fine.
+- **The command that stores a subscription token whole** (`pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN`) is in the plan of `init`, in the guide (English and Spanish) and in the report of the skill: `claude setup-token` prints the token over two lines, and an incomplete token gives the same authentication error as a missing one.
+
+### Fixed
+
+- **A cloud build that ends now starts the queue, so waiting issues no longer stay `relevo:queued`.** The labels a run sets at its end (`built`, `qa-failed`, `needs-spec`) use the workflow token, and GitHub starts no workflow from an event made with it, so `relevo-queue` never heard that the slot was free and issues waited for its scheduled run, which can be hours apart. `relevo-go.yml` has a last job, `requeue`, that dispatches `relevo-queue.yml` when the build ran (whatever its result) or when the light job failed after claiming the issue. It is a job of its own so that `actions: write` is held only by it and never by the job that runs the agent. A repository gets the fix by taking the new `relevo-go.yml` (`/relevo:init` reports the older copy); until then, run `relevo-queue` by hand.
+- **`/relevo:init` can now switch the credential line of a workflow that is already installed.** The merge rendered the current template and the published bases with the same line, so a change of credential was invisible to it and the plan said "up to date". The bases now carry the line the file has and the current template the credential in force, so the switch is a change the merge applies and shows as a diff, and a line the person switched by hand is kept.
+
+### Known limits
+
+- The result in a real cloud run (queued issues start right after a `built`) has to be checked by a person; the tests cover the shape of the workflow, not GitHub's behavior.
+- A repository with an older `relevo-go.yml` keeps the delay until it takes the new file.
+- The gate of `relevo-go.yml` (`HAS_CREDENTIAL`) still passes with either secret, so a repository whose secret and line disagree starts the build and fails inside the action; `doctor` and `init` now report it before, but the gate does not stop it.
+- The switch of the credential line was checked with the real template and the historical 0.12.0 workflow, and the plan with the same wiring as `scripts/init.mjs`; the command itself has not been run against a real repository.
+- A workflow edited so far that it has neither credential line active is not judged by `doctor`, and `init` leaves it as the merge gives it.
+
 ## [0.14.2] - 2026-11-04
 
 ### Added

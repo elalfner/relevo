@@ -216,6 +216,14 @@ test('Scenario: The credential - both secrets are named, the person creates them
   });
 });
 
+test('Scenario: The guide in both languages gives the command that stores the subscription token whole, the same one init prints', async () => {
+  const { STORE_TOKEN_COMMAND } = await import('../scripts/lib/init.mjs');
+  ['docs/get-started.md', 'docs/get-started.es.md'].filter(exists).forEach((f) => {
+    assert.ok(read(f).includes(STORE_TOKEN_COMMAND), `${f}: the literal command`);
+  });
+  assert.ok(read('skills/init/SKILL.md').includes(STORE_TOKEN_COMMAND), 'the init skill gives it in the report');
+});
+
 test('the example issue of the page passes the check Relevo applies', () => {
   ['docs/get-started.md', 'docs/get-started.es.md'].filter(exists).forEach((f) => {
     const m = STEPS[f];

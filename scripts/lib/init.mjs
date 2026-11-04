@@ -10,6 +10,7 @@ import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
 import { restrictedList } from './restricted-paths.mjs';
+import { activeCredentialLine, credentialMode, SUBSCRIPTION_SECRET, API_KEY_SECRET } from './execution-mode.mjs';
 import { claudeProposalText } from './restricted-settings.mjs';
 import { isVueWeb, pluginInstallScope, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
@@ -19,7 +20,9 @@ export const RUNS = ['cloud', 'local', 'both'];
 export const CREDENTIALS = ['api_key', 'subscription'];
 export const AGENT_BUILDS = ['claude', 'antigravity'];
 const API_KEY_LINE = '          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}';
-const TOKEN_LINE = '          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}';
+const API_KEY_OFF = API_KEY_LINE.replace('anthropic_api_key', '# anthropic_api_key');
+const TOKEN_ON = '          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}';
+const TOKEN_LINE = TOKEN_ON.replace('claude_code_oauth_token', '# claude_code_oauth_token');
 
 /**
  * The go workflow with the credential line of the chosen mode: the API key is the template's default; for a
@@ -81,10 +84,37 @@ export function mergeWebHook(text, kind = 'openspec') {
   return `${JSON.stringify({ ...settings, hooks }, null, 2)}\n`;
 }
 
+/** Does the text have the two credential lines of the template, each on or off? */
+export const hasCredentialLines = (workflow) => (workflow.includes(API_KEY_LINE) || workflow.includes(API_KEY_OFF)) && (workflow.includes(TOKEN_LINE) || workflow.includes(TOKEN_ON));
+
+/**
+ * The go workflow with the credential line of the mode switched on and the other one commented out, from either
+ * state. Throws when the text has no credential lines to switch.
+ */
 export function credentialLine(workflow, credential) {
-  if (credential !== 'subscription') return workflow;
-  if (!workflow.includes(API_KEY_LINE) || !workflow.includes(TOKEN_LINE)) throw new Error('the go workflow template has no credential lines to switch');
-  return workflow.replace(API_KEY_LINE, API_KEY_LINE.replace('anthropic_api_key', '# anthropic_api_key')).replace(TOKEN_LINE, TOKEN_LINE.replace('# claude_code_oauth_token', 'claude_code_oauth_token'));
+  if (!hasCredentialLines(workflow)) throw new Error('the go workflow template has no credential lines to switch');
+  return credential === 'subscription'
+    ? workflow.replace(API_KEY_LINE, API_KEY_OFF).replace(TOKEN_LINE, TOKEN_ON)
+    : workflow.replace(API_KEY_OFF, API_KEY_LINE).replace(TOKEN_ON, TOKEN_LINE);
+}
+
+/** The command that stores a subscription token whole: `claude setup-token` prints it over two lines. */
+export const STORE_TOKEN_COMMAND = "pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN";
+
+/**
+ * The credential in force, in this order: the person's answer, the only model secret that exists, the credential line
+ * the installed go workflow has active, the API key. `source` says which one decided. Reads secret names only.
+ */
+export function resolveCredential({ answer = null, secrets = null, installed = null } = {}) {
+  if (answer !== null && answer !== undefined) {
+    if (!CREDENTIALS.includes(answer)) throw new Error(`credential must be one of ${CREDENTIALS.join(', ')} (got "${answer}")`);
+    return { credential: answer, source: 'answer' };
+  }
+  const { mode } = credentialMode(secrets ?? []);
+  if (mode === 'api_key' || mode === 'subscription') return { credential: mode, source: 'secret' };
+  const line = activeCredentialLine(installed ?? '');
+  if (line !== null) return { credential: line, source: 'workflow' };
+  return { credential: 'api_key', source: 'default' };
 }
 
 export const DEFAULT_RUNNER = ['ubuntu-latest'];
@@ -356,6 +386,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   const release = facts.config?.branches?.release ?? answers.release ?? 'main';
   const reviewMode = facts.config?.review?.mode ?? answers.reviewMode ?? 'peer';
   const names = labelDefinitions(facts.config?.labels ?? {});
+  const { credential, source: credentialSource } = resolveCredential({ answer: answers.credential, secrets: facts.secrets, installed: current.workflows['relevo-go.yml'] });
 
   // dependencies: offered, never installed without confirmation
   if (!facts.openspec) items.push(item('install.openspec', 'todo', 'Install the OpenSpec command-line tool', { install: true, command: 'npm install --global @fission-ai/openspec', detail: OPENSPEC_INSTALL }));
@@ -426,7 +457,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
 
   // relevo.yml
   if (facts.configText !== null) items.push(item('config', facts.config ? 'ok' : 'differs', facts.config ? 'relevo.yml exists and is valid' : `relevo.yml exists but is invalid: ${facts.configErrors.join('; ')}`));
-  else items.push(item('config', 'todo', 'Create relevo.yml from the answers', { content: renderConfig(templates.config, { base, release, ...answers }) }));
+  else items.push(item('config', 'todo', 'Create relevo.yml from the answers', { content: renderConfig(templates.config, { base, release, ...answers, credential }) }));
 
   // profile files of the repository (init never commits them, the person does): the ones asked for, and one for each
   // stack the plugin does not ship, where the file is the whole profile, unless the person declined it
@@ -469,9 +500,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
 
   // workflows: where go builds decides which ones are added (default: both the cloud and machines)
   const runs = answers.runs ?? 'both';
-  const credential = answers.credential ?? 'api_key';
   if (!RUNS.includes(runs)) throw new Error(`runs must be one of ${RUNS.join(', ')} (got "${runs}")`);
-  if (!CREDENTIALS.includes(credential)) throw new Error(`credential must be one of ${CREDENTIALS.join(', ')} (got "${credential}")`);
   const build = answers.agentBuild ?? 'claude';
   if (!AGENT_BUILDS.includes(build)) throw new Error(`agentBuild must be one of ${AGENT_BUILDS.join(', ')} (got "${build}")`);
   // The runner of the workflows: the setting of the repository, else the person's answer, else GitHub's.
@@ -516,11 +545,21 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   }
 
   // always manual
-  const hasCredential = (facts.secrets ?? []).some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n));
-  const secretName = credential === 'subscription' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY';
+  const hasCredential = (facts.secrets ?? []).some((n) => [API_KEY_SECRET, SUBSCRIPTION_SECRET].includes(n));
+  const secretName = credential === 'subscription' ? SUBSCRIPTION_SECRET : API_KEY_SECRET;
+  const onlySecret = credentialMode(facts.secrets ?? []).mode;
+  const contradicts = credentialSource === 'answer' && (onlySecret === 'api_key' || onlySecret === 'subscription') && onlySecret !== credential;
+  if (runs !== 'local') {
+    if (credentialSource === 'secret') items.push(item('credential', 'ok', `The credential is ${credential}: no answer was given, so it was taken from the secret ${secretName} that exists`));
+    else if (credentialSource === 'default') items.push(item('credential', 'warning', 'The credential was not answered and no secret decides it, so an API key is assumed (the go workflow passes anthropic_api_key); answer subscription to use a Claude subscription token'));
+  }
   if (runs === 'local') items.push(item('manual.api-key', 'ok', 'No model secret is needed in the repository: each person builds with their own Claude session'));
+  else if (contradicts) {
+    const present = onlySecret === 'subscription' ? SUBSCRIPTION_SECRET : API_KEY_SECRET;
+    items.push(item('manual.api-key', 'manual', `The credential answer is ${credential}, so the workflow passes ${secretName}, but the only model secret that exists is ${present}: a cloud build would stop with no credential. Either answer ${onlySecret} so that the workflow passes ${present}, or store ${secretName} yourself (init never reads or writes it)`));
+  }
   else if (hasCredential) items.push(item('manual.api-key', 'ok', 'A model credential secret exists (init never reads it)'));
-  else if (credential === 'subscription') items.push(item('manual.api-key', 'manual', `Create a token with \`claude setup-token\` (it prints it over two lines: remove all whitespace) and store it yourself as the secret ${secretName}; init never reads or writes it. Read the current Anthropic terms on automated use of a subscription first; the quota is shared with the interactive use of that account, which is why concurrent_agents is 1`));
+  else if (credential === 'subscription') items.push(item('manual.api-key', 'manual', `Create a token with \`claude setup-token\` (it prints it over two lines: remove all whitespace, for example by storing it with \`${STORE_TOKEN_COMMAND}\`; an incomplete token fails with the same authentication error as a missing one) and store it yourself as the secret ${secretName}; init never reads or writes it. Read the current Anthropic terms on automated use of a subscription first; the quota is shared with the interactive use of that account, which is why concurrent_agents is 1`));
   else items.push(item('manual.api-key', 'manual', `Create an API key in the Anthropic Console (a spending limit on its workspace is advisable) and store it yourself as the secret ${secretName}; init never reads or writes it`));
   const links = facts.config?.links ?? answers.links ?? [];
   if (links.length > 0) {
