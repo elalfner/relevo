@@ -287,6 +287,36 @@ The queue SHALL be re-evaluated on every relevant event (an issue merged, a `bui
 - **WHEN** the assignee's `built` issue moves to `in-review` (set by `review` when the person starts the review)
 - **THEN** the oldest eligible `queued` issue for that assignee starts
 
+### Requirement: A finished build starts the queue
+When a cloud build run ends, whatever its outcome, the `go` workflow SHALL start a queue evaluation (`relevo-queue`) after the labels of the outcome are set, because labels changed with the workflow token start no workflow by themselves. It SHALL also do so when the light job fails after claiming the issue.
+
+#### Scenario: A build ends with `built`
+- **WHEN** a build finishes and the issue is `built` while other issues are `queued`
+- **THEN** the queue is evaluated right away and the oldest eligible `queued` issue starts, without waiting for the schedule
+
+#### Scenario: A build fails or is cut
+- **WHEN** a build ends as `qa-failed`, `needs-spec`, cancelled or timed out
+- **THEN** the queue is evaluated right away
+
+#### Scenario: The light job fails after the claim
+- **WHEN** the gates claim the issue as `building` and the light job then fails, leaving it `qa-failed`
+- **THEN** the queue is evaluated right away
+
+#### Scenario: No build ran
+- **WHEN** the decision is `needs-spec`, `blocked`, `queued`, `denied`, no milestone or no assignee, and the light job succeeds
+- **THEN** no queue evaluation is started, because no slot was freed
+
+#### Scenario: The queue workflow is missing
+- **WHEN** the repository has no `relevo-queue` workflow
+- **THEN** the start fails without failing the run or changing any label
+
+### Requirement: Starting the queue does not widen the agent's token
+The permission to start workflows SHALL be held only by a job that runs no agent and no project code. The job that runs the agent SHALL NOT have it.
+
+#### Scenario: Permissions of the jobs
+- **WHEN** the workflow template is read
+- **THEN** only the job that starts the queue has `actions: write`, and the `decide` and `build` jobs do not
+
 ### Requirement: Documentation from the issue is built
 When the issue has a `Documentation` section, `go` SHALL add a task for it to the change's `tasks.md`, and the developer agent SHALL write exactly the text the issue gives: glossary entries appended to `GLOSSARY.md` after the existing ones, and each decision record as a new file in `docs/adr/` numbered with the highest existing number plus one. The files SHALL arrive in the same pull request as the rest of the build. When the issue has no such section, no documentation task SHALL be added.
 
