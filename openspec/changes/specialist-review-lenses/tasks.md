@@ -62,7 +62,7 @@
 
 - [x] 8.1 `scripts/lib/adapters/antigravity.mjs` and `scripts/lib/adapters/tools.mjs`: render the four lens agents with the names of the spec and read-only tool lists, and extend the rewrite of agent names, which today stops at a hyphen. Verify with `tests/adapter-antigravity.test.mjs`: valid names, no `relevo:qa-` token, and the test that every agent file of the plugin renders to a valid name.
 - [x] 8.2 Extend the rewritten paragraph about waiting for subagents so that the lenses are called one at a time. Verify with the adapter test.
-- [ ] 8.3 `scripts/lib/agent-guard.mjs`: apply the result of task 1.4 so that the token limit counts the subagents. Verify with the replayed stream of that task.
+- [x] 8.3 `scripts/lib/agent-guard.mjs`: apply the result of task 1.4 so that the token limit counts the subagents. Verify with the replayed stream of that task. Result: nothing to change, because the guard already counts the turns and tokens of the subagents (the S4 tests of `tests/agent-guard.test.mjs` pass); the stream is hand-built, so a real Antigravity recording is still open (see D17).
 - [x] 8.4 `docs/security.md` and `docs/security.es.md`: for each agent, which of these controls hold, which hold in part and which do not exist, including the settings not applied with Antigravity and that the receipt is not a boundary. Verify with `node --test tests/docs-claims.test.mjs`.
 
 ## 9. The limits of a run

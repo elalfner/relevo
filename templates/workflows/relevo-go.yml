@@ -556,3 +556,27 @@ jobs:
       - name: Remove what this job added
         if: always()
         run: rm -rf .relevo-plugin
+
+  # Starts the queue (relevo-queue.yml) when a build ends or the light job fails after it claimed the issue: the labels
+  # that the run sets use the workflow token, and an event made with that token starts no workflow, so the queue would
+  # not hear that a slot was freed until its schedule runs. It is a job of its own so that `actions: write` is never held
+  # by the job that runs the agent: the issue text is untrusted and the agent has Bash and this token. It runs no agent
+  # and no project code, and needs no checkout. A decision that builds nothing (needs-spec, blocked, queued, denied...)
+  # frees no slot, so it starts nothing. It never fails the run: without a queue workflow the schedule is the only path.
+  requeue:
+    needs: [decide, build]
+    if: always() && vars.RELEVO_CLOUD_GO != 'off' && (needs.build.result != 'skipped' || needs.decide.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Start the queue
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if ! gh workflow run relevo-queue.yml --repo "$GITHUB_REPOSITORY"; then
+            echo "::warning::The queue was not started (is relevo-queue.yml installed?). Waiting issues start at its next scheduled run."
+          fi
