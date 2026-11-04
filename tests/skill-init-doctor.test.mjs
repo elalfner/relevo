@@ -232,3 +232,11 @@ test('the commands of the person who writes issues reach GitHub through the REST
   assert.doesNotMatch(init, /if `gh auth status` fails/);
   assert.match(init, /gh-web\.mjs --access/);
 });
+
+test('init says that the plugin hook installs at the local scope and updates an older one after a yes', () => {
+  const { body } = load('init');
+  assert.match(body, /installs at the local scope, so no file the repository tracks changes/);
+  assert.match(body, /already there but installs at the project scope/);
+  assert.match(body, /show the command that is there and the command that replaces it, and ask for a yes to it alone/);
+  assert.match(body, /replaces only that command and keeps every other setting and hook/);
+});

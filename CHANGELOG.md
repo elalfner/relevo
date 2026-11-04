@@ -4,6 +4,22 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-04
+
+### Added
+
+- **`/relevo:init` updates an older plugin hook, and `/relevo:doctor` warns about it.** A project that has the hook of 0.13.0 or 0.14.x (it installs the plugin at the project scope) gets, in the plan of `init`, a line that shows the command that is there and the one that replaces it; on a yes only that command changes, in place, and every other setting and hook of `.claude/settings.json` stays. In a web session `doctor` reports `web.plugin-hook-scope`, a warning with the cause and `/relevo:init` as the fix. Both are covered by the spec of `init-doctor`.
+
+### Fixed
+
+- **The plugin hook for web sessions no longer rewrites `.claude/settings.json`.** The hook of 0.13.0 and 0.14.x installed the plugin at the project scope, which makes the CLI rewrite the tracked file with its keys in another order (`hooks`, `enabledPlugins`, `extraKnownMarketplaces`). A web session saw a change to commit and opened a pull request for it (the sandbox got one, #70), and every later session did the same. The hook that `/relevo:init` writes now installs at the local scope (`--scope local` on both `claude plugin` commands): in a new container the plugin is installed and enabled, the entries go to `.claude/settings.local.json`, which Claude Code keeps out of git, and no tracked file changes. The declaration for a terminal does not change.
+
+### Known limits
+
+- The result in a real web session on a repository that already has the updated hook has to be checked by a person: no pull request is opened and `git status` shows no change. It was reproduced in a scratch repository with a fresh home folder, not yet in a web session of the sandbox.
+- The ignore of `.claude/settings.local.json` is set by Claude Code, not by Relevo; it held in every test.
+- A project keeps the older hook, and its pull requests, until it runs `/relevo:init`; the warning of `doctor` is the only nudge.
+
 ## [0.14.1] - 2026-11-04
 
 ### Added
