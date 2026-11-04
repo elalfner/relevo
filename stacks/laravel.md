@@ -38,6 +38,7 @@ The tests need a database that is available in the build. A new project uses SQL
 - Authorise every action that reads or changes data that belongs to someone: a policy, a gate or a scoped query. A route behind `auth` is not enough.
 - Protect against mass assignment: define `$fillable` (or `$guarded` deliberately) and never pass `$request->all()` to `create` or `update`.
 - Avoid N+1 queries: eager-load relations used in a loop (`with()`), and prefer `Model::preventLazyLoading()` in non-production so a miss fails in tests.
+- Paginate a collection that a caller reads and that can grow (`paginate()`, `simplePaginate()` or, for a large data set, `cursorPaginate()` over an indexed `orderBy`); never return a whole table or relation to a caller. A collection the issue declares small and fixed needs no page. Source: https://laravel.com/docs/12.x/pagination. Read: 2026-11-04.
 - Make migrations safe and reversible: a `down()` that undoes `up()`, no data loss on a populated table, an index for each foreign key and each column used in a `where`.
 - Make queued jobs and listeners idempotent: running one twice must not charge, send or create twice; give a job a unique key or check its effect first.
 - Never put a secret in code: use `config()` and `.env`, and never `env()` outside the config files.
@@ -50,7 +51,7 @@ Run on a fresh project, `analyze` fails on a style problem and `test` fails on a
 
 - **Authorisation**: a controller or route that reads or changes data with no policy, gate or ownership scope.
 - **Validation**: input used before it is validated; `$request->all()` passed to a model.
-- **Queries**: a query or a relation access inside a loop (N+1); a missing index for a new foreign key; raw SQL built from input.
+- **Queries**: a query or a relation access inside a loop (N+1); a missing index for a new foreign key; raw SQL built from input; an endpoint that returns every row of a table or relation (`all()`, or `get()` with no limit or page) when the collection can grow.
 - **Migrations**: a `down()` that does not undo `up()`; a destructive change with no plan for existing rows; a long lock on a large table.
 - **Jobs**: a queued job that is not safe to run twice; a job that depends on request state that will not exist later.
 - **Secrets and config**: `env()` outside `config/`; a key, token or password in code or in a migration.
@@ -99,5 +100,6 @@ Check the diff against each item. Report one only with the line that breaks it.
 - What is the shape of a successful response, with every field typed and which may be null?
 - What error responses can there be, and with which status code and body?
 - Does it change the database? If so, is the migration reversible, and what happens to existing rows?
+- How many rows can the collection this endpoint returns hold, and does that number grow? If it can grow, how does the caller page through it?
 - Does it queue work or send something to the outside? Must it be safe to run twice?
 - Which existing endpoint or model does it reuse, and what must not change for the callers of the existing ones?

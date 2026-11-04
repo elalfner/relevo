@@ -205,7 +205,13 @@ test('Scenario: Supabase profile - the plugin ships it with commands, tools, ski
   assert.deepEqual(r.profile.skills.issue, ['supabase', 'supabase-postgres-best-practices']);
   assert.deepEqual(Object.keys(r.profile.targets), []);
   assert.match(r.profile.questions, /Authorization & RLS/);
+  assert.match(r.profile.questions, /Relationships & Deletes/);
+  assert.match(r.profile.questions, /Storage & Files/);
+  assert.match(r.profile.questions, /Query Performance & Filters/);
+  assert.match(r.profile.questions, /Volume & Growth[^\n]*How many rows will each table hold/);
+  assert.ok(r.profile.questions.split('\n').filter((l) => l.startsWith('- ')).length >= 5, 'at least five questions for the issue writer');
   assert.doesNotMatch(r.profile.body, /Authorization & RLS/);
+  assert.doesNotMatch(r.profile.body, /Volume & Growth/);
   assert.match(r.profile.body, /ENABLE ROW LEVEL SECURITY/);
 });
 

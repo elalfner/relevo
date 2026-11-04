@@ -95,6 +95,7 @@ Check the diff against each item. Report one only with the line that breaks it.
 - Which screen or route is this, and where does the person come from and go to?
 - What does the person see while the data loads, when there is none, and when the request fails?
 - Which endpoint does it call, and what does its response look like? If it belongs to another repository, name the issue that builds it with `Depends-on:`.
+- How many items can a list or grid on this screen show, and does that number grow? If it can reach hundreds, does the server page it or is it shown whole?
 - Who may see or do this (a role, a permission, a logged-in state)?
 - Is there a design reference (a picture, a component to reuse, a design token)? Name the file.
 - Which texts must be translated, and into which languages?

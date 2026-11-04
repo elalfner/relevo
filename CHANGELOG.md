@@ -4,6 +4,15 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **The stack profiles ask how much data a list or table will hold, and look for two more mistakes in the diff.** The questions for the issue writer of `flutter`, `vue`, `laravel` and `supabase` now include how many items or rows a list, table or collection can hold and whether that number grows; the answer becomes a `Constraints` line, which already binds the developer and QA. The `laravel` profile tells the developer to paginate a collection that can grow, and QA looks for an endpoint that returns every row of a table or relation with no limit or page. The `supabase` profile tells the developer to read related rows in one query and not to call the client inside a loop, and to give a query on a table that can grow a limit or a range; QA looks for both. A collection or table that the issue declares small and fixed is not reported. The bodies of `flutter` and `vue` do not change.
+
+### Known limits
+
+- The documentation of Supabase that was read does not say whether the Data API cuts a read at a maximum number of rows, so the `supabase` profile makes no claim about it: it asks for a limit or a range because an unbounded read is slow, not because it is truncated.
+- Nothing measures performance: a limit such as "under two seconds" is still checked by a person on a device. Caches, a CDN, a load balancer, connection pooling and the size of the bundle are not part of the profiles.
+
 ## [0.14.3] - 2026-11-04
 
 ### Added

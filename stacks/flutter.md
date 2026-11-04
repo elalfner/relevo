@@ -118,6 +118,7 @@ Check the diff against each item. Report one only with the line that breaks it.
 - What does the person see while data loads, when there is none, when the request fails and when there is no network?
 - Which system action does it trigger (a call, a map, a share, a permission)? What if the app for it is missing or the permission is denied?
 - Which endpoint does it use and what does its response look like? If it belongs to another repository, name the issue that builds it with `Depends-on:`.
+- How many items can a list or grid on this screen show, and does that number grow? If it can reach hundreds, does the server page it or is it shown whole?
 - Which targets must it work on (`android`, `ios`, `web`)?
 - Is there a design reference (a picture, a widget to reuse)? Name the file.
 - What must work on a small screen?

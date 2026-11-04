@@ -60,6 +60,7 @@ Check the diff against each item. Report one only with the line that breaks it.
 - **Relationships & Deletes**: If a parent row or user is deleted, what is the expected cascade behavior (`CASCADE`, `SET NULL`, or `RESTRICT`)?
 - **Storage & Files**: If files are uploaded, what are the allowed MIME types, max file sizes, and who can overwrite or delete objects?
 - **Query Performance & Filters**: Which columns will be filtered in `WHERE` clauses, sorted, or referenced in RLS policies (`auth.uid() = user_id`)?
+- **Volume & Growth**: How many rows will each table hold after a year, and does a screen read all of them? A table that can grow gets a limit or a range in every query that reads it.
 
 ## Hygiene for the developer
 
@@ -73,6 +74,8 @@ Check the diff against each item. Report one only with the line that breaks it.
 - Create an index on every foreign key column and on every column evaluated in RLS policies.
 - Structure all schema changes as versioned, timestamped migrations in `supabase/migrations/`.
 - Maintain test and sample data in `supabase/seed.sql` using idempotent statements (`INSERT ... ON CONFLICT DO NOTHING;`).
+- Read related rows in one query, with an embedded relation in `select()` (`parent(*, children(*))`), a view or a function, and never by calling the client inside a loop. Source: https://supabase.com/docs/guides/database/joins-and-nesting. Read: 2026-11-04.
+- Give a query on a table that can grow a limit or a range, with an `order` so that the range is stable; a table the issue declares small and fixed needs none. Source: https://supabase.com/docs/reference/javascript/using-modifiers-range. Read: 2026-11-04.
 - Write pgTAP test suites in `supabase/tests/` verifying that unauthorized or anonymous callers cannot read or modify protected rows.
 
 ## What the auditor looks for in the diff
@@ -83,6 +86,8 @@ Check the diff against each item. Report one only with the line that breaks it.
 - **Unprotected Views**: Views defined without `security_invoker = true`.
 - **Privilege Escalation**: `SECURITY DEFINER` functions placed in `public` or callable without `auth.uid()` checks.
 - **Missing Indexes**: Foreign key constraints or RLS filter columns without an index.
+- **Client Call in a Loop**: A call to the Supabase client (`from(...).select(...)`) inside a loop or a `map` over the rows of an earlier call, where one query with an embedded relation would do.
+- **Unbounded Reads**: A read of a table that can grow with no limit and no range.
 - **Destructive Migrations**: `DROP TABLE`, `DROP COLUMN`, or `TRUNCATE` operations without explicit migration plans or rollback safety.
 - **Exposed Secrets**: Hardcoded `service_role` keys, API tokens, or service passwords in code, migrations, or seed files.
 
