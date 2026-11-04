@@ -4,6 +4,21 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-11-04
+
+### Added
+
+- **The `requeue` job of `relevo-go.yml`.** It runs after `decide` and `build`, holds only `actions: write` and runs no agent and no project code; it never fails the run.
+
+### Fixed
+
+- **A cloud build that ends now starts the queue, so waiting issues no longer stay `relevo:queued`.** The labels a run sets at its end (`built`, `qa-failed`, `needs-spec`) use the workflow token, and GitHub starts no workflow from an event made with it, so `relevo-queue` never heard that the slot was free and issues waited for its scheduled run, which can be hours apart. `relevo-go.yml` has a last job, `requeue`, that dispatches `relevo-queue.yml` when the build ran (whatever its result) or when the light job failed after claiming the issue. It is a job of its own so that `actions: write` is held only by it and never by the job that runs the agent. A repository gets the fix by taking the new `relevo-go.yml` (`/relevo:init` reports the older copy); until then, run `relevo-queue` by hand.
+
+### Known limits
+
+- The result in a real cloud run (queued issues start right after a `built`) has to be checked by a person; the tests cover the shape of the workflow, not GitHub's behavior.
+- A repository with an older `relevo-go.yml` keeps the delay until it takes the new file.
+
 ## [0.14.2] - 2026-11-04
 
 ### Added
