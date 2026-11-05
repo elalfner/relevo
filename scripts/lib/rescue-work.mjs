@@ -5,12 +5,12 @@
 //
 // It commits through `commitChange`, so it has the same refusals as any commit of Relevo: protected paths, restricted
 // files, temporary markers and credentials. It pushes only after a commit (or when earlier commits of the branch were
-// never pushed), never with force, and never to a branch that already exists on the remote.
+// never pushed), never with force, and only as a fast-forward of what the remote has: it overwrites nothing.
 //
 // `git(args) -> stdout` is injected so the logic can be tested; it throws when git fails.
 
 import { commitChange, refusalText } from './commit-change.mjs';
-import { wipSubject } from './wip-commit.mjs';
+import { withIssueHash, wipSubject } from './wip-commit.mjs';
 
 // What a run leaves in the working tree that is not the work: tools and the folders of the Relevo scripts.
 const NOT_WORK = [/^node_modules\//, /^\.relevo-(receipt|plugin|design)\//];
@@ -41,21 +41,26 @@ export function readDecision(b64) {
     const allow = Array.isArray(d.allow_paths) ? d.allow_paths.filter((p) => typeof p === 'string' && p.trim() && !p.startsWith('-')) : [];
     const path = typeof d.path === 'string' && !d.path.includes('..') && !d.path.startsWith('-') ? d.path : null;
     if (issue === null || name(d.branch) === null) return null;
-    return { issue, branch: name(d.branch), base: name(d.base), change: name(d.change_id), within: path, allow };
+    const issueHash = typeof d.issue_hash === 'string' && /^[0-9a-f]{64}$/.test(d.issue_hash) ? d.issue_hash : null;
+    return { issue, branch: name(d.branch), base: name(d.base), change: name(d.change_id), within: path, allow, issueHash };
   } catch {
     return null;
   }
 }
 
 /**
- * Commit and push what a cut run left. Returns { state, branch, files, commit, detail }:
+ * Commit and push what a cut run left, or what a group of tasks just finished (a checkpoint). Returns
+ * { state, branch, files, commit, detail }:
  *   kept        the work is on the branch of the issue on the remote
  *   unsafe      a commit was refused (protected path, restricted file, marker or credential): nothing was pushed
  *   not_pushed  the commit was made (or there was one) but the push failed
- *   existing    the branch already exists on the remote: it was not touched
+ *   existing    the remote branch has commits that this branch lacks: it was not touched
  *   nothing     there was nothing to keep: the branch was never created, or it holds no work
+ * The branch may already be on the remote because of the checkpoints of this same run: a push that is a fast-forward of
+ * the remote tip is allowed, and any other push is refused, so nothing is ever overwritten.
+ *   subject  the subject of the commit (`wip: stopped by limit (#N)` by default); the hash of the issue text goes in as a trailer
  */
-export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted }) {
+export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null }) {
   const result = (state, extra = {}) => ({ state, branch: decision.branch, files: 0, commit: null, detail: '', ...extra });
   let current;
   try {
@@ -66,7 +71,17 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
   if (current !== decision.branch) return result('nothing', { detail: `the branch of the issue was not created (the run is on ${current || 'no branch'})` });
 
   try {
-    if (git(['ls-remote', '--heads', 'origin', decision.branch]).trim()) return result('existing', { detail: 'the branch is already on the remote, so it was not touched' });
+    const tip = git(['ls-remote', '--heads', 'origin', decision.branch]).trim().split(/\s+/)[0];
+    if (tip) {
+      // A remote tip that this branch contains is the work of this run (its checkpoints): pushing is a fast-forward. Any
+      // other, including a commit this clone does not even have, belongs to someone else and is left alone.
+      let contained = false;
+      try {
+        git(['merge-base', '--is-ancestor', tip, 'HEAD']);
+        contained = true;
+      } catch { /* not an ancestor, or an object this clone does not have */ }
+      if (!contained) return result('existing', { detail: 'the branch is already on the remote with commits this run does not have, so it was not touched' });
+    }
   } catch (error) {
     return result('not_pushed', { detail: `git could not ask the remote: ${firstLine(error)}` });
   }
@@ -86,7 +101,7 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     let committed;
     try {
       committed = commitChange({
-        git, message: wipSubject(decision.issue, 'limit'), paths, allow: decision.allow, rulesFile, platformPaths,
+        git, message: withIssueHash(subject ?? wipSubject(decision.issue, 'limit'), decision.issueHash), paths, allow: decision.allow, rulesFile, platformPaths,
         within: decision.within, change: decision.change, restricted,
       });
     } catch (error) {

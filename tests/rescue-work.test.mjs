@@ -55,7 +55,9 @@ test('changedPaths reads the status of git, keeps both paths of a rename and lea
 });
 
 test('readDecision reads only numbers and names, and nothing else', () => {
-  assert.deepEqual(readDecision(b64(DECISION)), { issue: 7, branch: 'feature/7-x', base: 'dev', change: '7-x', within: '.', allow: [] });
+  assert.deepEqual(readDecision(b64(DECISION)), { issue: 7, branch: 'feature/7-x', base: 'dev', change: '7-x', within: '.', allow: [], issueHash: null });
+  assert.equal(readDecision(b64({ ...DECISION, issue_hash: 'a'.repeat(64) })).issueHash, 'a'.repeat(64));
+  assert.equal(readDecision(b64({ ...DECISION, issue_hash: 'not a hash' })).issueHash, null, 'only a sha-256 is read');
   assert.equal(readDecision(b64({ ...DECISION, issue: -1 })), null);
   assert.equal(readDecision(b64({ ...DECISION, branch: 'a b' })), null);
   assert.equal(readDecision(b64({ ...DECISION, branch: '../x' })), null);
@@ -121,18 +123,47 @@ test('Scenario: The scans refuse the rescue commit - nothing is pushed and the r
   assert.equal(hasRemoteBranch(restricted), false);
 });
 
-test('Scenario: The branch already exists on the remote - it is not touched', () => {
+test('Scenario: The remote holds the checkpoints of this run - the push is a fast-forward and the work is kept', () => {
   const f = fixture();
   put(f.work, 'src/early.js', 'x\n');
   git(f.work, 'add', '.');
-  git(f.work, 'commit', '-qm', 'earlier push');
+  git(f.work, 'commit', '-qm', 'wip: checkpoint 1/2 (#7)');
   git(f.work, 'push', '-q', 'origin', 'feature/7-x');
+  put(f.work, 'src/late.js', 'y\n');
+  const out = rescue(f);
+  assert.equal(out.state, 'kept', out.detail);
+  assert.equal(remoteBranch(f), git(f.work, 'rev-parse', 'HEAD').trim());
+  assert.equal(git(f.origin, 'log', '--format=%s', '-3', 'feature/7-x').trim().split('\n')[0], 'wip: stopped by limit (#7)');
+});
+
+test('Scenario: The branch already exists on the remote with commits this run does not have - it is not touched', () => {
+  const f = fixture();
+  // Someone else created the branch from the base and pushed a commit of their own.
+  const other = join(f.root, 'other');
+  git(f.root, 'clone', '-q', f.origin, other);
+  git(other, 'config', 'user.email', 'p@q');
+  git(other, 'config', 'user.name', 'p');
+  git(other, 'checkout', '-q', '-b', 'feature/7-x');
+  put(other, 'theirs.txt', 'their work\n');
+  git(other, 'add', '.');
+  git(other, 'commit', '-qm', 'their work');
+  git(other, 'push', '-q', 'origin', 'feature/7-x');
   const before = remoteBranch(f);
   put(f.work, 'src/late.js', 'y\n');
   const out = rescue(f);
   assert.equal(out.state, 'existing');
-  assert.equal(remoteBranch(f), before);
-  assert.equal(git(f.work, 'log', '-1', '--format=%s').trim(), 'earlier push', 'no commit was made');
+  assert.equal(remoteBranch(f), before, 'the remote branch is as it was');
+  assert.equal(git(f.work, 'log', '-1', '--format=%s').trim(), 'base', 'no commit was made');
+});
+
+test('the commit carries the hash of the issue text as a trailer when the decision has it, and a given subject replaces the default', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'x\n');
+  const hash = 'c'.repeat(64);
+  const out = rescueWork({ git: (args) => git(f.work, ...args), decision: readDecision(b64({ ...DECISION, issue_hash: hash })), subject: 'wip: checkpoint 1/3 (#7)' });
+  assert.equal(out.state, 'kept');
+  assert.equal(git(f.work, 'log', '-1', '--format=%s').trim(), 'wip: checkpoint 1/3 (#7)');
+  assert.match(git(f.work, 'log', '-1', '--format=%B'), new RegExp(`\\nIssue-hash: ${hash}\\n`));
 });
 
 test('the run was never on the branch of the issue - there is no work of the issue to keep', () => {

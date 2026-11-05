@@ -138,3 +138,30 @@ test('Scenario: fix continues from the kept work - the commit of a run that stop
   assert.match(fix, /`wip: stopped by limit`/);
   assert.match(fix, /no defect is known/);
 });
+
+test('Scenario: A checkpoint is work in progress of its issue, and an own commit; the trailer carries the hash of the issue text', async () => {
+  const { checkpointSubject, isCheckpoint, isOwnCommit, issueHashOf, withIssueHash } = await import('../scripts/lib/wip-commit.mjs');
+  assert.equal(checkpointSubject(37, 2, 5), 'wip: checkpoint 2/5 (#37)');
+  assert.equal(isCheckpoint('wip: checkpoint 2/5 (#37)'), true);
+  assert.equal(isCheckpoint('wip: checkpoint 2/5 (#37)', 37), true);
+  assert.equal(isCheckpoint('wip: checkpoint 2/5 (#37)', 38), false, 'another issue');
+  ['wip: checkpoint (#37)', 'wip: checkpoint 2/5', 'feat: checkpoint 2/5 (#37)', 'wip: checkpoint a/b (#37)'].forEach((s) => assert.equal(isCheckpoint(s), false, s));
+  assert.equal(isWipCommit('wip: checkpoint 2/5 (#37)', 37), true, 'fix treats it as work in progress');
+  assert.equal(isWipCommit('wip: checkpoint 2/5 (#37)', 38), false);
+  // The commits Relevo makes before the end of a build are its own; a QA rejection and a person's commit are not.
+  assert.equal(isOwnCommit('docs: specification for #37', 37), true);
+  assert.equal(isOwnCommit('wip: checkpoint 1/5 (#37)', 37), true);
+  assert.equal(isOwnCommit('wip: stopped by limit (#37)', 37), true);
+  assert.equal(isOwnCommit('wip: rejected by QA (#37)', 37), false, 'it has a finding and belongs to fix');
+  assert.equal(isOwnCommit('feat: x (#37)', 37), false);
+  assert.equal(isOwnCommit('fix a typo', 37), false);
+  assert.equal(isOwnCommit('docs: specification for #38', 37), false);
+  const hash = 'e'.repeat(64);
+  const message = withIssueHash('wip: checkpoint 1/5 (#37)', hash);
+  assert.equal(message, `wip: checkpoint 1/5 (#37)\n\nIssue-hash: ${hash}`);
+  assert.equal(issueHashOf(message), hash);
+  assert.equal(withIssueHash('subject', 'short'), 'subject', 'only a sha-256 is written');
+  assert.equal(withIssueHash('subject', null), 'subject');
+  assert.equal(issueHashOf('no trailer here'), null);
+  assert.equal(issueHashOf('Issue-hash: nothex'), null);
+});
