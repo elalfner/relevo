@@ -257,7 +257,7 @@ test('QA receives the saved body of the issue to compare the copied sections', (
 test('Scenario: Reference in the repository / Attachment - go fetches what the issue points to before it writes the specification', () => {
   const fetchAt = body.indexOf('design-fetch.mjs --issue <issue> --repo <owner/name>');
   assert.ok(fetchAt > body.indexOf('### 3. Specification'));
-  assert.ok(fetchAt < body.indexOf('Write the change specification from the issue'), 'the fetch comes before the specification');
+  assert.ok(fetchAt < body.indexOf('write the change specification from the issue'), 'the fetch comes before the specification');
   assert.match(body, /reads the references from the issue itself, downloads pasted attachments only when `design\.images` is on/);
   assert.match(body, /\.relevo-design\/manifest\.json/);
   assert.ok(existsSync(root('scripts/design-fetch.mjs')));
@@ -393,7 +393,7 @@ test('Scenario: No agent starts after a limit of the run - the skill records eac
   assert.match(body, /names the agents that did not run/);
   assert.match(body, /`run_max_minutes`, `run_max_cost`/, 'the start decision names the minutes limit');
   const dev = body.indexOf('launch the `relevo:dev` agent in **build** mode');
-  assert.ok(body.indexOf('record what it used', dev) > dev, 'the developer is recorded after it finishes');
+  assert.ok(body.indexOf('record what the agent used', dev) > dev, 'the developer is recorded after each group');
 });
 
 test('Scenario: The budget guard stops a run only on what it can read - the skill says to carry on when it does not know, and to trust no text of a report', () => {
@@ -406,4 +406,41 @@ test('the QA reference checks the budget before each lens and before a retry, an
   assert.match(qa, /Before each lens, check the budget of the run/);
   assert.match(qa, /run-budget\.mjs record --agent relevo:qa-<lens>/);
   assert.match(qa, /check the budget \(`run-budget\.mjs check`[^)]*\) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying/);
+});
+
+// ---------- checkpoints and resume
+
+test('Scenario: The developer builds one section of tasks at a time - the skill splits the tasks, launches per group and checkpoints after each', () => {
+  const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
+  assert.match(step4, /task-groups\.mjs openspec\/changes\/<change_id>\/tasks\.md/);
+  assert.match(step4, /one group when three tasks or fewer are pending/);
+  assert.match(step4, /\*\*only the tasks of that group\*\*/);
+  const group = step4.indexOf('only the tasks of that group');
+  const checkpoint = step4.indexOf('checkpoint.mjs --decision <base64> --k <number of the group> --of <number of groups>');
+  assert.ok(group > 0 && checkpoint > group, 'the checkpoint comes after the group is built');
+  assert.match(step4, /wip: checkpoint <k>\/<n> \(#<issue>\)/);
+  assert.match(step4, /Exit 1:\*\* a commit was refused[^]*branch_state` `unsafe`/);
+  assert.match(step4, /After the last group run the instructions command again[^]*`tasks left unfinished`/);
+  assert.match(step4, /Check the budget before each launch/);
+});
+
+test('Scenario: A later run resumes from the checkpoints - step 2 asks the script, resumes or stops, and step 3 writes nothing when resumed', () => {
+  const step2 = body.slice(body.indexOf('### 2. Branch'), body.indexOf('### 3. Specification'));
+  assert.match(step2, /resume-check\.mjs <base> <branch> <issue> <issue_hash>/);
+  assert.match(step2, /`absent`[^]*git switch -c <branch> origin\/<base>/);
+  assert.match(step2, /`resume`[^]*git switch -c <branch> origin\/<branch>/);
+  assert.match(step2, /`existing`[^]*Do not touch the branch/);
+  assert.match(step2, /reason `branch already exists`/, 'a branch that cannot be resumed stops as before');
+  assert.doesNotMatch(step2.slice(0, step2.indexOf('resume-check.mjs')), /git switch -c <branch> origin\/<base>/, 'the branch is no longer created before the check');
+  const step3 = body.slice(body.indexOf('### 3. Specification'), body.indexOf('### 4. Build'));
+  assert.match(step3, /\*\*When the run is resumed\*\*, the specification is already on the branch: do not run `openspec new change`, write no artifact and do not commit the specification/);
+});
+
+test('the feature commit may be empty because the checkpoints hold the files, and the failure path pushes its own checkpoints but nothing else', () => {
+  const commit = body.slice(body.indexOf('### 6. Commit'), body.indexOf('### 7. Push and hand off'));
+  assert.match(commit, /commit-change\.mjs --message "feat: <title> \(#<issue>\)" --allow-empty/);
+  assert.match(commit, /checkpoints stay in the history/);
+  const failure = body.slice(body.indexOf('## Failure path'), body.indexOf('## Steps'));
+  assert.match(failure, /Issue-hash: <issue_hash>/, 'the limit commit carries the hash so that a run can resume');
+  assert.match(failure, /existed before this run[^]*fast-forward/);
 });

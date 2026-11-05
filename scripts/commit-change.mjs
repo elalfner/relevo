@@ -5,6 +5,7 @@
 // --within is the folder of the platform of the issue: files outside it are refused, except the specification of --change, GLOSSARY.md and docs/adr/.
 // It stages the paths, refuses protected paths and restricted files ("restricted file in the diff"), scans the staged diff for temporary markers and credentials, and
 // commits only when nothing was found. With no --rules-file it reads qa.rules_from from relevo.yml, if there is one; it also reads the platform folders there, because the skill folders of a platform are protected too.
+// --allow-empty makes an empty commit with the message when the named paths have no change (the checkpoints of a build already hold them) and nothing else is staged.
 //   exit 0: committed (prints the short hash)   exit 1: refused, nothing committed (prints what and where)
 //   exit 2: bad arguments, "." or "-A" as a path, or git failed
 
@@ -46,7 +47,7 @@ const allow = (opt('allow') ?? '').split(',').map((p) => p.trim()).filter(Boolea
 const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 try {
-  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile, platformPaths, within: opt('within') ?? null, change: opt('change') ?? null, restricted });
+  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile, platformPaths, within: opt('within') ?? null, change: opt('change') ?? null, restricted, allowEmpty: options.includes('--allow-empty') });
   if (result.ok) {
     console.log(result.commit);
     process.exit(0);
