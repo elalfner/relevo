@@ -4,6 +4,30 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-11-05
+
+### Added
+
+- **A run stops launching agents after a limit.** The runner counts only the turns of the main agent, so the subagents (the developer and the QA lenses) were never stopped: a pilot build used 144 turns against a limit of 100, 113 of them by subagents. `go` now records each agent when it finishes, copying the three numbers of the `<usage>` block that ends its report, and asks the new `scripts/run-budget.mjs check` before it launches the next one (the developer again, or the next lens). When the turns of the subagents together reach `limits.run_max_turns`, or the run has lasted `limits.run_max_minutes`, no other agent starts and the run takes the failure path with the reason `run limit reached`, naming the agents that did not run. The guard fails open: it stops a run only on a figure it can read.
+- **`limits.run_max_minutes`** (default 50, at least 5), the soft time limit of a run. The decision that starts a run carries it, and `/relevo:doctor` warns when the `timeout-minutes` of the build job of the installed go workflow is not at least five minutes above it.
+- **The work of a run that stops at a limit or is cut is kept.** Before, the failure path (run by the agent) kept the work only after a QA rejection; a run cut by the runner or by the 60-minute job timeout left nothing. `go` now commits the work as `wip: stopped by limit (#N)` when it stops at a limit, and the go workflow has a step that always runs, **Keep the work of a run that was cut**, which does the same for the working tree that is left when the issue is still `building` or `ready`. Both go through `commit-change` (protected paths, restricted files, temporary markers and credentials), push to the branch of the issue without force, and leave a branch that already exists on the remote alone. The comment of the run says whether the work was kept, and `/relevo:fix` continues from it (`fix` recognises both `wip` subjects).
+- **The comment about a cloud run lists each agent and each model.** For the main agent and every subagent: model, effort, turns, minutes and an estimated cost; and the real cost of each model, from `modelUsage`. The cost of an agent is a share of the real cost of its model by the weighted input side of its messages, written as "about"; the estimates of a model add up to its real cost. The hidden marker carries the same figures under `agents` and `models`; the digest ignores them. Checked on the log of a real build: the developer came out at about 49 % of the cost and the specification lens at about $1.0, which agrees with what a person measured by hand.
+- **The outcome class `limit`** in the usage record and in the digest, for a run that stopped at a limit or was cut.
+
+### Changed
+
+- **The text of the failure comment for `run limit reached`** says that the run stopped at a limit before it finished and that the branch holds the work done before the stop; it no longer says that QA rejected it. The first line stays the same, because `fix` finds the comment by it.
+- **The `go` skill no longer says "do not try to stop early".** It says that the counters of the runner cannot be seen and that the only limits it checks itself are those of the subagents and of the time, with the guard.
+- **`/relevo:init` and the templates** carry `limits.run_max_minutes`; the workflow templates move to 0.14.5, so `/relevo:init` reports older copies.
+
+### Known limits
+
+- The result in a real cloud run has to be checked by a person. The `<usage>` block at the end of a subagent's report and the fields of the execution log were read in the log of a real build, but they are details of the runner, not a contract: when they change, the guard stops nothing and the comment leaves the agents out.
+- The step that keeps the work pushes with the credentials that `actions/checkout` left in the repository. That the push works after `claude-code-action` has run has not been seen on a real runner; when it fails the comment says the work could not be pushed.
+- The turn limit is two caps, not a sum: the runner limits the main agent and Relevo limits the subagents together. The main agent's turns are not counted inside the run, and an agent that is already running is not stopped in the middle, so one long agent can pass a limit by its own length.
+- The cost per agent is an estimate. The output tokens are left out of the shares because the `usage` of a streamed message is a snapshot taken before the answer is complete.
+- A run cut by the 60-minute timeout still needs the job to live long enough for the step to run; `limits.run_max_minutes` leaves the last ten minutes for it, and `doctor` warns when it does not.
+
 ## [0.14.4] - 2026-11-05
 
 ### Added
