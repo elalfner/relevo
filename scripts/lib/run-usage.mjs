@@ -102,7 +102,7 @@ const MARKER_RE = /<!-- relevo:usage (\{[^\n]*?\}) -->/g;
 const FIGURES = ['turns', 'cost', 'tokens'];
 
 /** The marker for a comment, from the same result as the sentence, or an empty string when there is nothing to say. */
-export function usageMarker(usage, { subscription = false, phases = null, outcomeClass = null } = {}) {
+export function usageMarker(usage, { subscription = false, phases = null, lenses = null, outcomeClass = null } = {}) {
   if (!usage) return '';
   const figures = {};
   FIGURES.forEach((k) => {
@@ -113,6 +113,8 @@ export function usageMarker(usage, { subscription = false, phases = null, outcom
   figures.notional = Boolean(subscription);
   // Where the time went and how the run ended. Readers that do not know these keys ignore them.
   if (Array.isArray(phases) && phases.length) figures.phases = phases;
+  // The seconds of each QA lens, apart from the phases: the digest knows only the five phases.
+  if (Array.isArray(lenses) && lenses.length) figures.lenses = lenses;
   if (OUTCOME_CLASSES.includes(outcomeClass)) figures.class = outcomeClass;
   return `<!-- relevo:usage ${JSON.stringify(figures)} -->`;
 }
@@ -143,6 +145,10 @@ export function parseUsageMarker(comment) {
   if (Array.isArray(data.phases)) {
     const phases = data.phases.filter((p) => p && typeof p.name === 'string' && num(p.seconds) !== null && p.seconds >= 0);
     if (phases.length === data.phases.length && phases.length) run.phases = phases.map((p) => ({ name: p.name, attempt: Number.isInteger(p.attempt) ? p.attempt : null, seconds: p.seconds }));
+  }
+  if (Array.isArray(data.lenses)) {
+    const lenses = data.lenses.filter((l) => l && typeof l.name === 'string' && num(l.seconds) !== null && l.seconds >= 0);
+    if (lenses.length === data.lenses.length && lenses.length) run.lenses = lenses.map((l) => ({ name: l.name, attempt: Number.isInteger(l.attempt) ? l.attempt : null, seconds: l.seconds }));
   }
   if (OUTCOME_CLASSES.includes(data.class)) run.class = data.class;
   return FIGURES.some((k) => run[k] !== undefined) ? run : null;

@@ -2,6 +2,8 @@
 // The progress of a cloud build, for the comment on the issue. Implements the progress requirements of the go specification.
 //   node scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt n] [--of m]
 //       announces the phase that `go` enters; used by the go skill
+//   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n]
+//       records that a QA lens starts now, for the seconds of each lens in the usage record; it does not change the phase
 //   node scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
 //       records how the run ended, for the usage record; used by the go skill
 //   node scripts/progress.mjs watch --issue n --decision <base64> --max-minutes n [--repo owner/name] [--config relevo.yml]
@@ -24,7 +26,7 @@ import {
   INTERVAL_MS, PHASES, closeProgress, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
 } from './lib/progress.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
-import { OUTCOME_CLASSES, recordPhase, writeClass } from './lib/phase-log.mjs';
+import { LENSES, OUTCOME_CLASSES, recordLens, recordPhase, writeClass } from './lib/phase-log.mjs';
 
 const args = process.argv.slice(3);
 const arg = (name) => {
@@ -81,6 +83,13 @@ async function main(command) {
     writeFileAtomic(join(dir, 'phase.json'), JSON.stringify({ phase, attempt: whole(arg('attempt')), of: whole(arg('of')) }));
     // The moment each phase begins, for the seconds of the usage record.
     recordPhase(dir, { phase, attempt: whole(arg('attempt')), of: whole(arg('of')) });
+    return;
+  }
+
+  if (command === 'lens') {
+    if (!LENSES.includes(args[0])) return fail(`unknown lens "${args[0]}"`);
+    const attempt = Number(arg('attempt'));
+    recordLens(dir, { lens: args[0], attempt: Number.isInteger(attempt) && attempt > 0 ? attempt : null });
     return;
   }
 
