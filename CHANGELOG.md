@@ -4,12 +4,17 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-11-05
+
 ### Added
 
+- **The usage record of a run says how long each QA lens took.** Before launching each lens, `go` runs `progress.mjs lens <lens> --attempt <n>`, which keeps the start in a log of its own (`lenses.jsonl`) apart from the phases, so the progress comment and the daily digest do not change. The hidden marker of the usage comment gains an optional `lenses` list with the name, attempt and seconds of each lens; a lens lasts until the next lens or the next phase begins. `/relevo:status` and the digest do not add them up.
+- **The evaluation of the lenses measures the time of each lens.** `scripts/eval-lenses.mjs` reports seconds per lens, per run and in total, in the report and in the `.json`. `docs/lens-evaluation.md` (and its Spanish version) records a second run over all 11 cases, which includes `security/vue/hard-coded-secret`: every lens met the threshold, in about 10 to 16 seconds per run and 295 seconds in total.
 - **The stack profiles ask how much data a list or table will hold, and look for two more mistakes in the diff.** The questions for the issue writer of `flutter`, `vue`, `laravel` and `supabase` now include how many items or rows a list, table or collection can hold and whether that number grows; the answer becomes a `Constraints` line, which already binds the developer and QA. The `laravel` profile tells the developer to paginate a collection that can grow, and QA looks for an endpoint that returns every row of a table or relation with no limit or page. The `supabase` profile tells the developer to read related rows in one query and not to call the client inside a loop, and to give a query on a table that can grow a limit or a range; QA looks for both. A collection or table that the issue declares small and fixed is not reported. The bodies of `flutter` and `vue` do not change.
 
 ### Known limits
 
+- The seconds of each lens in a real `go` run have not been seen yet: they depend on the agent announcing each lens, as it does for the phases. The times of the evaluation are wall-clock per `claude -p` call on small seeded changes, and there is no measurement of the single QA agent that preceded the lenses, so they do not say how much slower the four lenses are.
 - The documentation of Supabase that was read does not say whether the Data API cuts a read at a maximum number of rows, so the `supabase` profile makes no claim about it: it asks for a limit or a range because an unbounded read is slow, not because it is truncated.
 - Nothing measures performance: a limit such as "under two seconds" is still checked by a person on a device. Caches, a CDN, a load balancer, connection pooling and the size of the bundle are not part of the profiles.
 
