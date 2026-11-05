@@ -50,6 +50,21 @@ test('the report counts misses and false positives', async () => {
   assert.equal(result.per.security.found, cases.filter((c) => c.meta.lens === 'security').length);
 });
 
+test('the time of each run is measured per lens and shown in the report', async () => {
+  const opts = parseArgs(['--lens', 'code,security']);
+  const cases = selectCases(loadCases(), opts);
+  let t = 0;
+  const clock = () => (t += 2000); // every run appears to take 2 seconds
+  const result = await evaluate(cases, opts, stubRunner({ cases }), process.cwd(), clock);
+  const nCode = cases.filter((c) => c.meta.lens === 'code').length;
+  assert.equal(result.per.code.seconds, nCode * 2 * 2);
+  assert.equal(result.totalSeconds, cases.length * 2 * 2);
+  const { renderReport } = await import('../scripts/lib/lens-eval.mjs');
+  const md = renderReport(result, opts, estimate(cases, opts), '2026-11-04');
+  assert.match(md, /Time \(s\)/);
+  assert.match(md, new RegExp(`Total time: ${(cases.length * 4).toFixed(1)} s`));
+});
+
 test('options are recorded and change the prompt', () => {
   const opts = parseArgs(['--without-rule', 'Untrusted', '--with-skill', 'README.md', '--cases', 'flutter']);
   assert.equal(opts.withoutRule, 'Untrusted');
