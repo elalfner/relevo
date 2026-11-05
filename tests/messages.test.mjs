@@ -408,3 +408,19 @@ test('Scenario: An input that a person confirms - the hand-off lists it, and a b
   assert.match(renderMessage('built', { ...base, inputs_to_confirm: 'LLAVE (la llave)' }, 'es'), /Insumos que debes confirmar antes de probar: LLAVE \(la llave\)/);
   assert.doesNotMatch(renderMessage('built', base), /Inputs to confirm/);
 });
+
+test('Scenario: A run that stopped at a limit says so - it does not say that QA rejected it, and the work kept is the work done before the stop', () => {
+  const base = { issue: 97, title: 'Screen', assignee: 'persona-a', branch: 'feature/97-x', reason: 'run limit reached', branch_state: 'kept', tasks_done: 6, tasks_total: 9,
+    finding: 'the minutes limit (50) was reached after 51.2 minutes; qa-code and qa-interface did not run' };
+  const en = renderMessage('qa_failed', base, 'en');
+  assert.match(en, /^@persona-a #97 "Screen" failed QA ❌/, 'the heading is the one that fix reads');
+  assert.match(en, /What happened: The run stopped at a limit before it finished \(run limit reached\)\./);
+  assert.match(en, /holds the work done before the stop \(6 of 9 tasks done\)/);
+  assert.match(en, /qa-code and qa-interface did not run/);
+  assert.doesNotMatch(en, /QA still rejected|did not approve/);
+  const es = renderMessage('qa_failed', base, 'es');
+  assert.match(es, /Qué pasó: La ejecución se detuvo en un límite antes de terminar \(run limit reached\)\./);
+  assert.match(es, /tiene el trabajo hecho antes de detenerse/);
+  // The messages of QA are unchanged.
+  assert.match(renderMessage('qa_failed', { ...base, reason: 'QA rejected after the retries' }, 'en'), /QA still rejected it after the retries/);
+});

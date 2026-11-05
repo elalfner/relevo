@@ -50,7 +50,7 @@ test('progress.mjs records the phase and the class, and does nothing without its
 
 test('only the classes of the specification are written', () => {
   const dir = fresh();
-  assert.deepEqual(OUTCOME_CLASSES, ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'other']);
+  assert.deepEqual(OUTCOME_CLASSES, ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'limit', 'other']);
   assert.equal(writeClass(dir, 'nonsense'), false);
   assert.equal(readClass(dir), null);
 });
