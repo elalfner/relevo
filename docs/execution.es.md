@@ -124,6 +124,14 @@ Cuando el propio runner corta al agente (su límite de turnos o de costo) o el j
 
 Nunca fuerza un push. El job tiene que vivir lo suficiente para que el paso corra, así que mantén `limits.run_max_minutes` al menos cinco minutos por debajo del `timeout-minutes` del job de build (`/relevo:doctor` avisa cuando no es así).
 
+## Checkpoints y reanudación
+
+El desarrollador no construye todo en un solo lanzamiento. `go` divide las tareas pendientes en grupos, uno por sección de `tasks.md` (tres tareas o menos son un grupo), lanza al desarrollador para un grupo a la vez, y después de cada grupo hace commit de los archivos que cambiaron como `wip: checkpoint <k>/<n> (#N)` y sube la rama del issue. El commit lleva el hash del texto del issue como trailer (`Issue-hash:`) y pasa por el mismo commit seguro de todo commit (rutas protegidas, archivos restringidos, marcadores, credenciales); el push es un fast-forward y nunca se fuerza. Cada lanzamiento empieza con un contexto más corto, y un corte o un límite pierde a lo sumo el grupo en curso.
+
+Cuando el issue vuelve a `ready` y su rama existe en el remoto, `go` consulta a `resume-check.mjs`. **Reanuda** desde la rama, construye solo las tareas pendientes y no escribe especificación cuando todos los commits sobre la base son de Relevo para este issue (la especificación, un checkpoint, o el trabajo guardado en un límite), la punta es un checkpoint o un commit de límite con el hash del texto del issue, y el texto no cambió. Cualquier otro caso detiene la ejecución con `branch already exists`, como antes: un commit de una persona, un issue cuyo texto cambió, trabajo que QA rechazó (eso es para `/relevo:fix`), o una rama con solo la especificación. Para empezar de cero, borra la rama remota y vuelve a poner `ready`.
+
+Los checkpoints quedan en el historial de la rama, porque aplastarlos exigiría un force push; el squash de `/relevo:ship` los quita de la rama base.
+
 ## Cuánto tarda cada etapa
 
 El resumen termina con una línea que dice adónde se va el tiempo de un issue: la mediana de cada etapa que terminó en los últimos siete días y, entre paréntesis, cuántas fueron. Las cinco etapas siguen las etiquetas del ciclo de vida:

@@ -124,6 +124,14 @@ When the runner itself cuts the agent (its turn or cost limit) or the job is can
 
 It never forces a push. The job has to live long enough for the step to run, so keep `limits.run_max_minutes` at least five minutes below the `timeout-minutes` of the build job (`/relevo:doctor` warns when it is not).
 
+## Checkpoints and resuming
+
+The developer does not build everything in one launch. `go` splits the pending tasks into groups, one per section of `tasks.md` (three tasks or fewer are one group), launches the developer for one group at a time, and after each group commits the files that changed as `wip: checkpoint <k>/<n> (#N)` and pushes the branch of the issue. The commit has the hash of the issue text as a trailer (`Issue-hash:`) and goes through the same safe commit as every commit (protected paths, restricted files, markers, credentials); the push is a fast-forward and is never forced. Each launch starts with a shorter context, and a cut or a limit loses at most the group in progress.
+
+When the issue is made `ready` again and its branch exists on the remote, `go` asks `resume-check.mjs`. It **resumes** from the branch, builds only the pending tasks and writes no specification when every commit over the base is one that Relevo made for this issue (the specification, a checkpoint, or the work kept at a limit), the tip is a checkpoint or a limit commit with the hash of the issue text, and the text has not changed. Anything else stops the run with `branch already exists`, as before: a commit of a person, an issue whose text changed, work that QA rejected (that is for `/relevo:fix`), or a branch with only the specification. To start over, delete the remote branch and apply `ready` again.
+
+The checkpoints stay in the history of the branch, because squashing them would need a force push; the squash of `/relevo:ship` removes them from the base branch.
+
 ## How long each stage takes
 
 The digest ends with one line that tells where the time of an issue goes: the median of each stage that finished in the last seven days, and in brackets how many finished. The five stages follow the labels of the lifecycle:
