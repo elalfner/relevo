@@ -1329,7 +1329,8 @@ test('the ship checks are skipped when the ship workflow is not installed', () =
 });
 
 test('playwrightFacts resolves Playwright from the folder of the platform, not from where the command runs', () => {
-  const tool = (name, args) => execFileSync(name, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  // NODE_PATH is always searched by require.resolve: a machine with a global Playwright would resolve it from anywhere.
+  const tool = (name, args) => execFileSync(name, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_PATH: '' } });
   const repo = mkdtempSync(join(tmpdir(), 'relevo-pw-'));
   const pkg = join(repo, 'apps/site/node_modules/playwright');
   mkdirSync(pkg, { recursive: true });
