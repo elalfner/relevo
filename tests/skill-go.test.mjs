@@ -147,7 +147,7 @@ test('Scenario: A mixed report - the retries run and the class of the first find
 });
 
 test('the work is kept when the retries were skipped, as it is after the retries', () => {
-  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
 });
 
 test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
@@ -341,7 +341,7 @@ test('Scenario: the interface rules are selected after the specification and giv
 
 test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
   const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
-  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);
+  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|limit\|other>/);
   OUTCOME_CLASSES.forEach((c) => assert.ok(body.includes(`\`${c}\``), `the skill names the class ${c}`));
   assert.match(body, /best-effort command/);
 });
@@ -352,7 +352,7 @@ test('Scenario: every exit of the skill names the class it records', () => {
   at(/reason` `missing` and the class `inputs`/);
   at(/`ambiguous`, record the class `other`/);
   at(/reason` `policy`, the class `policy`/);
-  at(/Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, and `other` for every other reason/);
+  at(/Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, `limit` for `run limit reached`, and `other` for every other reason/);
   at(/Record the class `built`, then move the issue to `built`/);
 });
 
@@ -381,4 +381,29 @@ test('Scenario: Model and effort of a role - go, fix, review and the shared QA p
     assert.match(text, /Agent tool/, `${p} says where they go`);
   }
   assert.doesNotMatch(read('skills/go/references/qa-run.md'), /unless the runtime lets you set it at launch/, 'the effort is no longer left to the agent file');
+});
+
+// ---------- the budget of the run
+
+test('Scenario: No agent starts after a limit of the run - the skill records each agent and checks before the next one', () => {
+  assert.match(body, /## The budget of the run/);
+  assert.match(body, /run-budget\.mjs record --agent <relevo:dev\|relevo:qa-spec\|relevo:qa-security\|relevo:qa-code\|relevo:qa-interface> --tool-uses <n> --duration-ms <n> --tokens <n>/);
+  assert.match(body, /run-budget\.mjs check --max-turns <run_max_turns> --max-minutes <run_max_minutes>/);
+  assert.match(body, /\*\*Exit 1:\*\* a limit was reached[^]*take the failure path with the reason `run limit reached`/);
+  assert.match(body, /names the agents that did not run/);
+  assert.match(body, /`run_max_minutes`, `run_max_cost`/, 'the start decision names the minutes limit');
+  const dev = body.indexOf('launch the `relevo:dev` agent in **build** mode');
+  assert.ok(body.indexOf('record what it used', dev) > dev, 'the developer is recorded after it finishes');
+});
+
+test('Scenario: The budget guard stops a run only on what it can read - the skill says to carry on when it does not know, and to trust no text of a report', () => {
+  assert.match(body, /`"known":false` and exits 0: carry on/);
+  assert.match(body, /record those three numbers and nothing else of its report/);
+});
+
+test('the QA reference checks the budget before each lens and before a retry, and records each lens', () => {
+  const qa = readFileSync(new URL('../skills/go/references/qa-run.md', import.meta.url), 'utf8');
+  assert.match(qa, /Before each lens, check the budget of the run/);
+  assert.match(qa, /run-budget\.mjs record --agent relevo:qa-<lens>/);
+  assert.match(qa, /check the budget \(`run-budget\.mjs check`[^)]*\) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying/);
 });
