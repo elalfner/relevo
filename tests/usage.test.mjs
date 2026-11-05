@@ -202,3 +202,95 @@ test('run-usage.mjs reads the limits from --config and says when a run went past
   assert.match(bad.stdout, /95 turns/);
   assert.doesNotMatch(bad.stdout, /went past/);
 });
+
+// ---- the consumption by agent and by model (run-budget-and-rescue)
+// A log shaped like a real run, with invented figures: a main agent on one model, a developer on the same model and one
+// QA lens on another. Each message appears twice (one entry per content block), as in a real log.
+const usageOf = (read, created = 0) => ({ input_tokens: 10, output_tokens: 3, cache_read_input_tokens: read, cache_creation_input_tokens: created, cache_creation: { ephemeral_5m_input_tokens: created, ephemeral_1h_input_tokens: 0 } });
+const said = (id, model, parent, usage, content = [{ type: 'text', text: 'x' }]) => [1, 2].map(() => ({ type: 'assistant', parent_tool_use_id: parent, message: { id, model, usage, content } }));
+const callOf = (id, input) => ({ type: 'tool_use', id, name: 'Agent', input });
+function agentLog({ duplicates = true, withIds = true, modelUsage = true } = {}) {
+  const lines = [
+    ...said('m1', 'model-s', null, usageOf(100000, 4000), [callOf('toolu_dev', { subagent_type: 'relevo:dev', model: 'sonnet', effort: 'high' })]),
+    { type: 'system', subtype: 'task_started', tool_use_id: 'toolu_dev', subagent_type: 'relevo:dev' },
+    ...said('d1', 'model-s', 'toolu_dev', usageOf(300000)),
+    ...said('d2', 'model-s', 'toolu_dev', usageOf(500000, 1000)),
+    { type: 'system', subtype: 'task_notification', ...(withIds ? { tool_use_id: 'toolu_dev' } : {}), status: 'completed', usage: { total_tokens: 90000, tool_uses: 20, duration_ms: 600000 } },
+    ...said('m2', 'model-s', null, usageOf(150000), [callOf('toolu_spec', { subagent_type: 'relevo:qa-spec', model: 'opus', effort: 'high' })]),
+    { type: 'system', subtype: 'task_started', tool_use_id: 'toolu_spec', subagent_type: 'relevo:qa-spec' },
+    ...said('q1', 'model-o', 'toolu_spec', usageOf(200000)),
+    { type: 'system', subtype: 'task_notification', ...(withIds ? { tool_use_id: 'toolu_spec' } : {}), status: 'completed', usage: { total_tokens: 40000, tool_uses: 7, duration_ms: 120000 } },
+    { type: 'result', subtype: 'success', num_turns: 5, total_cost_usd: 3, usage: { input_tokens: 40, output_tokens: 12 },
+      ...(modelUsage ? { modelUsage: { 'model-s': { costUSD: 2 }, 'model-o': { costUSD: 1 } } } : {}) },
+  ];
+  return JSON.stringify(duplicates ? lines : lines.filter((e, i, a) => e.type !== 'assistant' || a.findIndex((o) => o.type === 'assistant' && o.message.id === e.message.id) === i));
+}
+const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} is not ${b}`);
+
+test('Scenario: A run with subagents - each agent is listed with its model, effort, turns, minutes and an estimated cost', () => {
+  const usage = readUsage(agentLog());
+  assert.deepEqual(usage.models, [{ model: 'model-s', cost: 2 }, { model: 'model-o', cost: 1 }]);
+  assert.deepEqual(usage.agents.map((a) => a.name), ['main', 'relevo:dev', 'relevo:qa-spec']);
+  const [main, dev, spec] = usage.agents;
+  assert.deepEqual([main.model, main.turns, main.seconds, main.effort], ['model-s', 5, undefined, undefined]);
+  assert.deepEqual([dev.model, dev.effort, dev.turns, dev.seconds], ['model-s', 'high', 21, 600], 'tool calls plus the turn that gave the answer');
+  assert.deepEqual([spec.model, spec.effort, spec.turns, spec.seconds], ['model-o', 'high', 8, 120]);
+  // The only agent on the second model gets all its cost; the first is shared by the weighted input side of the messages.
+  near(spec.cost, 1);
+  const weight = (read, created = 0) => 10 + read * 0.1 + created * 1.25;
+  const wMain = weight(100000, 4000) + weight(150000);
+  const wDev = weight(300000) + weight(500000, 1000);
+  near(main.cost, 2 * (wMain / (wMain + wDev)));
+  near(dev.cost, 2 * (wDev / (wMain + wDev)));
+});
+
+test('Scenario: The costs add up - the estimates of the agents of a model equal the real cost of that model', () => {
+  const usage = readUsage(agentLog());
+  near(usage.agents.reduce((t, a) => t + a.cost, 0), usage.models.reduce((t, m) => t + m.cost, 0));
+});
+
+test('a message that the log repeats for each content block counts once', () => {
+  const doubled = readUsage(agentLog({ duplicates: true }));
+  const single = readUsage(agentLog({ duplicates: false }));
+  doubled.agents.forEach((a, i) => near(a.cost, single.agents[i].cost));
+});
+
+test('Scenario: The sentence lists the agents and the real cost of each model', () => {
+  const line = usageLine(readUsage(agentLog()));
+  assert.match(line, /By agent: main \(model-s\) 5 turns, about \$0\.\d\d; relevo:dev \(model-s, high\) 21 turns, 10\.0 min, about \$1\.\d\d; relevo:qa-spec \(model-o, high\) 8 turns, 2\.0 min, about \$1\.00\./);
+  assert.match(line, /Cost by model: model-s \$2\.00, model-o \$1\.00\.$/);
+});
+
+test('Scenario: A log without the details - the comment and the marker are the same as before', () => {
+  assert.equal(readUsage(ARRAY).agents, undefined);
+  assert.equal(readUsage(ARRAY).models, undefined);
+  assert.equal(usageLine(readUsage(ARRAY)), 'This run used 37 turns, about $1.82, 123,000 tokens.');
+  // The subagents are there but their calls have no id to join on, and no model costs: only the totals are said.
+  const bare = readUsage(agentLog({ withIds: false, modelUsage: false }));
+  assert.equal(bare.agents, undefined);
+  assert.equal(bare.models, undefined);
+  assert.doesNotMatch(usageLine(bare), /By agent|Cost by model/);
+  // The model costs without subagents: the cost by model is said, the agents are not.
+  const onlyModels = readUsage(JSON.stringify({ type: 'result', num_turns: 3, total_cost_usd: 1, modelUsage: { 'model-s': { costUSD: 1 } } }));
+  assert.deepEqual(onlyModels.models, [{ model: 'model-s', cost: 1 }]);
+  assert.equal(onlyModels.agents, undefined);
+});
+
+test('Scenario: The marker is read by the digest - it carries agents and models, the totals are read as before, and a malformed key is left out', () => {
+  const usage = readUsage(agentLog());
+  const marker = usageMarker(usage, { subscription: true });
+  const bot = (body) => ({ user: { type: 'Bot' }, body, created_at: '2026-11-04T10:00:00Z' });
+  const run = parseUsageMarker(bot(marker));
+  assert.equal(run.turns, usage.turns);
+  assert.equal(run.cost, 3);
+  assert.deepEqual(run.models, [{ model: 'model-s', cost: 2 }, { model: 'model-o', cost: 1 }]);
+  assert.deepEqual(run.agents.map((a) => a.name), ['main', 'relevo:dev', 'relevo:qa-spec']);
+  assert.equal(run.agents[1].turns, 21);
+  const totals = sumUsage([run, run]);
+  assert.equal(totals.cost, 6, 'the digest adds up the totals and ignores the new keys');
+  const broken = marker.replace('"turns":21', '"turns":"many"');
+  const read = parseUsageMarker(bot(broken));
+  assert.equal(read.agents, undefined, 'one malformed agent leaves the key out');
+  assert.equal(read.cost, 3, 'the totals are still read');
+  assert.equal(parseUsageMarker(bot(usageMarker(readUsage(ARRAY)))).agents, undefined);
+});
