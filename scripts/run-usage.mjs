@@ -3,12 +3,12 @@
 // marker with the same figures, which the daily digest adds up. Usage:
 //   node scripts/run-usage.mjs --file <execution_file> [--subscription] [--progress-dir <dir>] [--config <relevo.yml>]
 // --config gives the limits of the run: the sentence says when the turns (the subagents' included) or the cost went past them.
-// --progress-dir is where `go` kept the start of each phase and the class of the outcome: they go into the marker.
+// --progress-dir is where `go` kept the start of each phase and of each QA lens and the class of the outcome: they go into the marker.
 // --subscription says that the cost is notional. Prints nothing when the log is missing or has no usage.
 // It never fails: exit 0 always, so a step that posts the text cannot fail a run.
 
 import { readUsage, usageLine, usageMarker } from './lib/run-usage.mjs';
-import { phaseSeconds, readClass, readPhaseLog } from './lib/phase-log.mjs';
+import { lensSeconds, phaseSeconds, readClass, readLensLog, readPhaseLog } from './lib/phase-log.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { loadConfig } from './lib/config.mjs';
 
@@ -34,16 +34,20 @@ try {
 const line = usageLine(usage, { subscription, limits });
 const dir = arg('progress-dir');
 let phases = null;
+let lenses = null;
 let outcomeClass = null;
 try {
   if (dir) {
     const log = readPhaseLog(dir);
     phases = log.length ? phaseSeconds(log, Date.now()) : null;
+    const lensLog = readLensLog(dir);
+    lenses = lensLog.length ? lensSeconds(lensLog, log, Date.now()) : null;
     // A run that wrote no class ended some other way than the ones `go` names, even one that never announced a phase.
     outcomeClass = readClass(dir) ?? 'other';
   }
 } catch {
   phases = null;
+  lenses = null;
 }
-const marker = usageMarker(usage, { subscription, phases, outcomeClass });
+const marker = usageMarker(usage, { subscription, phases, lenses, outcomeClass });
 if (line) console.log(marker ? `${line}\n\n${marker}` : line);

@@ -360,7 +360,7 @@ test('Scenario: the reference of QA exists and names each step, and go, fix and 
   assert.ok(existsSync(root('skills/go/references/qa-run.md')));
   [
     ['the gate', /validation-gate\.mjs --base origin\/<base>/], ['a red gate uses an attempt', /A red gate uses an attempt/], ['could not run', /`automated validation could not run`/],
-    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['one at a time, in the foreground', /one at a time, in the foreground/],
+    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['each lens is recorded when it starts', /progress\.mjs lens <lens> --attempt <n>/], ['one at a time, in the foreground', /one at a time, in the foreground/],
     ['the model of the lens', /agents\.qa\.<lens>\.model/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
     ['an invalid report is asked again once', /Ask that lens again, once/], ['a second invalid report', /`lens report invalid`/], ['the advisory notes', /`qa_notes`/], ['the receipt is not a boundary', /not a defence against an agent that writes a false file/],
   ].forEach(([what, re]) => assert.match(ref, re, what));

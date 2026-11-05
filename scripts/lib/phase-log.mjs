@@ -7,7 +7,10 @@ import { join } from 'node:path';
 
 export const OUTCOME_CLASSES = ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'other'];
 
+export const LENSES = ['spec', 'security', 'code', 'interface'];
+
 const LOG = 'phases.jsonl';
+const LENS_LOG = 'lenses.jsonl';
 const whole = (v) => (Number.isInteger(v) && v > 0 ? v : null);
 
 /** Appends the phase that begins now, unless it is the one already running (the same phase and attempt). */
@@ -55,4 +58,42 @@ export function readClass(dir) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Appends the lens that `go` launches now. The lenses have a log of their own, apart from the phases: they are not
+ * phases of the run, and the progress comment and the daily digest know only the five phases.
+ */
+export function recordLens(dir, { lens, attempt = null }, now = Date.now()) {
+  if (!LENSES.includes(lens)) return false;
+  appendFileSync(join(dir, LENS_LOG), `${JSON.stringify({ lens, attempt: whole(attempt), at: now })}\n`);
+  return true;
+}
+
+/** The recorded lenses in order; a line that is not valid is skipped. */
+export function readLensLog(dir) {
+  const file = dir ? join(dir, LENS_LOG) : null;
+  if (!file || !existsSync(file)) return [];
+  return readFileSync(file, 'utf8').split('\n').map((line) => {
+    try {
+      const e = JSON.parse(line);
+      return LENSES.includes(e.lens) && Number.isFinite(e.at) ? { lens: e.lens, attempt: whole(e.attempt), at: e.at } : null;
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+}
+
+/**
+ * [{ name, attempt, seconds }]: a lens lasts until the next lens begins or the next phase is announced, whichever comes
+ * first, and the last one until `endMs`. The seconds include the receipt check that precedes the lens after it.
+ */
+export function lensSeconds(lenses, phases, endMs) {
+  return lenses.map((e, i) => {
+    const ends = [endMs];
+    if (i + 1 < lenses.length) ends.push(lenses[i + 1].at);
+    const phase = phases.find((p) => p.at > e.at);
+    if (phase) ends.push(phase.at);
+    return { name: e.lens, ...(e.attempt ? { attempt: e.attempt } : {}), seconds: Math.max(0, Math.round((Math.min(...ends) - e.at) / 1000)) };
+  });
 }
