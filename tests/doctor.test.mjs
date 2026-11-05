@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, pluginInstallScope, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { buildTimeoutMinutes, RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, pluginInstallScope, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { folderHash } from '../scripts/lib/role-skills.mjs';
@@ -2449,4 +2449,35 @@ test('Scenario: a platform with an interface and no browser automation - a note,
   const r = runChecks(healthy({ interfaceBrowser: { app: false } }));
   assert.equal(byId(r, 'interface.browser.app').status, 'warn');
   assert.equal(byId(runChecks(healthy({ interfaceBrowser: { app: true } })), 'interface.browser.app'), undefined);
+});
+
+// ---------- run time limit
+
+const goWith = (timeout) => Object.fromEntries(WORKFLOW_FILES.map((name) => [name, name === 'relevo-go.yml'
+  ? { present: true, enabled: true, text: `jobs:\n  decide:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n  build:\n    runs-on: ubuntu-latest\n    timeout-minutes: ${timeout}\n  requeue:\n    timeout-minutes: 5\n` }
+  : { present: true, enabled: true }]));
+const withMinutes = (max, timeout) => healthy({ workflows: goWith(timeout), config: loadConfig(`limits:\n  run_max_cost: 5\n  run_max_minutes: ${max}\n${CONFIG_TEXT.replace('limits:\n  run_max_cost: 5\n', '')}`).config });
+
+test('Scenario: The setting is too close to the job timeout - doctor warns and says how to fix it', () => {
+  const r = byId(runChecks(withMinutes(58, 60)), 'execution.run-minutes');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /limits\.run_max_minutes is 58, but the build job .* after 60 minutes/);
+  assert.match(r.fix, /to 55 or less, or raise timeout-minutes .* to 63 or more/);
+});
+
+test('Scenario: The setting leaves room - doctor says nothing about it', () => {
+  assert.equal(byId(runChecks(withMinutes(50, 60)), 'execution.run-minutes'), undefined);
+  assert.equal(byId(runChecks(withMinutes(55, 60)), 'execution.run-minutes'), undefined, 'exactly five minutes of margin is enough');
+});
+
+test('Scenario: The timeout of the build job is read from the build job only', () => {
+  assert.equal(buildTimeoutMinutes('jobs:\n  decide:\n    timeout-minutes: 10\n  build:\n    runs-on: x\n    timeout-minutes: 60 # the limit\n'), 60);
+  assert.equal(buildTimeoutMinutes('jobs:\n  build:\n    runs-on: x\n  requeue:\n    timeout-minutes: 5\n'), null, 'the next job is not the build job');
+  assert.equal(buildTimeoutMinutes(undefined), null);
+});
+
+test('Scenario: No go workflow installed, or no timeout to read - doctor says nothing about the run time', () => {
+  assert.equal(byId(runChecks(healthy()), 'execution.run-minutes'), undefined, 'the healthy fixture has no text');
+  const absent = healthy({ workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: f !== 'relevo-go.yml', enabled: true }])) });
+  assert.equal(byId(runChecks(absent), 'execution.run-minutes'), undefined);
 });
