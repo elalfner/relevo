@@ -42,7 +42,7 @@ Every finding needs evidence: a line of code, a command's output, the receipt, o
 
 ## Protocol
 
-Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile) and the files it touches. Look for:
+Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile, and one for each path of `not_the_change` when the orchestrator gives that list: the files that the install step of the job left, which are not the work of the developer and about which you report no finding) and the files it touches. Look for:
 
 - **Injection and unsafe construction** of queries, commands, paths, templates or markup from data the code does not control.
 - **Authentication and authorization**: a route, action or function that can be reached without the check it needs, or that checks the wrong thing.

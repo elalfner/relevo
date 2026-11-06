@@ -93,6 +93,21 @@ The `clean-tree` check that `go` makes before it claims work SHALL NOT count a f
 - **WHEN** there is no record of the state before the agent
 - **THEN** every change counts, as before
 
+### Requirement: The QA lenses leave out what the install step left
+Before the first lens of a round, `go` SHALL list the files that are still as the install step of the cloud job left them, and SHALL give that list to every lens, which SHALL leave those files out of the diff it reads and SHALL report no finding about them. A file changed after the install SHALL NOT be in the list.
+
+#### Scenario: A lockfile rewritten by the install
+- **WHEN** the install step rewrote `pubspec.lock` and `analysis_options.yaml` and the developer did not touch them
+- **THEN** no lens reports them, and the rejection of the work never rests on them
+
+#### Scenario: The developer changed a file of the list
+- **WHEN** the developer changed `pubspec.lock` after the install
+- **THEN** the file is not in the list and the lenses review it like any change
+
+#### Scenario: A local run
+- **WHEN** there is no record of the state before the agent
+- **THEN** the list is empty and the lenses review the whole diff, as before
+
 ### Requirement: A run that stopped at a limit is a class of its own
 The outcome of a run that stopped at a limit or was cut SHALL be recorded with the class `limit`, apart from the classes of QA, inputs, policy and conflict.
 

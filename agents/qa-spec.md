@@ -58,7 +58,7 @@ Read the project rules files and treat each rule as binding. Check the diff agai
 
 ### 4. Scope, folder, configuration and dependencies
 
-Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile):
+Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile, and one for each path of `not_the_change` when the orchestrator gives that list: the files that the install step of the job left, which are not the work of the developer and about which you report no finding):
 
 - **Platform**: a file changed outside the folder of the platform (the specification of the change, `GLOSSARY.md` and `docs/adr/` aside). Reject it and cite the file, unless the issue lists that path in `Allow-paths:`.
 - **Configuration**: a change to `relevo.yml`, to anything under `.relevo/` or to `skills-lock.json`. Reject it and cite the file.

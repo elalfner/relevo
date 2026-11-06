@@ -48,7 +48,7 @@ The results of analysis and tests are in the receipt of the validation gate. **N
 
 ### 2. The diff
 
-Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile). Look for what the sections of the stack profile you were given list (architecture and what the auditor looks for in the diff), and for:
+Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile, and one for each path of `not_the_change` when the orchestrator gives that list: the files that the install step of the job left, which are not the work of the developer and about which you report no finding). Look for what the sections of the stack profile you were given list (architecture and what the auditor looks for in the diff), and for:
 
 - **Leftovers**: `TODO`, debug prints, temporary markers (`NOCOMMIT`, `TEMP`, `DO NOT COMMIT`), commented-out code, hard-coded environment values.
 - **The tests that were written**: judge whether each would fail if the behaviour it names were broken. A test that asserts something always true, or that mocks away what it claims to test, is a rejection.

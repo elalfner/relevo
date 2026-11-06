@@ -154,3 +154,22 @@ test('record without a progress folder does nothing, and a bad command only comp
   assert.equal(bad.status, 0);
   assert.match(bad.stderr, /use `record`/);
 });
+
+test('Scenario: list prints the files still as the install step left them, and only those', () => {
+  const f = fixture();
+  const progress = mkdtempSync(join(tmpdir(), 'relevo-baseline-list-'));
+  const env = { ...process.env, RELEVO_PROGRESS_DIR: progress };
+  put(f.work, 'analysis_options.yaml', 'include: a\n');
+  sh(f.work, 'add', 'analysis_options.yaml');
+  sh(f.work, 'commit', '-qm', 'config');
+  put(f.work, 'analysis_options.yaml', 'include: a\n# rewritten by the install step\n');
+  assert.equal(spawnSync(process.execPath, [CLI, 'record'], { cwd: f.work, encoding: 'utf8', env }).status, 0);
+  put(f.work, 'src/a.js', 'export const a = 1;\n');
+  const run = (extra = env) => spawnSync(process.execPath, [CLI, 'list'], { cwd: f.work, encoding: 'utf8', env: extra });
+  assert.deepEqual(run().stdout.trim().split('\n').sort(), ['analysis_options.yaml', 'pubspec.lock'], 'the new file of the developer is not in the list');
+  put(f.work, 'pubspec.lock', 'locked: 9 (changed by the developer)\n');
+  assert.deepEqual(run().stdout.trim().split('\n'), ['analysis_options.yaml'], 'a file changed after the install is part of the change');
+  const local = run({ ...process.env, RELEVO_PROGRESS_DIR: '' });
+  assert.equal(local.status, 0);
+  assert.equal(local.stdout, '', 'a local run has no record: nothing is left out');
+});
