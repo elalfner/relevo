@@ -279,6 +279,17 @@ jobs:
           [ "$code" -le 1 ] || exit "$code"
           echo "RELEVO_REFERENCES=$GITHUB_WORKSPACE/.relevo-design/manifest.json" >> "$GITHUB_ENV"
 
+      # The install step above can rewrite a lockfile (`flutter pub get`, `npm ci`). Record which files already differ from
+      # the commit before the agent starts, so that the rescue and the checkpoints do not take them for the agent's work:
+      # the safe commit would refuse a dependency file the issue did not list, and the whole commit with it. A file the
+      # agent changes afterwards is still judged like any change. It never fails the job.
+      - name: Record the state of the working tree before the agent
+        continue-on-error: true
+        run: |
+          script="$RUNNER_TEMP/relevo/scripts/tree-baseline.mjs"
+          [ -f "$script" ] && [ -n "$RELEVO_PROGRESS_DIR" ] || exit 0
+          node "$script" record || true
+
       # What the build cannot go on without is checked here, with no model, before the agent starts: a reference that the
       # fetcher refused, and the inputs that the issue declares in its External inputs section. When something is
       # missing the issue goes back to its writer with the reason, the comment names what is missing, and this step ends
@@ -466,7 +477,7 @@ jobs:
           mkdir -p .relevo-plugin
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
-          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/run-cut.mjs scripts/rescue-work.mjs scripts/progress.mjs; do
+          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/run-cut.mjs scripts/rescue-work.mjs scripts/progress.mjs scripts/tree-baseline.mjs; do
             [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
 

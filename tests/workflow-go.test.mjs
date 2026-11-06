@@ -433,6 +433,20 @@ test('The report says when the work is on a rescue branch, which is not the bran
   assert.match(report, /not on the branch of the issue, so the work is on a branch of its own/);
 });
 
+test('The state of the working tree is recorded before the agent, so the install step is not taken for its work', () => {
+  const step = stepOf('Record the state of the working tree before the agent');
+  assert.match(step, /continue-on-error: true/);
+  assert.match(step, /scripts\/tree-baseline\.mjs/);
+  assert.match(step, /\$RELEVO_PROGRESS_DIR/);
+  assert.match(step, /record/);
+  const at = (name) => workflow.indexOf(`- name: ${name}`);
+  assert.ok(at('Record the state of the working tree before the agent') > at('Check the toolchain'), 'after the install and the toolchain check');
+  assert.ok(at('Record the state of the working tree before the agent') > at('Start the progress report'), 'the progress folder exists');
+  assert.ok(at('Record the state of the working tree before the agent') < at('Check the issue before the agent'), 'before the last step ahead of the agent');
+  assert.ok(at('Record the state of the working tree before the agent') < workflow.indexOf("relevo:agent-step begin"), 'before the agent');
+  assert.match(workflow, /scripts\/rescue-work\.mjs scripts\/progress\.mjs scripts\/tree-baseline\.mjs/, 'the install check of the reports knows the script');
+});
+
 test('The report of a run with no outcome says what the rescue did, and the package install checks for the rescue script', () => {
   const report = stepOf('Report a run that ended without an outcome');
   assert.match(report, /RESCUE_STATE: \$\{\{ steps\.rescue\.outputs\.state \}\}/);
