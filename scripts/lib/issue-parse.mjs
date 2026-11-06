@@ -17,7 +17,7 @@ const ALLOW_RE = /^\s*(?:[-*+]\s+)?Allow-paths:\s*(.+)$/i;
 const PLATFORM_RE = /^\s*(?:[-*+]\s+)?Platform:\s*(.+)$/i;
 
 /** Remove fenced code blocks so examples inside them are not counted. */
-function withoutCode(body) {
+export function withoutCode(body) {
   const out = [];
   let inFence = false;
   String(body ?? '').split('\n').forEach((line) => {

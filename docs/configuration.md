@@ -81,6 +81,30 @@ agents:
 - **No setting turns a reviewer off or lowers what it blocks.** A project's exceptions go in its own rules file (`qa.rules_from`), which the `spec` reviewer already reads.
 - **With Antigravity** the settings are accepted and are not applied: they are not written to the agents it renders. `/relevo:doctor` and `/relevo:init` print a warning that names each one and go on.
 
+### Choosing the model for each issue: `auto`
+
+A role can be `auto` instead of a model name. A script (`scripts/model-plan.mjs`, which `go` runs once before the first launch) then picks its model from the issue, between a floor and a ceiling; nothing is decided by the main agent.
+
+```yaml
+agents:
+  ladder: [haiku, sonnet, opus]     # the order of the models, lowest to highest (this is the default)
+  dev:
+    model: auto
+    ceiling: sonnet                  # optional: the highest model auto may use for this role
+    floor: haiku                     # optional: the lowest model it may pick by size
+  qa:
+    spec:
+      model: auto
+```
+
+- **The ladder** is only an order. Relevo does not check the names against a list of models; a new model is a new line in `agents.ladder`.
+- **The range.** Without `ceiling` it is the default model of the role (developer `sonnet`, spec and security `opus`, code and interface `sonnet`), and without `floor` it is one step below. A QA lens is never below `sonnet` by default (the lens evaluation did not pass `haiku` for `code` and `interface`, `docs/lens-evaluation.md`); write a `floor` to go lower. So `auto` cannot cost more than the defaults unless you raise a ceiling.
+- **The score.** The size of the change (pending tasks plus scenarios of the issue: up to 6 takes the floor, up to 14 the middle, more the ceiling), raised one step when the issue allows a dependency file in `Allow-paths:` or names a security-sensitive area (authentication, credential, token, password, payment, permission, secret, encryption). The security lens goes to its ceiling in both cases. With no tasks and no scenarios to score, the default model of the role is used. The effort is not scored: it stays the configured one.
+- **The issue can ask.** A line `Model: <name>` (developer) or `QA-model: <name>` (every lens) is read only for a role on `auto`. It can lower the model freely and raise it only up to the ceiling; a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. The lines are part of the text of the issue, so the hash of the issue covers them. `/relevo:issue` may propose one, with its reason, and writes it only if you confirm.
+- **A role that is not `auto`** keeps the model written, whatever the issue says. `limits.run_max_cost` stays the hard stop in every case.
+- **The comment says what was used.** The usage comment of a run lists, for each role, the model, the effort, whether it came from the configuration, from `auto` or from the issue, and why. If the plan cannot be made, `go` uses the configuration and says so.
+- **A retry goes one level up.** When the gate is red or QA rejects the work and the developer runs again in fix mode, a developer on `auto` goes one name up `agents.ladder` (`haiku` to `sonnet`, then `opus`) and never past its `ceiling`. A developer whose model is written in `relevo.yml` stays on it, and the lenses are not raised. With the default ceiling (`sonnet`) a retry never costs more than the defaults; raise `agents.dev.ceiling` to allow a retry on `opus`. The comment says each step.
+
 ## What the limits mean
 
 - `limits.run_max_cost` is required and you choose it. With an API key it is a real ceiling on spending per run. With a subscription token the cost the log reports is notional, so it is only a safety net against a runaway run.

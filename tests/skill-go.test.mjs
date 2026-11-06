@@ -361,7 +361,7 @@ test('Scenario: the reference of QA exists and names each step, and go, fix and 
   [
     ['the gate', /validation-gate\.mjs --base origin\/<base>/], ['a red gate uses an attempt', /A red gate uses an attempt/], ['could not run', /`automated validation could not run`/],
     ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['each lens is recorded when it starts', /progress\.mjs lens <lens> --attempt <n>/], ['one at a time, in the foreground', /one at a time, in the foreground/],
-    ['the model of the lens', /agents\.qa\.<lens>\.model/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
+    ['the model of the lens', /model plan gives it/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
     ['an invalid report is asked again once', /Ask that lens again, once/], ['a second invalid report', /`lens report invalid`/], ['the advisory notes', /`qa_notes`/], ['the receipt is not a boundary', /not a defence against an agent that writes a false file/],
   ].forEach(([what, re]) => assert.match(ref, re, what));
   assert.match(body, /skills\/go\/references\/qa-run\.md/);
@@ -461,4 +461,27 @@ test('Scenario: every group goes to the developer and every checkpoint is made i
   assert.match(text, /never run two groups in one launch/);
   assert.match(text, /Make the checkpoint of every group, in order, with its own number, even when its tasks changed no file/);
   assert.match(text, /never skip a number/);
+});
+
+test('Scenario: the model plan is made once, before the first launch, and every launch uses it', () => {
+  const plan = text.indexOf('scripts/model-plan.mjs');
+  assert.ok(plan > 0, 'go runs the model plan');
+  assert.ok(plan < text.indexOf('launch the `relevo:dev` agent in **build** mode'), 'the plan is made before the first launch of the developer');
+  assert.ok(plan > text.indexOf('task-groups.mjs') - 1500 && plan < text.indexOf('task-groups.mjs'), 'in step 4, before the groups');
+  assert.match(text, /make the plan only once per run/);
+  assert.match(text, /with the `model` and `effort` of `dev` in the model plan/, 'the developer is launched with the plan');
+  assert.match(text, /that the model plan gives that role \(`dev` or `qa\.<lens>`/, 'the rule of every launch names the plan');
+  assert.match(text, /never choose or change a model yourself/);
+  assert.doesNotMatch(text, /configured for that role \(`agents\.dev`/, 'the launch no longer reads agents directly');
+  assert.match(ref, /`qa\.<lens>` in the output of `model-plan\.mjs`/, 'the lenses are launched with the plan');
+  assert.match(ref, /## The model of a retry/, 'a retry of the developer asks for its model');
+  assert.match(ref, /model-plan\.mjs escalate --from/);
+  assert.equal((ref.match(/The model of a retry/g) ?? []).length, 3, 'both fix launches point to the section');
+  assert.match(text, /model-plan\.mjs escalate/, 'the skill points to the retry command');
+});
+
+test('Scenario: the plan cannot be made - go launches with the configuration and says so', () => {
+  assert.match(text, /When it prints `failed`, or anything that is not that JSON, launch every agent with the model and the effort of the configuration/);
+  assert.match(text, /say in your final report that the plan could not be made/);
+  assert.match(ref, /when there is no plan, `agents\.qa\.<lens>`/);
 });

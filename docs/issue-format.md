@@ -192,3 +192,14 @@ If any of these is missing, nothing is built and a comment says which one.
 It never invents scenarios or edge cases. If they are missing, the issue goes back to the spec writer with a list of what is missing.
 
 Anything in the issue that is ambiguous in a way that changes the visible behaviour is treated as a spec defect, not guessed. Small ambiguities are resolved with a reasonable assumption that is written down in the change's `design.md`.
+
+### 9. The model for this issue (optional)
+
+When a role of `agents` in `relevo.yml` is `auto`, the issue may ask for a model with one line each, outside any fenced block:
+
+```markdown
+Model: haiku
+QA-model: sonnet
+```
+
+`Model:` is for the developer and `QA-model:` for every QA lens. The value is a single model name of `agents.ladder`. It can lower the model freely and can raise it only up to the ceiling of the role; a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. A role that is not `auto` keeps the model written in `relevo.yml`. The check of the issue accepts the lines and only warns about one that cannot be read. They are part of the text, so editing one after `ready` changes the hash of the issue. See [Choosing the model for each issue](configuration.md#choosing-the-model-for-each-issue-auto).

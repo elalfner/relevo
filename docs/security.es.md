@@ -82,6 +82,18 @@ Dos cosas que la tabla no dice:
 - **El recibo no es un límite de seguridad.** Protege contra una omisión o un error: un revisor no puede empezar sobre código cuyas comprobaciones no se ejecutaron. No defiende contra un agente que escribe un archivo falso, porque vive en la carpeta de trabajo. Las barreras del commit (las rutas protegidas, los archivos restringidos, el escaneo de lo que se prepara) siguen siendo las que obligan, y corren diga lo que diga cualquier recibo.
 - **Ningún ajuste apaga a un revisor.** No hay clave para desactivar `spec`, `security` o `code`, ni para bajar lo que bloquean. Las excepciones de un proyecto van en su propio archivo de reglas, que lee el revisor `spec`.
 
+## Falsos positivos revisados del escaneo de credenciales
+
+Una persona puede marcar como revisada una línea que el escaneo señala, en `.relevo/scan-exceptions.json`:
+
+```json
+{ "exceptions": [{ "path": "src/forms/login.ts", "pattern": "password: z.string", "reason": "esquema de validación de un formulario, sin valor" }] }
+```
+
+Una excepción perdona un hallazgo de **credencial** cuando el archivo coincide con `path` (un archivo o un glob de archivos, como `src/forms/*.ts`) y la línea añadida contiene `pattern` como texto literal. El número de línea no importa, así que la excepción sobrevive si la línea se mueve. Una línea que no está en la lista se rechaza como antes, y una marca temporal nunca se perdona. Cada entrada necesita un motivo; una entrada que nombra una carpeta, usa `**`, cubre todos los archivos de una carpeta (`*`), tiene un patrón de menos de 8 caracteres o no tiene motivo se rechaza y nunca se aplica (el informe la nombra). Una lista que no es JSON válido no perdona nada.
+
+La lista se lee del último commit (`HEAD` en un commit, la rama base en la puerta de validación), nunca del árbol de trabajo, y `.relevo/` es una ruta protegida, así que una ejecución desatendida no puede añadir una excepción: una persona confirma el archivo y un pull request muestra el cambio. El script de commit y el recibo de la puerta dicen cuántas excepciones se aplicaron, con su ruta y motivo, y el comentario de la ejecución las repite.
+
 ## Archivos restringidos
 
 Hay archivos que no debería leer ningún agente ni ningún script de Relevo: archivos de entorno, llaves privadas, almacenes de credenciales. La lista es la lista base de abajo más `restricted_paths` en `relevo.yml`, que solo suma (un perfil no puede debilitarla, y `relevo.yml` no puede quitar una entrada). Es aparte de las rutas protegidas, que tratan de lo que un diff puede escribir.

@@ -16,7 +16,8 @@ import { loadConfig } from './lib/config.mjs';
 import { intentToAdd } from './lib/intent-to-add.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
 import { checkRestricted, formatRestricted, restrictedInDiff, restrictedListFromText } from './lib/restricted-paths.mjs';
-import { formatFindings, scanDiff } from './lib/scan.mjs';
+import { formatFindings } from './lib/scan.mjs';
+import { EXCEPTIONS_FILE, formatExceptionReport, scanWithExceptions } from './lib/scan-exceptions.mjs';
 import { EXIT, RECEIPT_DIR, RECEIPT_FILE, buildReceipt, diffHash, excludeSpecs, overallStatus, toolOf } from './lib/validation-gate.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
@@ -64,8 +65,13 @@ try {
   const scans = [];
   const restricted = restrictedInDiff(diff, list);
   scans.push({ name: 'restricted files in the diff', ok: restricted.length === 0, detail: restricted.length ? formatRestricted(restricted) : 'none' });
-  const findings = restricted.length ? [] : scanDiff(diff);
-  scans.push({ name: 'temporary markers and credentials', ok: findings.length === 0, detail: findings.length ? formatFindings(findings) : 'none' });
+  // The reviewed exceptions come from the base ref, which the run cannot have changed.
+  let exceptionsText = null;
+  try { exceptionsText = git(['show', `${base}:${EXCEPTIONS_FILE}`]); } catch { /* no list on the base: nothing is excused */ }
+  const { findings, applied, refused } = restricted.length ? { findings: [], applied: [], refused: [] } : scanWithExceptions(diff, exceptionsText);
+  const report = formatExceptionReport({ applied, refused });
+  const scanDetail = [findings.length ? formatFindings(findings) : 'none', report].filter(Boolean).join('\n');
+  scans.push({ name: 'temporary markers and credentials', ok: findings.length === 0, detail: scanDetail });
   const versioned = checkRestricted(git(['ls-files']).split('\n').filter(Boolean), list).violations.map((v) => v.path);
   scans.push({ name: 'restricted files versioned', ok: versioned.length === 0, detail: versioned.length ? versioned.join('\n') : 'none' });
 

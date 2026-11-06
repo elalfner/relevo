@@ -6,7 +6,8 @@
 import { checkScope } from './platform-scope.mjs';
 import { checkProtected, formatViolations } from './protected-paths.mjs';
 import { BASE_PATTERNS, checkRestricted, formatRestricted } from './restricted-paths.mjs';
-import { formatFindings, scanDiff } from './scan.mjs';
+import { formatFindings } from './scan.mjs';
+import { EXCEPTIONS_FILE, formatExceptionReport, scanWithExceptions } from './scan-exceptions.mjs';
 import { explicitStageArgs } from './staging.mjs';
 
 const restrictedViolations = (paths, list) => checkRestricted(paths, list).violations.map((v) => ({ ...v, tier: 'restricted' }));
@@ -22,7 +23,7 @@ const restrictedViolations = (paths, list) => checkRestricted(paths, list).viola
  *   change     the change id, whose specification folder may always be committed
  *   restricted the list of restricted files (`restrictedList(config)`); one in the paths ends in "restricted file in the diff"
  *   allowEmpty when the named paths have no change, make an empty commit with the message instead of failing; only when nothing at all is staged
- * Returns { ok, commit, findings, violations }. When something is found nothing is committed and the named paths
+ * Returns { ok, commit, findings, violations, exceptions: { applied, refused } } (the reviewed exceptions of .relevo/scan-exceptions.json at HEAD). When something is found nothing is committed and the named paths
  * are unstaged again (files that were staged for other reasons stay staged).
  */
 export function commitChange({ git, message, paths, allow = [], rulesFile = null, platformPaths = [], within = null, change = null, restricted = BASE_PATTERNS, allowEmpty = false }) {
@@ -50,31 +51,36 @@ export function commitChange({ git, message, paths, allow = [], rulesFile = null
     ...checkProtected(staged, { allow, rulesFile, platformPaths }).violations,
     ...checkScope(staged, { within, change, allow }).violations,
   ];
-  const findings = scanDiff(git(['diff', '--cached', '-U0', '--', ...paths]));
+  // The reviewed exceptions are read from the last commit, never from the working tree, which an unattended run can change.
+  let exceptionsText = null;
+  try { exceptionsText = git(['show', `HEAD:${EXCEPTIONS_FILE}`]); } catch { /* no list, or no commit yet: nothing is excused */ }
+  const { findings, applied, refused } = scanWithExceptions(git(['diff', '--cached', '-U0', '--', ...paths]), exceptionsText);
+  const exceptions = { applied, refused };
   if (violations.length > 0 || findings.length > 0) {
     unstage();
-    return { ok: false, commit: null, findings, violations };
+    return { ok: false, commit: null, findings, violations, exceptions };
   }
   if (staged.length === 0) {
     if (!allowEmpty) throw new Error('nothing to commit: none of the named paths has changes');
     // An empty commit takes whatever else is staged, so it is made only when the index is empty.
     if (git(['diff', '--cached', '--name-only']).trim()) throw new Error('nothing to commit in the named paths, and other files are staged');
     git(['commit', '-q', '--allow-empty', '-m', message]);
-    return { ok: true, commit: git(['rev-parse', '--short', 'HEAD']).trim(), findings: [], violations: [] };
+    return { ok: true, commit: git(['rev-parse', '--short', 'HEAD']).trim(), findings: [], violations: [], exceptions };
   }
 
   // `--` with paths commits only those paths, so files staged for another reason are left alone.
   git(['commit', '-q', '-m', message, '--', ...paths]);
-  return { ok: true, commit: git(['rev-parse', '--short', 'HEAD']).trim(), findings: [], violations: [] };
+  return { ok: true, commit: git(['rev-parse', '--short', 'HEAD']).trim(), findings: [], violations: [], exceptions };
 }
 
 /** The lines to print when a commit was refused. Never contains a secret. */
-export function refusalText({ findings, violations }) {
+export function refusalText({ findings, violations, exceptions }) {
   const lines = [];
   const restricted = violations.filter((v) => v.tier === 'restricted');
   const others = violations.filter((v) => v.tier !== 'restricted');
   if (restricted.length > 0) lines.push(formatRestricted(restricted));
   if (others.length > 0) lines.push(formatViolations(others));
   if (findings.length > 0) lines.push(formatFindings(findings));
+  if (exceptions && exceptions.refused.length > 0) lines.push(formatExceptionReport({ refused: exceptions.refused }));
   return lines.join('\n');
 }
