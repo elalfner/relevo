@@ -35,7 +35,7 @@ test('Scenario: A small issue with the developer on auto - the plan gives it the
   assert.equal(p.dev.model, 'haiku');
   assert.equal(p.dev.source, 'auto');
   assert.match(p.dev.why, /small change \(2 tasks, 2 scenarios\)/);
-  assert.deepEqual([p.qa.spec.model, p.qa.security.model, p.qa.code.model, p.qa.interface.model], ['sonnet', 'sonnet', 'haiku', 'haiku']);
+  assert.deepEqual([p.qa.spec.model, p.qa.security.model, p.qa.code.model, p.qa.interface.model], ['sonnet', 'sonnet', 'sonnet', 'sonnet'], 'no QA lens goes below sonnet by default');
 });
 
 test('Scenario: A medium issue takes the middle of the range and a large one the ceiling', () => {
