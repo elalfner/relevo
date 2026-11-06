@@ -474,6 +474,10 @@ test('Scenario: the model plan is made once, before the first launch, and every 
   assert.match(text, /never choose or change a model yourself/);
   assert.doesNotMatch(text, /configured for that role \(`agents\.dev`/, 'the launch no longer reads agents directly');
   assert.match(ref, /`qa\.<lens>` in the output of `model-plan\.mjs`/, 'the lenses are launched with the plan');
+  assert.match(ref, /## The model of a retry/, 'a retry of the developer asks for its model');
+  assert.match(ref, /model-plan\.mjs escalate --from/);
+  assert.equal((ref.match(/The model of a retry/g) ?? []).length, 3, 'both fix launches point to the section');
+  assert.match(text, /model-plan\.mjs escalate/, 'the skill points to the retry command');
 });
 
 test('Scenario: the plan cannot be made - go launches with the configuration and says so', () => {

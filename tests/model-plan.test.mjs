@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { configPlan, isSensitive, planModels, sizeOf } from '../scripts/lib/model-plan.mjs';
+import { configPlan, escalateDev, isSensitive, planModels, sizeOf } from '../scripts/lib/model-plan.mjs';
 
 const cfg = (yaml = '') => {
   const r = loadConfig(`limits:\n  run_max_cost: 5\n${yaml}`);
@@ -199,4 +199,49 @@ test('the command without relevo.yml or without the files of the issue still exi
   assert.equal(JSON.parse(r.stdout).failed, true);
   const none = run(folder(), ['--issue-file', 'missing.md']);
   assert.equal(none.status, 0);
+});
+
+const DEV_AUTO = 'agents:\n  dev:\n    model: auto\n    ceiling: opus\n';
+
+test('Scenario: QA rejected and the developer is on auto - the retry runs one name up the ladder', () => {
+  const r = escalateDev({ config: cfg(DEV_AUTO), from: 'haiku', attempt: 2, reason: 'qa-rejected' });
+  assert.deepEqual([r.model, r.escalated, r.from, r.to, r.attempt], ['sonnet', true, 'haiku', 'sonnet', 2]);
+  assert.match(r.why, /raised from haiku to sonnet for attempt 2 \(qa-rejected\)/);
+  assert.equal(escalateDev({ config: cfg(DEV_AUTO), from: 'sonnet', attempt: 3, reason: 'gate-red' }).model, 'opus', 'each retry goes one more name up');
+});
+
+test('Scenario: the developer is at its ceiling - the model stays and the reason says so', () => {
+  const r = escalateDev({ config: cfg(DEV_AUTO), from: 'opus', attempt: 3, reason: 'qa-rejected' });
+  assert.deepEqual([r.model, r.escalated], ['opus', false]);
+  assert.match(r.why, /already the ceiling/);
+  const low = escalateDev({ config: cfg('agents:\n  dev:\n    model: auto\n'), from: 'sonnet', attempt: 2, reason: 'qa-rejected' });
+  assert.equal(low.escalated, false, 'the default ceiling is sonnet: a retry never costs more than the defaults');
+});
+
+test('Scenario: the developer is not on auto, or the reason is not one - nothing is raised', () => {
+  assert.equal(escalateDev({ config: cfg('agents:\n  dev:\n    model: haiku\n'), from: 'haiku', attempt: 2, reason: 'qa-rejected' }).escalated, false);
+  assert.equal(escalateDev({ config: cfg(DEV_AUTO), from: 'haiku', attempt: 2, reason: 'because' }).escalated, false);
+  assert.equal(escalateDev({ config: cfg(DEV_AUTO), from: 'gpt', attempt: 2, reason: 'qa-rejected' }).escalated, false, 'a name outside the ladder');
+});
+
+test('the escalate command prints the model, records the step for the report and exits 0', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-escalate-'));
+  const conf = join(dir, 'relevo.yml');
+  writeFileSync(conf, `limits:\n  run_max_cost: 5\n${DEV_AUTO}`);
+  writeFileSync(join(dir, 'model-plan.json'), JSON.stringify({ dev: { model: 'haiku', source: 'auto' } }));
+  const env = { ...process.env, RELEVO_PROGRESS_DIR: dir };
+  const run = (...args) => spawnSync(process.execPath, [CLI, 'escalate', '--config', conf, ...args], { encoding: 'utf8', env });
+  const first = run('--from', 'haiku', '--attempt', '2', '--reason', 'qa-rejected');
+  assert.equal(first.status, 0);
+  assert.deepEqual(JSON.parse(first.stdout).model, 'sonnet');
+  run('--from', 'sonnet', '--attempt', '3', '--reason', 'gate-red');
+  const saved = JSON.parse(readFileSync(join(dir, 'model-plan.json'), 'utf8'));
+  assert.deepEqual(saved.escalations.map((e) => [e.attempt, e.from, e.to, e.reason]), [[2, 'haiku', 'sonnet', 'qa-rejected'], [3, 'sonnet', 'opus', 'gate-red']]);
+  assert.equal(saved.dev.model, 'haiku', 'the plan itself is not rewritten');
+  const none = run('--from', 'opus', '--attempt', '4', '--reason', 'qa-rejected');
+  assert.equal(JSON.parse(none.stdout).escalated, false);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'model-plan.json'), 'utf8')).escalations.length, 2, 'a step that did not happen is not recorded');
+  const broken = spawnSync(process.execPath, [CLI, 'escalate', '--config', join(dir, 'missing.yml')], { encoding: 'utf8', env });
+  assert.equal(broken.status, 0);
+  assert.equal(JSON.parse(broken.stdout).failed, true);
 });

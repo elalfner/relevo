@@ -103,6 +103,7 @@ agents:
 - **El issue puede pedir.** Una línea `Model: <nombre>` (desarrollador) o `QA-model: <nombre>` (todas las lentes) se lee solo para un rol en `auto`. Puede bajar el modelo libremente y subirlo solo hasta el techo; un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Las líneas son parte del texto del issue, así que el hash del issue las cubre. `/relevo:issue` puede proponer una, con su motivo, y la escribe solo si lo confirmas.
 - **Un rol que no es `auto`** conserva el modelo escrito, diga lo que diga el issue. `limits.run_max_cost` sigue siendo el tope duro en todos los casos.
 - **El comentario dice qué se usó.** El comentario de uso de una corrida lista, para cada rol, el modelo, el esfuerzo, si vino de la configuración, de `auto` o del issue, y por qué. Si el plan no se puede hacer, `go` usa la configuración y lo dice.
+- **Un reintento sube un escalón.** Cuando la puerta está en rojo o QA rechaza el trabajo y el desarrollador corre otra vez en modo fix, un desarrollador en `auto` sube un nombre en `agents.ladder` (`haiku` a `sonnet`, luego `opus`) y nunca pasa de su `ceiling`. Un desarrollador cuyo modelo está escrito en `relevo.yml` se queda en él, y las lentes no suben. Con el techo por defecto (`sonnet`) un reintento nunca cuesta más que los valores por defecto; sube `agents.dev.ceiling` para permitir un reintento en `opus`. El comentario dice cada paso.
 
 ## Qué significan los límites
 

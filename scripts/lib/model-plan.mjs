@@ -124,3 +124,30 @@ export function configPlan(config, reason, lenses = QA_LENSES) {
   lenses.forEach((lens) => { qa[lens] = role(config.agents.qa[lens], AGENT_DEFAULTS.qa[lens]); });
   return { dev: role(config.agents.dev, AGENT_DEFAULTS.dev), qa, signals: null, notes: [reason] };
 }
+
+// The reasons that raise the developer for a retry: a red gate or a rejection by the lenses, both followed by a fix launch.
+export const ESCALATION_REASONS = ['qa-rejected', 'gate-red'];
+
+/**
+ * The model of the developer for a retry. Implements "A retry of the developer runs one level up" of the go specification.
+ *
+ *   config   the effective configuration
+ *   from     the model the developer ran with in the attempt that failed
+ *   attempt  the number of the attempt that is about to start (2 for the first retry)
+ *   reason   one of ESCALATION_REASONS
+ *
+ * Returns { model, escalated, why, ...(escalated: from, to, attempt, reason) }. Only a developer on `auto` is raised, one name of
+ * `agents.ladder` at a time and never past its ceiling, so the cost limit is not touched. Anything else keeps `from`.
+ */
+export function escalateDev({ config, from, attempt, reason }) {
+  const keep = (why) => ({ model: from, escalated: false, why });
+  const dev = config.agents.dev;
+  if (dev.model !== AUTO) return keep('the developer is not on auto, so the repository decided its model');
+  if (!ESCALATION_REASONS.includes(reason)) return keep(`"${reason}" is not a reason to raise the model`);
+  const ladder = config.agents.ladder;
+  const at = ladder.indexOf(from);
+  if (at === -1) return keep(`"${from}" is not in agents.ladder (${ladder.join(', ')})`);
+  if (at >= ladder.indexOf(dev.ceiling)) return keep(`${from} is already the ceiling of the developer`);
+  const to = ladder[at + 1];
+  return { model: to, escalated: true, from, to, attempt, reason, why: `raised from ${from} to ${to} for attempt ${attempt} (${reason})` };
+}
