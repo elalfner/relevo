@@ -9,6 +9,7 @@ import { platformFolders } from './protected-paths.mjs';
 import { restrictedListFromText } from './restricted-paths.mjs';
 import { rescueWork } from './rescue-work.mjs';
 import { readFileSync } from './guarded-fs.mjs';
+import { loadBaseline } from './tree-baseline.mjs';
 
 /** Runs `rescueWork` in the current repository. `decision` comes from `readDecision`; `subject` is the commit subject or null. */
 export function runRescue({ decision, configPath = 'relevo.yml', subject = null }) {
@@ -33,5 +34,5 @@ export function runRescue({ decision, configPath = 'relevo.yml', subject = null 
     }
   }
   // The list is read from the text, so a relevo.yml that does not validate still restricts what it lists.
-  return rescueWork({ git, decision, rulesFile, platformPaths, restricted: restrictedListFromText(text), subject });
+  return rescueWork({ git, decision, rulesFile, platformPaths, restricted: restrictedListFromText(text), subject, baseline: loadBaseline(process.env.RELEVO_PROGRESS_DIR) });
 }

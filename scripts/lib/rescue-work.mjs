@@ -11,6 +11,7 @@
 
 import { commitChange, refusalText } from './commit-change.mjs';
 import { withIssueHash, wipSubject } from './wip-commit.mjs';
+import { changedSince } from './tree-baseline.mjs';
 
 // What a run leaves in the working tree that is not the work: tools and the folders of the Relevo scripts.
 const NOT_WORK = [/^node_modules\//, /^\.relevo-(receipt|plugin|design)\//];
@@ -58,9 +59,11 @@ export function readDecision(b64) {
  *   nothing     there was nothing to keep (the run is on a branch that is not the issue's and holds no edits)
  * The branch may already be on the remote because of the checkpoints of this same run: a push that is a fast-forward of
  * the remote tip is allowed, and any other push is refused, so nothing is ever overwritten.
+ *   baseline  { path: fingerprint } of what the install step left in the working tree before the agent started: a file still
+ *             at that content is not work of the agent and is left out (see tree-baseline.mjs)
  *   subject  the subject of the commit (`wip: stopped by limit (#N)` by default); the hash of the issue text goes in as a trailer
  */
-export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null }) {
+export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null, baseline = {} }) {
   const result = (state, extra = {}) => ({ state, branch: decision.branch, files: 0, commit: null, detail: '', ...extra });
   let current;
   try {
@@ -76,7 +79,7 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     let left = 0;
     let exists = false;
     try {
-      left = changedPaths(git(['status', '--porcelain=v1', '-z', '--untracked-files=all'])).length;
+      left = changedSince(changedPaths(git(['status', '--porcelain=v1', '-z', '--untracked-files=all'])), baseline, git, restricted).length;
       try {
         git(['rev-parse', '--verify', '-q', `refs/heads/${decision.branch}`]);
         exists = true;
@@ -112,7 +115,7 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
   let paths;
   let ahead = 0;
   try {
-    paths = changedPaths(git(['status', '--porcelain=v1', '-z', '--untracked-files=all']));
+    paths = changedSince(changedPaths(git(['status', '--porcelain=v1', '-z', '--untracked-files=all'])), baseline, git, restricted);
     if (decision.base) ahead = Number(git(['rev-list', '--count', `origin/${decision.base}..HEAD`]).trim()) || 0;
   } catch (error) {
     return result('not_pushed', { detail: `git could not read the working tree: ${firstLine(error)}` });
