@@ -455,3 +455,10 @@ test('Scenario: the lenses leave out what the install step left - the list is ma
     assert.match(agent, /install step/, `qa-${lens} knows where the files come from`);
   }
 });
+
+test('Scenario: every group goes to the developer and every checkpoint is made in order with its own number', () => {
+  assert.match(text, /Every group goes to the developer, the documentation group and the group that only runs the checks included/);
+  assert.match(text, /never run two groups in one launch/);
+  assert.match(text, /Make the checkpoint of every group, in order, with its own number, even when its tasks changed no file/);
+  assert.match(text, /never skip a number/);
+});
