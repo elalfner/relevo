@@ -6,6 +6,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Added
 
+- **A QA lens on `auto` is never below `sonnet` by default (#134).** The lens evaluation with cheaper models passed `sonnet` for `spec` and `security` (7/7, no false positive) but not `haiku` for `code` and `interface` (it flagged 2 of 4 clean changes). A `floor` written in `relevo.yml` is still obeyed. The evaluation takes `--model <name>` to run every lens with one model.
 - **A reviewed false positive of the credential scan can be let through, with a reason (#120).** `.relevo/scan-exceptions.json` lists entries with a `path`, a `pattern` and a `reason`; a credential finding on a file that matches the path, on a line that contains the pattern, is no longer reported by the safe commit or the validation gate, wherever the line moves to. Every other finding is refused as before and temporary markers are never excused. Entries that are too broad (a folder, `**`, a bare `*`, a pattern under 8 characters, no reason) are refused and named. The list is read from the last commit, not from the working tree, and `.relevo/` stays a protected path, so an unattended run cannot edit it. The number of exceptions applied, with path and reason, goes to stderr of `commit-change.mjs`, to the receipt of the gate and to the run comment.
 
 ## [0.14.5] - 2026-11-05

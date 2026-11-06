@@ -67,6 +67,8 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 // models (the list changes): a new model needs a line in relevo.yml and no release.
 export const DEFAULT_LADDER = ['haiku', 'sonnet', 'opus'];
 export const AUTO = 'auto';
+// The lowest model a QA lens takes by default on `auto`.
+export const QA_MIN_MODEL = 'sonnet';
 export const AGENT_DEFAULTS = {
   ladder: [...DEFAULT_LADDER],
   dev: { model: 'sonnet', effort: 'high' },
@@ -126,7 +128,11 @@ function agentSettings(user) {
       const ceiling = range.ceiling ?? defaultModel;
       if (!ladder.includes(ceiling)) { errors.push({ path: `${path}.ceiling`, message: `${path} is auto and the default model "${defaultModel}" of the role is not in agents.ladder (${ladder.join(', ')}): set ${path}.ceiling` }); return; }
       const below = ladder.indexOf(ceiling) > 0 ? ladder[ladder.indexOf(ceiling) - 1] : ceiling;
-      const floor = range.floor ?? below;
+      // A QA lens is not taken below `sonnet` by default: haiku did not pass the lens evaluation (docs/lens-evaluation.md).
+      const lensFloor = path.startsWith('agents.qa.') && ladder.includes(QA_MIN_MODEL)
+        ? ladder[Math.min(Math.max(ladder.indexOf(below), ladder.indexOf(QA_MIN_MODEL)), ladder.indexOf(ceiling))]
+        : below;
+      const floor = range.floor ?? lensFloor;
       if (ladder.indexOf(floor) > ladder.indexOf(ceiling)) { errors.push({ path: `${path}.floor`, message: `${path}.floor "${floor}" is above ${path}.ceiling "${ceiling}" in agents.ladder (${ladder.join(', ')})` }); return; }
       target.floor = floor;
       target.ceiling = ceiling;
