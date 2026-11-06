@@ -214,6 +214,48 @@ test('Scenario: Approved issue shipped by label - archive, merge, close, labels 
   assert.deepEqual(s.state.dispatched, ['relevo-queue.yml']);
   assert.match(s.state.comments.at(-1), /#31 shipped/);
   assert.match(s.state.comments.at(-1), /checks of the approved head/);
+  const note = s.state.comments.at(-1);
+  assert.ok(note.includes(`approved head ${s.approved.slice(0, 7)}`), 'names the approved head whose checks were relied on');
+  assert.ok(note.includes(`merged commit ${head.slice(0, 7)}`), 'names the merged commit');
+  assert.match(note, /no checks of its own when it was merged/);
+});
+
+test('Scenario: Mergeability unknown at first, computed a moment later - waits, keeps the label, merges', async () => {
+  const seen = [];
+  const s = setup({
+    mergeable: (st) => {
+      if (st.polls < 4) {
+        seen.push([...st.labels]);
+        return 'UNKNOWN';
+      }
+      return 'MERGEABLE';
+    },
+  });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'merged', JSON.stringify(out));
+  assert.ok(seen.length >= 2, 'it read the pull request again while the state was unknown');
+  assert.ok(seen.every((labels) => labels.includes('relevo:ship')), 'the label stayed while it waited');
+  assert.equal(s.state.merged, s.branchHead());
+});
+
+test('Scenario: Mergeability never computed - nothing merged, label removed, the comment says it never settled', async () => {
+  const s = setup({ mergeable: () => 'UNKNOWN' });
+  const out = await runUnattendedShip(s.ctx({ mergeableTries: 3 }));
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.equal(s.state.merged, null);
+  assert.ok(!s.state.labels.includes('relevo:ship'), 'the label was removed');
+  assert.match(s.state.comments.at(-1), /never settled/);
+  assert.match(s.state.comments.at(-1), /Apply the label again/);
+  assert.equal(s.branchHead(), s.approved, 'nothing was archived');
+});
+
+test('Scenario: Conflicting pull request - it does not wait for the state and stops as before', async () => {
+  const s = setup({ mergeable: () => 'CONFLICTING' });
+  let slept = 0;
+  const out = await runUnattendedShip(s.ctx({ sleep: async () => { slept += 1; } }));
+  assert.equal(out.outcome, 'stopped');
+  assert.equal(slept, 0, 'no wait for a settled state');
+  assert.match(s.state.comments.at(-1), /has conflicts/);
 });
 
 test('Scenario: Label applied by an automation - nothing shipped, the label removed', async () => {
@@ -313,6 +355,8 @@ test('Scenario: Required checks and an App - waits for the checks of the archive
   assert.ok(calls >= 3, 'it polled until the checks completed');
   assert.deepEqual(s.state.dispatched, [], 'with the App the close starts the queue by itself');
   assert.doesNotMatch(s.state.comments.at(-1), /checks of the approved head/);
+  assert.ok(s.state.comments.at(-1).includes(`checks of the merged commit ${s.branchHead().slice(0, 7)}`), 'names the merged head');
+  assert.match(s.state.comments.at(-1), /had finished and passed when it was merged/);
 });
 
 test('Scenario: Checks time out - stops without merging, and the label again resumes from the merge', async () => {

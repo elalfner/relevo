@@ -14,6 +14,9 @@
 # read and write), store its id as the secret RELEVO_SHIP_APP_ID and its private key as RELEVO_SHIP_APP_KEY. The run
 # then pushes, merges and closes with the App's token, so your CI runs on the archive commit, and waits for it. The App
 # is also worth it when you rely on workflows that run on pushes to the base branch. Never add it to a bypass list.
+# When GitHub has not computed whether the pull request can be merged (it says so right after a push), the run waits and
+# looks again for about 90 seconds, keeping the label; if it never settles, the run stops and removes the label. The
+# comment after a merge names the commit whose checks it relied on and says what the checks of the merged commit were.
 #
 # The repository variable RELEVO_CLOUD_SHIP set to `off` pauses it: the label then does nothing.
 # This workflow runs from the default branch; it works only once it is there.

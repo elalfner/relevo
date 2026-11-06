@@ -10,6 +10,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **A QA lens on `auto` is never below `sonnet` by default (#134).** The lens evaluation with cheaper models passed `sonnet` for `spec` and `security` (7/7, no false positive) but not `haiku` for `code` and `interface` (it flagged 2 of 4 clean changes). A `floor` written in `relevo.yml` is still obeyed. The evaluation takes `--model <name>` to run every lens with one model.
 - **A reviewed false positive of the credential scan can be let through, with a reason (#120).** `.relevo/scan-exceptions.json` lists entries with a `path`, a `pattern` and a `reason`; a credential finding on a file that matches the path, on a line that contains the pattern, is no longer reported by the safe commit or the validation gate, wherever the line moves to. Every other finding is refused as before and temporary markers are never excused. Entries that are too broad (a folder, `**`, a bare `*`, a pattern under 8 characters, no reason) are refused and named. The list is read from the last commit, not from the working tree, and `.relevo/` stays a protected path, so an unattended run cannot edit it. The number of exceptions applied, with path and reason, goes to stderr of `commit-change.mjs`, to the receipt of the gate and to the run comment.
 
+### Changed
+
+- **`ship` retries a mergeability that GitHub has not computed, and says which checks it relied on.** When GitHub answers that it has not finished checking whether the pull request can be merged (usual right after the archive push), the ship by label waits and looks again for about 90 seconds, keeping the label; if the state never settles it stops, removes the label and says so. The comment after a merge names the commit whose checks it relied on (the merged commit, or the approved head when the archive commit had none) and what the checks of the merged commit were when it was merged. `/relevo:ship` gets the same retry and report. Issue #126.
+
 ## [0.14.5] - 2026-11-05
 
 ### Added
