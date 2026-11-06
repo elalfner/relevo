@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **`ship` retries a mergeability that GitHub has not computed, and says which checks it relied on.** When GitHub answers that it has not finished checking whether the pull request can be merged (usual right after the archive push), the ship by label waits and looks again for about 90 seconds, keeping the label; if the state never settles it stops, removes the label and says so. The comment after a merge names the commit whose checks it relied on (the merged commit, or the approved head when the archive commit had none) and what the checks of the merged commit were when it was merged. `/relevo:ship` gets the same retry and report. Issue #126.
+
 ## [0.14.5] - 2026-11-05
 
 ### Added
