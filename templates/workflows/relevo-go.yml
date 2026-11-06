@@ -486,7 +486,7 @@ jobs:
       # or building after the agent step, no outcome was recorded: commit what is here and push it to the branch of the
       # issue, through the same scans as every commit of Relevo (protected paths, restricted files, markers and
       # credentials). Nothing is pushed after a refusal, nothing is forced, and nothing on the remote is overwritten:
-      # only a fast-forward is pushed, and a remote branch with commits this run does not have is left alone. The step records the class `limit` for the usage record and never fails the job.
+      # only a fast-forward is pushed, and a remote branch with commits this run does not have is left alone. The step records the class for the usage record (`limit` when the runner cut the agent or the agent step did not succeed, `other` when the agent ended by itself with no result) and never fails the job.
       # If you renamed the labels in relevo.yml, change the names below too.
       - name: Keep the work of a run that was cut
         id: rescue
@@ -496,10 +496,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
           DECISION: ${{ needs.decide.outputs.decision_b64 }}
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
         run: |
           labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
           printf '%s\n' "$labels" | grep -qxE 'relevo:(ready|building)' || exit 0
-          [ -n "$RELEVO_PROGRESS_DIR" ] && node .relevo-plugin/scripts/progress.mjs class limit
+          # `limit` is for a run that was cut: by the runner (its turn or cost limit, read from the log) or by the job
+          # (the agent step failed, was cancelled or timed out). An agent that ended by itself with no result, which the
+          # report step also treats as a run with no outcome, is `other`.
+          class=other
+          cut=""
+          [ -n "$EXECUTION_FILE" ] && [ -f .relevo-plugin/scripts/run-cut.mjs ] && cut=$(node .relevo-plugin/scripts/run-cut.mjs --file "$EXECUTION_FILE")
+          { [ -n "$cut" ] || [ "$AGENT_OUTCOME" != "success" ]; } && class=limit
+          [ -n "$RELEVO_PROGRESS_DIR" ] && node .relevo-plugin/scripts/progress.mjs class "$class"
           [ -f .relevo-plugin/scripts/rescue-work.mjs ] || exit 0
           flag=""; [ -f relevo.yml ] && flag="--config relevo.yml"
           node .relevo-plugin/scripts/rescue-work.mjs --decision "$DECISION" --github-output "$GITHUB_OUTPUT" $flag

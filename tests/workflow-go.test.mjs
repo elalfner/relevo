@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { resolveLabelNames } from '../scripts/lib/labels.mjs';
 
@@ -419,7 +422,7 @@ test('Scenario: The job is cut and the run recorded no outcome - a step that alw
   assert.match(rescue, /DECISION: \$\{\{ needs\.decide\.outputs\.decision_b64 \}\}/);
   assert.match(rescue, /grep -qxE 'relevo:\(ready\|building\)' \|\| exit 0/, 'it acts only when no outcome was recorded');
   assert.match(rescue, /node \.relevo-plugin\/scripts\/rescue-work\.mjs --decision "\$DECISION" --github-output "\$GITHUB_OUTPUT"/);
-  assert.match(rescue, /progress\.mjs class limit/, 'the usage record gets the class limit');
+  assert.match(rescue, /progress\.mjs class "\$class"/, 'the usage record gets the class that was decided');
   const at = (name) => workflow.lastIndexOf(`- name: ${name}`);
   assert.ok(at('Install the Relevo scripts for the reports') < at('Keep the work of a run that was cut'), 'the scripts are installed first');
   assert.ok(at('Keep the work of a run that was cut') < at('Report what the run used'), 'the class is known when the usage is reported');
@@ -431,6 +434,29 @@ test('The report says when the work is on a rescue branch, which is not the bran
   const report = stepOf('Report a run that ended without an outcome');
   assert.match(report, /case "\$RESCUE_BRANCH" in rescue\/\*\)/);
   assert.match(report, /not on the branch of the issue, so the work is on a branch of its own/);
+});
+
+// The lines of the rescue step that decide the class, run in bash with the stubs of the real inputs.
+function rescueClass({ cut = '', agentOutcome = 'success', withExecution = true }) {
+  const step = stepOf('Keep the work of a run that was cut');
+  const from = step.indexOf('class=other');
+  const to = step.indexOf('[ -n "$RELEVO_PROGRESS_DIR" ] && node .relevo-plugin/scripts/progress.mjs class "$class"');
+  assert.ok(from > 0 && to > from, 'the decision is in the step');
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-class-'));
+  mkdirSync(join(dir, '.relevo-plugin/scripts'), { recursive: true });
+  writeFileSync(join(dir, '.relevo-plugin/scripts/run-cut.mjs'), `if (process.argv.includes('--file')) process.stdout.write(${JSON.stringify(cut)});\n`);
+  const script = `set -e\n${step.slice(from, to)}echo "$class"\n`;
+  const r = spawnSync('bash', ['-c', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, EXECUTION_FILE: withExecution ? join(dir, 'log.json') : '', AGENT_OUTCOME: agentOutcome } });
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout.trim();
+}
+
+test('Scenario: the class of a run with no outcome - limit only when it was cut, other when the agent ended by itself', () => {
+  assert.equal(rescueClass({ cut: 'turns' }), 'limit', 'the runner cut it at its turn limit');
+  assert.equal(rescueClass({ cut: 'cost' }), 'limit', 'the runner cut it at its cost limit');
+  assert.equal(rescueClass({ agentOutcome: 'cancelled' }), 'limit', 'the job was cancelled or timed out');
+  assert.equal(rescueClass({ agentOutcome: 'failure', withExecution: false }), 'limit', 'the agent step failed and left no log');
+  assert.equal(rescueClass({}), 'other', 'the agent ended with a result of its own and no outcome was recorded');
 });
 
 test('The state of the working tree is recorded before the agent, so the install step is not taken for its work', () => {
