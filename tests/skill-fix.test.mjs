@@ -126,3 +126,9 @@ test('Scenario: A failed go left its worktree - fix asks who holds the branch be
   assert.match(body, /held by that worktree and its path/);
   assert.match(body, /change nothing, say that the branch is held/);
 });
+
+test('Scenario: fix launches the developer with the model plan, as go does', () => {
+  assert.match(body, /Make the model plan as `go` does in its step 4/);
+  assert.match(body, /with the `model` and `effort` of `dev` in that plan/);
+  assert.doesNotMatch(body, /`effort` of `agents\.dev`/, 'it no longer reads agents directly');
+});
