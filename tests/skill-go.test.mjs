@@ -444,3 +444,14 @@ test('the feature commit may be empty because the checkpoints hold the files, an
   assert.match(failure, /Issue-hash: <issue_hash>/, 'the limit commit carries the hash so that a run can resume');
   assert.match(failure, /existed before this run[^]*fast-forward/);
 });
+
+test('Scenario: the lenses leave out what the install step left - the list is made once per round and given to every lens', () => {
+  assert.match(ref, /tree-baseline\.mjs list/);
+  assert.match(ref, /`not_the_change`/);
+  assert.ok(ref.indexOf('tree-baseline.mjs list') < ref.indexOf('For each active lens, in the order'), 'the list is made before the first lens');
+  for (const lens of ['spec', 'security', 'code', 'interface']) {
+    const agent = readFileSync(root(`agents/qa-${lens}.md`), 'utf8');
+    assert.match(agent, /not_the_change/, `qa-${lens} knows the list`);
+    assert.match(agent, /install step/, `qa-${lens} knows where the files come from`);
+  }
+});

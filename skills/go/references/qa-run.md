@@ -31,11 +31,13 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/lens-plan.mjs --platform <platform> --text-fi
 
 Before each lens, check the budget of the run (the section "The budget of the run" of the skill): `node ${CLAUDE_PLUGIN_ROOT}/scripts/run-budget.mjs check --max-turns <run_max_turns> --max-minutes <run_max_minutes>`. If it exits 1, launch no lens and take the failure path with the reason `run limit reached`, naming this lens and the ones after it as the agents that did not run.
 
+Once per round, before the first lens, list the files that are still as the install step of the job left them (a lockfile, `analysis_options.yaml`): `node ${CLAUDE_PLUGIN_ROOT}/scripts/tree-baseline.mjs list`. It prints one path per line, and nothing in a local run. These files are not part of the change: give the list to every lens as `not_the_change`, so that it leaves them out of the diff it reads and reports no finding about them. A file the developer changed after the install is not in the list.
+
 For each active lens, in the order `spec`, `security`, `code`, `interface`:
 
 1. **Check the receipt first:** `node ${CLAUDE_PLUGIN_ROOT}/scripts/receipt-check.mjs`. If it exits 1 the diff changed since the gate ran (or the receipt is not green): run step 1 again before this lens. A lens never starts on a diff whose checks did not run.
 2. Record that the lens starts: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs lens <lens> --attempt <n>`. It changes no phase and only feeds the seconds of each lens in the usage record. Then launch the agent `relevo:qa-<lens>` in the foreground, giving the **model** and the **effort** configured for it when you launch it (`agents.qa.<lens>.model` and `agents.qa.<lens>.effort` in the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`): pass them as the `model` and `effort` parameters of the Agent tool. The effort given at launch is applied (measured in spike S1 of the design). Never start two together, and never end your turn while one is running.
-3. Give it only what it reads:
+3. Give it only what it reads, and with it the `not_the_change` list when it is not empty:
    - `spec`: the change folder, `<issue_file>`, the base branch, the rules files, the folder of the platform and `allow_paths`. It is given no stack section.
    - `security`: the change folder, the base branch, the folder of the platform and the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform> --lens security`.
    - `code`: the change folder, the base branch, the folder of the platform, the receipt (`.relevo-receipt/receipt.json`), the output of `stack-profile.mjs --platform <platform> --lens code`, the skill paths for `qa`, and the review script when there is one. It never runs the analysis or the tests: it reads the receipt.

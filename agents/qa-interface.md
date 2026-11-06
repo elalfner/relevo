@@ -18,7 +18,7 @@ You may run only these, and only to read: `openspec status --change "<id>" --jso
 
 ## Inputs
 
-The orchestrator tells you the change directory, the saved body of the issue (`issue_file`), the base branch to diff against, the folder of the platform, `.relevo-design/manifest.json` when the issue has design references, and the interface rules selected for QA, each with its "check this" line.
+The orchestrator tells you the change directory, the saved body of the issue (`issue_file`), the base branch to diff against, the folder of the platform, `.relevo-design/manifest.json` when the issue has design references, and the interface rules selected for QA, each with its "check this" line. When it gives a `not_the_change` list (the files that the install step of the job left, not the work of the developer), leave those files out of the diff you read and report no finding about them.
 
 ## Output contract
 
