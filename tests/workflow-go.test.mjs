@@ -427,6 +427,12 @@ test('Scenario: The job is cut and the run recorded no outcome - a step that alw
   assert.ok(at('Keep the work of a run that was cut') < at('Remove what this job added'), 'the working tree is still there');
 });
 
+test('The report says when the work is on a rescue branch, which is not the branch that fix reads', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /case "\$RESCUE_BRANCH" in rescue\/\*\)/);
+  assert.match(report, /not on the branch of the issue, so the work is on a branch of its own/);
+});
+
 test('The report of a run with no outcome says what the rescue did, and the package install checks for the rescue script', () => {
   const report = stepOf('Report a run that ended without an outcome');
   assert.match(report, /RESCUE_STATE: \$\{\{ steps\.rescue\.outputs\.state \}\}/);

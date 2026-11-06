@@ -563,7 +563,10 @@ jobs:
             [ "$cut" = "turns" ] && why="the runner stopped it at its turn limit (--max-turns)"
             [ "$cut" = "cost" ] && why="the runner stopped it at its cost limit (--max-budget-usd)"
             [ "$limit_reached" = "true" ] && why="the usage limit (or the credit) of the model account was reached"
-            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped before it finished ($why). The work done before the stop was kept on the branch \`$RESCUE_BRANCH\` as a work-in-progress commit. Run \`/relevo:fix $ISSUE\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start: $RUN_URL"
+            next=" Run \`/relevo:fix $ISSUE\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start:"
+            # The work of a run that was not on the branch of the issue is on a branch of its own: it is not the branch fix reads.
+            case "$RESCUE_BRANCH" in rescue/*) next=" The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start:" ;; esac
+            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped before it finished ($why). The work done before the stop was kept on the branch \`$RESCUE_BRANCH\` as a work-in-progress commit.$next $RUN_URL"
           # A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
           elif [ "$limit_reached" = "true" ]; then
             gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:qa-failed\`: $RUN_URL$kept"

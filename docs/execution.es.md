@@ -120,7 +120,7 @@ Cuando el propio runner corta al agente (su límite de turnos o de costo) o el j
 - **no guardado**, con el archivo y la razón: se encontró una ruta protegida, un archivo restringido, un marcador temporal o una posible credencial, y no se subió nada.
 - **no subido**: se hizo el commit pero falló el push.
 - **rama existente**: la rama ya estaba en el remoto, así que no se tocó.
-- **nada**: el árbol de trabajo no tenía nada que guardar, o la ejecución está en una rama que no es la base ni la del issue (el detalle dice cuántos archivos con cambios quedan sin guardar). Si la ejecución nunca salió de la rama base, sus ediciones se llevan a una rama nueva del issue y se guardan allí; nunca se hace commit en la rama base.
+- **nada**: el árbol de trabajo no tenía nada que guardar, (la ejecución está en una rama que no es la del issue y no tiene ediciones). Si la ejecución nunca salió de la rama base, sus ediciones se llevan a una rama nueva del issue y se guardan allí; nunca se hace commit en la rama base. Desde cualquier otra rama, o si la rama del issue ya existe, las ediciones se guardan en una rama aparte `rescue/<rama>` y el comentario lo dice.
 
 Cuando el log del ejecutor dice cuál de sus límites cortó al agente, el comentario lo nombra: el límite de turnos (`--max-turns`) o el de costo (`--max-budget-usd`). Un job cancelado o vencido no tiene ese resultado y conserva el texto general.
 

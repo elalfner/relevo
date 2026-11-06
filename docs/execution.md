@@ -120,7 +120,7 @@ When the runner itself cuts the agent (its turn or cost limit) or the job is can
 - **not kept**, with the file and the reason: a protected path, a restricted file, a temporary marker or a possible credential was found, and nothing was pushed.
 - **not pushed**: the commit was made but the push failed.
 - **existing branch**: the branch was already on the remote, so it was not touched.
-- **nothing**: the working tree had nothing to keep, or the run is on a branch that is neither the base nor the issue's (the detail says how many changed files stay uncommitted). When the run never left the base branch, its edits are carried to a new branch of the issue and kept there; the base branch is never committed to.
+- **nothing**: the working tree had nothing to keep, (the run is on a branch that is not the issue's and holds no edits). When the run never left the base branch, its edits are carried to a new branch of the issue and kept there; the base branch is never committed to. From any other branch, or when the issue's branch already exists, the edits are kept on a separate `rescue/<branch>` branch and the comment says so.
 
 When the log of the runner says which of its limits cut the agent, the comment names it: the turn limit (`--max-turns`) or the cost limit (`--max-budget-usd`). A cancelled or timed-out job has no such result and keeps the general wording.
 

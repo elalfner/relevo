@@ -55,7 +55,7 @@ export function readDecision(b64) {
  *   unsafe      a commit was refused (protected path, restricted file, marker or credential): nothing was pushed
  *   not_pushed  the commit was made (or there was one) but the push failed
  *   existing    the remote branch has commits that this branch lacks: it was not touched
- *   nothing     there was nothing to keep, or the run is on a branch that is not the base and not the issue's (the edits are counted)
+ *   nothing     there was nothing to keep (the run is on a branch that is not the issue's and holds no edits)
  * The branch may already be on the remote because of the checkpoints of this same run: a push that is a fast-forward of
  * the remote tip is allowed, and any other push is refused, so nothing is ever overwritten.
  *   subject  the subject of the commit (`wip: stopped by limit (#N)` by default); the hash of the issue text goes in as a trailer
@@ -69,10 +69,10 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     return result('not_pushed', { detail: `git could not read the branch: ${firstLine(error)}` });
   }
   if (current !== decision.branch) {
-    // The run never moved to the branch of the issue (the developer worked on the base branch or on a detached head). The
-    // edits are carried to a new branch of the issue, from where the run stands, and committed there: the base branch is
-    // never committed to, and the working tree of a runner is gone when the job ends. A branch of another name, or one that
-    // already exists here, is not touched: the edits are only counted.
+    // The run never moved to the branch of the issue. The working tree of a runner is gone when the job ends, so the edits
+    // are carried to a new branch, from where the run stands, and committed there. On the base branch (or a detached head)
+    // that branch is the issue's; anywhere else, or when the issue's branch already exists here, it is a separate
+    // `rescue/<branch>` so that nothing of another branch is mixed with the issue. The base branch is never committed to.
     let left = 0;
     let exists = false;
     try {
@@ -84,14 +84,13 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     } catch { /* the count is only information */ }
     const onBase = current === 'HEAD' || (decision.base !== null && current === decision.base);
     if (left === 0) return result('nothing', { detail: `the branch of the issue was not created (the run is on ${current || 'no branch'})` });
-    if (exists || !onBase) {
-      return result('nothing', { files: left, detail: `the run is on ${current || 'no branch'}, not on the branch of the issue; ${left} changed file(s) in the working tree were not committed` });
-    }
+    const target = onBase && !exists ? decision.branch : `rescue/${decision.branch}`;
     try {
-      git(['checkout', '-b', decision.branch]);
+      git(['checkout', '-b', target]);
     } catch (error) {
-      return result('not_pushed', { files: left, detail: `the branch of the issue could not be created to keep ${left} changed file(s): ${firstLine(error)}` });
+      return result('not_pushed', { files: left, detail: `the branch ${target} could not be created to keep ${left} changed file(s): ${firstLine(error)}` });
     }
+    decision = { ...decision, branch: target };
   }
 
   try {

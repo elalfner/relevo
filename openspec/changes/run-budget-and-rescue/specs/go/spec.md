@@ -64,7 +64,7 @@ When the agent step is cut by the runner or the job is cancelled or times out, a
 
 #### Scenario: The run is on some other branch
 - **WHEN** the run is on a branch that is neither the base nor the branch of the issue
-- **THEN** nothing is committed and the comment says how many changed files stay uncommitted
+- **THEN** the changes are kept on a separate `rescue/<branch>` branch from where the run stands, nothing is pushed to the base branch, and the comment says the work is not on the branch that `/relevo:fix` reads
 
 #### Scenario: The agent already took the failure path
 - **WHEN** the issue is no longer `building` or `ready` because the run recorded its outcome
