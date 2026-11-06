@@ -82,6 +82,18 @@ Two things the table does not say:
 - **The receipt is not a security boundary.** It guards against an omission or a mistake: a reviewer cannot start on code whose checks did not run. It does not defend against an agent that writes a false file, because it lives in the working folder. The guards of the commit (the protected paths, the restricted files, the scan of what is staged) remain the enforcement, and they run whatever any receipt says.
 - **A setting never turns a reviewer off.** There is no key to disable `spec`, `security` or `code`, or to lower what they block. A project's exceptions go in its own rules file, which the `spec` reviewer reads.
 
+## Reviewed false positives of the credential scan
+
+A person can mark a line that the scan flags as reviewed, in `.relevo/scan-exceptions.json`:
+
+```json
+{ "exceptions": [{ "path": "src/forms/login.ts", "pattern": "password: z.string", "reason": "form validation schema, no value" }] }
+```
+
+An exception excuses a **credential** finding when the file matches `path` (one file or a glob of files, such as `src/forms/*.ts`) and the added line contains `pattern` as plain text. The line number never matters, so the exception survives a moved line. A line that is not listed is refused as before, and a temporary marker is never excused. Each entry needs a reason; an entry that names a folder, uses `**`, covers every file of a folder (`*`), has a pattern shorter than 8 characters or has no reason is refused and never applied (the report names it). A list that is not valid JSON excuses nothing.
+
+The list is read from the last commit (`HEAD` for a commit, the base branch for the validation gate), never from the working tree, and `.relevo/` is a protected path, so an unattended run cannot add an exception: a person commits the file, and a pull request shows the change. The commit script and the receipt of the gate say how many exceptions were applied, with their path and reason, and the comment of the run repeats them.
+
 ## Restricted files
 
 Some files should be read by no agent and by no script of Relevo: environment files, private keys, credential stores. The list is the base list below plus `restricted_paths` in `relevo.yml`, which only adds (a profile cannot weaken it, and `relevo.yml` cannot take an entry away). It is separate from the protected paths, which are about what a diff may write.
