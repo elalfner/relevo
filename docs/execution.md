@@ -124,7 +124,7 @@ When the runner itself cuts the agent (its turn or cost limit) or the job is can
 
 When the log of the runner says which of its limits cut the agent, the comment names it: the turn limit (`--max-turns`) or the cost limit (`--max-budget-usd`). A cancelled or timed-out job has no such result and keeps the general wording.
 
-The install step of the job (`flutter pub get`, `npm ci`) can rewrite a lockfile before the agent starts. The step "Record the state of the working tree before the agent" records a fingerprint of every file that already differs from the commit, and the rescue and the checkpoints leave out the files that still have that content: otherwise the safe commit would refuse the lockfile, and the real work with it. A file the agent changes afterwards is judged like any change, and a restricted file is never opened for this.
+The install step of the job (`flutter pub get`, `npm ci`) can rewrite a lockfile before the agent starts. The step "Record the state of the working tree before the agent" records a fingerprint of every file that already differs from the commit, and the rescue and the checkpoints leave out the files that still have that content: otherwise the safe commit would refuse the lockfile, and the real work with it. The `clean-tree` check of the preflight that `go` runs first uses the same record, so the files the install step rewrote do not stop the run before it starts. A file the agent changes afterwards is judged like any change, and a restricted file is never opened for this.
 
 It never forces a push. The job has to live long enough for the step to run, so keep `limits.run_max_minutes` at least five minutes below the `timeout-minutes` of the build job (`/relevo:doctor` warns when it is not).
 

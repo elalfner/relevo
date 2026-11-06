@@ -78,6 +78,21 @@ When the agent step is cut by the runner or the job is cancelled or times out, a
 - **WHEN** the issue is no longer `building` or `ready` because the run recorded its outcome
 - **THEN** the always-running step does nothing
 
+### Requirement: The clean-tree check ignores what the install step left
+The `clean-tree` check that `go` makes before it claims work SHALL NOT count a file that the install step of the cloud job rewrote before the agent started and that still has the content recorded then. A file changed after that, and every change of a run without a record (a local run), SHALL still stop the run.
+
+#### Scenario: The install step rewrote a lockfile and a configuration file
+- **WHEN** `flutter pub get` rewrote `pubspec.lock` and `analysis_options.yaml` before the agent started, and nothing else changed
+- **THEN** the check passes and the run goes on
+
+#### Scenario: Another file changed
+- **WHEN** a file that is not in the record, or that changed after it was recorded, differs from the commit
+- **THEN** the check fails and lists only that file
+
+#### Scenario: A local run
+- **WHEN** there is no record of the state before the agent
+- **THEN** every change counts, as before
+
 ### Requirement: A run that stopped at a limit is a class of its own
 The outcome of a run that stopped at a limit or was cut SHALL be recorded with the class `limit`, apart from the classes of QA, inputs, policy and conflict.
 
