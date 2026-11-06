@@ -991,6 +991,14 @@ The outcome of a run that stopped at a limit or was cut SHALL be recorded with t
 - **WHEN** a run takes the failure path with the reason `run limit reached`
 - **THEN** its usage record carries the class `limit`
 
+#### Scenario: The runner or the job cut the run
+- **WHEN** the run ended with no outcome and the log says the runner cut the agent at its turn or cost limit, or the agent step failed, was cancelled or timed out
+- **THEN** its usage record carries the class `limit`
+
+#### Scenario: The agent ended by itself with no result
+- **WHEN** the run ended with no outcome, the runner did not cut it and the agent step succeeded
+- **THEN** its usage record carries the class `other`, not `limit`
+
 ### Requirement: The developer builds one section of tasks at a time
 `go` SHALL split the pending tasks of the change into groups, one per section of `tasks.md` in file order, and one group when three tasks or fewer are pending. It SHALL launch the developer once per group with only that group's tasks.
 
