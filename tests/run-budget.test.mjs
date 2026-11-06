@@ -105,6 +105,31 @@ test('the limits come from relevo.yml when no flag gives them, and a flag wins o
   assert.equal(asked(['--max-turns', '80']).code, 0, 'the flag wins');
 });
 
+test('Scenario: an option that is not a whole number is ignored, and the guard says so in notes', () => {
+  const dir = progress();
+  const cwd = mkdtempSync(join(tmpdir(), 'relevo-budget-flag-'));
+  writeFileSync(join(cwd, 'relevo.yml'), 'limits:\n  run_max_cost: 5\n  run_max_minutes: 40\n');
+  const asked = (args) => JSON.parse(spawnSync(process.execPath, [SCRIPT, 'check', ...args], { encoding: 'utf8', env: { ...process.env, RELEVO_PROGRESS_DIR: dir }, cwd }).stdout.trim());
+  const decimal = asked(['--max-minutes', '7.5']);
+  assert.equal(decimal.max_minutes, 40, 'the value of relevo.yml applies');
+  assert.equal(decimal.stop, false);
+  assert.equal(decimal.notes.length, 1);
+  assert.match(decimal.notes[0], /ignored --max-minutes "7\.5": it is not a whole number/);
+  assert.deepEqual(asked(['--max-minutes', '9']).notes, [], 'a whole number says nothing');
+});
+
+test('Scenario: a relevo.yml that does not validate does not switch the limits off in silence', () => {
+  const dir = progress();
+  const cwd = mkdtempSync(join(tmpdir(), 'relevo-budget-bad-'));
+  writeFileSync(join(cwd, 'relevo.yml'), 'limits:\n  run_max_cost: 5\n  run_max_minutes: 3\n');
+  const r = spawnSync(process.execPath, [SCRIPT, 'check'], { encoding: 'utf8', env: { ...process.env, RELEVO_PROGRESS_DIR: dir }, cwd });
+  const json = JSON.parse(r.stdout.trim());
+  assert.equal(r.status, 0, 'it still fails open');
+  assert.equal(json.max_minutes, null);
+  assert.equal(json.notes.length, 1);
+  assert.match(json.notes[0], /^config_invalid: .*relevo\.yml does not validate, so its limits were not read \(limits\.run_max_minutes\)/);
+});
+
 test('an unknown command exits 2, and subagentTurns of nothing is 0', () => {
   assert.equal(run(progress(), ['wander']).status, 2);
   assert.equal(subagentTurns([]), 0);

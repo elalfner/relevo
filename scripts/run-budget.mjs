@@ -3,7 +3,8 @@
 //   node scripts/run-budget.mjs record --agent <name> --tool-uses <n> [--duration-ms <n>] [--tokens <n>]
 //       records what an agent used when it finished; `go` copies the numbers from the usage block that ends its report
 //   node scripts/run-budget.mjs check [--config relevo.yml] [--max-turns <n>] [--max-minutes <n>]
-//       prints one line of JSON and exits 1 only when a limit it can read was reached: the turns of the subagents
+//       prints one line of JSON (`notes` lists what it could not use: an option that is not a whole number, a relevo.yml
+//       that does not validate) and exits 1 only when a limit it can read was reached: the turns of the subagents
 //       together (limits.run_max_turns) or the minutes since the run began (limits.run_max_minutes)
 // Everything is kept under $RELEVO_PROGRESS_DIR, outside the working tree. Without that variable (a local run) `record`
 // does nothing and `check` says it does not know and exits 0.
@@ -22,21 +23,35 @@ const arg = (name) => {
 };
 const dir = process.env.RELEVO_PROGRESS_DIR;
 
+// The limits, and notes about anything the guard could not use. The guard still fails open (a limit it cannot read
+// stops nothing), but it says why, so a relevo.yml that does not validate does not switch the limits off in silence.
 function limitsOf() {
-  const fromFlags = { run_max_turns: wholeNumber(arg('max-turns')), run_max_minutes: wholeNumber(arg('max-minutes')) };
+  const notes = [];
+  const flag = (name) => {
+    const raw = arg(name);
+    const value = wholeNumber(raw);
+    if (raw !== undefined && value === null) notes.push(`ignored --${name} ${JSON.stringify(String(raw ?? '').slice(0, 20))}: it is not a whole number`);
+    return value;
+  };
+  const fromFlags = { run_max_turns: flag('max-turns'), run_max_minutes: flag('max-minutes') };
   const path = resolve(arg('config') ?? 'relevo.yml');
   let fromConfig = {};
   try {
     if (existsSync(path)) {
       const loaded = loadConfig(readFileSync(path, 'utf8'));
       if (loaded.ok) fromConfig = loaded.config.limits ?? {};
+      else notes.push(`config_invalid: ${path} does not validate, so its limits were not read (${loaded.errors?.[0]?.path ?? 'see doctor'})`);
     }
   } catch {
     fromConfig = {};
+    notes.push(`config_invalid: ${path} could not be read, so its limits were not read`);
   }
   return {
-    run_max_turns: fromFlags.run_max_turns ?? fromConfig.run_max_turns,
-    run_max_minutes: fromFlags.run_max_minutes ?? fromConfig.run_max_minutes,
+    limits: {
+      run_max_turns: fromFlags.run_max_turns ?? fromConfig.run_max_turns,
+      run_max_minutes: fromFlags.run_max_minutes ?? fromConfig.run_max_minutes,
+    },
+    notes,
   };
 }
 
@@ -47,7 +62,8 @@ try {
       recordAgent(dir, { agent: arg('agent'), toolUses: arg('tool-uses'), durationMs: arg('duration-ms'), tokens: arg('tokens') });
     }
   } else if (command === 'check') {
-    const status = budgetStatus({ dir, limits: limitsOf() });
+    const { limits, notes } = limitsOf();
+    const status = { ...budgetStatus({ dir, limits }), notes };
     console.log(JSON.stringify(status));
     process.exit(status.stop ? 1 : 0);
   } else {
@@ -56,5 +72,5 @@ try {
   }
 } catch (error) {
   process.stderr.write(`run-budget: ${error.message}\n`);
-  if (command === 'check') console.log(JSON.stringify({ known: false, stop: false, reason: null }));
+  if (command === 'check') console.log(JSON.stringify({ known: false, stop: false, reason: null, notes: [] }));
 }

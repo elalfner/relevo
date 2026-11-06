@@ -177,6 +177,18 @@ test('the run was never on the branch of the issue - there is no work of the iss
   assert.equal(hasRemoteBranch(f, 'dev'), true);
 });
 
+test('the run is on another branch with edits - nothing is committed and the detail says how many files stay unsaved', () => {
+  const f = fixture();
+  git(f.work, 'checkout', '-q', 'dev');
+  put(f.work, 'src/a.js', 'x\n');
+  put(f.work, 'src/b.js', 'y\n');
+  const out = rescue(f);
+  assert.equal(out.state, 'nothing');
+  assert.equal(out.files, 2);
+  assert.match(out.detail, /2 changed file\(s\) in the working tree were not committed/);
+  assert.equal(git(f.work, 'log', '-1', '--format=%s').trim() !== 'wip: stopped by limit (#7)', true);
+});
+
 test('a push that fails is reported, and the commit stays on the local branch', () => {
   const f = fixture();
   put(f.work, 'src/a.js', 'x\n');

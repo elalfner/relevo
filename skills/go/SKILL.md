@@ -39,7 +39,7 @@ Before you launch the next agent (the developer again, or the next QA lens), ask
 node ${CLAUDE_PLUGIN_ROOT}/scripts/run-budget.mjs check --max-turns <run_max_turns> --max-minutes <run_max_minutes>
 ```
 
-It prints one line of JSON. **Exit 0:** launch the agent. **Exit 1:** a limit was reached (`reason` is `turns`, the turns of the subagents together, or `minutes`, the time since the run began): launch no other agent and take the failure path with the reason `run limit reached`. Its `finding` says which limit was reached and names the agents that did not run, for example "the minutes limit (50) was reached after 51.2 minutes; qa-code and qa-interface did not run". When the guard cannot read its inputs it says `"known":false` and exits 0: carry on. A report without the block is not a reason to stop: record nothing for that agent.
+It prints one line of JSON. **Exit 0:** launch the agent. **Exit 1:** a limit was reached (`reason` is `turns`, the turns of the subagents together, or `minutes`, the time since the run began): launch no other agent and take the failure path with the reason `run limit reached`. Its `finding` says which limit was reached and names the agents that did not run, for example "the minutes limit (50) was reached after 51.2 minutes; qa-code and qa-interface did not run". When the guard cannot read its inputs it says `"known":false` and exits 0: carry on. If `notes` is not empty (an option that was not a whole number, or a relevo.yml that does not validate, so its limits were not read), the limits did not apply as written: say it in the report of the run. A report without the block is not a reason to stop: record nothing for that agent.
 
 ## Progress on the issue
 

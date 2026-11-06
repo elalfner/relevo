@@ -68,7 +68,15 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
   } catch (error) {
     return result('not_pushed', { detail: `git could not read the branch: ${firstLine(error)}` });
   }
-  if (current !== decision.branch) return result('nothing', { detail: `the branch of the issue was not created (the run is on ${current || 'no branch'})` });
+  if (current !== decision.branch) {
+    // Nothing is committed on a branch that is not the issue's, but the edits that stay in the working tree are named.
+    let left = 0;
+    try {
+      left = changedPaths(git(['status', '--porcelain=v1', '-z', '--untracked-files=all'])).length;
+    } catch { /* the count is only information */ }
+    const unsaved = left > 0 ? `; ${left} changed file(s) in the working tree were not committed` : '';
+    return result('nothing', { files: left, detail: `the branch of the issue was not created (the run is on ${current || 'no branch'})${unsaved}` });
+  }
 
   try {
     const tip = git(['ls-remote', '--heads', 'origin', decision.branch]).trim().split(/\s+/)[0];
