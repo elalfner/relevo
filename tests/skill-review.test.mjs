@@ -401,3 +401,9 @@ test('Scenario: Supabase ready / Local stack stopped - the skill names the Supab
   const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
   assert.ok(source.includes("case 'started-stack'"), 'review-state has no "started-stack" command');
 });
+
+test('Scenario: review launches the developer with the model plan', () => {
+  assert.match(body, /`model` and `effort` of `dev` in the model plan \(made as `go` does in its step 4/);
+  assert.match(body, /`model` and `effort` of `dev` in the same model plan/);
+  assert.doesNotMatch(body, /`effort` of `agents\.dev`/, 'it no longer reads agents directly');
+});

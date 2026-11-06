@@ -52,8 +52,9 @@ qa:
 # Two reviewers use the stronger model by default; set `spec` and `security` to `sonnet` to keep the cost QA had before.
 # With agent.build antigravity these are accepted and not applied (doctor and init say so). No key turns a reviewer off.
 # agents:
+#   ladder: [haiku, sonnet, opus]   # the order of the models, lowest to highest; floor and ceiling are names in it
 #   dev:
-#     model: sonnet
+#     model: sonnet                 # or `auto`: a script picks the model per issue between floor and ceiling (docs/configuration.md)
 #     effort: high
 #   qa:
 #     spec:      { model: opus,   effort: high }

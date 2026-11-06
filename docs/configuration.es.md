@@ -81,6 +81,29 @@ agents:
 - **Ningún ajuste apaga un revisor ni baja lo que bloquea.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee.
 - **Con Antigravity** los ajustes se aceptan y no se aplican: no se escriben en los agentes que renderiza. `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada uno y siguen.
 
+### Elegir el modelo de cada issue: `auto`
+
+Un rol puede ser `auto` en lugar de un nombre de modelo. Entonces un script (`scripts/model-plan.mjs`, que `go` ejecuta una vez antes del primer lanzamiento) escoge su modelo según el issue, entre un piso y un techo; el agente principal no decide nada.
+
+```yaml
+agents:
+  ladder: [haiku, sonnet, opus]     # el orden de los modelos, de menor a mayor (es el valor por defecto)
+  dev:
+    model: auto
+    ceiling: sonnet                  # opcional: el modelo más alto que auto puede usar para este rol
+    floor: haiku                     # opcional: el más bajo que puede escoger por tamaño
+  qa:
+    spec:
+      model: auto
+```
+
+- **La escalera** es solo un orden. Relevo no comprueba los nombres contra una lista de modelos; un modelo nuevo es una línea más en `agents.ladder`.
+- **El rango.** Sin `ceiling` es el modelo por defecto del rol (desarrollador `sonnet`, spec y security `opus`, code e interface `sonnet`), y sin `floor` es un escalón más abajo. Así `auto` no puede costar más que los valores por defecto salvo que subas un techo, y la lente de seguridad nunca queda por debajo de `sonnet` por defecto.
+- **La puntuación.** El tamaño del cambio (tareas pendientes más escenarios del issue: hasta 6 toma el piso, hasta 14 el punto medio, más el techo), subido un escalón cuando el issue permite un archivo de dependencias en `Allow-paths:` o nombra un área sensible para la seguridad (autenticación, credencial, token, contraseña, pago, permiso, secreto, cifrado). La lente de seguridad va a su techo en ambos casos. Si no hay tareas ni escenarios que puntuar, se usa el modelo por defecto del rol. El esfuerzo no se puntúa: sigue siendo el configurado.
+- **El issue puede pedir.** Una línea `Model: <nombre>` (desarrollador) o `QA-model: <nombre>` (todas las lentes) se lee solo para un rol en `auto`. Puede bajar el modelo libremente y subirlo solo hasta el techo; un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Las líneas son parte del texto del issue, así que el hash del issue las cubre. `/relevo:issue` puede proponer una, con su motivo, y la escribe solo si lo confirmas.
+- **Un rol que no es `auto`** conserva el modelo escrito, diga lo que diga el issue. `limits.run_max_cost` sigue siendo el tope duro en todos los casos.
+- **El comentario dice qué se usó.** El comentario de uso de una corrida lista, para cada rol, el modelo, el esfuerzo, si vino de la configuración, de `auto` o del issue, y por qué. Si el plan no se puede hacer, `go` usa la configuración y lo dice.
+
 ## Qué significan los límites
 
 - `limits.run_max_cost` es obligatorio y lo eliges tú. Con una clave de API es un tope real de gasto por ejecución. Con un token de suscripción el costo que reporta el log es nocional, así que es solo una red de seguridad contra una ejecución descontrolada.
