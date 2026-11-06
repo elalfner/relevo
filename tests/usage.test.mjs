@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { limitsExceeded, parseUsageMarker, reachedUsageLimit, readUsage, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
+import { limitsExceeded, parseUsageMarker, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
 const write = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
@@ -293,4 +293,28 @@ test('Scenario: The marker is read by the digest - it carries agents and models,
   assert.equal(read.agents, undefined, 'one malformed agent leaves the key out');
   assert.equal(read.cost, 3, 'the totals are still read');
   assert.equal(parseUsageMarker(bot(usageMarker(readUsage(ARRAY)))).agents, undefined);
+});
+
+// ---- which limit of the runner cut the run
+test('Scenario: A limit of the runner - the result of the log says whether it was the turn limit or the cost limit', () => {
+  assert.equal(runnerCut(JSON.stringify([{ type: 'system' }, { type: 'result', subtype: 'error_max_turns', num_turns: 100 }])), 'turns');
+  assert.equal(runnerCut(JSON.stringify([{ type: 'result', subtype: 'error_max_budget_usd', total_cost_usd: 5 }])), 'cost');
+  assert.equal(runnerCut(LINES), null, 'a result that succeeded');
+  assert.equal(runnerCut(JSON.stringify([{ type: 'result', subtype: 'error_during_execution' }])), null, 'another error is not a limit');
+});
+
+test('Scenario: The log does not say - nothing is named, and the command never fails', () => {
+  ['', 'not json', JSON.stringify([{ type: 'assistant' }]), undefined].forEach((t) => assert.equal(runnerCut(t), null));
+  const cli = (args, text) => {
+    const file = text === undefined ? [] : ['--file', write('cut.json', text)];
+    return spawnSync(process.execPath, [CLI('run-cut.mjs'), ...file, ...args], { encoding: 'utf8' });
+  };
+  const turns = cli([], JSON.stringify([{ type: 'result', subtype: 'error_max_turns' }]));
+  assert.equal(turns.status, 0);
+  assert.equal(turns.stdout.trim(), 'turns');
+  assert.equal(cli([], JSON.stringify([{ type: 'result', subtype: 'error_max_budget_usd' }])).stdout.trim(), 'cost');
+  const none = cli([], 'garbled');
+  assert.equal(none.status, 0, 'exit 0 so that $(...) under bash -e does not stop the step');
+  assert.equal(none.stdout.trim(), '');
+  assert.equal(cli([], undefined).status, 0, 'no file at all');
 });

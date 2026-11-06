@@ -301,6 +301,18 @@ export function sumUsage(runs) {
   };
 }
 
+/**
+ * Which limit of the runner cut the run, from the result of its log: `turns` (`error_max_turns`), `cost`
+ * (`error_max_budget_usd`), or null when the log says neither. The subtypes are the ones the Claude Code SDK documents
+ * for a result; a log without them gives null and the comment keeps its general wording.
+ */
+export function runnerCut(text) {
+  const result = [...entries(text).filter((e) => e && typeof e === 'object')].reverse().find((e) => e.type === 'result');
+  if (result?.subtype === 'error_max_turns') return 'turns';
+  if (result?.subtype === 'error_max_budget_usd') return 'cost';
+  return null;
+}
+
 // Messages the Claude CLI and the API document for a usage limit, a quota or an empty credit balance. These patterns
 // are not from a failed run seen here (see docs/pilot-findings.md); a wrong guess only changes the wording of a
 // comment on a run that already failed.

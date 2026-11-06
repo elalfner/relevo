@@ -122,6 +122,8 @@ When the runner itself cuts the agent (its turn or cost limit) or the job is can
 - **existing branch**: the branch was already on the remote, so it was not touched.
 - **nothing**: the branch was never created or the working tree had nothing to keep.
 
+When the log of the runner says which of its limits cut the agent, the comment names it: the turn limit (`--max-turns`) or the cost limit (`--max-budget-usd`). A cancelled or timed-out job has no such result and keeps the general wording.
+
 It never forces a push. The job has to live long enough for the step to run, so keep `limits.run_max_minutes` at least five minutes below the `timeout-minutes` of the build job (`/relevo:doctor` warns when it is not).
 
 ## Checkpoints and resuming

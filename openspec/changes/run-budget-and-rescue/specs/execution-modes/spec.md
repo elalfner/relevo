@@ -27,3 +27,11 @@ The comment about a run that stopped at a limit SHALL name the limit that was re
 #### Scenario: A time limit
 - **WHEN** a run stops because `limits.run_max_minutes` passed
 - **THEN** the comment says the minutes limit was reached, how many minutes the run had used and which agents did not run
+
+#### Scenario: A limit of the runner
+- **WHEN** the runner cuts the agent at its turn limit or its cost limit and the log says which
+- **THEN** the comment says which of the two it was
+
+#### Scenario: The log does not say
+- **WHEN** the job was cancelled or timed out, or the log has no such result
+- **THEN** the comment keeps its general wording

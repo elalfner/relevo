@@ -466,7 +466,7 @@ jobs:
           mkdir -p .relevo-plugin
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
-          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/rescue-work.mjs scripts/progress.mjs; do
+          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/run-cut.mjs scripts/rescue-work.mjs scripts/progress.mjs; do
             [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
 
@@ -474,8 +474,8 @@ jobs:
       # is cancelled or times out never runs it, and the work is only in this working tree. If the issue is still ready
       # or building after the agent step, no outcome was recorded: commit what is here and push it to the branch of the
       # issue, through the same scans as every commit of Relevo (protected paths, restricted files, markers and
-      # credentials). Nothing is pushed after a refusal, nothing is forced, and a branch that already exists on the
-      # remote is not touched. The step records the class `limit` for the usage record and never fails the job.
+      # credentials). Nothing is pushed after a refusal, nothing is forced, and nothing on the remote is overwritten:
+      # only a fast-forward is pushed, and a remote branch with commits this run does not have is left alone. The step records the class `limit` for the usage record and never fails the job.
       # If you renamed the labels in relevo.yml, change the names below too.
       - name: Keep the work of a run that was cut
         id: rescue
@@ -545,22 +545,30 @@ jobs:
           gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
           limit_reached=false
           [ -n "$EXECUTION_FILE" ] && node .relevo-plugin/scripts/usage-limit.mjs --file "$EXECUTION_FILE" && limit_reached=true
+          # Which limit of the runner cut the run, when its log says (the script prints nothing otherwise).
+          cut=""
+          [ -n "$EXECUTION_FILE" ] && cut=$(node .relevo-plugin/scripts/run-cut.mjs --file "$EXECUTION_FILE")
+          cutnote=""
+          [ "$cut" = "turns" ] && cutnote=" The runner stopped it at its turn limit (--max-turns)."
+          [ "$cut" = "cost" ] && cutnote=" The runner stopped it at its cost limit (--max-budget-usd)."
           # What the step before did with the work of a run that ended with no outcome.
           kept=""
           case "$RESCUE_STATE" in
             unsafe) kept=" The work done before the stop was not kept: $RESCUE_DETAIL" ;;
             not_pushed) kept=" The work done before the stop could not be pushed: $RESCUE_DETAIL" ;;
-            existing) kept=" The branch \`$RESCUE_BRANCH\` already exists on the remote, so it was not touched." ;;
+            existing) kept=" The branch \`$RESCUE_BRANCH\` is on the remote with commits this run does not have, so it was not touched." ;;
           esac
           if [ "$RESCUE_STATE" = "kept" ]; then
             why="the runner cut it, or the job was cancelled or timed out"
+            [ "$cut" = "turns" ] && why="the runner stopped it at its turn limit (--max-turns)"
+            [ "$cut" = "cost" ] && why="the runner stopped it at its cost limit (--max-budget-usd)"
             [ "$limit_reached" = "true" ] && why="the usage limit (or the credit) of the model account was reached"
             gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped before it finished ($why). The work done before the stop was kept on the branch \`$RESCUE_BRANCH\` as a work-in-progress commit. Run \`/relevo:fix $ISSUE\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start: $RUN_URL"
           # A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
           elif [ "$limit_reached" = "true" ]; then
             gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:qa-failed\`: $RUN_URL$kept"
           else
-            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again.$kept"
+            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported.$cutnote Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again.$kept"
           fi
           echo "reported=true" >> "$GITHUB_OUTPUT"
 

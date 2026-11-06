@@ -40,7 +40,7 @@ When `go` stops because of a limit, it SHALL commit the work in progress with th
 - **THEN** `fix` treats it as work in progress, the same as the work that QA rejected
 
 ### Requirement: The work is kept when the runner cuts the run
-When the agent step is cut by the runner or the job is cancelled or times out, and the issue is still `building` or `ready`, a step that always runs SHALL commit and push the working tree the same way, before the report of the run and before the cleanup. It SHALL NOT push when a commit is refused, SHALL NOT force-push and SHALL NOT touch a branch that already exists on the remote.
+When the agent step is cut by the runner or the job is cancelled or times out, and the issue is still `building` or `ready`, a step that always runs SHALL commit and push the working tree the same way, before the report of the run and before the cleanup. It SHALL NOT push when a commit is refused, SHALL NOT force-push and SHALL NOT overwrite a remote branch: it pushes only a fast-forward of what the remote has.
 
 #### Scenario: The job is cut and the run recorded no outcome
 - **WHEN** the agent step is cancelled or ends without an outcome and the working tree holds changes
@@ -54,8 +54,8 @@ When the agent step is cut by the runner or the job is cancelled or times out, a
 - **WHEN** the working tree has no change to keep
 - **THEN** no commit is made, nothing is pushed and the comment says nothing was built
 
-#### Scenario: The branch already exists on the remote
-- **WHEN** `origin/<branch>` exists before the rescue
+#### Scenario: The remote branch has commits this run does not have
+- **WHEN** `origin/<branch>` has a commit that the working branch lacks
 - **THEN** it is not touched and the comment says so
 
 #### Scenario: The agent already took the failure path

@@ -122,6 +122,8 @@ Cuando el propio runner corta al agente (su límite de turnos o de costo) o el j
 - **rama existente**: la rama ya estaba en el remoto, así que no se tocó.
 - **nada**: la rama nunca se creó o el árbol de trabajo no tenía nada que guardar.
 
+Cuando el log del ejecutor dice cuál de sus límites cortó al agente, el comentario lo nombra: el límite de turnos (`--max-turns`) o el de costo (`--max-budget-usd`). Un job cancelado o vencido no tiene ese resultado y conserva el texto general.
+
 Nunca fuerza un push. El job tiene que vivir lo suficiente para que el paso corra, así que mantén `limits.run_max_minutes` al menos cinco minutos por debajo del `timeout-minutes` del job de build (`/relevo:doctor` avisa cuando no es así).
 
 ## Checkpoints y reanudación

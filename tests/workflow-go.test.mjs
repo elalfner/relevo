@@ -436,7 +436,7 @@ test('The report of a run with no outcome says what the rescue did, and the pack
   assert.match(report, /\/relevo:fix \$ISSUE/);
   assert.match(report, /was not kept: \$RESCUE_DETAIL/);
   assert.match(report, /could not be pushed: \$RESCUE_DETAIL/);
-  assert.match(report, /already exists on the remote, so it was not touched/);
+  assert.match(report, /is on the remote with commits this run does not have, so it was not touched/);
   const install = stepOf('Install the Relevo scripts for the reports');
   assert.match(install, /scripts\/rescue-work\.mjs/);
   assert.match(install, /scripts\/progress\.mjs/);
@@ -446,4 +446,13 @@ test('the step that keeps the work holds no token the build job did not have, an
   const rescue = stepOf('Keep the work of a run that was cut');
   assert.doesNotMatch(rescue, /actions: write|--force|push -f/);
   assert.equal((workflow.match(/^\s+actions: write$/gm) ?? []).length, 1, 'one permission line, in the requeue job');
+});
+
+test('Scenario: A limit of the runner - the report names the turn limit or the cost limit when the log says, and the package install checks for the script', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /cut=\$\(node \.relevo-plugin\/scripts\/run-cut\.mjs --file "\$EXECUTION_FILE"\)/);
+  assert.match(report, /The runner stopped it at its turn limit \(--max-turns\)\./);
+  assert.match(report, /The runner stopped it at its cost limit \(--max-budget-usd\)\./);
+  assert.match(report, /why="the runner stopped it at its turn limit \(--max-turns\)"/, 'the kept-work comment names it too');
+  assert.match(stepOf('Install the Relevo scripts for the reports'), /scripts\/run-cut\.mjs/);
 });
