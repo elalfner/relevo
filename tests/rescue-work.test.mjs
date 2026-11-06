@@ -166,27 +166,53 @@ test('the commit carries the hash of the issue text as a trailer when the decisi
   assert.match(git(f.work, 'log', '-1', '--format=%B'), new RegExp(`\\nIssue-hash: ${hash}\\n`));
 });
 
-test('the run was never on the branch of the issue - there is no work of the issue to keep', () => {
+test('Scenario: The run never moved to the branch of the issue - the edits are kept on it and the base branch is not touched', () => {
   const f = fixture();
   git(f.work, 'checkout', '-q', 'dev');
+  git(f.work, 'branch', '-q', '-D', 'feature/7-x');
+  const devTip = git(f.work, 'rev-parse', 'dev').trim();
   put(f.work, 'src/a.js', 'x\n');
+  put(f.work, 'src/b.js', 'y\n');
   const out = rescue(f);
-  assert.equal(out.state, 'nothing');
-  assert.match(out.detail, /was not created/);
-  assert.equal(hasRemoteBranch(f), false);
-  assert.equal(hasRemoteBranch(f, 'dev'), true);
+  assert.equal(out.state, 'kept');
+  assert.equal(out.files, 2);
+  assert.equal(git(f.work, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), 'feature/7-x');
+  assert.equal(git(f.work, 'rev-parse', 'dev').trim(), devTip, 'the base branch has no new commit');
+  assert.equal(hasRemoteBranch(f), true);
+  assert.equal(git(f.origin, 'rev-parse', 'refs/heads/dev').trim(), devTip, 'the base branch on the remote is the same');
+  assert.equal(git(f.work, 'log', '-1', '--format=%s').trim(), 'wip: stopped by limit (#7)');
 });
 
-test('the run is on another branch with edits - nothing is committed and the detail says how many files stay unsaved', () => {
+test('Scenario: The run is on a branch that is neither the base nor the issue\'s - nothing is committed and the edits are counted', () => {
   const f = fixture();
-  git(f.work, 'checkout', '-q', 'dev');
+  git(f.work, 'checkout', '-q', '-b', 'other/branch');
   put(f.work, 'src/a.js', 'x\n');
   put(f.work, 'src/b.js', 'y\n');
   const out = rescue(f);
   assert.equal(out.state, 'nothing');
   assert.equal(out.files, 2);
   assert.match(out.detail, /2 changed file\(s\) in the working tree were not committed/);
-  assert.equal(git(f.work, 'log', '-1', '--format=%s').trim() !== 'wip: stopped by limit (#7)', true);
+  assert.equal(hasRemoteBranch(f), false);
+});
+
+test('the branch of the issue exists here but the run is on the base - nothing is moved and the edits are counted', () => {
+  const f = fixture();
+  git(f.work, 'checkout', '-q', 'dev');
+  put(f.work, 'src/a.js', 'x\n');
+  const out = rescue(f);
+  assert.equal(out.state, 'nothing');
+  assert.equal(out.files, 1);
+  assert.match(out.detail, /1 changed file\(s\)/);
+});
+
+test('the run is on the base with no edits - there is no work of the issue to keep', () => {
+  const f = fixture();
+  git(f.work, 'checkout', '-q', 'dev');
+  git(f.work, 'branch', '-q', '-D', 'feature/7-x');
+  const out = rescue(f);
+  assert.equal(out.state, 'nothing');
+  assert.match(out.detail, /was not created/);
+  assert.equal(hasRemoteBranch(f), false);
 });
 
 test('a push that fails is reported, and the commit stays on the local branch', () => {

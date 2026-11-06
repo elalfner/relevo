@@ -58,6 +58,14 @@ When the agent step is cut by the runner or the job is cancelled or times out, a
 - **WHEN** `origin/<branch>` has a commit that the working branch lacks
 - **THEN** it is not touched and the comment says so
 
+#### Scenario: The run never left the base branch
+- **WHEN** the working tree holds changes and the run is on the base branch or a detached head, not on the branch of the issue
+- **THEN** the changes are carried to a new branch of the issue and kept there, and the base branch receives no commit
+
+#### Scenario: The run is on some other branch
+- **WHEN** the run is on a branch that is neither the base nor the branch of the issue
+- **THEN** nothing is committed and the comment says how many changed files stay uncommitted
+
 #### Scenario: The agent already took the failure path
 - **WHEN** the issue is no longer `building` or `ready` because the run recorded its outcome
 - **THEN** the always-running step does nothing
