@@ -96,3 +96,15 @@ test('the command without a plan file, or with a failed plan, prints what it alw
   assert.doesNotMatch(failed.stdout, /Models chosen/);
   assert.doesNotMatch(failed.stdout, /"plan"/);
 });
+
+test('Scenario: the developer went up on a retry - the comment and the marker say when and why', () => {
+  const usage = readUsage(LOG);
+  const plan = planFromJson(JSON.stringify({ ...PLAN, escalations: [{ role: 'dev', attempt: 2, from: 'haiku', to: 'sonnet', reason: 'qa-rejected' }, { attempt: 3, from: 'x', to: 'y', reason: 'made-up' }] }));
+  assert.equal(plan.escalations.length, 1, 'a malformed entry is left out');
+  assert.match(usageLine(usage, { plan }), /Models chosen: developer haiku.* The developer went up on a retry: haiku to sonnet on attempt 2 \(QA rejected\)\./);
+  const marker = usageMarker(usage, { plan });
+  assert.match(marker, /"escalated":\[\{"attempt":2,"from":"haiku","to":"sonnet","reason":"qa-rejected"\}\]/);
+  const parsed = parseUsageMarker({ user: { type: 'Bot' }, body: marker, created_at: '2026-11-06T00:00:00Z' });
+  assert.deepEqual(parsed.escalated, [{ attempt: 2, from: 'haiku', to: 'sonnet', reason: 'qa-rejected' }]);
+  assert.doesNotMatch(usageLine(usage, { plan: planFromJson(PLAN) }), /went up on a retry/);
+});
