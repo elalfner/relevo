@@ -34,7 +34,8 @@ limits:
   built_unreviewed_per_person: 2   # built issues one person may have waiting
   concurrent_agents: 3             # unattended runs at the same time
   review_sla_hours: 8              # reminder, then escalation after the same time again
-  run_max_turns: 100               # per unattended run
+  run_max_turns: 100               # per unattended run: the runner limits the main agent and Relevo limits the subagents together
+  run_max_minutes: 50              # minutes after which an unattended run starts no further agent; keep it 5+ below the timeout-minutes of the go workflow (60)
   building_alert_hours: 3          # hours without activity before an issue on `building` is reported as stuck
   run_max_cost: 5                  # REQUIRED: US dollars per unattended run; choose your own
 

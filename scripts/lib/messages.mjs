@@ -536,6 +536,8 @@ export function renderMessage(kind, data = {}, language = 'en') {
     const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
     if (!['pushed', 'unsafe', 'not_pushed', 'existing', 'kept'].includes(state)) throw new Error(`message "qa_failed" has an unknown branch_state "${state}"`);
     if (state === 'existing' && !present(values.recovery)) throw new Error('message "qa_failed" needs "recovery" when the branch already existed');
+    // A run that stopped at a limit was not judged by QA: the text says so instead of saying that QA rejected it.
+    const stoppedAtLimit = values.reason === 'run limit reached';
     const branchLines = {
       pushed: es
         ? `La rama ${values.branch} está subida; el estado no avanzó y no se abrió ningún pull request.`
@@ -546,9 +548,13 @@ export function renderMessage(kind, data = {}, language = 'en') {
       not_pushed: es
         ? `La rama ${values.branch} no se subió; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} was not pushed; the state did not advance and no pull request was opened.`,
-      kept: es
-        ? `La rama ${values.branch} tiene el trabajo que QA no aprobó${tasksInfo(values, es)}; se guardó como trabajo en curso para que no se pierda. El estado no avanzó y no se abrió ningún pull request.`
-        : `The branch ${values.branch} holds the work that QA did not approve${tasksInfo(values, es)}; it was kept as work in progress so nothing is lost. The state did not advance and no pull request was opened.`,
+      kept: stoppedAtLimit
+        ? (es
+          ? `La rama ${values.branch} tiene el trabajo hecho antes de detenerse${tasksInfo(values, es)}; se guardó como trabajo en curso para que no se pierda. El estado no avanzó y no se abrió ningún pull request.`
+          : `The branch ${values.branch} holds the work done before the stop${tasksInfo(values, es)}; it was kept as work in progress so nothing is lost. The state did not advance and no pull request was opened.`)
+        : (es
+          ? `La rama ${values.branch} tiene el trabajo que QA no aprobó${tasksInfo(values, es)}; se guardó como trabajo en curso para que no se pierda. El estado no avanzó y no se abrió ningún pull request.`
+          : `The branch ${values.branch} holds the work that QA did not approve${tasksInfo(values, es)}; it was kept as work in progress so nothing is lost. The state did not advance and no pull request was opened.`),
       existing: es
         ? `La rama ${values.branch} ya existía en el remoto, así que no se tocó; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} already existed on the remote, so it was not touched; the state did not advance and no pull request was opened.`,
@@ -556,7 +562,9 @@ export function renderMessage(kind, data = {}, language = 'en') {
     values.branch_line = branchLines[state];
     values.reason_suffix = present(values.reason) ? ` (${values.reason})` : '';
     // When no finding could be corrected by the developer agent the retries were never run, so the line says that.
-    values.happened = values.retries_skipped === true
+    values.happened = stoppedAtLimit
+      ? (es ? `La ejecución se detuvo en un límite antes de terminar${values.reason_suffix}.` : `The run stopped at a limit before it finished${values.reason_suffix}.`)
+      : values.retries_skipped === true
       ? (es ? 'QA la rechazó y ningún hallazgo lo puede corregir el agente de desarrollo, así que no se hicieron reintentos.' : 'QA rejected it and no finding can be corrected by the developer agent, so there were no retries.')
       : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`);
   }

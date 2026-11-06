@@ -28,6 +28,8 @@ export const SETTINGS = [
   { path: 'limits.concurrent_agents', type: 'int', min: 1, default: 3 },
   { path: 'limits.review_sla_hours', type: 'int', min: 1, default: 8 },
   { path: 'limits.run_max_turns', type: 'int', min: 1, default: 100 },
+  // After these minutes an unattended run starts no further agent (the job timeout of the go workflow comes after).
+  { path: 'limits.run_max_minutes', type: 'int', min: 5, default: 50 },
   { path: 'limits.building_alert_hours', type: 'int', min: 1, default: 3 },
   // The cost limit is the one a Claude run can enforce; an Antigravity run has none, so it takes a token limit instead.
   { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true, default: null, requiredFor: 'claude', missing: 'unattended runs must always have a cost limit (amount in US dollars per run)', rejectedFor: 'antigravity', rejection: 'the agent has no cost limit; set limits.run_max_tokens instead, and note that the quota of the Google Cloud project that owns the key is the ceiling that really holds' },

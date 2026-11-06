@@ -5,7 +5,7 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const OUTCOME_CLASSES = ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'other'];
+export const OUTCOME_CLASSES = ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'limit', 'other'];
 
 export const LENSES = ['spec', 'security', 'code', 'interface'];
 

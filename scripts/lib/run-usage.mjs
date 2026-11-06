@@ -42,6 +42,100 @@ function subagentTurnsOf(all) {
   return total;
 }
 
+// The cost of an agent is a share of the real cost of its model, by the weighted input side of its messages. The output
+// tokens are not used: the `usage` of a streamed message is a snapshot taken before the answer is complete (a real log
+// had 2,466 output tokens in its messages and 66,240 in `modelUsage`), while the input side agrees with `modelUsage`.
+// The weights follow the structure of the published prices: a cache read costs a tenth of an input token and a cache
+// write a quarter more (twice for the one-hour cache).
+function inputSideWeight(u) {
+  const input = num(u.input_tokens) ?? 0;
+  const read = num(u.cache_read_input_tokens) ?? 0;
+  const five = num(u.cache_creation?.ephemeral_5m_input_tokens);
+  const hour = num(u.cache_creation?.ephemeral_1h_input_tokens);
+  const created = num(u.cache_creation_input_tokens) ?? 0;
+  const write = five !== null || hour !== null ? (five ?? 0) * 1.25 + (hour ?? 0) * 2 : created * 1.25;
+  return input + read * 0.1 + write;
+}
+
+/**
+ * The real cost of each model and an estimate of what each agent cost, from what the log has: `modelUsage` of the
+ * result, the `Agent` calls, `task_started` and `task_notification` of each subagent, and the model and usage of every
+ * message with the `parent_tool_use_id` of its agent. Messages repeat once per content block, so each id counts once.
+ * Returns { models, agents }, each null when the log does not have what it needs. The estimated costs of the agents of
+ * a model add up to its real cost.
+ */
+function breakdown(all, result) {
+  const models = Object.entries(result.modelUsage && typeof result.modelUsage === 'object' ? result.modelUsage : {})
+    .filter(([, m]) => m && num(m.costUSD) !== null)
+    .map(([model, m]) => ({ model, cost: m.costUSD }));
+
+  const done = new Map();
+  const started = new Map();
+  const calls = new Map();
+  all.forEach((e) => {
+    if (e.type === 'system' && e.subtype === 'task_started' && typeof e.tool_use_id === 'string') started.set(e.tool_use_id, e);
+    if (e.type === 'system' && e.subtype === 'task_notification' && typeof e.tool_use_id === 'string' && num(e.usage?.tool_uses) !== null) done.set(e.tool_use_id, e.usage);
+    if (e.type === 'assistant' && Array.isArray(e.message?.content)) {
+      e.message.content.forEach((c) => {
+        if (c?.type === 'tool_use' && (c.name === 'Agent' || c.name === 'Task') && typeof c.id === 'string') calls.set(c.id, c.input ?? {});
+      });
+    }
+  });
+  if (done.size === 0) return { models: models.length ? models : null, agents: null };
+
+  // One entry per message id and agent; the main agent is the key ''.
+  const seen = new Map();
+  all.forEach((e) => {
+    if (e.type !== 'assistant' || !e.message?.id || !e.message.usage) return;
+    seen.set(`${e.parent_tool_use_id ?? ''}|${e.message.id}`, { agent: e.parent_tool_use_id ?? '', model: e.message.model ?? null, weight: inputSideWeight(e.message.usage) });
+  });
+  const weights = new Map(); // agent, then model -> weight
+  const modelTotals = new Map();
+  const modelOfAgent = new Map(); // the model with the most weight, per agent
+  seen.forEach(({ agent, model, weight }) => {
+    if (!model) return;
+    if (!weights.has(agent)) weights.set(agent, new Map());
+    weights.get(agent).set(model, (weights.get(agent).get(model) ?? 0) + weight);
+    modelTotals.set(model, (modelTotals.get(model) ?? 0) + weight);
+  });
+  weights.forEach((byModel, agent) => {
+    byModel.forEach((w, model) => {
+      const best = modelOfAgent.get(agent);
+      if (!best || w > best.weight) modelOfAgent.set(agent, { model, weight: w });
+    });
+  });
+  const costOf = (agent) => {
+    if (models.length === 0) return null;
+    let total = 0;
+    let any = false;
+    models.forEach(({ model, cost }) => {
+      const w = weights.get(agent)?.get(model);
+      const sum = modelTotals.get(model);
+      if (w && sum > 0) {
+        total += cost * (w / sum);
+        any = true;
+      }
+    });
+    return any ? total : null;
+  };
+  const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
+
+  const agents = [clean({ name: 'main', model: modelOfAgent.get('')?.model ?? null, turns: num(result.num_turns), cost: costOf('') })];
+  done.forEach((usage, id) => {
+    const call = calls.get(id) ?? {};
+    const name = started.get(id)?.subagent_type ?? call.subagent_type;
+    agents.push(clean({
+      name: typeof name === 'string' && name ? name : 'subagent',
+      model: modelOfAgent.get(id)?.model ?? (typeof call.model === 'string' ? call.model : null),
+      effort: typeof call.effort === 'string' ? call.effort : null,
+      turns: usage.tool_uses + 1,
+      seconds: num(usage.duration_ms) !== null ? Math.round(usage.duration_ms / 1000) : null,
+      cost: costOf(id),
+    }));
+  });
+  return { models: models.length ? models : null, agents };
+}
+
 /**
  * { turns, cost, tokens, cached } with null for what the log does not say, or null when it says none of them.
  * `turns` counts the main agent and its subagents; `subagentTurns` is the part of them that the runner does not count,
@@ -65,10 +159,13 @@ export function readUsage(text) {
   };
   if (usage.turns === null && usage.cost === null && usage.tokens === null) return null;
   const sub = subagentTurnsOf(all);
+  const detail = breakdown(all, result);
   if (sub > 0 && usage.turns !== null) {
     usage.turns += sub;
     usage.subagentTurns = sub;
   }
+  if (detail.models) usage.models = detail.models;
+  if (detail.agents) usage.agents = detail.agents;
   return usage;
 }
 
@@ -91,7 +188,10 @@ export function usageLine(usage, { subscription = false, limits = null } = {}) {
   if (!parts.length) return '';
   const over = limitsExceeded(usage, limits ?? {});
   const warn = over.map((o) => ` It went past ${o.limit} (${o.max}) with ${o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`}${o.limit.endsWith('turns') && usage.subagentTurns ? ': the runner counts only the turns of the main agent, so the turns of the subagents were not stopped' : ''}.`).join('');
-  return `This run used ${parts.join(', ')}.${warn}`;
+  const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${a.turns} turn${a.turns === 1 ? '' : 's'}${a.seconds ? `, ${(a.seconds / 60).toFixed(1)} min` : ''}${a.cost !== undefined ? `, about $${a.cost.toFixed(2)}` : ''}`;
+  const byAgent = usage.agents?.length ? ` By agent: ${usage.agents.map(agent).join('; ')}.` : '';
+  const byModel = usage.models?.length ? ` Cost by model: ${usage.models.map((m) => `${m.model} $${m.cost.toFixed(2)}`).join(', ')}.` : '';
+  return `This run used ${parts.join(', ')}.${warn}${byAgent}${byModel}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without
@@ -110,6 +210,9 @@ export function usageMarker(usage, { subscription = false, phases = null, lenses
   });
   if (usage.cached) figures.cached = usage.cached;
   if (Object.keys(figures).length === 0) return '';
+  // Which agent used what, and the real cost of each model; the digest adds up only the totals and ignores these keys.
+  if (Array.isArray(usage.agents) && usage.agents.length) figures.agents = usage.agents.map((a) => ({ ...a, ...(a.cost !== undefined ? { cost: Math.round(a.cost * 10000) / 10000 } : {}) }));
+  if (Array.isArray(usage.models) && usage.models.length) figures.models = usage.models;
   figures.notional = Boolean(subscription);
   // Where the time went and how the run ended. Readers that do not know these keys ignore them.
   if (Array.isArray(phases) && phases.length) figures.phases = phases;
@@ -150,6 +253,15 @@ export function parseUsageMarker(comment) {
     const lenses = data.lenses.filter((l) => l && typeof l.name === 'string' && num(l.seconds) !== null && l.seconds >= 0);
     if (lenses.length === data.lenses.length && lenses.length) run.lenses = lenses.map((l) => ({ name: l.name, attempt: Number.isInteger(l.attempt) ? l.attempt : null, seconds: l.seconds }));
   }
+  // Which agent used what: read only when every entry is well formed; a malformed one leaves the key out, not an error.
+  if (Array.isArray(data.agents) && data.agents.length) {
+    const good = data.agents.every((a) => a && typeof a.name === 'string' && num(a.turns) !== null && (a.model === undefined || typeof a.model === 'string')
+      && (a.effort === undefined || typeof a.effort === 'string') && (a.seconds === undefined || num(a.seconds) !== null) && (a.cost === undefined || num(a.cost) !== null));
+    if (good) run.agents = data.agents.map(({ name, model, effort, turns, seconds, cost }) => ({ name, turns, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
+  }
+  if (Array.isArray(data.models) && data.models.length && data.models.every((m) => m && typeof m.model === 'string' && num(m.cost) !== null)) {
+    run.models = data.models.map((m) => ({ model: m.model, cost: m.cost }));
+  }
   if (OUTCOME_CLASSES.includes(data.class)) run.class = data.class;
   return FIGURES.some((k) => run[k] !== undefined) ? run : null;
 }
@@ -187,6 +299,18 @@ export function sumUsage(runs) {
     runs: runs.length, turns: sum('turns'), cost: sum('cost'), tokens: sum('tokens'),
     costRuns: costed.length, notionalRuns: costed.filter((r) => r.notional).length,
   };
+}
+
+/**
+ * Which limit of the runner cut the run, from the result of its log: `turns` (`error_max_turns`), `cost`
+ * (`error_max_budget_usd`), or null when the log says neither. The subtypes are the ones the Claude Code SDK documents
+ * for a result; a log without them gives null and the comment keeps its general wording.
+ */
+export function runnerCut(text) {
+  const result = [...entries(text).filter((e) => e && typeof e === 'object')].reverse().find((e) => e.type === 'result');
+  if (result?.subtype === 'error_max_turns') return 'turns';
+  if (result?.subtype === 'error_max_budget_usd') return 'cost';
+  return null;
 }
 
 // Messages the Claude CLI and the API document for a usage limit, a quota or an empty credit balance. These patterns

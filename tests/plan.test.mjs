@@ -38,6 +38,7 @@ test('Scenario: Authorised label - the issue passes the gates and starts', () =>
   assert.equal(d.assignee, 'persona-b');
   assert.equal(d.qa_retries, 1);
   assert.equal(d.run_max_cost, 5);
+  assert.equal(d.run_max_minutes, 50, 'the soft time limit travels with the decision');
   assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:ready'] });
 });
 

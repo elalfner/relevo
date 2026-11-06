@@ -263,6 +263,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         title: issue.title,
         qa_retries: config.qa.retries,
         run_max_turns: config.limits.run_max_turns,
+        run_max_minutes: config.limits.run_max_minutes,
         run_max_cost: config.limits.run_max_cost,
         // The text the issue had when it was claimed: `go` checks it before it writes the specification.
         issue_hash: issueHash({ title: issue.title, body: issue.body }),

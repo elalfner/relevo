@@ -21,10 +21,11 @@ const restrictedViolations = (paths, list) => checkRestricted(paths, list).viola
  *   within     the folder of the platform of the issue: files outside it are refused (`.` or null: no limit)
  *   change     the change id, whose specification folder may always be committed
  *   restricted the list of restricted files (`restrictedList(config)`); one in the paths ends in "restricted file in the diff"
+ *   allowEmpty when the named paths have no change, make an empty commit with the message instead of failing; only when nothing at all is staged
  * Returns { ok, commit, findings, violations }. When something is found nothing is committed and the named paths
  * are unstaged again (files that were staged for other reasons stay staged).
  */
-export function commitChange({ git, message, paths, allow = [], rulesFile = null, platformPaths = [], within = null, change = null, restricted = BASE_PATTERNS }) {
+export function commitChange({ git, message, paths, allow = [], rulesFile = null, platformPaths = [], within = null, change = null, restricted = BASE_PATTERNS, allowEmpty = false }) {
   if (!String(message ?? '').trim()) throw new Error('give a commit message');
   const addArgs = explicitStageArgs(paths);
 
@@ -54,7 +55,13 @@ export function commitChange({ git, message, paths, allow = [], rulesFile = null
     unstage();
     return { ok: false, commit: null, findings, violations };
   }
-  if (staged.length === 0) throw new Error('nothing to commit: none of the named paths has changes');
+  if (staged.length === 0) {
+    if (!allowEmpty) throw new Error('nothing to commit: none of the named paths has changes');
+    // An empty commit takes whatever else is staged, so it is made only when the index is empty.
+    if (git(['diff', '--cached', '--name-only']).trim()) throw new Error('nothing to commit in the named paths, and other files are staged');
+    git(['commit', '-q', '--allow-empty', '-m', message]);
+    return { ok: true, commit: git(['rev-parse', '--short', 'HEAD']).trim(), findings: [], violations: [] };
+  }
 
   // `--` with paths commits only those paths, so files staged for another reason are left alone.
   git(['commit', '-q', '-m', message, '--', ...paths]);

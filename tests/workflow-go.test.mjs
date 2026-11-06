@@ -398,3 +398,67 @@ test('Scenario: No build ran - a decision that builds nothing does not start the
   assert.match(cond, /needs\.build\.result != 'skipped'/);
   assert.doesNotMatch(cond, /needs\.decide\.result != 'skipped'|success\(\)/);
 });
+
+// ---------- the work of a run that was cut
+
+// Two jobs have a step called "Report a run that ended without an outcome": the one of the build job is the last.
+const stepOf = (name, text = workflow) => {
+  const start = text.lastIndexOf(`- name: ${name}`);
+  assert.ok(start > 0, `the step "${name}" exists`);
+  const next = text.indexOf('\n      - name: ', start + 1);
+  const nextComment = text.indexOf('\n      # ', start + 1);
+  const ends = [next, nextComment].filter((i) => i > 0);
+  return text.slice(start, ends.length ? Math.min(...ends) : undefined);
+};
+
+test('Scenario: The job is cut and the run recorded no outcome - a step that always runs keeps the work, before the reports and the cleanup', () => {
+  const rescue = stepOf('Keep the work of a run that was cut');
+  assert.match(rescue, /id: rescue/);
+  assert.match(rescue, /if: always\(\)/);
+  assert.match(rescue, /continue-on-error: true/, 'it can never fail the job');
+  assert.match(rescue, /DECISION: \$\{\{ needs\.decide\.outputs\.decision_b64 \}\}/);
+  assert.match(rescue, /grep -qxE 'relevo:\(ready\|building\)' \|\| exit 0/, 'it acts only when no outcome was recorded');
+  assert.match(rescue, /node \.relevo-plugin\/scripts\/rescue-work\.mjs --decision "\$DECISION" --github-output "\$GITHUB_OUTPUT"/);
+  assert.match(rescue, /progress\.mjs class limit/, 'the usage record gets the class limit');
+  const at = (name) => workflow.lastIndexOf(`- name: ${name}`);
+  assert.ok(at('Install the Relevo scripts for the reports') < at('Keep the work of a run that was cut'), 'the scripts are installed first');
+  assert.ok(at('Keep the work of a run that was cut') < at('Report what the run used'), 'the class is known when the usage is reported');
+  assert.ok(at('Keep the work of a run that was cut') < at('Report a run that ended without an outcome'), 'the report can say what was kept');
+  assert.ok(at('Keep the work of a run that was cut') < at('Remove what this job added'), 'the working tree is still there');
+});
+
+test('The report says when the work is on a rescue branch, which is not the branch that fix reads', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /case "\$RESCUE_BRANCH" in rescue\/\*\)/);
+  assert.match(report, /not on the branch of the issue, so the work is on a branch of its own/);
+});
+
+test('The report of a run with no outcome says what the rescue did, and the package install checks for the rescue script', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /RESCUE_STATE: \$\{\{ steps\.rescue\.outputs\.state \}\}/);
+  assert.match(report, /RESCUE_BRANCH: \$\{\{ steps\.rescue\.outputs\.branch \}\}/);
+  assert.match(report, /RESCUE_DETAIL: \$\{\{ steps\.rescue\.outputs\.detail \}\}/);
+  assert.match(report, /The work done before the stop was kept on the branch/);
+  assert.match(report, /\/relevo:fix \$ISSUE/);
+  assert.match(report, /was not kept: \$RESCUE_DETAIL/);
+  assert.match(report, /could not be pushed: \$RESCUE_DETAIL/);
+  assert.match(report, /is on the remote with commits this run does not have, so it was not touched/);
+  const install = stepOf('Install the Relevo scripts for the reports');
+  assert.match(install, /scripts\/rescue-work\.mjs/);
+  assert.match(install, /scripts\/progress\.mjs/);
+});
+
+test('the step that keeps the work holds no token the build job did not have, and the requeue job still has the only actions: write', () => {
+  const rescue = stepOf('Keep the work of a run that was cut');
+  assert.doesNotMatch(rescue, /actions: write|--force|push -f/);
+  assert.equal((workflow.match(/^\s+actions: write$/gm) ?? []).length, 1, 'one permission line, in the requeue job');
+});
+
+test('Scenario: A limit of the runner - the report names the turn limit or the cost limit when the log says, and the package install checks for the script', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /cut=\$\(node \.relevo-plugin\/scripts\/run-cut\.mjs --file "\$EXECUTION_FILE"\)/);
+  assert.match(report, /The runner stopped it at its turn limit \(--max-turns\)\./);
+  assert.match(report, /The runner stopped it at its cost limit \(--max-budget-usd\)\./);
+  assert.match(report, /why="the runner stopped it at its turn limit \(--max-turns\)"/, 'the kept-work comment names it too');
+  assert.match(stepOf('Install the Relevo scripts for the reports'), /scripts\/run-cut\.mjs/);
+});

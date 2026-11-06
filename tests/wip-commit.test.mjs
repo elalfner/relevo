@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { KEEP_REASONS, WIP_PREFIX, isWipCommit, keepsWork, wipSubject } from '../scripts/lib/wip-commit.mjs';
+import { KEEP_REASONS, LIMIT_WIP_PREFIX, WIP_PREFIX, isWipCommit, keepsWork, wipSubject } from '../scripts/lib/wip-commit.mjs';
 import { failureContext } from '../scripts/lib/failure-comment.mjs';
 import { renderMessage } from '../scripts/lib/messages.mjs';
 import { nextStep } from '../scripts/lib/next-step.mjs';
@@ -14,8 +14,15 @@ const go = read('skills/go/SKILL.md');
 const fix = read('skills/fix/SKILL.md');
 const failurePath = go.slice(go.indexOf('## Failure path'), go.indexOf('## Steps'));
 
-test('the work-in-progress commit has one subject, and only that subject is recognised', () => {
+test('the work-in-progress commit has two subjects, and only those are recognised', () => {
   assert.equal(wipSubject(37), 'wip: rejected by QA (#37)');
+  assert.equal(wipSubject(37, 'limit'), 'wip: stopped by limit (#37)');
+  assert.ok(wipSubject(1, 'limit').startsWith(LIMIT_WIP_PREFIX));
+  assert.equal(isWipCommit('wip: stopped by limit (#37)'), true);
+  assert.equal(isWipCommit('wip: stopped by limit (#37)', 37), true);
+  assert.equal(isWipCommit('wip: stopped by limit (#37)', 38), false, 'another issue');
+  assert.equal(isWipCommit('wip: stopped by something else (#37)'), false);
+  assert.equal(isWipCommit('wip: rejected by QA (#37)', 37), true);
   assert.equal(isWipCommit('wip: rejected by QA (#37)'), true);
   assert.equal(isWipCommit('wip: rejected by QA (#37)', 37), true);
   assert.equal(isWipCommit('wip: rejected by QA (#37)', 38), false, 'another issue');
@@ -25,8 +32,8 @@ test('the work-in-progress commit has one subject, and only that subject is reco
   assert.ok(wipSubject(1).startsWith(WIP_PREFIX));
 });
 
-test('work is kept for the two reasons that have work, and for no other', () => {
-  assert.deepEqual(KEEP_REASONS, ['QA rejected after the retries', 'tasks left unfinished']);
+test('work is kept for the reasons that have work, and for no other', () => {
+  assert.deepEqual(KEEP_REASONS, ['QA rejected after the retries', 'tasks left unfinished', 'run limit reached']);
   KEEP_REASONS.forEach((r) => assert.equal(keepsWork(r), true));
   ['branch already exists', 'specification invalid', 'specification incomplete', 'invalid decision', 'profile not resolved', 'issue changed after ready',
     'protected path in the diff', 'restricted file in the diff', 'outside the platform', 'possible credential or temporary marker in the diff'].forEach((r) => assert.equal(keepsWork(r), false, r));
@@ -37,6 +44,7 @@ test('Scenario: QA rejects after the retries - the failure path commits first, t
   const push = failurePath.indexOf('git push -u origin <branch>');
   assert.ok(commit > 0 && push > commit, 'the commit comes before the push');
   assert.match(failurePath, /--message "wip: rejected by QA \(#<issue>\)"/);
+  assert.match(failurePath, /wip: stopped by limit \(#<issue>\)/, 'the limit has its own subject');
   KEEP_REASONS.forEach((r) => assert.ok(failurePath.includes(`\`${r}\``), `${r} is named`));
   assert.match(failurePath, /`kept`/);
   assert.match(failurePath, /plus `tasks\.md`/);
@@ -121,4 +129,39 @@ test('Scenario: A restricted file in the diff - the failure comment names the pa
   const r = failureContext({ comments: [{ body }], subject: 'feat: x (#37)', issue: 37 });
   assert.deepEqual({ kept: r.kept, found: r.found, finding: r.finding }, { kept: false, found: true, finding: 'config/private.pem' });
   assert.equal(keepsWork('restricted file in the diff'), false);
+});
+
+test('Scenario: fix continues from the kept work - the commit of a run that stopped at a limit is work in progress, with no finding to read', () => {
+  const r = failureContext({ comments: [], subject: 'wip: stopped by limit (#37)', issue: 37 });
+  assert.deepEqual(r, { kept: true, found: false, finding: null, body: null });
+  assert.equal(failureContext({ comments: [], subject: 'wip: stopped by limit (#38)', issue: 37 }).kept, false, 'another issue');
+  assert.match(fix, /`wip: stopped by limit`/);
+  assert.match(fix, /no defect is known/);
+});
+
+test('Scenario: A checkpoint is work in progress of its issue, and an own commit; the trailer carries the hash of the issue text', async () => {
+  const { checkpointSubject, isCheckpoint, isOwnCommit, issueHashOf, withIssueHash } = await import('../scripts/lib/wip-commit.mjs');
+  assert.equal(checkpointSubject(37, 2, 5), 'wip: checkpoint 2/5 (#37)');
+  assert.equal(isCheckpoint('wip: checkpoint 2/5 (#37)'), true);
+  assert.equal(isCheckpoint('wip: checkpoint 2/5 (#37)', 37), true);
+  assert.equal(isCheckpoint('wip: checkpoint 2/5 (#37)', 38), false, 'another issue');
+  ['wip: checkpoint (#37)', 'wip: checkpoint 2/5', 'feat: checkpoint 2/5 (#37)', 'wip: checkpoint a/b (#37)'].forEach((s) => assert.equal(isCheckpoint(s), false, s));
+  assert.equal(isWipCommit('wip: checkpoint 2/5 (#37)', 37), true, 'fix treats it as work in progress');
+  assert.equal(isWipCommit('wip: checkpoint 2/5 (#37)', 38), false);
+  // The commits Relevo makes before the end of a build are its own; a QA rejection and a person's commit are not.
+  assert.equal(isOwnCommit('docs: specification for #37', 37), true);
+  assert.equal(isOwnCommit('wip: checkpoint 1/5 (#37)', 37), true);
+  assert.equal(isOwnCommit('wip: stopped by limit (#37)', 37), true);
+  assert.equal(isOwnCommit('wip: rejected by QA (#37)', 37), false, 'it has a finding and belongs to fix');
+  assert.equal(isOwnCommit('feat: x (#37)', 37), false);
+  assert.equal(isOwnCommit('fix a typo', 37), false);
+  assert.equal(isOwnCommit('docs: specification for #38', 37), false);
+  const hash = 'e'.repeat(64);
+  const message = withIssueHash('wip: checkpoint 1/5 (#37)', hash);
+  assert.equal(message, `wip: checkpoint 1/5 (#37)\n\nIssue-hash: ${hash}`);
+  assert.equal(issueHashOf(message), hash);
+  assert.equal(withIssueHash('subject', 'short'), 'subject', 'only a sha-256 is written');
+  assert.equal(withIssueHash('subject', null), 'subject');
+  assert.equal(issueHashOf('no trailer here'), null);
+  assert.equal(issueHashOf('Issue-hash: nothex'), null);
 });

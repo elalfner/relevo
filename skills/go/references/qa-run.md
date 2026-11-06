@@ -29,6 +29,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/lens-plan.mjs --platform <platform> --text-fi
 
 ## 3. Launch each active lens, one at a time, in the foreground
 
+Before each lens, check the budget of the run (the section "The budget of the run" of the skill): `node ${CLAUDE_PLUGIN_ROOT}/scripts/run-budget.mjs check --max-turns <run_max_turns> --max-minutes <run_max_minutes>`. If it exits 1, launch no lens and take the failure path with the reason `run limit reached`, naming this lens and the ones after it as the agents that did not run.
+
 For each active lens, in the order `spec`, `security`, `code`, `interface`:
 
 1. **Check the receipt first:** `node ${CLAUDE_PLUGIN_ROOT}/scripts/receipt-check.mjs`. If it exits 1 the diff changed since the gate ran (or the receipt is not green): run step 1 again before this lens. A lens never starts on a diff whose checks did not run.
@@ -40,6 +42,7 @@ For each active lens, in the order `spec`, `security`, `code`, `interface`:
    - `interface`: the change folder, `<issue_file>`, the base branch, the folder of the platform, `.relevo-design/manifest.json` when the issue has design references, and the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/interface-rules.mjs --role qa --platform <platform> --text-file <issue_file>` with the count of rules it left out.
    - On a retry, also the previous report of that lens and the files the developer changed since, so that it checks each earlier finding and reviews only what changed.
 4. Save its answer in a file, one per lens. The first line is `QA PASSED` or `QA REJECTED`.
+5. Record what the lens used: `node ${CLAUDE_PLUGIN_ROOT}/scripts/run-budget.mjs record --agent relevo:qa-<lens> --tool-uses <n> --duration-ms <n> --tokens <n>`, with the numbers of the `<usage>` block that ends its report.
 
 ## 4. Aggregate
 
@@ -58,7 +61,7 @@ It prints JSON and decides: `spec`, `security` and `code` always block, and `int
 
 If `all_non_fixable` is `true`, every blocking finding needs something that the developer agent cannot supply (an input the issue depends on, a decision of the specification, or something an unattended run may not do), so a retry cannot succeed: **do not retry**. Take the failure path with the reason `QA rejected: nothing the developer agent can fix`, with `finding_class` set to `first_non_fixable_class` and `retries_skipped` set to `true`. A finding with no class, or an unknown one, counts as `fixable`.
 
-Otherwise, if `<n>` is below `<qa_retries> + 1`: announce `phase development --attempt <n> --of <qa_retries>`, launch `relevo:dev` in **fix** mode with the complete reports of all the lenses that rejected, together, run `intent-to-add.mjs` on the files of its new report, and go back to step 1 with `<n> + 1`, announcing `phase qa --attempt <n + 1> --of <qa_retries + 1>`.
+Otherwise, if `<n>` is below `<qa_retries> + 1`: check the budget (`run-budget.mjs check`, as in step 3) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying; if not, announce `phase development --attempt <n> --of <qa_retries>`, launch `relevo:dev` in **fix** mode with the complete reports of all the lenses that rejected, together, run `intent-to-add.mjs` on the files of its new report, and go back to step 1 with `<n> + 1`, announcing `phase qa --attempt <n + 1> --of <qa_retries + 1>`.
 
 If it was the last attempt, take the failure path with the reason `QA rejected after the retries` and the first finding of the aggregation; when `first_non_fixable_class` is not null, pass it as `finding_class` (and no `retries_skipped`).
 

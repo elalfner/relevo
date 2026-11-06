@@ -1110,6 +1110,7 @@ export function runChecks(f) {
   }
   r.push(...linkChecks(f));
   r.push(...executionChecks(f));
+  r.push(...runMinutesChecks(f));
   r.push(...shipChecks(f));
   // The token is for reading the plugin repository, which only a workflow that still loads the plugin through a marketplace
   // (or clones it, the older layout) does; one that loads it from the pinned package needs none.
@@ -1240,6 +1241,37 @@ function installStepChecks(f) {
       const guard = `needs.decide.outputs.stack == '${e.stack}'`;
       return warn(`automation.install.${e.name}`, `the go workflow has no active step that installs the dependencies of platform ${e.name} (${e.stack}), and its profile expects ${e.profile.installed.join(', ')} before the agent starts, so every cloud build would stop there`, `enable an install step in the build job of relevo-go.yml, guarded by ${guard} and run from the folder of the platform (${e.path ?? '.'}), for example npm ci --ignore-scripts; the template has the example commented`);
     });
+}
+
+/** The `timeout-minutes` of the `build` job in the text of the go workflow, or null when it cannot be read. */
+export function buildTimeoutMinutes(text) {
+  const lines = String(text ?? '').split('\n');
+  const start = lines.findIndex((l) => /^ {2}build:\s*$/.test(l));
+  if (start === -1) return null;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^ {2}\S[^:]*:\s*$/.test(lines[i])) return null; // the next job begins
+    const m = /^\s+timeout-minutes:\s*(\d+)\s*(?:#.*)?$/.exec(lines[i]);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+// Minutes the job keeps after `limits.run_max_minutes` for the work that is kept when a run is cut and for the reports.
+const RUN_MINUTES_MARGIN = 5;
+
+/**
+ * Does the build job of the installed go workflow outlive `limits.run_max_minutes` by the margin? A job that is cut
+ * before the guard acts gives the guard no time to keep the work. Nothing is said when the workflow is not installed or
+ * its timeout cannot be read.
+ */
+function runMinutesChecks(f) {
+  const go = f.workflows?.['relevo-go.yml'];
+  const max = f.config?.limits?.run_max_minutes;
+  if (!go?.present || typeof go.text !== 'string' || !Number.isFinite(max)) return [];
+  const timeout = buildTimeoutMinutes(go.text);
+  if (timeout === null || timeout >= max + RUN_MINUTES_MARGIN) return [];
+  return [warn('execution.run-minutes', `limits.run_max_minutes is ${max}, but the build job of the go workflow is cut after ${timeout} minutes, so it can end before the guard keeps the work of a long run`,
+    `set limits.run_max_minutes to ${Math.max(5, timeout - RUN_MINUTES_MARGIN)} or less, or raise timeout-minutes of the build job in .github/workflows/relevo-go.yml to ${max + RUN_MINUTES_MARGIN} or more`)];
 }
 
 const HOSTED_RUNNER = ['ubuntu-latest'];

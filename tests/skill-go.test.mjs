@@ -147,7 +147,7 @@ test('Scenario: A mixed report - the retries run and the class of the first find
 });
 
 test('the work is kept when the retries were skipped, as it is after the retries', () => {
-  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
 });
 
 test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
@@ -257,7 +257,7 @@ test('QA receives the saved body of the issue to compare the copied sections', (
 test('Scenario: Reference in the repository / Attachment - go fetches what the issue points to before it writes the specification', () => {
   const fetchAt = body.indexOf('design-fetch.mjs --issue <issue> --repo <owner/name>');
   assert.ok(fetchAt > body.indexOf('### 3. Specification'));
-  assert.ok(fetchAt < body.indexOf('Write the change specification from the issue'), 'the fetch comes before the specification');
+  assert.ok(fetchAt < body.indexOf('write the change specification from the issue'), 'the fetch comes before the specification');
   assert.match(body, /reads the references from the issue itself, downloads pasted attachments only when `design\.images` is on/);
   assert.match(body, /\.relevo-design\/manifest\.json/);
   assert.ok(existsSync(root('scripts/design-fetch.mjs')));
@@ -341,7 +341,7 @@ test('Scenario: the interface rules are selected after the specification and giv
 
 test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
   const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
-  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);
+  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|limit\|other>/);
   OUTCOME_CLASSES.forEach((c) => assert.ok(body.includes(`\`${c}\``), `the skill names the class ${c}`));
   assert.match(body, /best-effort command/);
 });
@@ -352,7 +352,7 @@ test('Scenario: every exit of the skill names the class it records', () => {
   at(/reason` `missing` and the class `inputs`/);
   at(/`ambiguous`, record the class `other`/);
   at(/reason` `policy`, the class `policy`/);
-  at(/Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, and `other` for every other reason/);
+  at(/Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, `limit` for `run limit reached`, and `other` for every other reason/);
   at(/Record the class `built`, then move the issue to `built`/);
 });
 
@@ -381,4 +381,66 @@ test('Scenario: Model and effort of a role - go, fix, review and the shared QA p
     assert.match(text, /Agent tool/, `${p} says where they go`);
   }
   assert.doesNotMatch(read('skills/go/references/qa-run.md'), /unless the runtime lets you set it at launch/, 'the effort is no longer left to the agent file');
+});
+
+// ---------- the budget of the run
+
+test('Scenario: No agent starts after a limit of the run - the skill records each agent and checks before the next one', () => {
+  assert.match(body, /## The budget of the run/);
+  assert.match(body, /run-budget\.mjs record --agent <relevo:dev\|relevo:qa-spec\|relevo:qa-security\|relevo:qa-code\|relevo:qa-interface> --tool-uses <n> --duration-ms <n> --tokens <n>/);
+  assert.match(body, /run-budget\.mjs check --max-turns <run_max_turns> --max-minutes <run_max_minutes>/);
+  assert.match(body, /\*\*Exit 1:\*\* a limit was reached[^]*take the failure path with the reason `run limit reached`/);
+  assert.match(body, /names the agents that did not run/);
+  assert.match(body, /`run_max_minutes`, `run_max_cost`/, 'the start decision names the minutes limit');
+  const dev = body.indexOf('launch the `relevo:dev` agent in **build** mode');
+  assert.ok(body.indexOf('record what the agent used', dev) > dev, 'the developer is recorded after each group');
+});
+
+test('Scenario: The budget guard stops a run only on what it can read - the skill says to carry on when it does not know, and to trust no text of a report', () => {
+  assert.match(body, /`"known":false` and exits 0: carry on/);
+  assert.match(body, /record those three numbers and nothing else of its report/);
+});
+
+test('the QA reference checks the budget before each lens and before a retry, and records each lens', () => {
+  const qa = readFileSync(new URL('../skills/go/references/qa-run.md', import.meta.url), 'utf8');
+  assert.match(qa, /Before each lens, check the budget of the run/);
+  assert.match(qa, /run-budget\.mjs record --agent relevo:qa-<lens>/);
+  assert.match(qa, /check the budget \(`run-budget\.mjs check`[^)]*\) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying/);
+});
+
+// ---------- checkpoints and resume
+
+test('Scenario: The developer builds one section of tasks at a time - the skill splits the tasks, launches per group and checkpoints after each', () => {
+  const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
+  assert.match(step4, /task-groups\.mjs openspec\/changes\/<change_id>\/tasks\.md/);
+  assert.match(step4, /one group when three tasks or fewer are pending/);
+  assert.match(step4, /\*\*only the tasks of that group\*\*/);
+  const group = step4.indexOf('only the tasks of that group');
+  const checkpoint = step4.indexOf('checkpoint.mjs --decision <base64> --k <number of the group> --of <number of groups>');
+  assert.ok(group > 0 && checkpoint > group, 'the checkpoint comes after the group is built');
+  assert.match(step4, /wip: checkpoint <k>\/<n> \(#<issue>\)/);
+  assert.match(step4, /Exit 1:\*\* a commit was refused[^]*branch_state` `unsafe`/);
+  assert.match(step4, /After the last group run the instructions command again[^]*`tasks left unfinished`/);
+  assert.match(step4, /Check the budget before each launch/);
+});
+
+test('Scenario: A later run resumes from the checkpoints - step 2 asks the script, resumes or stops, and step 3 writes nothing when resumed', () => {
+  const step2 = body.slice(body.indexOf('### 2. Branch'), body.indexOf('### 3. Specification'));
+  assert.match(step2, /resume-check\.mjs <base> <branch> <issue> <issue_hash>/);
+  assert.match(step2, /`absent`[^]*git switch -c <branch> origin\/<base>/);
+  assert.match(step2, /`resume`[^]*git switch -c <branch> origin\/<branch>/);
+  assert.match(step2, /`existing`[^]*Do not touch the branch/);
+  assert.match(step2, /reason `branch already exists`/, 'a branch that cannot be resumed stops as before');
+  assert.doesNotMatch(step2.slice(0, step2.indexOf('resume-check.mjs')), /git switch -c <branch> origin\/<base>/, 'the branch is no longer created before the check');
+  const step3 = body.slice(body.indexOf('### 3. Specification'), body.indexOf('### 4. Build'));
+  assert.match(step3, /\*\*When the run is resumed\*\*, the specification is already on the branch: do not run `openspec new change`, write no artifact and do not commit the specification/);
+});
+
+test('the feature commit may be empty because the checkpoints hold the files, and the failure path pushes its own checkpoints but nothing else', () => {
+  const commit = body.slice(body.indexOf('### 6. Commit'), body.indexOf('### 7. Push and hand off'));
+  assert.match(commit, /commit-change\.mjs --message "feat: <title> \(#<issue>\)" --allow-empty/);
+  assert.match(commit, /checkpoints stay in the history/);
+  const failure = body.slice(body.indexOf('## Failure path'), body.indexOf('## Steps'));
+  assert.match(failure, /Issue-hash: <issue_hash>/, 'the limit commit carries the hash so that a run can resume');
+  assert.match(failure, /existed before this run[^]*fast-forward/);
 });

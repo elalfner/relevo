@@ -217,6 +217,16 @@ test('Scenario: Alert for a build that stopped reporting - default 3, and 0 or 2
   });
 });
 
+test('Scenario: Run time limit setting - default 50, a valid value is kept, and below 5 or not a whole number is rejected naming the setting', () => {
+  assert.equal(loadConfig(MINIMAL).config.limits.run_max_minutes, 50);
+  assert.equal(loadConfig('limits:\n  run_max_cost: 5\n  run_max_minutes: 30\n').config.limits.run_max_minutes, 30);
+  ['4', '0', '12.5', 'soon'].forEach((v) => {
+    const r = loadConfig(`limits:\n  run_max_cost: 5\n  run_max_minutes: ${v}\n`);
+    assert.equal(r.ok, false, v);
+    assert.equal(r.errors[0].path, 'limits.run_max_minutes');
+  });
+});
+
 // ---------- review autopilot
 
 test('Scenario: Invalid autopilot value - validation names review.autopilot and the allowed values', () => {

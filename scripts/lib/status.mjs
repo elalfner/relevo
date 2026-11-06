@@ -231,8 +231,8 @@ function digestUsageLine(usage, es) {
 }
 
 const CLASS_NAMES = {
-  en: { built: 'built', inputs: 'stopped for missing inputs', policy: 'stopped by policy', 'qa-non-fixable': 'rejected by QA, nothing to fix', 'qa-fixable-after-retries': 'rejected by QA after the retries', conflict: 'conflict', other: 'other' },
-  es: { built: 'construidas', inputs: 'detenidas por entradas faltantes', policy: 'detenidas por política', 'qa-non-fixable': 'rechazadas por QA, nada que corregir', 'qa-fixable-after-retries': 'rechazadas por QA tras los reintentos', conflict: 'conflicto', other: 'otras' },
+  en: { built: 'built', inputs: 'stopped for missing inputs', policy: 'stopped by policy', 'qa-non-fixable': 'rejected by QA, nothing to fix', 'qa-fixable-after-retries': 'rejected by QA after the retries', conflict: 'conflict', limit: 'stopped at a limit', other: 'other' },
+  es: { built: 'construidas', inputs: 'detenidas por entradas faltantes', policy: 'detenidas por política', 'qa-non-fixable': 'rechazadas por QA, nada que corregir', 'qa-fixable-after-retries': 'rechazadas por QA tras los reintentos', conflict: 'conflicto', limit: 'detenidas en un límite', other: 'otras' },
 };
 const PHASE_NAMES = {
   en: { planning: 'planning', specification: 'specification', development: 'development', qa: 'QA', delivery: 'delivery' },

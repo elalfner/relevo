@@ -265,3 +265,38 @@ test('Scenario: Clean diff - with no restricted file the commit goes through', (
   put(dir, 'lib/a.dart', 'void a() {}\n');
   assert.equal(run(dir, '--message', 'feat: a', '--', 'lib/a.dart').status, 0);
 });
+
+test('Scenario: The checkpoints already hold everything - --allow-empty makes the feature commit with no change, and only then', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  git(dir, 'add', '.');
+  git(dir, 'commit', '-qm', 'wip: checkpoint 1/1 (#7)');
+  // Without the flag the command still fails: there is nothing to commit.
+  assert.notEqual(run(dir, '--message', 'feat: add a (#7)', '--', 'lib/a.dart').status, 0);
+  const r = run(dir, '--message', 'feat: add a (#7)', '--allow-empty', '--', 'lib/a.dart');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout.trim(), /^[0-9a-f]{7,}$/);
+  assert.equal(git(dir, 'log', '-1', '--format=%s').trim(), 'feat: add a (#7)');
+  assert.equal(git(dir, 'show', '--name-only', '--format=', 'HEAD').trim(), '', 'the commit has no file');
+});
+
+test('--allow-empty does not take other staged files into the empty commit', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  put(dir, 'lib/other.dart', 'void other() {}\n');
+  git(dir, 'add', 'lib/a.dart');
+  git(dir, 'commit', '-qm', 'wip: checkpoint 1/1 (#7)');
+  git(dir, 'add', 'lib/other.dart');
+  const r = run(dir, '--message', 'feat: add a (#7)', '--allow-empty', '--', 'lib/a.dart');
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /other files are staged/);
+  assert.equal(git(dir, 'log', '-1', '--format=%s').trim(), 'wip: checkpoint 1/1 (#7)', 'no commit was made');
+});
+
+test('--allow-empty still commits normally when the paths have changes', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  const r = run(dir, '--message', 'feat: add a (#7)', '--allow-empty', '--', 'lib/a.dart');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(git(dir, 'show', '--name-only', '--format=', 'HEAD').trim(), 'lib/a.dart');
+});
