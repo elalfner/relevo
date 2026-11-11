@@ -9,7 +9,9 @@
 // a task that changes a protected path, a restricted file, or adds a dependency that the issue does not allow.
 // `--stage issue` also compares `Out of scope` with the rules files (`qa.rules_from`) and with the scenarios: a contradiction
 // is a `conflict` finding that quotes both lines (the reason `conflict`), and a person decides which one wins.
-// It prints JSON: { stage, decision, reason, findings, unverified, notes, missing }. A value of a secret is never read, printed or stored.
+// `--stage spec` also lists the assumptions of design.md that name something outside the repository and that no file of it holds
+// (`assumptions`, and `assumed`, the line for the hand-off); they never change the decision.
+// It prints JSON: { stage, decision, reason, findings, unverified, notes, assumptions, assumed, missing }. A value of a secret is never read, printed or stored.
 // This is an optimisation and not a control: the guards that already enforce each rule stay in force.
 //   exit 0: decision ok   exit 1: decision needs-spec (the reason is in the output)   exit 2: bad arguments
 import { execFileSync } from 'node:child_process';
@@ -21,6 +23,7 @@ import { platformFolders } from './lib/protected-paths.mjs';
 import { restrictedList, restrictedListFromText } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { parseRules } from './lib/rules-file.mjs';
+import { repoSearch } from './lib/assumptions.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -96,7 +99,11 @@ if (stage === 'issue') {
     rulesFile: loaded.ok ? loaded.config.qa.rules_from : null,
     platformPaths: loaded.ok ? platformFolders(loaded.config.platforms) : [],
     restricted,
+    // The assumptions of design.md (its own and the ones copied from the issue) that name something outside the repository.
+    designText: existsSync(join(resolve(arg('change-dir')), 'design.md')) ? read(join(resolve(arg('change-dir')), 'design.md'), 'design.md') : '',
+    search: repoSearch(root),
+    exists: (name) => existsSync(join(root, name)),
   });
 }
-console.log(JSON.stringify({ stage, ...result, unverified: result.unverified ?? [], notes: result.notes ?? [], missing: missingText(result), note: 'an optimisation and not a security control: the guards that enforce each rule stay in force' }));
+console.log(JSON.stringify({ stage, ...result, unverified: result.unverified ?? [], notes: result.notes ?? [], assumptions: result.assumptions ?? [], assumed: result.assumed ?? '', missing: missingText(result), note: 'an optimisation and not a security control: the guards that enforce each rule stay in force' }));
 process.exit(result.decision === 'ok' ? 0 : 1);

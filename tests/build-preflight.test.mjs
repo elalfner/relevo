@@ -288,3 +288,36 @@ test('CLI: a rules file that cannot be read is a note, and the decision is not a
   assert.equal(r.status, 0, r.stderr);
   assert.match(JSON.parse(r.stdout).notes.join(' '), /missing-rules\.md could not be read/);
 });
+
+// ---------------------------------------------------------------- assumptions about names outside the repository (#122)
+const DESIGN122 = '# Design\n\n## Assumptions\n\n- the permission `orders.export` exists in the backend, not confirmed against the dev environment\n- the field `total` is a number\n- the list sorts by date\n';
+
+test('Scenario: A permission name is not in the repository - listed, in the line for the hand-off, and the decision is still ok', () => {
+  const r = checkSpecStage({ tasksText: tasks('1.1 Add the list'), designText: DESIGN122, search: (n) => (n === 'total' ? 'src/types.ts' : null) });
+  assert.equal(r.decision, 'ok');
+  assert.deepEqual(r.assumptions.map((a) => a.missing), [['orders.export']]);
+  assert.match(r.assumed, /^"the permission `orders.export` exists in the backend[^"]*" \(not in the repository: `orders.export`\)$/);
+});
+
+test('Scenario: The repository settles it, and no assumptions - nothing is listed', () => {
+  assert.deepEqual(checkSpecStage({ tasksText: tasks('1.1 x'), designText: DESIGN122, search: () => 'src/p.ts' }).assumptions, []);
+  const none = checkSpecStage({ tasksText: tasks('1.1 x'), designText: '# Design\n', search: () => null });
+  assert.deepEqual([none.assumptions, none.assumed], [[], '']);
+  assert.deepEqual(checkSpecStage({ tasksText: tasks('1.1 x'), designText: DESIGN122 }).assumptions, [], 'no search, nothing read');
+});
+
+test('the assumptions copied from the issue are read too, and a refused task still wins over them', () => {
+  const r = checkSpecStage({ tasksText: tasks('1.1 Update CLAUDE.md'), rulesFile: 'CLAUDE.md', designText: '## From the issue: Assumptions\n\n- the claim `role` is set by the server\n', search: () => null });
+  assert.equal(r.decision, 'needs-spec');
+  assert.equal(r.assumptions.length, 1);
+});
+
+test('the command: stage spec prints the assumptions of design.md and exits 0', () => {
+  const change = 'openspec/changes/x';
+  const { dir, git } = repoWith({ [`${change}/tasks.md`]: tasks('1.1 Add the list'), [`${change}/design.md`]: DESIGN122, 'src/types.ts': 'export type T = { total: number };\n', 'issue.md': GOOD });
+  git('add', '-A');
+  const r = run(['--stage', 'spec', '--issue-file', join(dir, 'issue.md'), '--change-dir', join(dir, change), '--config', join(dir, 'none.yml'), '--repo-root', dir], { cwd: dir });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.json.assumptions.map((a) => a.missing), [['orders.export']], '`total` is in src/types.ts; openspec/ is not searched');
+  assert.match(r.json.assumed, /orders\.export/);
+});
