@@ -189,6 +189,15 @@ Antes de crear el issue, y otra vez antes de que un build gaste un turno de mode
 
 Una regla que el issue no salta sigue bloqueando en QA: un revisor que encuentra un cambio que la rompe la cita como `Rule: <archivo>:<línea> "<sus palabras>"`, y el build falla aunque el hallazgo venga del revisor `interface` en el último intento.
 
+### 11. Rutas protegidas y nombres sin confirmar (se avisa, no hay nada que escribir)
+
+Mientras escribes el issue, un script avisa de dos cosas y nunca hace fallar la comprobación: una ruta que una corrida sin supervisión no cambia (el archivo de reglas, un workflow, `relevo.yml`, una carpeta de skills, o un manifiesto de dependencias que ninguna línea `Allow-paths:` cubre) que una línea pide cambiar o, las duras, solo nombra; y un supuesto de `## Assumptions` sobre algo fuera del repositorio (un permiso, endpoint, campo o claim, escrito entre comillas invertidas) que ningún archivo del repositorio contiene. No se leen las líneas de `Out of scope`, `Code pointers`, `Design reference`, `External inputs`, el código entre cercas ni las líneas que dicen "no cambiar".
+
+- Para una ruta protegida: una persona hace esa edición y el issue la deja fuera, o la tarea se reescribe para que nada la necesite; para un manifiesto de dependencias, también se lista en `Allow-paths:`. Una ruta dura no se puede listar ahí, y la comprobación dice por qué. Si el build llega hasta ahí, la comprobación de la especificación y la guarda del commit igual detienen el cambio, y el comentario nombra la política ("una corrida sin supervisión no puede editar este archivo").
+- Para un nombre sin confirmar: confírmalo y escríbelo en `Data contract`, `Decisions` o `Constraints`; o déjalo como insumo `manual` en `External inputs`, y el build sigue y el traspaso lo lista en "Supuesto, sin confirmar"; o escríbelo en `## Open questions`, y el build espera hasta que una persona responda.
+
+El traspaso también lista, en "Código compartido tocado", los archivos del build que más de un archivo importa o que viven en una carpeta compartida (`components/`, `shared/`, `common/`...). Es información para quien revisa; no se bloquea nada.
+
 ## Qué más necesita `go` del issue
 
 - **Un hito.** El hito es el lote al que pertenece el issue.

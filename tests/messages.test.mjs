@@ -431,3 +431,44 @@ test('Scenario: The comment of the conflict - it quotes the missing text and the
   assert.match(text, /CLAUDE\.md:3/);
   assert.match(text, /decide which one wins/);
 });
+
+test('Scenario: The commit guard refuses the rules file - the comment names the policy, not a QA rejection, and the next step rewrites the issue', () => {
+  const data = { assignee: 'a', issue: 48, title: 'T', finding: 'CLAUDE.md is a protected path', file: 'CLAUDE.md', branch: 'feature/48-t', reason: 'protected path in the diff', branch_state: 'unsafe' };
+  const text = renderMessage('qa_failed', data);
+  assert.match(text, /An unattended run cannot edit a protected path|an unattended run cannot edit a protected path/);
+  assert.match(text, /QA did not reject the work/);
+  assert.doesNotMatch(text, /QA still rejected it after the retries/);
+  assert.match(text, /Your next step: \/relevo:issue 48 \(an unattended run cannot edit that protected path/);
+  assert.doesNotMatch(text, /build it again on your machine/);
+  const es = renderMessage('qa_failed', data, 'es');
+  assert.match(es, /QA no rechazó el trabajo/);
+  assert.match(es, /Tu siguiente paso: \/relevo:issue 48 \(una corrida sin supervisión no puede editar esa ruta protegida/);
+});
+
+test('Scenario: QA rejected the work - the wording is unchanged', () => {
+  const text = renderMessage('qa_failed', { assignee: 'a', issue: 48, title: 'T', finding: 'x', branch: 'b', reason: 'QA rejected after the retries' });
+  assert.match(text, /QA still rejected it after the retries \(QA rejected after the retries\)/);
+});
+
+test('the policy next step is true for the rules file as well as for a manifest', () => {
+  const text = renderMessage('needs_spec', { spec_writer: 'a', issue: 48, title: 'T', missing: 'task changes CLAUDE.md', reason: 'policy' });
+  assert.match(text, /a person makes that edit/);
+  assert.match(text, /only a dependency manifest can be allowed, with an Allow-paths: line/);
+});
+
+test('Scenario: Assumptions in the hand-off - the line comes before the branch, in both languages; left out when empty', () => {
+  const text = renderMessage('built', { ...BUILT, assumed: '"the permission `orders.export` exists" (not in the repository: `orders.export`)' });
+  assert.match(text, /Assumed, not confirmed: "the permission `orders.export` exists"/);
+  assert.ok(text.indexOf('Assumed, not confirmed') < text.indexOf('Branch:'));
+  assert.match(renderMessage('built', { ...BUILT, assumed: 'x' }, 'es'), /Supuesto, sin confirmar: x\nRama:/);
+  assert.doesNotMatch(renderMessage('built', BUILT), /Assumed, not confirmed/);
+  assert.doesNotMatch(renderMessage('built', { ...BUILT, assumed: '' }), /Assumed, not confirmed/);
+});
+
+test('Scenario: Shared code in the hand-off - after the riskiest area, in both languages; left out when empty', () => {
+  const text = renderMessage('built', { ...BUILT, risk: 'the table', shared_code: 'src/components/Table.vue (modified, used by 2 files)' });
+  assert.match(text, /Shared code touched: src\/components\/Table\.vue \(modified, used by 2 files\)/);
+  assert.ok(text.indexOf('Riskiest area') < text.indexOf('Shared code touched'));
+  assert.match(renderMessage('built', { ...BUILT, shared_code: 'a' }, 'es'), /Código compartido tocado: a/);
+  assert.doesNotMatch(renderMessage('built', BUILT), /Shared code touched/);
+});

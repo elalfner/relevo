@@ -14,6 +14,7 @@ import { parseExternalInputs, parseIssueBody } from './issue-parse.mjs';
 import { checkProtected, isSoftProtected, matchesGlob } from './protected-paths.mjs';
 import { checkRestricted, restrictedList } from './restricted-paths.mjs';
 import { conflictText, findConflicts } from './rule-conflicts.mjs';
+import { assumedLine, externalAssumptions, settleAssumptions } from './assumptions.mjs';
 
 export const REASONS = { references: 'missing', inputs: 'inputs', policy: 'policy', conflict: 'conflict' };
 
@@ -95,18 +96,24 @@ export function changedPaths(line) {
   return [...after.matchAll(TOKEN)].map((m) => cleanToken(m[1] ?? m[2] ?? m[3])).filter(looksLikePath);
 }
 
+/** Every path-like token of a line, changed or not: for a reader that wants the paths a line names. */
+export const pathTokens = (line) => [...String(line).matchAll(TOKEN)].map((m) => cleanToken(m[1] ?? m[2] ?? m[3])).filter(looksLikePath);
+
 /**
  * tasksText    the text of tasks.md
  * allow        the entries of `Allow-paths:` of the issue
  * rulesFile    qa.rules_from (a name or a list)
  * platformPaths  the folders of the platforms (platformFolders)
  * restricted   the list of restricted files (restrictedList)
+ * designText   the text of design.md, to list the assumptions about names outside the repository that `search` does not find
+ * search       (name) => path or null over the files of the repository (assumptions.mjs repoSearch); without it the assumptions are not read
+ * exists       (name) => boolean: is the name a file of the repository?
  *
- * Returns { decision, reason, findings } where a finding is { kind: 'path' | 'dependency', task, path?, tier?, rule? }.
+ * Returns { decision, reason, findings, assumptions, assumed } where a finding is { kind: 'path' | 'dependency', task, path?, tier?, rule? }.
  * Only the task lines are read, and only a path that follows a verb that changes something counts: a file that a
  * task reads, or that the design only mentions, does not stop the build.
  */
-export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platformPaths = [], restricted = restrictedList() }) {
+export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platformPaths = [], restricted = restrictedList(), designText = '', search = null, exists = () => false }) {
   const findings = [];
   String(tasksText ?? '').split('\n').forEach((raw) => {
     const m = TASK_LINE.exec(raw);
@@ -121,7 +128,9 @@ export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platfo
       findings.push({ kind: 'dependency', task });
     }
   });
-  return { decision: findings.length === 0 ? 'ok' : 'needs-spec', reason: findings.length === 0 ? null : REASONS.policy, findings };
+  // An assumption never changes the decision: a lexical match is not reliable enough to stop a build. It goes to the hand-off.
+  const assumptions = search ? settleAssumptions(externalAssumptions(designText), { search, exists }).confirm : [];
+  return { decision: findings.length === 0 ? 'ok' : 'needs-spec', reason: findings.length === 0 ? null : REASONS.policy, findings, assumptions, assumed: assumedLine(assumptions) };
 }
 
 // ---------------------------------------------------------------- text for the comment

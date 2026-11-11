@@ -10,6 +10,8 @@ import { hardPathsInAllow, platformFolders } from './protected-paths.mjs';
 import { findCredentials } from './scan.mjs';
 import { vagueWarnings } from './vague-words.mjs';
 import { conflictText, findConflicts } from './rule-conflicts.mjs';
+import { mentionText, protectedMentions } from './protected-mentions.mjs';
+import { assumptionWarning, externalAssumptions, settleAssumptions } from './assumptions.mjs';
 
 export const TITLE_MAX = 72;
 export const BODY_WARN = 8000;
@@ -30,10 +32,11 @@ const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
  * `platforms` is the registry of relevo.yml ({ name: { ... } }); when given, the platform of the draft is checked too.
  * `links` is the `links` list of relevo.yml: a `Depends-on:` that names a repository outside it is a problem.
  * `rules` is the lines of the rules files (parseRules of each): an `Out of scope` line that a rule requires against, or that a scenario needs, is a problem.
+ * `search` is (name) => path or null over the files of the repository (assumptions.mjs repoSearch): an assumption about a name outside the repository that it does not find is a warning; without it the assumptions are not read.
  * `repoRoot` is the folder of the repository: a design reference to a file of the repository must exist under it
  * (when it is null the existence is not checked, as in the light planning job that has no checkout).
  */
-export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [], repoRoot = null, language = 'en', rules = [] }) {
+export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [], repoRoot = null, language = 'en', rules = [], search = null }) {
   const problems = [];
   const t = String(title ?? '').trim();
   if (!t) problems.push('the title is empty');
@@ -73,6 +76,12 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
   found.conflicts.forEach((c) => (c.kind === 'rule' ? problems : scenarioNotes).push(conflictText(c)));
   found.problems.forEach((p) => problems.push(p));
   const warnings = [...scenarioNotes];
+  // A protected path that the text names is a warning, never a problem: a person decides, and the build still refuses the change.
+  protectedMentions({ body, allow: parsed.allowPaths, rulesFile, platformPaths: platformFolders(platforms) }).forEach((m) => warnings.push(mentionText(m)));
+  if (search) {
+    const exists = (name) => Boolean(repoRoot) && existsSync(join(repoRoot, name));
+    settleAssumptions(externalAssumptions(body), { search, exists }).confirm.forEach((a) => warnings.push(assumptionWarning(a)));
+  }
   const models = parseIssueModels(body);
   models.problems.forEach((m) => warnings.push(m));
   const bodyChars = String(body ?? "").length;

@@ -537,3 +537,10 @@ test('Scenario: a hard rule blocks - qa-run.md passes the rules files, explains 
   assert.match(ref, /## 3\. Launch the active lenses together, in the foreground/, 'the parallel launch stays');
   assert.match(ref, /## The model of a retry/, 'the retry model stays');
 });
+
+test('Scenario: The hand-off lists the assumptions and the shared code - both come from scripts, not from the model', () => {
+  const body = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
+  assert.match(body, /`assumed` \(the `assumed` of `build-preflight\.mjs --stage spec`, run again here/);
+  assert.match(body, /`shared_code` \(the `line` of `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/shared-code\.mjs --base <base>`/);
+  assert.match(body, /Write neither of them yourself: they come from the scripts/);
+});
