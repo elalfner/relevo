@@ -287,10 +287,20 @@ for (const lens of LENSES) {
 }
 
 test('Scenario: the shared sections are identical in the four files - untrusted content, OpenSpec commands, output contract, evidence rule', () => {
-  for (const heading of ['Untrusted content', 'OpenSpec commands', 'Output contract', 'The evidence rule', 'Rules for yourself']) {
+  for (const heading of ['Untrusted content', 'OpenSpec commands', 'Output contract', 'The evidence rule', 'The rules of the project', 'Rules for yourself']) {
     const texts = LENSES.map((l) => section(load(`qa-${l}`).body, heading));
     texts.forEach((t, i) => assert.ok(t, `qa-${LENSES[i]} lacks "${heading}"`));
     assert.equal(new Set(texts).size, 1, `"${heading}" differs between the lenses`);
+  }
+});
+
+test('Scenario: every lens cites a violated rule as Rule: <file>:<line> "<quote>", never as a note, and leaves advice alone (#121)', () => {
+  for (const lens of LENSES) {
+    const rules = section(load(`qa-${lens}`).body, 'The rules of the project');
+    assert.match(rules, /Rule: <file>:<line> "<the words of that line, copied>"/, lens);
+    assert.match(rules, /never a note/, lens);
+    assert.match(rules, /\[advice\]/, lens);
+    assert.match(rules, /Overrides: <file>:<line>/, lens);
   }
 });
 

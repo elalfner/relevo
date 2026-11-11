@@ -236,3 +236,39 @@ test('the command: bad arguments exit 2 and an unreadable file is reported', () 
   assert.equal(run(['--stage', 'spec', '--issue-file', 'x']).status, 2);
   assert.equal(run(['--stage', 'issue', '--issue-file', '/nonexistent/issue.md']).status, 2);
 });
+
+// ---------------------------------------------------------------- a contradiction is found before any agent turn (#121)
+import { parseRules } from '../scripts/lib/rules-file.mjs';
+
+const RULES121 = parseRules('CLAUDE.md', '- Every list must offer export and the enable/disable actions.\n');
+const OUT121 = `${GOOD}\n## Out of scope\n- export and the enable/disable actions\n`;
+
+test('Scenario: Conflict found at the preflight - needs-spec with the reason conflict, both lines quoted', () => {
+  const r = checkIssueStage({ body: OUT121, rules: RULES121 });
+  assert.equal(r.decision, 'needs-spec');
+  assert.equal(r.reason, 'conflict');
+  assert.deepEqual(r.findings.map((f) => f.kind), ['conflict']);
+  assert.match(missingText(r), /"export and the enable\/disable actions".*CLAUDE\.md:1/);
+});
+
+test('Scenario: Override recorded - the preflight does not report it', () => {
+  const body = `${OUT121}\n## Decisions\n\n### D1. Export waits\nDecided: later\nOverrides: CLAUDE.md:1\n`;
+  assert.equal(checkIssueStage({ body, rules: RULES121 }).decision, 'ok');
+});
+
+test('a missing input keeps its reason when there is also a conflict', () => {
+  const r = checkIssueStage({ body: `${OUT121}\n## External inputs\n\n- file: \`a.svg\`: the logo\n`, rules: RULES121, exists: () => false });
+  assert.equal(r.reason, 'inputs');
+});
+
+test('CLI: the rules files of relevo.yml are read, exit 1 with the reason conflict, and no relevo.yml still runs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-pre-'));
+  writeFileSync(join(dir, 'CLAUDE.md'), '- Every list must offer export and the enable/disable actions.\n');
+  writeFileSync(join(dir, 'issue.md'), OUT121);
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nqa:\n  rules_from: CLAUDE.md\n');
+  const run = (config) => spawnSync('node', [CLI, '--stage', 'issue', '--issue-file', join(dir, 'issue.md'), '--repo-root', dir, '--config', config], { encoding: 'utf8' });
+  const withConfig = run(join(dir, 'relevo.yml'));
+  assert.equal(withConfig.status, 1, withConfig.stderr + withConfig.stdout);
+  assert.equal(JSON.parse(withConfig.stdout).reason, 'conflict');
+  assert.equal(run(join(dir, 'none.yml')).status, 0);
+});

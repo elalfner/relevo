@@ -7,6 +7,8 @@
 // (a `file` must exist on the base branch, a `link` must have been fetched, a `variable` must be set, a `secret` counts
 // only when the workflow exposed it, a `manual` input never blocks). `--stage spec` reads the task lines of tasks.md:
 // a task that changes a protected path, a restricted file, or adds a dependency that the issue does not allow.
+// `--stage issue` also compares `Out of scope` with the rules files (`qa.rules_from`) and with the scenarios: a contradiction
+// is a `conflict` finding that quotes both lines (the reason `conflict`), and a person decides which one wins.
 // It prints JSON: { stage, decision, reason, findings, unverified, missing }. A value of a secret is never read, printed or stored.
 // This is an optimisation and not a control: the guards that already enforce each rule stay in force.
 //   exit 0: decision ok   exit 1: decision needs-spec (the reason is in the output)   exit 2: bad arguments
@@ -18,6 +20,7 @@ import { allowPathsOf, checkIssueStage, checkSpecStage, missingText } from './li
 import { platformFolders } from './lib/protected-paths.mjs';
 import { restrictedList, restrictedListFromText } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { parseRules } from './lib/rules-file.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -72,7 +75,10 @@ if (stage === 'issue') {
       variables = null;
     }
   }
-  result = checkIssueStage({ body, manifest, exists, env: process.env, variables });
+  // Without a valid relevo.yml there are no rules files to read; the issue is still compared with its own scenarios.
+  const rulesFiles = loaded.ok ? [].concat(loaded.config.qa.rules_from ?? []) : [];
+  const rules = rulesFiles.flatMap((f) => (existsSync(join(root, f)) ? parseRules(f, readFileSync(join(root, f), 'utf8')) : []));
+  result = checkIssueStage({ body, manifest, exists, env: process.env, variables, rules });
 } else {
   const tasks = join(resolve(arg('change-dir')), 'tasks.md');
   result = checkSpecStage({

@@ -424,3 +424,10 @@ test('Scenario: A run that stopped at a limit says so - it does not say that QA 
   // The messages of QA are unchanged.
   assert.match(renderMessage('qa_failed', { ...base, reason: 'QA rejected after the retries' }, 'en'), /QA still rejected it after the retries/);
 });
+
+test('Scenario: The comment of the conflict - it quotes the missing text and the next step says a person settles which wins', () => {
+  const missing = 'Out of scope says "export", but the rule at CLAUDE.md:3 says "Every list must offer export"';
+  const text = renderMessage('needs_spec', { ...BACK, missing, reason: 'conflict' });
+  assert.match(text, /CLAUDE\.md:3/);
+  assert.match(text, /decide which one wins/);
+});

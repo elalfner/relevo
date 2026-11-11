@@ -179,6 +179,16 @@ Cuando el trabajo necesita algo que no está en el repositorio (una clave, un ar
 - Un insumo que falta devuelve el issue a `needs-spec` con el motivo `inputs`, antes de que empiece el agente y sin gastar un turno del modelo. El comentario nombra cada insumo que falta.
 - La sección es opcional. `/relevo:issue` pregunta por los insumos del trabajo y la escribe.
 
+### 10. Contradicciones con las reglas del proyecto (se comprueba, no hay nada que escribir)
+
+Antes de crear el issue, y otra vez antes de que un build gaste un turno de modelo, un script compara cada línea de `## Out of scope` con las reglas del proyecto (`qa.rules_from`) y con los escenarios del propio issue. Si una línea de `Out of scope` excluye algo que una regla exige, o limita algo que un escenario necesita, el issue vuelve a quien lo escribió con las dos líneas citadas (archivo y línea de la regla, el escenario y el límite). El script nunca decide cuál gana: lo decides tú.
+
+- Para cambiar el issue, edita la línea o el escenario.
+- Para saltarte la regla a propósito, déjalo escrito en una decisión: agrega la línea `Overrides: CLAUDE.md:12` (archivo y línea de la regla) dentro de un bloque `### D<n>.` de `## Decisions`. La comprobación salta esa regla y QA sigue la decisión.
+- Una regla es un requisito salvo que el archivo de reglas la marque como consejo: escribe `[advice]` en su línea, o en un encabezado para marcar todo lo que está debajo. Una regla marcada `[advice]` nunca bloquea, ni tampoco un hallazgo que la cite.
+
+Una regla que el issue no salta sigue bloqueando en QA: un revisor que encuentra un cambio que la rompe la cita como `Rule: <archivo>:<línea> "<sus palabras>"`, y el build falla aunque el hallazgo venga del revisor `interface` en el último intento.
+
 ## Qué más necesita `go` del issue
 
 - **Un hito.** El hito es el lote al que pertenece el issue.

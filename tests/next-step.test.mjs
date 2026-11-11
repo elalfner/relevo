@@ -141,3 +141,11 @@ test('the classes of a QA finding that the developer agent cannot fix each have 
   assert.equal(nextStep({ state: 'qa-failed', reason: 'spec', issue: 9 }).command, '/relevo:issue 9');
   assert.equal(nextStep({ state: 'qa-failed', reason: 'policy', issue: 9 }).command, '/relevo:issue 9');
 });
+
+test('Scenario: Next step for the reason conflict - the writer settles which one wins', () => {
+  const step = nextStep({ state: 'needs-spec', reason: 'conflict', issue: 121 });
+  assert.equal(step.command, '/relevo:issue 121');
+  assert.equal(step.who, 'spec_writer');
+  assert.match(nextStep({ state: 'needs-spec', reason: 'conflict', issue: 121 }).hint, /Overrides: <file>:<line>/);
+  assert.match(nextStep({ state: 'needs-spec', reason: 'conflict', issue: 121, language: 'es' }).hint, /Overrides:/);
+});

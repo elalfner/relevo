@@ -13,8 +13,9 @@
 import { parseExternalInputs, parseIssueBody } from './issue-parse.mjs';
 import { checkProtected, isSoftProtected, matchesGlob } from './protected-paths.mjs';
 import { checkRestricted, restrictedList } from './restricted-paths.mjs';
+import { conflictText, findConflicts } from './rule-conflicts.mjs';
 
-export const REASONS = { references: 'missing', inputs: 'inputs', policy: 'policy' };
+export const REASONS = { references: 'missing', inputs: 'inputs', policy: 'policy', conflict: 'conflict' };
 
 // ---------------------------------------------------------------- stage: issue
 
@@ -24,11 +25,12 @@ export const REASONS = { references: 'missing', inputs: 'inputs', policy: 'polic
  * exists      (path) => boolean: does the file exist on the base branch?
  * env         the environment of the step, where a secret is present only if the workflow chose to expose it
  * variables   the names of the variables of the repository (a list), or null when they are not known
+ * rules       the lines of the rules files (parseRules of each), to find an issue that contradicts a rule; [] when there is none
  *
  * Returns { decision: 'ok' | 'needs-spec', reason, findings, unverified }. `unverified` lists the inputs that a person
  * has to confirm: the manual ones and the ones this job cannot check. A value of a secret is never read or returned.
  */
-export function checkIssueStage({ body, manifest = null, exists = () => true, env = {}, variables = null }) {
+export function checkIssueStage({ body, manifest = null, exists = () => true, env = {}, variables = null, rules = [] }) {
   const findings = [];
   const unverified = [];
   const { inputs } = parseExternalInputs(body);
@@ -57,8 +59,13 @@ export function checkIssueStage({ body, manifest = null, exists = () => true, en
     }
   });
 
+  const found = findConflicts({ body, rules });
+  found.conflicts.forEach((c) => findings.push({ kind: 'conflict', detail: conflictText(c) }));
+  found.problems.forEach((detail) => findings.push({ kind: 'conflict', detail }));
+
   const hasReference = findings.some((f) => f.kind === 'reference');
-  const reason = findings.length === 0 ? null : hasReference ? REASONS.references : REASONS.inputs;
+  const hasInput = findings.some((f) => f.kind === 'input');
+  const reason = findings.length === 0 ? null : hasReference ? REASONS.references : hasInput ? REASONS.inputs : REASONS.conflict;
   return { decision: findings.length === 0 ? 'ok' : 'needs-spec', reason, findings, unverified };
 }
 
@@ -121,6 +128,7 @@ export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platfo
 export function missingText(result) {
   const lines = result.findings.map((f) => {
     if (f.kind === 'reference') return `${f.name}: ${f.detail}`;
+    if (f.kind === 'conflict') return f.detail;
     if (f.kind === 'input') return `External input ${f.input_kind} \`${f.name}\`: ${f.detail}`;
     if (f.kind === 'dependency') return `task "${f.task}" adds a dependency, but the issue has no Allow-paths: line for its manifest`;
     const why = f.tier === 'soft' ? 'a dependency file that the issue does not allow in Allow-paths:' : f.tier === 'restricted' ? 'a restricted file that no run reads or changes' : `a protected path (${f.rule}) that an unattended run never changes`;

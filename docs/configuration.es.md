@@ -78,7 +78,7 @@ agents:
   ```
   Los valores por defecto cambian solo con la evidencia de una evaluación de los revisores sobre defectos sembrados.
 - **Un modelo es un nombre, no una lista.** Escribe un alias o un identificador completo; Relevo no lo comprueba contra una lista porque la lista cambia, y el entorno de ejecución rechaza el que no conoce.
-- **Ningún ajuste apaga un revisor ni baja lo que bloquea.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee.
+- **Ningún ajuste apaga un revisor ni baja lo que bloquea.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee. Toda regla de ese archivo es un requisito salvo que su línea (o el encabezado que la contiene) esté marcada `[advice]`; un hallazgo que cita un requisito como `Rule: <archivo>:<línea> "<sus palabras>"` bloquea, sin importar qué revisor lo escribió.
 - **Con Antigravity** los ajustes se aceptan y no se aplican: no se escriben en los agentes que renderiza. `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada uno y siguen.
 
 ### Elegir el modelo de cada issue: `auto`

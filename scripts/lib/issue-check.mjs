@@ -9,6 +9,7 @@ import { resolvePlatform } from './platform-of.mjs';
 import { hardPathsInAllow, platformFolders } from './protected-paths.mjs';
 import { findCredentials } from './scan.mjs';
 import { vagueWarnings } from './vague-words.mjs';
+import { conflictText, findConflicts } from './rule-conflicts.mjs';
 
 export const TITLE_MAX = 72;
 export const BODY_WARN = 8000;
@@ -28,10 +29,11 @@ const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
  * `rulesFile` is the `qa.rules_from` file (or files) of the project, which can never be listed in an `Allow-paths:` line.
  * `platforms` is the registry of relevo.yml ({ name: { ... } }); when given, the platform of the draft is checked too.
  * `links` is the `links` list of relevo.yml: a `Depends-on:` that names a repository outside it is a problem.
+ * `rules` is the lines of the rules files (parseRules of each): an `Out of scope` line that a rule requires against, or that a scenario needs, is a problem.
  * `repoRoot` is the folder of the repository: a design reference to a file of the repository must exist under it
  * (when it is null the existence is not checked, as in the light planning job that has no checkout).
  */
-export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [], repoRoot = null, language = 'en' }) {
+export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [], repoRoot = null, language = 'en', rules = [] }) {
   const problems = [];
   const t = String(title ?? '').trim();
   if (!t) problems.push('the title is empty');
@@ -65,6 +67,9 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
     if (ref.kind === 'repo-file' && !links.includes(ref.repo)) problems.push(`Design reference: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
     if (ref.kind === 'attachment' && !ref.allowed) problems.push(`Design reference: ${ref.target} is not a GitHub attachment (github.com/user-attachments, user-images.githubusercontent.com)`);
   });
+  const found = findConflicts({ body, rules });
+  found.conflicts.forEach((c) => problems.push(conflictText(c)));
+  found.problems.forEach((p) => problems.push(p));
   const warnings = [];
   const models = parseIssueModels(body);
   models.problems.forEach((m) => warnings.push(m));
