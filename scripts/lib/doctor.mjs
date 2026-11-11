@@ -281,12 +281,7 @@ export function gatherFacts(p) {
   // cannot run its commands, and the version is what the workflows should pin.
   const installedRoot = p.pluginRoot ?? PLUGIN_ROOT;
   f.pluginFolders = ['scripts', 'skills', 'agents', 'stacks', 'templates'].filter((d) => tryRun(() => readdirSync(resolve(installedRoot, d)).length > 0, false) !== true);
-  // The version the registry publishes (a read; null offline, for a private package or on any error) and the changelog
-  // that came with the installed plugin, which says what each version fixed.
-  f.publishedVersion = tryRun(() => {
-    const v = String(p.tool('npm', ['view', PACKAGE_NAME, 'version'])).trim();
-    return /^\d+\.\d+\.\d+$/.test(v) ? v : null;
-  }, null);
+  // The changelog that came with the installed plugin says what each version fixed.
   f.changelog = tryRun(() => readFileSync(resolve(installedRoot, 'CHANGELOG.md'), 'utf8'), null);
   f.pluginVersion = tryRun(() => JSON.parse(readFileSync(resolve(installedRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null, null);
   // The installations Claude Code knows of: the user scope, and the project or local scope of this repository. null when
@@ -426,6 +421,12 @@ export function gatherFacts(p) {
         f.runnerVariables[name] = /404|Not Found/i.test(String(err.stderr ?? err.message ?? err)) ? { value: null } : { unreadable: true };
       }
     });
+    // The version the registry publishes: asked only when a workflow pins one, with a short timeout; null offline, for a
+    // private package or on any error.
+    f.publishedVersion = Object.values(f.pluginPins ?? {}).some(Boolean) ? tryRun(() => {
+      const v = String(p.tool('npm', ['view', PACKAGE_NAME, 'version', '--fetch-timeout=8000', '--fetch-retries=0'])).trim();
+      return /^\d+\.\d+\.\d+$/.test(v) ? v : null;
+    }, null) : null;
     const plugin = f.pluginMarketplace && /^https:\/\/(?:.*@)?github\.com\/([^/@\s]+\/[^/@\s]+?)(?:\.git)?$/.exec(f.pluginMarketplace);
     const slug = plugin ? plugin[1] : f.pluginCheckouts[0]?.repo;
     f.pluginRepoPrivate = slug ? tryRun(() => api(`repos/${slug}`).private, null) : null;
@@ -840,7 +841,7 @@ function linkChecks(f) {
   const r = [];
   links.forEach((l) => {
     if (l.reachable) r.push(pass(`links.${l.repo}`, `${l.repo} can be read (${l.private ? 'private' : 'public'})`));
-    else r.push(fail(`links.${l.repo}`, `${l.repo} in links cannot be read with your sign-in, so a design file or a dependency in it would answer 404 to the automation too`, `check the name in links; if it is private, grant read access to issues, pull requests and contents on ${l.repo} to the token stored as the secret RELEVO_LINKS_TOKEN (and to you), or copy the file the issue points to into this repository`));
+    else r.push(fail(`links.${l.repo}`, `${l.repo} in links cannot be read with your sign-in, so the automation may not read it either (a file in it would answer 404)`, `check the name in links; if it is private, make sure the token stored as the secret RELEVO_LINKS_TOKEN has read access to issues, pull requests and contents on ${l.repo}, or copy the file the issue points to into this repository`));
   });
   const anyPrivate = links.some((l) => l.private === true);
   if (!Array.isArray(f.secrets)) {
@@ -1310,7 +1311,7 @@ function parseRunsOn(value) {
   return inner.split(',').map((l) => l.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
-/** The labels of a runner value: a JSON list (`["self-hosted","linux"]`), or names separated by commas. null when empty or not readable. */
+/** The labels of a runner value: a JSON list (`["self-hosted","linux"]`), or one label. null when empty or not readable. */
 function parseRunnerValue(value) {
   const text = String(value ?? '').trim();
   if (!text) return null;
@@ -1322,8 +1323,9 @@ function parseRunnerValue(value) {
       return null;
     }
   }
-  const labels = text.split(',').map((l) => l.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
-  return labels.length > 0 ? labels : null;
+  // GitHub reads a plain string as ONE label, so `self-hosted, linux` is a single (and unlikely) label, not two.
+  const label = text.replace(/^['"]|['"]$/g, '').trim();
+  return label ? [label] : null;
 }
 
 /** The repository variables that the `runs-on` lines of the workflows read (`${{ vars.NAME || 'fallback' }}`). */
@@ -1412,7 +1414,7 @@ function runnerChecks(f) {
     r.push(warn(`automation.runner.variable.${name}`, `${files.join(', ')} ${files.length === 1 ? 'runs' : 'run'} on [${labels.join(', ')}] (${where}), but relevo.yml runner.labels says [${wanted.join(', ')}]: the variable wins, so the file describes a runner that is not used`, `set the variable ${name} to match runner.labels [${wanted.join(', ')}], delete it if the workflow default is right, or change runner.labels in relevo.yml to [${labels.join(', ')}]`));
   });
   if (unread.size > 0) r.push(note('automation.runner.variable', `the repository variable ${[...unread].join(', ')} that the runner of the workflows is read from could not be read, so the effective runner was not checked`));
-  if (unparsed.size > 0) r.push(note('automation.runner.unparsed', `the runner of ${[...unparsed].join(', ')} comes from a variable whose value is not a runner name or a list of them, so it was not judged`));
+  if (unparsed.size > 0) r.push(note('automation.runner.unparsed', `the runner of ${[...unparsed].join(', ')} comes from a variable that has no usable runner (unset with no fallback, or not a runner name or a list of them), so it was not judged`));
   if (r.some((x) => x.status === 'fail' || x.status === 'warn')) return r;
   if (judged > 0 && unread.size === 0 && unparsed.size === 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
   if (!same(wanted, HOSTED_RUNNER)) r.push(warn('automation.runner.persistence', `the runner [${wanted.join(', ')}] is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
@@ -1532,11 +1534,14 @@ function stalePinChecks(f) {
   if (old.length === 0) return [pass('automation.plugin-latest', `the workflows pin the published version (${f.publishedVersion})`)];
   const oldest = old.map(([, v]) => v).sort(byVersion)[0];
   const fixes = changelogBetween(f.changelog, oldest, f.publishedVersion);
-  const what = fixes.length > 0 ? `; the newer versions changed: ${fixes.join('; ')}` : `; read the changelog of ${f.publishedVersion} for what changed`;
-  return [warn('automation.plugin-latest', `${old.map(([file, v]) => `${file} (${v})`).join(', ')} pin an older version than the published ${f.publishedVersion}${what}`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog')];
+  // The changelog on disk comes with the installed plugin, so it stops at that version.
+  const behind = f.pluginVersion && byVersion(f.pluginVersion, f.publishedVersion) < 0;
+  const what = fixes.length > 0 ? `; the newer versions changed: ${fixes.join('; ')}${behind ? ` (the changelog here stops at ${f.pluginVersion}; read the one of ${f.publishedVersion} for the rest)` : ''}` : `; read the changelog of ${f.publishedVersion} for what changed`;
+  const fix = behind ? `update the installed plugin first (claude plugin update relevo@relevo --scope user), then run /relevo:init: it merges the new template into each workflow and moves the pin to the installed version` : 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog';
+  return [warn('automation.plugin-latest', `${old.map(([file, v]) => `${file} (${v})`).join(', ')} pin an older version than the published ${f.publishedVersion}${what}`, fix)];
 }
 
-const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
+export const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
 
 /**
  * Which version each part is on, from what can be read here: the plugin in use, each installation `claude` lists and the

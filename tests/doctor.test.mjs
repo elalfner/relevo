@@ -2601,15 +2601,51 @@ test('Scenario: No permission to read protection - could not be checked, never f
   assert.equal(byId(results, 'repo.protection.checks'), undefined);
 });
 
-test('gatherFacts reads the published version, the changelog and the runner variable with reads only', () => {
+test('gatherFacts reads the published version only when a workflow pins one, and the runner variable, with reads only', () => {
   const calls = [];
+  const npmCalls = [];
+  const workflow = "env:\n  RELEVO_VERSION: 0.14.2\njobs:\n  build:\n    runs-on: ${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}\n";
   const gh = readOnlyGh((args) => {
     calls.push(args.join(' '));
-    if (/actions\/variables\/RELEVO_RUNNER/.test(args[1])) return JSON.stringify({ value: 'ubuntu-latest' });
+    const path = args[args.length - 1];
+    if (/actions\/variables\/RELEVO_RUNNER/.test(path)) return JSON.stringify({ value: 'ubuntu-latest' });
+    if (/contents\/\.github\/workflows\/relevo-go\.yml/.test(path)) return JSON.stringify({ content: Buffer.from(workflow).toString('base64') });
+    if (/contents\/\.github\/workflows\?/.test(path)) return JSON.stringify([{ name: 'relevo-go.yml' }]);
+    if (/^repos\/o\/r$/.test(path)) return JSON.stringify({ default_branch: 'main' });
     throw Object.assign(new Error('404 Not Found'), { stderr: '404 Not Found' });
   });
-  const facts = gatherFacts({ repo: 'o/r', tool: (name, args) => (name === 'npm' ? '0.14.4\n' : (() => { throw new Error('none'); })()), gh, exists: () => false, read: () => '', listDir: () => [], skillDirs: [], git: () => '', readUser: () => null, readFolder: () => [], restrictedFiles: () => [], root: '.', adapters: () => [] });
+  const tool = (name, args) => {
+    if (name === 'npm') { npmCalls.push(args); return '0.14.4\n'; }
+    if (name === 'gh' && args[0] === 'auth') return '';
+    if (name === 'gh') return '1';
+    throw new Error('none');
+  };
+  const base = { repo: 'o/r', tool, gh, exists: () => false, read: () => '', listDir: () => [], skillDirs: [], git: () => '', readUser: () => null, readFolder: () => [], restrictedFiles: () => [], root: '.', adapters: () => [] };
+  const facts = gatherFacts(base);
   assert.equal(facts.publishedVersion, '0.14.4');
-  assert.equal(typeof facts.changelog === 'string' || facts.changelog === null, true);
+  assert.match(npmCalls[0].join(' '), /--fetch-timeout/);
+  assert.deepEqual(facts.runnerVariables, { RELEVO_RUNNER: { value: 'ubuntu-latest' } });
   assert.deepEqual(calls.filter((c) => /-X|--method|-f /.test(c)), []);
+  // No pin, no registry call.
+  npmCalls.length = 0;
+  const none = gatherFacts({ ...base, gh: readOnlyGh(() => { throw new Error('404 Not Found'); }) });
+  assert.equal(none.publishedVersion, null);
+  assert.deepEqual(npmCalls, []);
+});
+
+test('A plain runner variable is one label, as GitHub reads it', () => {
+  const results = runChecks(healthy({ config: SELF, workflows: withWorkflow('${{ vars.RELEVO_RUNNER }}'), runnerVariables: { RELEVO_RUNNER: { value: 'self-hosted, linux' } } }));
+  assert.equal(byId(results, 'automation.runner.variable.RELEVO_RUNNER').status, 'warn', 'one label "self-hosted, linux" is not [self-hosted, linux]');
+});
+
+test('A variable that is not set and has no fallback is reported as not judged, with the right reason', () => {
+  const n = byId(runChecks(healthy({ workflows: withWorkflow('${{ vars.RELEVO_RUNNER }}'), runnerVariables: { RELEVO_RUNNER: { value: null } } })), 'automation.runner.unparsed');
+  assert.equal(n.status, 'note');
+  assert.match(n.message, /unset with no fallback/);
+});
+
+test('Stale pin with an installed plugin that is itself behind - the fix updates the plugin first and the note says where the changelog stops', () => {
+  const r = byId(runChecks(healthy({ pluginPins: pins('0.14.2'), pluginVersion: '0.14.3', publishedVersion: '0.14.4', changelog: CHANGELOG })), 'automation.plugin-latest');
+  assert.match(r.fix, /update the installed plugin first/);
+  assert.match(r.message, /changelog here stops at 0\.14\.3/);
 });

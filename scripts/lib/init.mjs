@@ -12,7 +12,7 @@ import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
 import { restrictedList } from './restricted-paths.mjs';
 import { activeCredentialLine, credentialMode, SUBSCRIPTION_SECRET, API_KEY_SECRET } from './execution-mode.mjs';
 import { claudeProposalText } from './restricted-settings.mjs';
-import { isVueWeb, pluginInstallScope, variableRunners, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
+import { byVersion, isVueWeb, pluginInstallScope, variableRunners, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -577,7 +577,7 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   if (!facts.protectionUnavailable && !facts.protectionError && baseProtection && typeof baseProtection.requiredChecks === 'boolean' && !baseProtection.requiredChecks) {
     items.push(item('manual.branch-checks', 'manual', `${base} does not require status checks, and \`ship\` relies on them: add the rule "Require status checks to pass" with the checks of your CI to the ruleset of ${base} yourself (init does not change it)`));
   }
-  if (facts.publishedVersion && facts.pluginVersion && versionNewer(facts.publishedVersion, facts.pluginVersion)) {
+  if (facts.publishedVersion && facts.pluginVersion && byVersion(facts.publishedVersion, facts.pluginVersion) > 0) {
     items.push(item('manual.plugin-update', 'manual', `The published Relevo is ${facts.publishedVersion} and the plugin installed here is ${facts.pluginVersion}; the workflows pin the version of the installed plugin, so update it first (claude plugin update relevo@relevo --scope user) and run init again to move the pins`));
   }
   if (hasSupabase) {
@@ -666,11 +666,4 @@ export function applyPlan(items, { repo, io }) {
     }
   });
   return results;
-}
-
-/** Is version `a` newer than `b`? Both are `x.y.z`. */
-function versionNewer(a, b) {
-  const [x, y] = [a, b].map((v) => String(v).split('.').map(Number));
-  for (let i = 0; i < 3; i += 1) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
-  return false;
 }
