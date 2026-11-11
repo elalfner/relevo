@@ -89,8 +89,10 @@ Save each draft under the scratchpad or a temporary directory outside the reposi
 For every draft:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/check-issue.mjs --title "<title>" --body-file <file> --platforms <names of the platforms of relevo.yml, comma separated> --links <the links of relevo.yml, comma separated> --language <the language of relevo.yml>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/check-issue.mjs --title "<title>" --body-file <file> --platforms <names of the platforms of relevo.yml, comma separated> --links <the links of relevo.yml, comma separated> --language <the language of relevo.yml> --rules-file <qa.rules_from of relevo.yml, comma separated>
 ```
+
+With `--rules-file` the check also reads the project rules: an `Out of scope` line that a rule requires is a problem that quotes both lines (the rule with its file and line). Settle it with the person, who decides which one wins: change the issue, or record the choice in a decision with the line `Overrides: <file>:<line>` (a rule marked `[advice]` is never reported). A scenario that needs something `Out of scope` excludes is only a warning: show it to the person and keep the text if they say it is fine.
 
 It applies the rules `go` applies and a few more: at least one complete scenario, at least one edge case, no leftover template text, no emoji in the title, a title of at most 72 characters, and nothing that looks like a credential. If it reports problems, fix them with the person (ask for the missing information; do not fill it in yourself) and check again. Create nothing while any draft fails. A warning (for example a body over about 8,000 characters) does not fail the check: tell the person and suggest splitting or shortening.
 

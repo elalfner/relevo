@@ -295,3 +295,13 @@ test('Scenario: A line in a draft - the skill may propose a model with its reaso
   assert.match(text, /the ceiling of the role still applies/);
   assert.match(text, /Do not propose a line when no role is `auto`/);
 });
+
+test('Scenario: the check of a draft and of an update read the project rules, and the skill says who decides (#121)', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  const update = readFileSync(new URL('../skills/issue/references/update.md', import.meta.url), 'utf8');
+  assert.match(body, /check-issue\.mjs[^\n]*--rules-file <qa\.rules_from of relevo\.yml, comma separated>/);
+  assert.match(update, /check-issue\.mjs[^\n]*--rules-file <qa\.rules_from>/);
+  assert.match(body, /which one wins/);
+  assert.match(body, /Overrides: <file>:<line>/);
+  assert.match(body, /only a warning/);
+});

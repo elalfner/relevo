@@ -22,6 +22,10 @@
 
 - [x] 5.1 Edit `skills/go/references/qa-run.md` (step 4 passes `--rules-file`, the citation rule, the `unverified` list in the output; leave the sections on the parallel launch and "The model of a retry" as they are) and the four `agents/qa-*.md` (cite the rule as `Rule: <file>:<line> "<quote>"`, never a note for a violation of a rule; `[advice]` rules are notes). Verify in `tests/agents.test.mjs` and `tests/skill-go.test.mjs`: each lens names the citation format, and `qa-run.md` still has the sections of the parallel launch and the model of a retry.
 
-## 6. Documentation and check
+## 6. The issue skill
 
-- [x] 6.1 Document the `[advice]` marker and the `Overrides:` line in `docs/configuration.md`, `docs/issue-format.md` and their `.es.md` twins, and add the entry to `CHANGELOG.md` under Unreleased (no version bump, minimal edit). Verify with `npm test` passing (including the docs and readme sync tests).
+- [x] 6.0 Pass `--rules-file <qa.rules_from>` in the two calls of `check-issue.mjs` in `skills/issue/SKILL.md` and `skills/issue/references/update.md`, and say who decides. Scope added after review of the first PR: without it the check of a draft never read the project rules in a real `/relevo:issue` session. Verify in `tests/skill-issue.test.mjs`.
+
+## 7. Documentation and check
+
+- [x] 7.1 Document the `[advice]` marker and the `Overrides:` line in `docs/configuration.md`, `docs/issue-format.md` and their `.es.md` twins, and add the entry to `CHANGELOG.md` under Unreleased (no version bump, minimal edit). Verify with `npm test` passing (including the docs and readme sync tests).
