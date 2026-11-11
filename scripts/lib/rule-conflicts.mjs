@@ -32,14 +32,15 @@ export function terms(text) {
   return new Set(words.map(stem));
 }
 const sharedTerms = (a, b) => [...a].filter((t) => b.has(t));
-// The same subject: the other line holds at least three quarters of the content words of the exclusion, and at least two of them
-// (or all of them, for an exclusion of one or two words such as "export"). Run on the open issues of this repository, two shared
-// words alone flagged five of seventeen issues, all of them false positives.
-function sameSubject(limit, other) {
+// The same subject: the other line holds enough of the content words of the exclusion, and at least two of them (or all of them,
+// for an exclusion of one or two words such as "export"). A rule needs half of them; a scenario needs three quarters, because on
+// the open issues of this repository two shared words flagged five issues against their scenarios and none against a rule,
+// and a rule such as "Every user-visible behaviour has a widget test" must still match "widget tests for the counter screen".
+function sameSubject(limit, other, share) {
   const shared = sharedTerms(limit, other);
   if (limit.size === 0) return false;
   if (limit.size <= 2) return shared.length === limit.size;
-  return shared.length >= 2 && shared.length / limit.size >= 0.75;
+  return shared.length >= 2 && shared.length / limit.size >= share;
 }
 
 // "Any other change", "the rest": an exclusion of the remainder, which excludes what nothing else in the issue asks for, so it cannot contradict a rule or a scenario.
@@ -109,10 +110,10 @@ export function findConflicts({ body, rules = [] }) {
   const required = rules.filter((r) => !r.heading && !r.advice && REQUIRE_RE.test(r.text) && !FORBID_RE.test(r.text) && !overridden(r));
   limits.forEach((limit) => {
     required.forEach((rule) => {
-      if (sameSubject(limit.terms, terms(rule.text))) conflicts.push({ kind: 'rule', limit: limit.text, rule: { file: rule.file, line: rule.line, text: rule.text } });
+      if (sameSubject(limit.terms, terms(rule.text), 0.5)) conflicts.push({ kind: 'rule', limit: limit.text, rule: { file: rule.file, line: rule.line, text: rule.text } });
     });
     scenariosOf(body).forEach((s) => {
-      if (sameSubject(limit.terms, terms(s.text))) conflicts.push({ kind: 'scenario', limit: limit.text, scenario: { number: s.number, when: s.when } });
+      if (sameSubject(limit.terms, terms(s.text), 0.75)) conflicts.push({ kind: 'scenario', limit: limit.text, scenario: { number: s.number, when: s.when } });
     });
   });
   return { conflicts, problems };

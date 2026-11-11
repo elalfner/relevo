@@ -95,3 +95,11 @@ test('a verb phrase that shares two words with a scenario is not the same subjec
   const body2 = issue({ out: '- Changing the model of the orchestrator before there is data.', scenarios: '- **WHEN** the shares show the orchestrator above half of the cost\n- **THEN** a decision is taken about the model' });
   assert.deepEqual(findConflicts({ body: body2, rules: [] }).conflicts, []);
 });
+
+test('a rule needs half of the words of the exclusion, a scenario three quarters (found on the rules of the sandbox)', () => {
+  const rules = parseRules('CLAUDE.md', '- Every user-visible behaviour has a widget test under `test/`.');
+  const body = issue({ out: '- widget tests for the counter screen' });
+  assert.equal(findConflicts({ body, rules }).conflicts.length, 1);
+  const scenario = issue({ out: '- widget tests for the counter screen', scenarios: '- **WHEN** a person opens the counter screen\n- **THEN** the number is shown' });
+  assert.deepEqual(findConflicts({ body: scenario, rules: [] }).conflicts, []);
+});
