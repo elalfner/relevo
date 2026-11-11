@@ -9,9 +9,9 @@
 //   exit 3: bad arguments
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
@@ -57,32 +57,49 @@ const scratch = mkdtempSync(join(tmpdir(), 'relevo-selftest-'));
 const wt = join(scratch, 'wt');
 const restricted = restrictedListFromText(readFileSync(configPath, 'utf8'));
 const results = [];
+let baseline;
 let code = 0;
 try {
   git(['worktree', 'add', '--detach', '-q', wt, baseCommit], toplevel);
   const wtRoot = join(wt, root === toplevel ? '' : root.slice(toplevel.length + 1));
+  // The installed paths of the profile. A top-level one (node_modules, vendor) is linked; a nested one
+  // (.dart_tool/package_config.json) is the sign of a tool folder with more files that the check needs (Flutter also reads
+  // .dart_tool/package_graph.json), so its top-level folder is copied. A restricted path is never linked or copied.
   for (const rel of resolved.profile.installed ?? []) {
-    const from = join(root, platform.path, rel);
-    const to = join(wtRoot, platform.path, rel);
-    // A restricted path is never linked into the scratch worktree.
-    if (!isRestricted(join(platform.path, rel), restricted) && existsSync(from) && !existsSync(to)) { mkdirSync(dirname(to), { recursive: true }); symlinkSync(from, to); }
+    const top = rel.split('/')[0];
+    const from = join(root, platform.path, top);
+    const to = join(wtRoot, platform.path, top);
+    if (isRestricted(join(platform.path, top), restricted) || !existsSync(from) || existsSync(to)) continue;
+    mkdirSync(dirname(to), { recursive: true });
+    if (top === rel) symlinkSync(from, to);
+    else cpSync(from, to, { recursive: true, filter: (src) => !isRestricted(join(platform.path, top, relative(from, src)), restricted) });
   }
   // The gate runs from the worktree: a relevo.yml the base does not have yet is copied in (it is removed with the worktree).
   const cfg = join(wtRoot, 'relevo.yml');
   if (!existsSync(cfg) && !isRestricted('relevo.yml', restricted)) copyFileSync(configPath, cfg);
+  // One run of the gate in the worktree; why it failed is read from its receipt, not from its output.
+  const runGate = (files) => {
+    const r = spawnSync('node', [join(pluginRoot, 'scripts/validation-gate.mjs'), '--base', baseCommit, '--platform', name, '--config', cfg, ...(files ? ['--files', files] : [])], { cwd: wtRoot, encoding: 'utf8' });
+    const first = r.stdout.split('\n')[0];
+    const status = ['green', 'red', 'could-not-run'].includes(first) ? first : 'could-not-run';
+    let failed = [];
+    try {
+      const receipt = JSON.parse(readFileSync(join(wtRoot, '.relevo-receipt/receipt.json'), 'utf8'));
+      failed = [...receipt.commands.filter((c) => c.exit_code !== 0).map((c) => `${c.name} failed: ${c.command}`), ...receipt.scans.filter((x) => !x.ok).map((x) => `${x.name}: ${String(x.detail).split('\n')[0]}`)];
+    } catch { /* no receipt: the gate did not get that far */ }
+    if (status === 'could-not-run' && !failed.length) failed.push((r.stderr || r.stdout).trim().split('\n')[0] ?? 'the gate did not run');
+    return { status, failed };
+  };
+  // The control: the gate on the base with nothing seeded. A case means nothing if the base is not green already.
+  baseline = runGate();
   for (const c of planCases({ stack: platform.stack, testCommand })) {
     if (c.skipped) { results.push(c); continue; }
     const rel = join(platform.path, c.seed.path);
     const file = join(wtRoot, rel);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, c.seed.content);
-    const r = spawnSync('node', [join(pluginRoot, 'scripts/validation-gate.mjs'), '--base', baseCommit, '--platform', name, '--config', cfg, '--files', rel], { cwd: wtRoot, encoding: 'utf8' });
-    const lines = r.stdout.split('\n').filter(Boolean);
-    const status = ['green', 'red', 'could-not-run'].includes(lines[0]) ? lines[0] : 'could-not-run';
-    const failed = lines.slice(1).filter((l) => /failed:|missing|could not/.test(l));
-    if (status === 'could-not-run' && !failed.length) failed.push((r.stderr || r.stdout).trim().split('\n')[0] ?? 'the gate did not run');
-    results.push({ ...c, status, failed, verdict: verdict(c, status) });
-    // The next case starts from the base again.
+    const { status, failed } = runGate(rel);
+    results.push({ ...c, status, failed, verdict: verdict(c, status, baseline.status) });
     // Only what the case added goes: the links to the installed paths and the receipt must stay for the next case.
     git(['reset', '-q', '--hard', baseCommit], wt);
     rmSync(file, { force: true });
@@ -98,7 +115,7 @@ try {
 }
 
 if (results.length) {
-  console.log(renderReport({ base, platform: name, results }));
+  console.log(renderReport({ base, platform: name, results, baseline }));
   if (results.some((r) => !r.skipped && r.verdict !== 'ok')) code = 1;
 }
 process.exit(code);

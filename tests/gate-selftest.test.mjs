@@ -108,10 +108,35 @@ test('Scenario: a gate that cannot run is reported and the worktree is still rem
 
 test('Scenario: the installed paths of the profile stay linked for every case', () => {
   // flutter lists .dart_tool/package_config.json as installed; every case needs it, not only the first.
-  const dir = repo({ testCmd: 'test -e .dart_tool/package_config.json && test ! -e test/relevo_selftest_test.dart' });
+  // Flutter also reads .dart_tool/package_graph.json, which the profile does not list: the folder is what is carried over.
+  const dir = repo({ testCmd: 'test -e .dart_tool/package_config.json && test -e .dart_tool/package_graph.json && test ! -e test/relevo_selftest_test.dart' });
   mkdirSync(join(dir, '.dart_tool'), { recursive: true });
   writeFileSync(join(dir, '.dart_tool/package_config.json'), '{}\n');
+  writeFileSync(join(dir, '.dart_tool/package_graph.json'), '{}\n');
+  const before = state(dir);
   const r = run(dir);
   assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(state(dir), before);
   assert.match(r.stdout, /docs: a docs-only change - gate green.*: ok/);
+});
+
+test('Scenario: a base that is not green makes every case inconclusive and names the cause', () => {
+  const dir = repo({ testCmd: 'true' });
+  writeFileSync(join(dir, '.env'), 'APP_KEY=x\n'); // a restricted file that is versioned: the gate is red before any seed
+  git(dir, 'add', '-f', '.env');
+  git(dir, 'commit', '-qm', 'versioned env');
+  git(dir, 'update-ref', 'refs/remotes/origin/dev', 'HEAD');
+  const r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /Control: the gate is red on the base with nothing seeded: restricted files versioned: \.env/);
+  assert.match(r.stdout, /docs: .*inconclusive/);
+  assert.doesNotMatch(r.stdout, /: ok/);
+});
+
+test('verdict: a base that is not green is inconclusive, a green base changes nothing', () => {
+  const c = { id: 'unit', expect: 'red' };
+  assert.equal(verdict(c, 'red', 'red'), 'inconclusive');
+  assert.equal(verdict(c, 'red', 'green'), 'ok');
+  assert.equal(verdict(c, 'could-not-run', 'red'), 'could-not-run');
+  assert.match(renderReport({ base: 'b', platform: 'p', baseline: { status: 'green' }, results: [] }), /Control: the gate is green/);
 });

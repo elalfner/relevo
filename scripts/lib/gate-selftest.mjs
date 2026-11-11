@@ -47,8 +47,10 @@ export function planCases({ stack, testCommand }) {
 }
 
 /** One case's verdict from the gate: `ok`, `unexpected` or `could-not-run`. */
-export function verdict(c, gateStatus) {
+export function verdict(c, gateStatus, baselineStatus = 'green') {
   if (gateStatus === 'could-not-run') return 'could-not-run';
+  // The gate was not green on the base before anything was seeded, so a red (or a green) proves nothing about the case.
+  if (baselineStatus !== 'green') return 'inconclusive';
   return gateStatus === c.expect ? 'ok' : 'unexpected';
 }
 
@@ -59,8 +61,12 @@ const HINTS = {
 };
 
 /** The report. results: [{ id, title, expect, skipped?, status?, failed?: string[], verdict? }]. */
-export function renderReport({ base, platform, results }) {
+export function renderReport({ base, platform, results, baseline }) {
   const lines = [`Gate selftest on ${platform} against ${base} (a scratch worktree, no branch, nothing pushed)`, ''];
+  if (baseline) {
+    const why = baseline.failed?.length ? `: ${baseline.failed.join('; ')}` : '';
+    lines.push(baseline.status === 'green' ? 'Control: the gate is green on the base with nothing seeded.' : `Control: the gate is ${baseline.status} on the base with nothing seeded${why}. The cases below are inconclusive until that is fixed.`, '');
+  }
   for (const r of results) {
     if (r.skipped) { lines.push(`- ${r.id}: ${r.title} - skipped: ${r.skipped}`); continue; }
     const hint = r.verdict === 'unexpected' ? HINTS[r.id]?.[r.status] : '';
