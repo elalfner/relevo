@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`doctor` and `init` report the environment findings of the pilot.** `doctor` names a linked repository it cannot read and what to grant, prints both runners when a repository variable overrides `runner.labels`, warns when the pinned `RELEVO_VERSION` is older than the published one (naming what changed; skipped with a note offline), and warns when the base branch requires no status checks. `init` lists each as a step for the person and changes no token, variable or branch rule. `doctor` stays read-only.
+
 ## [0.14.5] - 2026-11-05
 
 ### Added
