@@ -276,3 +276,69 @@ A page of the documentation SHALL NOT repeat the same bullet. A repeated bullet 
 #### Scenario: Commands that do not rewrite code
 - **WHEN** the stacks page is read in either language
 - **THEN** the sentence that the commands QA runs never rewrite the code appears once
+
+### Requirement: The documentation describes the checks before the agent, the new reasons and the records
+The guide, the issue format, the execution page and the security page SHALL describe the checks that run before the agent, the reasons `inputs` and `policy`, the `External inputs` section, the classes of QA findings, the handling of a conflict in `review` and the records of phases and outcome classes, in English and Spanish. They SHALL state that these checks are not a security control.
+
+#### Scenario: A reader looks for why an issue went back
+- **WHEN** a person reads the guide after an issue went to `needs-spec` with the reason `inputs` or `policy`
+- **THEN** the guide says what each reason means and what to do
+
+#### Scenario: Both languages
+- **WHEN** a page gains a section about these checks
+- **THEN** its Spanish page gains the same section with the same structure
+
+#### Scenario: The security page
+- **WHEN** a person reads the security page
+- **THEN** it says that the guards remain the enforcement and that the checks before the agent only save cost
+
+### Requirement: The documentation describes the interface step, the rules and the keys
+The guide, the commands page, the issue format, the stacks page and the configuration page SHALL describe the interface step of `think`, the previews and their check, the rules and how a repository adds to them, the keys of `design.system`, the reading of the tokens and what it cannot resolve, and the vague-word warning, in English and Spanish.
+
+#### Scenario: A reader looks for how to get a preview
+- **WHEN** a person reads the commands page for `think`
+- **THEN** it says when the interface step runs, that previews are written outside the repository after a yes, and what the check reports
+
+#### Scenario: Both languages
+- **WHEN** a page gains a section about these parts
+- **THEN** its Spanish page gains the same section with the same structure
+
+### Requirement: The external design skills that were evaluated are listed, and none is recommended by default
+The documentation SHALL list the design skills that were evaluated, with the date they were read, the licence they state, the role each suits and the cost of loading it, and SHALL say that none is recommended by default and that `init` installs none. It SHALL say that a design skill with an optional hook edits a settings file, which is a protected path in an unattended run.
+
+#### Scenario: A reader considers a skill
+- **WHEN** a person reads the list
+- **THEN** each skill has its date, licence, role and cost, and the page says how to add one to a role
+
+#### Scenario: Init
+- **WHEN** `init` runs
+- **THEN** it installs none of these skills and offers none by default
+
+### Requirement: The documentation describes the gate, the lenses and the settings
+The guide, the configuration page, the stacks page, the execution page and the security page SHALL describe the gate and its receipt, the four lenses and what each owns, the blocking rule over the attempts, the advisory notes, the settings of model and effort with their defaults and their cost, and what is not applied with Antigravity, in English and Spanish.
+
+#### Scenario: A reader looks for why a build was rejected
+- **WHEN** a person reads the guide after a rejection
+- **THEN** it says which lens or the gate can reject, and what each means
+
+#### Scenario: A reader changes a model
+- **WHEN** a person reads the configuration page
+- **THEN** it lists the keys, the defaults and how to set each lens to the model that QA used before
+
+#### Scenario: Both languages
+- **WHEN** a page gains a section about these parts
+- **THEN** its Spanish page gains the same section with the same structure
+
+### Requirement: The evaluation is recorded on a dated page
+The documentation SHALL have a page with the result of each run of the evaluation, with its date, the lenses, the defects and the good variants, what was found and flagged, and the cost, and SHALL say which default was kept or changed because of it.
+
+#### Scenario: A default changes
+- **WHEN** a default model or effort changes
+- **THEN** the page records the evaluation that justified it
+
+### Requirement: The release notes say that the cost of QA changes
+The notes of the release that introduces the lenses SHALL say that two lenses use the stronger model by default, and how to keep the cost of QA as it was.
+
+#### Scenario: The release notes
+- **WHEN** a person reads the notes of that release
+- **THEN** they say which lenses use the stronger model and which settings restore the previous cost

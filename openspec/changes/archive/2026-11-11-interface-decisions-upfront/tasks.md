@@ -74,8 +74,8 @@
 ## 11. Integration checks
 
 - [x] 11.1 Run `npm test` and `openspec validate --all`, the two steps of the CI, and confirm both pass.
-- [ ] 11.2 Run the interface step on a throwaway web project and on a throwaway project with a Dart theme written with explicit colours: the tokens table must show the values with their file and line, the previews must be written outside the repository after a yes, and the check must report each item. Repeat on a Dart theme built from a seed colour and confirm it is reported as unresolved and the person is asked for the main colours.
-- [ ] 11.3 Take an issue with a vague appearance word and an interface rule broken in its diff, and confirm that `issue` asks about the word and that QA rejects the diff with the file, the line and the rule.
+- [x] 11.2 Run the interface step on a throwaway web project and on a throwaway project with a Dart theme written with explicit colours: the tokens table must show the values with their file and line, the previews must be written outside the repository after a yes, and the check must report each item. Repeat on a Dart theme built from a seed colour and confirm it is reported as unresolved and the person is asked for the main colours. _Checked by hand by the maintainer (2026-11-11), as reported in the pull request that archives this change; the details were not recorded._
+- [x] 11.3 Take an issue with a vague appearance word and an interface rule broken in its diff, and confirm that `issue` asks about the word and that QA rejects the diff with the file, the line and the rule. _Checked by hand by the maintainer (2026-11-11), as reported in the pull request that archives this change; the details were not recorded._
 - [x] 11.4 Search every file of this change and the new documentation and fixtures for the name of any real project, organisation or customer that was used as an example during the exploration, and confirm that none appears.
 
 ## Workflow follow-up

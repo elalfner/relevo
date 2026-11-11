@@ -184,3 +184,40 @@ The next-step table SHALL give `qa-failed` a variant for an issue whose build le
 #### Scenario: Spanish repository
 - **WHEN** `language` is `es` and the reason is `rebuild`
 - **THEN** the hint is written in Spanish and the label names stay unchanged
+
+### Requirement: `needs-spec` has the reasons `inputs` and `policy`
+A build that cannot succeed because of what the issue depends on SHALL send the issue to `needs-spec` with the reason `inputs` (an input cannot be read or is not available) or `policy` (a task needs a protected path, or a dependency the issue did not allow). Each reason SHALL have an entry in the table of next steps and a message, in both languages, that names what is missing and the command to run.
+
+#### Scenario: The next step for `inputs`
+- **WHEN** the next step is asked for `needs-spec` with the reason `inputs`
+- **THEN** it says that an input of the issue is not available, names the writer as the owner and gives the command that completes the issue
+
+#### Scenario: The next step for `policy`
+- **WHEN** the next step is asked for `needs-spec` with the reason `policy`
+- **THEN** it says which task needs something an unattended run may not do, names the writer as the owner and gives the command that rewrites the issue
+
+#### Scenario: Both languages
+- **WHEN** the repository language is Spanish and a message for either reason is rendered
+- **THEN** it is in Spanish and has the same content as the English one
+
+### Requirement: Missing installed dependencies end in `qa-failed` before the agent
+A build that stops before the agent because the dependencies of the platform are not installed SHALL leave the issue `qa-failed`, as a build that stops for a missing tool does, and SHALL NOT use `needs-spec`, because the cause is the configuration of the runner and not the issue.
+
+#### Scenario: The install step is missing
+- **WHEN** the paths that the profile requires do not exist after the install step
+- **THEN** the issue is `qa-failed` and the comment names the path and the step to enable
+
+### Requirement: The hand-off can carry advisory notes
+When a build passes with advisory notes, the hand-off message SHALL say how many there are and name the lens that produced each of the first few, and SHALL carry all of them in a hidden marker. It SHALL NOT notify anyone beyond the person who must act and SHALL add no lifecycle state.
+
+#### Scenario: A passed build with notes
+- **WHEN** a build passes and the `interface` lens left two notes
+- **THEN** the message says that there are two notes and names the lens, and the marker holds both
+
+#### Scenario: A passed build without notes
+- **WHEN** a build passes with no advisory content
+- **THEN** the message is as it was and carries no marker
+
+#### Scenario: Many notes
+- **WHEN** there are more notes than the message shows
+- **THEN** it says how many more there are and the marker still holds all of them

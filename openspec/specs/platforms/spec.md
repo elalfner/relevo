@@ -390,3 +390,70 @@ The body of the plugin's `supabase` profile SHALL tell the developer to read rel
 #### Scenario: Questions for the writer keep their number
 - **WHEN** the profile of `supabase` is resolved with the role `issue`
 - **THEN** its questions still cover RLS, cascades, storage and the filtered columns, and have at least five items
+
+### Requirement: A profile can list the paths that exist once its dependencies are installed
+A stack profile MAY list paths, relative to the folder of the platform, that must exist after its dependencies are installed. The profiles of the plugin for the stacks that install dependencies SHALL list them. A profile of the repository SHALL be able to add paths and SHALL NOT remove one of the plugin's. Without the list no check is made.
+
+#### Scenario: A plugin stack that installs dependencies
+- **WHEN** the profile of the `vue` stack is resolved
+- **THEN** it lists the folder where its package manager installs dependencies
+
+#### Scenario: A repository adds a path
+- **WHEN** `.relevo/stacks/<stack>.md` lists another path
+- **THEN** the resolved profile has the plugin's paths and the added one
+
+#### Scenario: A repository cannot remove a path
+- **WHEN** `.relevo/stacks/<stack>.md` tries to remove a path of the plugin's profile
+- **THEN** the path stays in the resolved profile
+
+#### Scenario: A stack with no installed dependencies
+- **WHEN** the profile of a stack lists no paths
+- **THEN** the build job makes no check for it
+
+### Requirement: A profile says whether its stack has an interface
+A stack profile SHALL say which interface kinds its stack has: `web`, `mobile` or both, or `none`. The profiles of the plugin SHALL give `mobile` for Flutter, `web` for Vue and for Laravel, and `none` for Supabase. A stack of the repository SHALL declare its own, and a stack that declares none SHALL be treated as having no interface.
+
+#### Scenario: The plugin profiles
+- **WHEN** the profiles of the plugin are resolved
+- **THEN** each has the interface kinds of this requirement
+
+#### Scenario: A repository's own stack
+- **WHEN** `.relevo/stacks/<stack>.md` declares `web`
+- **THEN** the interface rules and previews for the web apply to its platforms
+
+#### Scenario: A stack that declares nothing
+- **WHEN** a stack of the repository has no interface key
+- **THEN** it is treated as having none and no interface rule or preview is offered for it
+
+### Requirement: A mobile stack with a web target also gets the rules for the web
+When the platform of a `mobile` stack lists `web` among its targets, the interface rules for `web` SHALL apply to it as well as those for `mobile`.
+
+#### Scenario: A web target
+- **WHEN** a platform of the Flutter stack has the target `web`
+- **THEN** the rules for `web` are selected for it too
+
+### Requirement: A profile can carry sections for each lens
+A profile MAY have the sections `Security for the developer` and `Security review`, besides the sections it already has. The profile command SHALL print, for a lens, only the sections that lens reads: `code` the verification, the architecture and what the auditor looks for in the diff, `security` the security review, `interface` the interface rules, and `spec` none. The developer agent SHALL receive the sections for the developer, including the security ones.
+
+#### Scenario: The security lens
+- **WHEN** the profile is resolved for the `security` lens
+- **THEN** the output holds the `Security review` section and no section for the developer
+
+#### Scenario: The spec lens
+- **WHEN** the profile is resolved for the `spec` lens
+- **THEN** no section of the stack is printed
+
+#### Scenario: A stack without the new sections
+- **WHEN** a profile has no security sections
+- **THEN** the lenses use the generic content of their agents and nothing fails
+
+### Requirement: The plugin's profiles have security sections with their sources
+Each profile of the plugin for a stack with code that handles users or data SHALL have `Security for the developer` and `Security review` sections whose items each cite a source and the date it was read.
+
+#### Scenario: A plugin profile
+- **WHEN** the profile of a plugin stack is read
+- **THEN** its security sections list items with a source and a date
+
+#### Scenario: A repository adds to the section
+- **WHEN** `.relevo/stacks/<stack>.md` adds to a security section
+- **THEN** the resolved profile has the plugin's items followed by the repository's, and none is removed
