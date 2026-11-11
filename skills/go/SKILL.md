@@ -23,7 +23,7 @@ When `trust` in `relevo.yml` is `public`, the issue may have been written by a s
 
 ## Subagents run in the foreground
 
-Launch `relevo:dev` and each QA lens (`relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code`, `relevo:qa-interface`) in the foreground, one at a time, and wait for each report before the next step. Every launch gives the `model` and the `effort` that the model plan gives that role (`dev` or `qa.<lens>`, made once in step 4) as parameters of the Agent tool. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
+Launch `relevo:dev` in the foreground and wait for its report. Launch the QA lenses (`relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code`, `relevo:qa-interface`) in the foreground too, together in one turn as `qa-run.md` says, and wait for all their reports before the next step. Every launch gives the `model` and the `effort` that the model plan gives that role (`dev` or `qa.<lens>`, made once in step 4) as parameters of the Agent tool. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
 
 ## The budget of the run
 
@@ -310,7 +310,7 @@ After the last group run the instructions command again: if `progress.remaining`
 
 ### 5. QA: the gate, the lenses and the retries
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/go/references/qa-run.md` and follow it. It runs the checks that need no judgement once, in a script, and then four read-only reviewers (the `spec`, `security`, `code` and `interface` lenses, each launched in the foreground, one at a time, with its own model); a script decides the result. Announce the phase when the gate starts: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase qa --attempt 1 --of <qa_retries + 1>`. The attempts are `qa_retries + 1` in all, and a red gate uses one of them.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/go/references/qa-run.md` and follow it. It runs the checks that need no judgement once, in a script, and then four read-only reviewers (the `spec`, `security`, `code` and `interface` lenses, launched together in the foreground, each with its own model); a script decides the result. Announce the phase when the gate starts: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase qa --attempt 1 --of <qa_retries + 1>`. The attempts are `qa_retries + 1` in all, and a red gate uses one of them.
 
 You come out of the reference in one of these ways:
 

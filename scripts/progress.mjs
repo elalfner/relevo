@@ -2,8 +2,9 @@
 // The progress of a cloud build, for the comment on the issue. Implements the progress requirements of the go specification.
 //   node scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt n] [--of m]
 //       announces the phase that `go` enters; used by the go skill
-//   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n]
-//       records that a QA lens starts now, for the seconds of each lens in the usage record; it does not change the phase
+//   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n] [--end]
+//       records that a QA lens starts now (or, with --end, that its report arrived), for the seconds of each lens in the usage
+//       record; lenses run together, so each has its own start and end. It does not change the phase
 //   node scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
 //       records how the run ended, for the usage record; used by the go skill
 //   node scripts/progress.mjs watch --issue n --decision <base64> --max-minutes n [--repo owner/name] [--config relevo.yml]
@@ -89,7 +90,7 @@ async function main(command) {
   if (command === 'lens') {
     if (!LENSES.includes(args[0])) return fail(`unknown lens "${args[0]}"`);
     const attempt = Number(arg('attempt'));
-    recordLens(dir, { lens: args[0], attempt: Number.isInteger(attempt) && attempt > 0 ? attempt : null });
+    recordLens(dir, { lens: args[0], attempt: Number.isInteger(attempt) && attempt > 0 ? attempt : null, end: args.includes('--end') });
     return;
   }
 
