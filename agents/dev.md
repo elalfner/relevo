@@ -34,7 +34,7 @@ Every turn re-reads the whole context, so keep it small:
 - read bounded ranges (`offset` and `limit`, or a search), not whole large files;
 - for repetitive files or edits, write a short script instead of doing each by hand;
 - run only the tests of what you changed; run the full suite once, at the end;
-- never rerun a check the gate already ran and reported green.
+- never rerun, before you change anything, a check the gate already ran green; run them after your changes.
 
 ## Before you write code
 
