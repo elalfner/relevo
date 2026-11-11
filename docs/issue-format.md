@@ -189,6 +189,15 @@ Before the issue is created, and again before a build spends a model turn, a scr
 
 A rule that the issue does not override still blocks in QA: a lens that finds a change breaking one cites it as `Rule: <file>:<line> "<its words>"`, and the build fails even when the finding comes from the `interface` lens on the last attempt.
 
+### 11. Protected paths and unconfirmed names (warned, nothing to write)
+
+While you write the issue, a script warns about two things and never fails the check: a path that an unattended run does not change (the rules file, a workflow, `relevo.yml`, a skill folder, or a dependency manifest that no `Allow-paths:` line covers) that a line asks to change or, for the hard ones, only names; and an assumption under `## Assumptions` about something outside the repository (a permission, endpoint, field or claim, written in backticks) that no file of the repository holds. The lines of `Out of scope`, `Code pointers`, `Design reference`, `External inputs`, fenced code and lines that say "do not change" are not read.
+
+- For a protected path: a person makes that edit and the issue leaves it out, or the task is rewritten so that nothing needs it; for a dependency manifest, also list it in `Allow-paths:`. A hard path cannot be listed there, and the check says why. If the build gets that far, the specification check and the commit guard still stop the change, and the comment names the policy ("an unattended run cannot edit this file").
+- For an unconfirmed name: confirm it and write it in `Data contract`, `Decisions` or `Constraints`; or keep it as a `manual` input in `External inputs`, so the build goes on and the hand-off lists it under "Assumed, not confirmed"; or write it under `## Open questions`, so the build waits until a person answers.
+
+The hand-off also lists, under "Shared code touched", the files of the build that more than one file imports or that live in a shared folder (`components/`, `shared/`, `common/`...). It is information for the reviewer; nothing is blocked.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.

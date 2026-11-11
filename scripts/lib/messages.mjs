@@ -63,11 +63,13 @@ const CATALOG = {
       '@{{assignee}} #{{issue}} "{{title}}" is built ✅',
       '',
       'What happened: {{tasks_done}} of {{tasks_total}} tasks done, QA passed.',
+      'Assumed, not confirmed: {{assumed}}',
       'Branch: {{branch}}',
       'Started ahead of the queue (urgent): you now have {{built_waiting}} built issues waiting for your review.',
       'Built from the issue text: {{issue_hash_short}}',
       'What to test: {{scenarios}} scenarios (checklist below)',
       'Riskiest area, check it first: {{risk}}',
+      'Shared code touched: {{shared_code}}',
       'Inputs to confirm before you test: {{inputs_to_confirm}}',
       'Your next step: {{command}}',
       'Expected by: {{due}}',
@@ -242,11 +244,13 @@ const CATALOG = {
       '@{{assignee}} #{{issue}} "{{title}}" está construida ✅',
       '',
       'Qué pasó: {{tasks_done}} de {{tasks_total}} tareas hechas, QA aprobado.',
+      'Supuesto, sin confirmar: {{assumed}}',
       'Rama: {{branch}}',
       'Empezó antes que la cola (urgente): ahora tienes {{built_waiting}} issues construidos esperando tu revisión.',
       'Construida con el texto del issue: {{issue_hash_short}}',
       'Qué probar: {{scenarios}} escenarios (checklist abajo)',
       'Zona más riesgosa, revísala primero: {{risk}}',
+      'Código compartido tocado: {{shared_code}}',
       'Insumos que debes confirmar antes de probar: {{inputs_to_confirm}}',
       'Tu siguiente paso: {{command}}',
       'Esperada para: {{due}}',
@@ -434,6 +438,13 @@ function qaFailedReason(values) {
   return state === 'unsafe' || state === 'not_pushed' ? 'rebuild' : 'fix';
 }
 
+// The failures that the commit guard ends, not QA: the comment must not say that QA rejected the work. Only the protected path
+// is covered (issue #119); another refusal of the guard is one more entry here.
+const POLICY_STOPS = {
+  'protected path in the diff': { next: 'protected', en: 'an unattended run cannot edit a protected path, so the commit was refused and nothing was pushed; QA did not reject the work', es: 'una corrida sin supervisión no puede editar una ruta protegida, así que se rechazó el commit y no se subió nada; QA no rechazó el trabajo' },
+};
+const policyStop = (values) => POLICY_STOPS[values.reason] ?? null;
+
 function present(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
@@ -517,14 +528,14 @@ export function renderMessage(kind, data = {}, language = 'en') {
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {
-    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? classReason(values) ?? qaFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? classReason(values) ?? policyStop(values)?.next ?? qaFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
     const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
     if (!present(values.command) && step.command) values.command = step.command;
     if (kind === 'toolchain_missing' || kind === 'installed_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
     if (kind === 'qa_failed') {
       // For kept work the next step says what the command does and the other way forward; the others are the bare command.
-      const kept = ['kept', 'input', 'spec', 'policy'].includes(step.reason);
+      const kept = ['kept', 'input', 'spec', 'policy', 'protected'].includes(step.reason);
       values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}${kept ? ` (${step.hint})` : ''}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
     }
   }
@@ -564,6 +575,8 @@ export function renderMessage(kind, data = {}, language = 'en') {
     // When no finding could be corrected by the developer agent the retries were never run, so the line says that.
     values.happened = stoppedAtLimit
       ? (es ? `La ejecución se detuvo en un límite antes de terminar${values.reason_suffix}.` : `The run stopped at a limit before it finished${values.reason_suffix}.`)
+      : policyStop(values)
+      ? `${es ? 'La ejecución se detuvo' : 'The run stopped'}${values.reason_suffix}: ${policyStop(values)[es ? 'es' : 'en']}.`
       : values.retries_skipped === true
       ? (es ? 'QA la rechazó y ningún hallazgo lo puede corregir el agente de desarrollo, así que no se hicieron reintentos.' : 'QA rejected it and no finding can be corrected by the developer agent, so there were no retries.')
       : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`);

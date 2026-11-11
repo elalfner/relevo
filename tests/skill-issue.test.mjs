@@ -305,3 +305,18 @@ test('Scenario: the check of a draft and of an update read the project rules, an
   assert.match(body, /Overrides: <file>:<line>/);
   assert.match(body, /only a warning/);
 });
+
+test('Scenario: A task edits the rules file - the skill shows the warning and asks how to proceed, with the two ways out', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  const update = readFileSync(new URL('../skills/issue/references/update.md', import.meta.url), 'utf8');
+  assert.match(body, /\*\*Protected paths and unconfirmed names \(warnings\)\.\*\*/);
+  assert.match(body, /a person makes that edit and the issue leaves it out[^\n]*or the task is rewritten so that nothing needs it/);
+  assert.match(body, /a warning never fails the check/);
+  assert.ok(body.indexOf('Protected paths and unconfirmed names') < body.indexOf('## 5. Approval'));
+  assert.match(update, /warnings about protected paths and unconfirmed names and ask how to proceed/);
+});
+
+test('Scenario: A permission name nobody confirmed - the skill offers to confirm, keep as manual or ask', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  assert.match(body, /the person confirms it[^\n]*`manual` input to `External inputs`[^\n]*`Open questions`, so the build waits/);
+});
