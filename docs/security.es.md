@@ -79,7 +79,7 @@ QA es un script (la puerta) y cuatro revisores (`spec`, `security`, `code`, `int
 
 Dos cosas que la tabla no dice:
 
-- **El recibo no es un límite de seguridad.** Protege contra una omisión o un error: un revisor no puede empezar sobre código cuyas comprobaciones no se ejecutaron. No defiende contra un agente que escribe un archivo falso, porque vive en la carpeta de trabajo. Las barreras del commit (las rutas protegidas, los archivos restringidos, el escaneo de lo que se prepara) siguen siendo las que obligan, y corren diga lo que diga cualquier recibo.
+- **El recibo no es un límite de seguridad.** Protege contra una omisión o un error: un revisor no puede empezar sobre código cuyas comprobaciones no se ejecutaron. No defiende contra un agente que escribe un archivo falso, porque vive en la carpeta de trabajo. Las barreras del commit (las rutas protegidas, los archivos restringidos, el escaneo de lo que se prepara) siguen siendo las que obligan, y corren diga lo que diga cualquier recibo. Lo mismo vale para el registro de resultados que la puerta reutiliza (`.relevo-receipt/checks.json`, escrito solo después de ejecutar un comando, sin opción para registrar un resultado sin ejecutarlo): un agente que pueda escribir archivos podría falsificarlo, y el CI de la pull request vuelve a ejecutar las comprobaciones.
 - **Ningún ajuste apaga a un revisor.** No hay clave para desactivar `spec`, `security` o `code`, ni para bajar lo que bloquean. Las excepciones de un proyecto van en su propio archivo de reglas, que lee el revisor `spec`.
 
 ## Falsos positivos revisados del escaneo de credenciales

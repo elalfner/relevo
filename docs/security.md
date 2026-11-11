@@ -79,7 +79,7 @@ QA is a script (the gate) and four reviewers (`spec`, `security`, `code`, `inter
 
 Two things the table does not say:
 
-- **The receipt is not a security boundary.** It guards against an omission or a mistake: a reviewer cannot start on code whose checks did not run. It does not defend against an agent that writes a false file, because it lives in the working folder. The guards of the commit (the protected paths, the restricted files, the scan of what is staged) remain the enforcement, and they run whatever any receipt says.
+- **The receipt is not a security boundary.** It guards against an omission or a mistake: a reviewer cannot start on code whose checks did not run. It does not defend against an agent that writes a false file, because it lives in the working folder. The guards of the commit (the protected paths, the restricted files, the scan of what is staged) remain the enforcement, and they run whatever any receipt says. The same holds for the record of results that the gate reuses (`.relevo-receipt/checks.json`, written only after a command ran, with no option to record a result without running it): an agent that can write files could forge it, and the CI of the pull request runs the checks again.
 - **A setting never turns a reviewer off.** There is no key to disable `spec`, `security` or `code`, or to lower what they block. A project's exceptions go in its own rules file, which the `spec` reviewer reads.
 
 ## Reviewed false positives of the credential scan

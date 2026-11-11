@@ -537,3 +537,30 @@ test('Scenario: a hard rule blocks - qa-run.md passes the rules files, explains 
   assert.match(ref, /## 3\. Launch the active lenses together, in the foreground/, 'the parallel launch stays');
   assert.match(ref, /## The model of a retry/, 'the retry model stays');
 });
+
+test('Scenario: long test runs - the gate runs through long-run.mjs, every lens reads the receipt, and the developer runs the suite as a check (#124)', () => {
+  assert.match(ref, /long-run\.mjs start --id gate -- node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/validation-gate\.mjs --base origin\/<base>/);
+  assert.match(ref, /long-run\.mjs wait --id gate/);
+  assert.match(ref, /While it says `running`, run the same `wait` again/);
+  assert.match(ref, /`interrupted` means the job was killed/);
+  assert.match(ref, /Give every lens the receipt \(`\.relevo-receipt\/receipt\.json`\).*\*\*no lens runs the analysis or the tests\*\*/);
+  assert.match(ref, /reuse never hides a red result/);
+  assert.match(ref, /start --id test --check test --base origin\/<base> --platform <platform>/);
+  // The parallel lenses and the model of a retry keep their sections.
+  assert.match(ref, /Launch the active lenses together, in the foreground/);
+  assert.match(ref, /## The model of a retry/);
+  const dev = readFileSync(root('agents/dev.md'), 'utf8');
+  assert.match(dev, /long-run\.mjs/);
+  assert.match(dev, /never `&` or `sleep`/);
+  assert.match(readFileSync(root('skills/go/SKILL.md'), 'utf8'), /resolved path of `\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/long-run\.mjs` written out in full/);
+});
+
+test('Scenario: no argument of the scripts marks a check green without a run (C2, #124)', () => {
+  const gate = readFileSync(root('scripts/validation-gate.mjs'), 'utf8');
+  const longRun = readFileSync(root('scripts/long-run.mjs'), 'utf8');
+  // The only callers of recordResult are the gate after spawnSync and the supervisor after its command exited.
+  assert.equal((gate.match(/recordResult\(/g) ?? []).length, 1);
+  assert.match(gate, /spawnSync[\s\S]*recordResult\(/);
+  assert.equal((longRun.match(/recordResult\(/g) ?? []).length, 1);
+  assert.doesNotMatch(longRun, /'record'|"record"/);
+});

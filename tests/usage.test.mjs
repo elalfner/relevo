@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { limitsExceeded, parseUsageMarker, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
+import { checksFromReceipt, limitsExceeded, parseUsageMarker, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
 const write = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
@@ -317,4 +317,30 @@ test('Scenario: The log does not say - nothing is named, and the command never f
   assert.equal(none.status, 0, 'exit 0 so that $(...) under bash -e does not stop the step');
   assert.equal(none.stdout.trim(), '');
   assert.equal(cli([], undefined).status, 0, 'no file at all');
+});
+
+const RECEIPT = JSON.stringify({ status: 'green', commands: [{ name: 'analyze', duration_ms: 12400, exit_code: 0 }, { name: 'test', duration_ms: 0, original_duration_ms: 454000, reused: true, exit_code: 0 }] });
+
+test('Scenario: A run ends - the comment shows the seconds per check, with reused where the gate did not run it', () => {
+  const checks = checksFromReceipt(RECEIPT);
+  assert.deepEqual(checks, [{ name: 'analyze', seconds: 12 }, { name: 'test', seconds: 0, reused: true, original: 454 }]);
+  assert.match(usageLine(readUsage(ARRAY), { checks }), / Checks of the gate: analyze 12s, test reused \(454s when it ran\)\./);
+  assert.deepEqual(JSON.parse(usageMarker(readUsage(ARRAY), { checks }).match(/\{.*\}/)[0]).checks, checks);
+});
+
+test('Scenario: No receipt - the comment is as it was, and a damaged receipt adds nothing', () => {
+  assert.equal(usageLine(readUsage(ARRAY), { checks: checksFromReceipt(null) }), 'This run used 37 turns, about $1.82, 123,000 tokens.');
+  assert.equal(checksFromReceipt('not json'), null);
+  assert.equal(checksFromReceipt(JSON.stringify({ commands: [{ name: 'Bad Name!', duration_ms: 5 }, { name: 'x', duration_ms: 'a' }] })), null);
+  assert.equal(JSON.parse(usageMarker(readUsage(ARRAY), {}).match(/\{.*\}/)[0]).checks, undefined);
+});
+
+test('The command reads the receipt of the working folder, or the one it is given', () => {
+  const log = write('exec-checks.json', ARRAY);
+  const receipt = write('receipt-checks.json', RECEIPT);
+  const empty = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
+  const run = (cwd, ...extra) => spawnSync('node', [CLI('run-usage.mjs'), '--file', log, ...extra], { cwd, encoding: 'utf8' });
+  assert.match(run(empty, '--receipt', receipt).stdout, /Checks of the gate: analyze 12s/);
+  assert.doesNotMatch(run(empty).stdout, /Checks of the gate/);
+  assert.equal(run(empty, '--receipt', join(empty, 'missing.json')).status, 0);
 });

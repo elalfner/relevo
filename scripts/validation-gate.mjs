@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Runs the checks that need no judgement, once, and writes a receipt tied to the exact diff. Usage:
-//   node scripts/validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c]
+//   node scripts/validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c] [--fresh]
 // --base is the base branch as `go` has it (origin/dev). --files are the files the developer agent reported: they are made
 // visible to the diff first (`git add --intent-to-add`), as intent-to-add.mjs does. The gate then hashes the diff against
 // the base without the generated files of the profile, runs `analyze` and `test` of the profile from the folder of the
@@ -8,58 +8,55 @@
 // ignores. No agent runs this.
 //   exit 0: green   exit 1: red   exit 2: could not run (a tool is missing)   exit 3: bad arguments
 
-import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { loadConfig } from './lib/config.mjs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { intentToAdd } from './lib/intent-to-add.mjs';
-import { resolveProfile } from './lib/stack-profile.mjs';
+import { checkKey, currentDiff, ensureExcluded, gitIn, readStore, recordResult, resolveContext, reusable } from './lib/check-store.mjs';
 import { checkRestricted, formatRestricted, restrictedInDiff, restrictedListFromText } from './lib/restricted-paths.mjs';
 import { formatFindings } from './lib/scan.mjs';
 import { EXCEPTIONS_FILE, formatExceptionReport, scanWithExceptions } from './lib/scan-exceptions.mjs';
-import { EXIT, RECEIPT_DIR, RECEIPT_FILE, buildReceipt, diffHash, excludeSpecs, overallStatus, toolOf } from './lib/validation-gate.mjs';
+import { EXIT, RECEIPT_DIR, RECEIPT_FILE, buildReceipt, couldNotStart, overallStatus, toolOf } from './lib/validation-gate.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const argv = process.argv.slice(2);
+const has = (n) => argv.includes(`--${n}`);
 const opt = (n) => { const i = argv.indexOf(`--${n}`); return i === -1 ? undefined : argv[i + 1]; };
 const bad = (m) => { console.error(m); process.exit(EXIT.usage); };
 
 const base = opt('base');
-if (!base) bad('usage: validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c]');
-const configPath = resolve(opt('config') ?? 'relevo.yml');
-if (!existsSync(configPath)) bad(`relevo.yml not found at ${configPath}`);
-const loaded = loadConfig(readFileSync(configPath, 'utf8'));
-if (!loaded.ok) bad(`relevo.yml is invalid:\n${loaded.errors.map((e) => `  ${e.message}`).join('\n')}`);
-const names = Object.keys(loaded.config.platforms);
-const name = opt('platform') ?? (names.length === 1 ? names[0] : undefined);
-if (!name || !loaded.config.platforms[name]) bad(`give --platform <${names.join('|')}>`);
-const platform = loaded.config.platforms[name];
+if (!base) bad('usage: validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c] [--fresh]');
+const ctx = resolveContext({ configPath: opt('config'), platformName: opt('platform') });
+if (!ctx.ok) bad(ctx.error);
+const { platform, profile, root, configPath } = ctx;
 
-const root = dirname(configPath);
-const read = (p) => { const f = p.startsWith('/') ? p : resolve(root, p); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
-const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const resolved = resolveProfile({ platform, pluginRoot, read });
-if (!resolved.ok) bad(resolved.errors.join('\n'));
-const { profile } = resolved;
-
-const git = (args) => execFileSync('git', args, { encoding: 'utf8', cwd: root, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
+const git = (args) => gitIn(root, args);
 const list = restrictedListFromText(readFileSync(configPath, 'utf8'));
 
 try {
   const files = (opt('files') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   if (files.length) intentToAdd({ git: (a) => git(a), exists: (p) => existsSync(join(root, p)), paths: files, list });
   const baseCommit = git(['rev-parse', base]).trim();
-  const diff = git(['diff', base, '--', '.', ...excludeSpecs(profile.generated)]);
-  const hash = diffHash(diff);
+  const { diff, hash } = currentDiff({ root, base, profile });
+  const store = has('fresh') ? {} : readStore(root);
 
   const commands = [];
   for (const key of ['analyze', 'test']) {
     const command = profile.commands[key];
     if (!command) continue;
+    const id = checkKey({ hash, command, path: platform.path });
+    // The same diff, command and folder passed before and never failed: do not run it again, and say so in the receipt.
+    if (reusable(store, id)) {
+      const last = store[id].last;
+      commands.push({ name: key, command, status: 0, output: last.output_tail, duration_ms: 0, reused: true, original_duration_ms: last.duration_ms });
+      continue;
+    }
     const started = Date.now();
     const r = spawnSync('sh', ['-c', command], { cwd: resolve(root, platform.path), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-    commands.push({ name: key, command, status: r.status ?? (r.error ? null : 1), output: `${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? `\n${r.error.message}` : ''}`, error: r.error, duration_ms: Date.now() - started });
+    const done = { name: key, command, status: r.status ?? (r.error ? null : 1), output: `${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? `\n${r.error.message}` : ''}`, error: r.error, duration_ms: Date.now() - started };
+    commands.push(done);
+    // A command that could not start says nothing about the code, so it is not recorded.
+    if (!couldNotStart(done)) recordResult(root, { key: id, name: key, command, exit_code: done.status, duration_ms: done.duration_ms, output: done.output });
   }
 
   const scans = [];
@@ -80,11 +77,7 @@ try {
   const dir = join(root, RECEIPT_DIR);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, RECEIPT_FILE), `${JSON.stringify(receipt, null, 2)}\n`);
-  try {
-    const exclude = resolve(root, git(['rev-parse', '--git-path', 'info/exclude']).trim());
-    const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-    if (!current.split('\n').includes(`${RECEIPT_DIR}/`)) { mkdirSync(dirname(exclude), { recursive: true }); appendFileSync(exclude, `${current && !current.endsWith('\n') ? '\n' : ''}${RECEIPT_DIR}/\n`); }
-  } catch { /* not a git repository: nothing to exclude */ }
+  ensureExcluded(root, RECEIPT_DIR);
 
   console.log(status);
   if (status === 'could-not-run') console.log(`automated validation could not run: ${commands.filter((c) => c.status === 126 || c.status === 127 || c.error || /not found/i.test(c.output)).map((c) => toolOf(c.command)).join(', ')} is missing`);

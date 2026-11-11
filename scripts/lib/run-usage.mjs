@@ -205,8 +205,25 @@ export function planFromJson(raw) {
   return { roles, notes, escalations };
 }
 
+/**
+ * The checks of the validation gate with their seconds, from the text of its receipt: [{ name, seconds, reused?, original? }].
+ * A reused check ran in no time in this gate, so it says how long it took when it ran. Null when the receipt is missing,
+ * is not JSON or has no usable command.
+ */
+export function checksFromReceipt(raw) {
+  let data = raw;
+  if (typeof raw === 'string') {
+    try { data = JSON.parse(raw); } catch { return null; }
+  }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.commands)) return null;
+  const checks = data.commands
+    .filter((c) => c && typeof c.name === 'string' && /^[a-z][a-z-]{0,29}$/.test(c.name) && num(c.duration_ms) !== null && c.duration_ms >= 0)
+    .map((c) => ({ name: c.name, seconds: Math.round(c.duration_ms / 1000), ...(c.reused === true ? { reused: true, original: num(c.original_duration_ms) !== null ? Math.round(c.original_duration_ms / 1000) : 0 } : {}) }));
+  return checks.length ? checks : null;
+}
+
 /** One line for a comment, or an empty string when there is nothing to say. */
-export function usageLine(usage, { subscription = false, limits = null, plan = null } = {}) {
+export function usageLine(usage, { subscription = false, limits = null, plan = null, checks = null } = {}) {
   if (!usage) return '';
   const parts = [];
   if (usage.turns !== null) parts.push(`${usage.turns} turn${usage.turns === 1 ? '' : 's'}${usage.subagentTurns ? ` (${usage.subagentTurns} by subagents)` : ''}`);
@@ -221,7 +238,8 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   const role = (r) => `${r.role === 'dev' ? 'developer' : `${r.role} lens`} ${r.model}${r.effort ? `, ${r.effort}` : ''} (${r.source}${r.why ? `: ${r.why}` : ''})`;
   const byPlan = plan?.roles?.length ? ` Models chosen: ${plan.roles.map(role).join('; ')}.${plan.notes?.length ? ` Notes on the plan: ${plan.notes.join('; ')}.` : ''}` : '';
   const raised = plan?.escalations?.length ? ` The developer went up on a retry: ${plan.escalations.map((e) => `${e.from} to ${e.to} on attempt ${e.attempt} (${e.reason === 'gate-red' ? 'the gate was red' : 'QA rejected'})`).join('; ')}.` : '';
-  return `This run used ${parts.join(', ')}.${warn}${byAgent}${byModel}${byPlan}${raised}`;
+  const byCheck = checks?.length ? ` Checks of the gate: ${checks.map((c) => (c.reused ? `${c.name} reused (${c.original}s when it ran)` : `${c.name} ${c.seconds}s`)).join(', ')}.` : '';
+  return `This run used ${parts.join(', ')}.${warn}${byAgent}${byModel}${byCheck}${byPlan}${raised}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without
@@ -232,7 +250,7 @@ const MARKER_RE = /<!-- relevo:usage (\{[^\n]*?\}) -->/g;
 const FIGURES = ['turns', 'cost', 'tokens'];
 
 /** The marker for a comment, from the same result as the sentence, or an empty string when there is nothing to say. */
-export function usageMarker(usage, { subscription = false, phases = null, lenses = null, outcomeClass = null, plan = null } = {}) {
+export function usageMarker(usage, { subscription = false, phases = null, lenses = null, outcomeClass = null, plan = null, checks = null } = {}) {
   if (!usage) return '';
   const figures = {};
   FIGURES.forEach((k) => {
@@ -249,6 +267,8 @@ export function usageMarker(usage, { subscription = false, phases = null, lenses
   // The seconds of each QA lens, apart from the phases: the digest knows only the five phases.
   if (Array.isArray(lenses) && lenses.length) figures.lenses = lenses;
   // The model and the effort each role was launched with, and where the choice came from; the digest ignores this key.
+  // The seconds of each check of the gate, and whether it was reused; the digest ignores this key.
+  if (Array.isArray(checks) && checks.length) figures.checks = checks;
   if (plan?.roles?.length) figures.plan = plan.roles;
   if (plan?.escalations?.length) figures.escalated = plan.escalations;
   if (OUTCOME_CLASSES.includes(outcomeClass)) figures.class = outcomeClass;

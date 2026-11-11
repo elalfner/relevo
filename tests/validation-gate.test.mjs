@@ -203,3 +203,74 @@ test('Scenario: A list that is only in the working tree does not excuse the gate
   const r = gate(dir, '--files', 'form.js');
   assert.equal(r.status, 1, r.stdout + r.stderr);
 });
+
+// A test command that appends a line to a counter file each time it really runs, so the tests can tell a run from a reuse.
+const counting = (extra = '') => `echo run >> ${'$'}PWD/runs.txt${extra}`;
+const runs = (dir) => (existsSync(join(dir, 'runs.txt')) ? readFileSync(join(dir, 'runs.txt'), 'utf8').split('\n').filter(Boolean).length : 0);
+
+test('Scenario: The same diff and command - the second gate reuses the check and says reused', () => {
+  const dir = repo({ test: counting() });
+  writeFileSync(join(dir, 'a.txt'), 'changed\n');
+  assert.equal(gate(dir).status, 0);
+  assert.equal(runs(dir), 1);
+  const second = gate(dir);
+  assert.equal(second.status, 0);
+  assert.equal(runs(dir), 1, 'the suite did not run again');
+  const t = receiptOf(dir).commands.find((c) => c.name === 'test');
+  assert.equal(t.reused, true);
+  assert.equal(t.duration_ms, 0);
+  assert.equal(typeof t.original_duration_ms, 'number');
+  assert.equal(receiptOf(dir).status, 'green');
+});
+
+test('Scenario: The tree changed - the gate runs the check', () => {
+  const dir = repo({ test: counting() });
+  writeFileSync(join(dir, 'a.txt'), 'changed\n');
+  gate(dir);
+  writeFileSync(join(dir, 'a.txt'), 'changed again\n');
+  gate(dir);
+  assert.equal(runs(dir), 2);
+  assert.equal(receiptOf(dir).commands.find((c) => c.name === 'test').reused, undefined);
+});
+
+test('Scenario: A red result - it is never reused', () => {
+  const dir = repo({ test: `${counting()}; exit 1` });
+  writeFileSync(join(dir, 'a.txt'), 'changed\n');
+  assert.equal(gate(dir).status, 1);
+  assert.equal(gate(dir).status, 1);
+  assert.equal(runs(dir), 2);
+});
+
+test('Scenario: A flaky test - passed once and failed once, it is run every time', () => {
+  // The first run passes, the second fails (the counter decides), the third and later must run again too.
+  const dir = repo({ test: `echo run >> $PWD/runs.txt; [ "$(wc -l < $PWD/runs.txt)" -ne 2 ]` });
+  writeFileSync(join(dir, 'a.txt'), 'changed\n');
+  assert.equal(gate(dir).status, 0);
+  assert.equal(gate(dir, '--fresh').status, 1, 'forced second run fails');
+  assert.equal(gate(dir).status, 0, 'third run passes by running, not by reuse');
+  assert.equal(runs(dir), 3);
+  assert.equal(gate(dir).status, 0);
+  assert.equal(runs(dir), 4, 'a key that ever failed is never reused');
+});
+
+test('Scenario: Reuse never hides a failure of another check - a failing scan stays red', () => {
+  const dir = repo({ test: counting() });
+  writeFileSync(join(dir, 'a.txt'), 'changed\n// NOCOMMIT\n');
+  assert.equal(gate(dir).status, 1);
+  assert.equal(gate(dir).status, 1);
+  assert.equal(receiptOf(dir).commands.find((c) => c.name === 'test').reused, true);
+  assert.equal(receiptOf(dir).status, 'red');
+});
+
+test('Scenario: No argument records a green without a run - an unknown flag is ignored and a hand-written green record of another diff is not used', () => {
+  const dir = repo({ test: counting() });
+  writeFileSync(join(dir, 'a.txt'), 'changed\n');
+  const r = gate(dir, '--mark-green', 'test', '--reuse');
+  assert.equal(r.status, 0);
+  assert.equal(runs(dir), 1);
+  // A record written for another diff is a different key: it is not reused.
+  writeFileSync(join(dir, RECEIPT_DIR, 'checks.json'), JSON.stringify({ deadbeef: { passes: 1, failures: 0, last: { exit_code: 0 } } }));
+  writeFileSync(join(dir, 'a.txt'), 'changed more\n');
+  gate(dir);
+  assert.equal(runs(dir), 2);
+});
