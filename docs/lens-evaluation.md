@@ -34,7 +34,7 @@ The cases: a state update after an `await` without a check (Flutter), an unescap
 
 The total was 2.11 USD and 295.4 s. This run includes `security/vue/hard-coded-secret`, which the first runs did not cover: it found the defect and did not flag the good variant. Every lens met the threshold on all 11 cases.
 
-The lenses run one at a time, so a pass of the four on one small change takes about the sum of one run of each, around 50 s here, against 10 to 16 s for a single lens. These are small seeded changes; a real change will take longer. There is no measurement of the single QA agent that preceded the lenses, so the table does not say how much slower the four lenses are than it.
+These runs launched the lenses one at a time, so a pass of the four on one small change took about the sum of one run of each, around 50 s here (`go` now launches them together, so it takes about the longest one), against 10 to 16 s for a single lens. These are small seeded changes; a real change will take longer. There is no measurement of the single QA agent that preceded the lenses, so the table does not say how much slower the four lenses are than it.
 
 ## How the result was reached
 

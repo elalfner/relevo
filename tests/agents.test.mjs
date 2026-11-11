@@ -203,7 +203,8 @@ test('Scenario: Decision broken / Section reworded - QA applies the decisions an
   const qa = qaText();
   assert.match(qa, /### 6\. Decisions and constraints from the issue/);
   assert.match(qa, /headings that start `From the issue:`/);
-  assert.match(qa, /issue-sections\.mjs --body-file <issue_file> --copy/);
+  assert.match(qa, /issue-sections\.mjs path you were given> --body-file <issue_file> --copy/);
+  assert.doesNotMatch(qa, /<plugin>/, 'no placeholder the agent would have to search for');
   assert.match(qa, /must be contained, unchanged, in the issue/);
   assert.match(qa, /citing its id, the file and line/);
   assert.match(qa, /A decision under `Discarded` is not a rule/);
