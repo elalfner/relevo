@@ -354,3 +354,49 @@ test('Scenario: gather reads a qa-failed issue only for a retry, only the retrie
   assert.equal(decision.action, 'start');
   assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:qa-failed'] });
 });
+
+// ---------- The minutes of the recent builds, for the queue comment (issue #127)
+
+import { readRecentBuilds } from '../scripts/lib/github.mjs';
+
+const at = (minute) => `2026-10-14T10:${String(minute).padStart(2, '0')}:00Z`;
+function runsGh({ runs, jobs, fail = null }) {
+  const calls = [];
+  const gh = (args) => {
+    calls.push(args[args.length - 1]);
+    if (fail) throw new Error(fail);
+    const path = args[args.length - 1];
+    if (path.includes('/workflows/relevo-go.yml/runs')) return JSON.stringify({ workflow_runs: runs.map((id) => ({ id })) });
+    const id = Number(path.match(/runs\/(\d+)\/jobs/)[1]);
+    return JSON.stringify({ jobs: jobs[id] ?? [] });
+  };
+  gh.calls = calls;
+  return gh;
+}
+const job = (name, start, end, conclusion = 'success') => ({ name, conclusion, started_at: start === null ? null : at(start), completed_at: end === null ? null : at(end) });
+
+test('readRecentBuilds: the minutes of the build job of the last completed runs, and nothing for a run that only decided', () => {
+  const gh = runsGh({ runs: [1, 2, 3, 4, 5], jobs: {
+    1: [job('decide', 0, 1), job('build', 1, 31)],
+    2: [job('decide', 0, 1), job('build', 1, 21, 'failure')],
+    3: [job('decide', 0, 1), job('build', null, null, 'skipped')],
+    4: [job('decide', 0, 1)],
+    5: [job('build', 2, 3, 'cancelled'), job('build', 1, 6)],
+  } });
+  assert.deepEqual(readRecentBuilds({ gh, repo: REPO }), [30, 20, 5]);
+  assert.match(gh.calls[0], /repos\/acme\/app\/actions\/workflows\/relevo-go\.yml\/runs\?status=completed&per_page=10$/);
+});
+
+test('readRecentBuilds: no runs is an empty list, an unreadable repository (no actions: read) is null', () => {
+  assert.deepEqual(readRecentBuilds({ gh: runsGh({ runs: [], jobs: {} }), repo: REPO }), []);
+  assert.equal(readRecentBuilds({ gh: runsGh({ runs: [1], jobs: {}, fail: 'HTTP 403: Resource not accessible by integration' }), repo: REPO }), null);
+  assert.equal(readRecentBuilds({ gh: () => 'not json', repo: REPO }), null);
+});
+
+test('gather hands the plan a reader of the recent builds that makes no request until it is called', () => {
+  const world = { issuesByLabel: {}, timeline: {}, permissions: {}, issueDetails: {} };
+  const gh = fakeGh(world);
+  const state = gather({ gh, repo: REPO, config });
+  assert.equal(typeof state.recentBuilds, 'function');
+  assert.ok(!gh.calls.some((c) => c.join(' ').includes('/actions/')), 'nothing is read from the workflow runs while gathering');
+});

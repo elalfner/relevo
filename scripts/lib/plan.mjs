@@ -53,7 +53,7 @@ export function withoutCredential(decisions, issues = []) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null }) {
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);
   const open = issues.filter((i) => i.state === 'open');
@@ -74,10 +74,37 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   let freeSlots = Math.max(0, config.limits.concurrent_agents - runningSet.size);
 
   const builtBy = new Map();
+  const builtIssues = new Map();
   open.filter((i) => has(i, 'built')).forEach((i) => {
     const owner = i.assignees[0];
-    if (owner) builtBy.set(owner, (builtBy.get(owner) ?? 0) + 1);
+    if (owner) {
+      builtBy.set(owner, (builtBy.get(owner) ?? 0) + 1);
+      builtIssues.set(owner, [...(builtIssues.get(owner) ?? []), i.number]);
+    }
   });
+
+  // What a person who waits for a free agent is told: how many runs are active and which, how many issues wait before this one,
+  // and how long the recent builds took. Only what was read: the durations come from the caller (null when they could not be read;
+  // fewer than three are too few to call typical) and nothing is estimated.
+  const MIN_BUILDS = 3;
+  // `recentBuilds` is a list of minutes or a function that reads it (called at most once, and only when an issue is queued for an agent).
+  let typicalOnce;
+  const typicalBuild = () => {
+    if (typicalOnce !== undefined) return typicalOnce;
+    let list = null;
+    try {
+      list = typeof recentBuilds === 'function' ? recentBuilds() : recentBuilds;
+    } catch {
+      list = null;
+    }
+    const sorted = Array.isArray(list) ? list.filter((m) => Number.isFinite(m) && m >= 0).sort((a, b) => a - b) : [];
+    const mid = sorted.length / 2;
+    typicalOnce = sorted.length >= MIN_BUILDS
+      ? { minutes: Math.round(sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2), samples: sorted.length }
+      : null;
+    return typicalOnce;
+  };
+  let waitingForAgent = 0;
 
   // Valid urgent issues are considered first, so they take the free agent slots before the others; inside each group
   // the order is the time `ready` was applied.
@@ -229,17 +256,32 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         labels: moveTo(issue, 'queued'),
         comment: has(issue, 'queued')
           ? null
-          : { kind: 'queued_capacity', data: { issue: issue.number, title: issue.title, assignee, built, limit: config.limits.built_unreviewed_per_person } },
+          : { kind: 'queued_capacity', data: { issue: issue.number, title: issue.title, assignee, built, limit: config.limits.built_unreviewed_per_person, built_issues: builtIssues.get(assignee).map((n) => `#${n}`).join(', ') } },
       });
       return;
     }
 
     // Global limit on concurrent agents.
     if (freeSlots <= 0) {
+      const active = [...runningSet].sort((a, b) => a - b);
+      const typical = has(issue, 'queued') ? null : typicalBuild();
       decision(issue, 'queue', 'the limit of concurrent agents is reached', {
         labels: moveTo(issue, 'queued'),
-        comment: has(issue, 'queued') ? null : { kind: 'queued_agents', data: { issue: issue.number, title: issue.title } },
+        comment: has(issue, 'queued')
+          ? null
+          : {
+              kind: 'queued_agents',
+              data: {
+                issue: issue.number,
+                title: issue.title,
+                active: active.length,
+                ...(active.length > 0 ? { active_issues: active.map((n) => `#${n}`).join(', ') } : {}),
+                ahead: waitingForAgent,
+                ...(typical ? { typical_minutes: typical.minutes, typical_samples: typical.samples } : {}),
+              },
+            },
       });
+      waitingForAgent += 1;
       return;
     }
 

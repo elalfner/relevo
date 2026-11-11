@@ -461,6 +461,18 @@ export function gatherFacts(p) {
     WORKFLOW_FILES.forEach((file) => {
       if (typeof texts[file] === 'string') f.pluginStamps[file] = (/^# relevo-template: (\d+\.\d+\.\d+)\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
     });
+    // The actions the workflows use, active lines only: [{ file, action, ref, version, line }]. `version` is the tag, or the `# vX.Y.Z`
+    // that follows a commit SHA (null when it says none, and then the pin cannot be judged).
+    f.actionPins = [];
+    WORKFLOW_FILES.forEach((file) => {
+      if (typeof texts[file] !== 'string') return;
+      texts[file].split('\n').forEach((text, i) => {
+        const m = /^\s*(?:- )?uses:\s*([\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@([^\s#]+)(?:\s+#\s*(v?\d+(?:\.\d+){0,2}))?/.exec(text);
+        if (!m) return;
+        const version = /^v?\d+(\.\d+){0,2}$/.test(m[2]) ? m[2] : m[3] ?? null;
+        f.actionPins.push({ file, action: m[1], ref: m[2], version, line: i + 1 });
+      });
+    });
     f.hasCi = names.some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-'));
   }
 }
@@ -1504,8 +1516,29 @@ function pluginInstallChecks(f) {
   if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
   if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog (that moves the scripts, not the text)'));
-  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f));
+  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f), ...actionPinChecks(f));
   return r;
+}
+
+/**
+ * The actions of the Relevo templates that ran on Node.js 20, with the last major that did: GitHub is retiring that runtime, and
+ * every run of a workflow that uses one prints a warning. A pin of a release after that is current. A commit SHA is judged by the
+ * `# vX.Y.Z` that follows it; one that says no version is not reported, because nothing here says what it is.
+ */
+export const NODE20_ACTIONS = {
+  'actions/checkout': 4,
+  'actions/setup-node': 4,
+  'actions/create-github-app-token': 2,
+  'supabase/setup-cli': 2,
+};
+
+/** Does any workflow use one of those actions at a release that runs on Node.js 20? Reports only: it never changes a file. */
+function actionPinChecks(f) {
+  if (!Array.isArray(f.actionPins)) return [];
+  const old = f.actionPins.filter((p) => NODE20_ACTIONS[p.action] !== undefined && p.version && Number(p.version.replace(/^v/, '').split('.')[0]) <= NODE20_ACTIONS[p.action]);
+  if (old.length === 0) return f.actionPins.length > 0 ? [pass('automation.action-pins', 'the workflows use no action that runs on Node.js 20')] : [];
+  const list = old.map((p) => `${p.file}:${p.line} ${p.action}@${p.ref}`).join(', ');
+  return [warn('automation.action-pins', `${list} run on Node.js 20, which GitHub is retiring: every run prints a deprecation warning and it will stop working`, 'run /relevo:init: it merges the new templates, which pin current releases by commit, and keeps your own changes; doctor changes nothing, so a pin you chose on purpose stays as it is')];
 }
 
 /** The changelog entries of the versions after `from` up to `to`: one line per heading, with the first sentence of each bullet. */

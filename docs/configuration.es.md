@@ -44,7 +44,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, o `local_only` para datos sensibles | `attach_to_pr` |
 | `digest.issue` | número del issue donde se publica el resumen diario como comentario | ninguno |
-| `language` | idioma de los mensajes de traspaso (`en`, `es`) | `en` |
+| `language` | idioma de todo comentario que publica el bot (`en`, `es`): traspasos, cola, consumo y los comentarios sobre una ejecución que falló o fue cortada | `en` |
 | `design.images` | `true` descarga una imagen pegada en un issue y se la muestra al modelo (una captura puede mostrar datos de clientes); los archivos que ya están en el repositorio no dependen de esto | `false` |
 | `design.system.tokens` | Archivos o carpetas dentro del repositorio con los colores, espacios y estilos de texto (un archivo de tema, un CSS de variables). El paso de interfaz de `think` lee solo estas rutas, o las que confirmes. Cada una debe existir y no ser restringida ni protegida | `[]` |
 | `design.system.components` | Carpetas con los componentes reutilizables que una pantalla nueva debe usar | `[]` |

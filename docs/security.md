@@ -94,6 +94,10 @@ An exception excuses a **credential** finding when the file matches `path` (one 
 
 The list is read from the last commit (`HEAD` for a commit, the base branch for the validation gate), never from the working tree, and `.relevo/` is a protected path, so an unattended run cannot add an exception: a person commits the file, and a pull request shows the change. The commit script and the receipt of the gate say how many exceptions were applied, with their path and reason, and the comment of the run repeats them.
 
+## Pinned actions and caches
+
+The workflows pin the actions they use by full commit, so a tag that moves cannot change what a run executes (`claude-code-action` is the exception and stays on its major version). Caches follow one rule: a tool that the build downloads (Bun, OpenSpec) is restored first and saved by its own step right after the install and **before the agent starts**, under a key that holds the pinned version, and a restored Bun must report the pinned version before the agent uses it. Nothing is saved when the job ends, because the agent has a shell and could have changed the files that a later run would restore; for the same reason every `setup-node` step sets `package-manager-cache: false`, since that action would otherwise cache npm by itself after the agent when the `package.json` of the project names npm. A restored tool is trusted as far as the cache of the repository and that version check go: a different binary that reports the same version would pass. The commented Vue example of the go workflow caches the npm downloads when the job ends; enable it only if you accept that. The light `decide` job has `actions: read`, to read the duration of recent builds; `actions: write` stays with the jobs that start the queue.
+
 ## Restricted files
 
 Some files should be read by no agent and by no script of Relevo: environment files, private keys, credential stores. The list is the base list below plus `restricted_paths` in `relevo.yml`, which only adds (a profile cannot weaken it, and `relevo.yml` cannot take an entry away). It is separate from the protected paths, which are about what a diff may write.

@@ -44,6 +44,8 @@ const REQUIRED = {
   ship_failed: ['issue', 'run'],
   run_progress: ['phase', 'minutes'],
   run_progress_closed: [],
+  run_failed_early: ['issue', 'job_status', 'run'],
+  run_no_outcome: ['situation', 'issue', 'run'],
 };
 
 // The lifecycle state whose next step each message shows (see next-step.mjs, the only place that knows the commands).
@@ -57,7 +59,7 @@ const STATE_OF = {
   approved: 'pr-open',
 };
 
-const CATALOG = {
+export const CATALOG = {
   en: {
     built: [
       '@{{assignee}} #{{issue}} "{{title}}" is built ✅',
@@ -178,11 +180,16 @@ const CATALOG = {
       '#{{issue}} "{{title}}" is queued',
       '',
       '{{assignee}} already has {{built}} built issues waiting for review (the limit is {{limit}}). It starts automatically when one of them is reviewed.',
+      'Built issues waiting for review: {{built_issues}}',
     ],
     queued_agents: [
       '#{{issue}} "{{title}}" is queued',
       '',
       'The limit of concurrent agents is reached. It starts automatically when a run finishes.',
+      'Running now: {{active_text}}',
+      'Ahead of it in the queue: {{ahead_text}}',
+      'Recent builds: {{typical_text}}',
+      'These figures are read when the issue is queued; they are not updated while it waits.',
     ],
     fix_done: [
       '#{{issue}} "{{title}}" fixed (iteration {{iteration}})',
@@ -238,6 +245,8 @@ const CATALOG = {
       '{{log_line}}',
       'When the cause is fixed, apply relevo:ship again: a specification already archived is not archived twice.',
     ],
+    run_failed_early: ['{{body}}'],
+    run_no_outcome: ['{{body}}'],
   },
   es: {
     built: [
@@ -359,11 +368,16 @@ const CATALOG = {
       '#{{issue}} "{{title}}" está en cola',
       '',
       '{{assignee}} ya tiene {{built}} issues construidos esperando revisión (el límite es {{limit}}). Empieza solo cuando se revise uno.',
+      'Issues construidos esperando revisión: {{built_issues}}',
     ],
     queued_agents: [
       '#{{issue}} "{{title}}" está en cola',
       '',
       'Se alcanzó el límite de agentes simultáneos. Empieza solo cuando termine una ejecución.',
+      'En ejecución ahora: {{active_text}}',
+      'Delante en la cola: {{ahead_text}}',
+      'Construcciones recientes: {{typical_text}}',
+      'Estas cifras se leen cuando el issue entra en la cola; no se actualizan mientras espera.',
     ],
     fix_done: [
       '#{{issue}} "{{title}}" corregido (iteración {{iteration}})',
@@ -419,8 +433,77 @@ const CATALOG = {
       '{{log_line}}',
       'Cuando la causa esté resuelta, vuelve a poner relevo:ship: una especificación ya archivada no se archiva dos veces.',
     ],
+    run_failed_early: ['{{body}}'],
+    run_no_outcome: ['{{body}}'],
   },
 };
+
+// The phrases of the usage comment that `run-usage.mjs` composes (the sentence has many optional parts, so it is built there from
+// these). The same rules as the catalog: both languages have the same keys and placeholders, a missing one falls back to English,
+// and tests/messages-language.test.mjs fails the build of Relevo when they differ.
+export const USAGE_TEXT = {
+  en: {
+    used: 'This run used {{parts}}.',
+    turn_one: '{{n}} turn',
+    turn_many: '{{n}} turns',
+    by_subagents: ' ({{n}} by subagents)',
+    cost: 'about ${{cost}}',
+    notional: ' (notional: a subscription is not billed per run)',
+    tokens: '{{n}} tokens',
+    cached: ' (plus {{n}} from the cache)',
+    went_past: ' It went past {{limit}} ({{max}}) with {{used}}{{why}}.',
+    subagents_not_stopped: ': the runner counts only the turns of the main agent, so the turns of the subagents were not stopped',
+    by_agent: ' By agent: {{list}}.',
+    minutes: ', {{n}} min',
+    agent_cost: ', about ${{cost}}',
+    by_model: ' Cost by model: {{list}}.',
+    developer: 'developer',
+    lens: '{{role}} lens',
+    models_chosen: ' Models chosen: {{list}}.',
+    plan_notes: ' Notes on the plan: {{list}}.',
+    raised: ' The developer went up on a retry: {{list}}.',
+    raised_item: '{{from}} to {{to}} on attempt {{attempt}} ({{reason}})',
+    gate_red: 'the gate was red',
+    qa_rejected: 'QA rejected',
+    by_check: ' Checks of the gate: {{list}}.',
+    check_reused: '{{name}} reused ({{original}}s when it ran)',
+    check_seconds: '{{name}} {{seconds}}s',
+  },
+  es: {
+    used: 'Esta ejecución usó {{parts}}.',
+    turn_one: '{{n}} turno',
+    turn_many: '{{n}} turnos',
+    by_subagents: ' ({{n}} de subagentes)',
+    cost: 'unos ${{cost}}',
+    notional: ' (nocional: una suscripción no se factura por ejecución)',
+    tokens: '{{n}} tokens',
+    cached: ' (más {{n}} de la caché)',
+    went_past: ' Superó {{limit}} ({{max}}) con {{used}}{{why}}.',
+    subagents_not_stopped: ': el runner cuenta solo los turnos del agente principal, así que los turnos de los subagentes no se detuvieron',
+    by_agent: ' Por agente: {{list}}.',
+    minutes: ', {{n}} min',
+    agent_cost: ', unos ${{cost}}',
+    by_model: ' Costo por modelo: {{list}}.',
+    developer: 'desarrollador',
+    lens: 'lente {{role}}',
+    models_chosen: ' Modelos elegidos: {{list}}.',
+    plan_notes: ' Notas sobre el plan: {{list}}.',
+    raised: ' El desarrollador subió de modelo en un reintento: {{list}}.',
+    raised_item: '{{from}} a {{to}} en el intento {{attempt}} ({{reason}})',
+    gate_red: 'la puerta estaba en rojo',
+    qa_rejected: 'QA la rechazó',
+    by_check: ' Checks de la puerta: {{list}}.',
+    check_reused: '{{name}} reutilizado ({{original}}s cuando corrió)',
+    check_seconds: '{{name}} {{seconds}}s',
+  },
+};
+
+/** The phrase `key` of the usage comment in `language`, with its {{placeholders}} filled; English when the language lacks it. */
+export function usagePhrase(language, key, vars = {}) {
+  const text = USAGE_TEXT[pickLanguage(language)]?.[key] ?? USAGE_TEXT.en[key];
+  if (text === undefined) throw new Error(`unknown usage phrase "${key}"`);
+  return text.replace(/\{\{(\w+)\}\}/g, (_, n) => String(vars[n] ?? ''));
+}
 
 export const MESSAGE_KINDS = Object.keys(REQUIRED);
 
@@ -477,6 +560,65 @@ function classLine(values, es) {
   return `What kind of finding: it needs ${what}${skipped ? ', so the retries were skipped' : ''}.`;
 }
 
+// The comments of a run that ended without telling anyone. They were written inline in the go workflow, which is why a repository
+// with `language: es` got English: they now come from here. The labels and commands in the text are the same in both languages.
+const RETRY = '`relevo:qa-failed`';
+const mention = (values) => (present(values.assignee) ? `@${values.assignee} ` : '');
+
+function runFailedEarly(values, es) {
+  return es
+    ? `${mention(values)}La ejecución falló antes de poder decidir qué hacer (estado del job: ${values.job_status}), así que no se construyó nada. Lee el log para ver por qué: ${values.run}. Cuando la causa esté resuelta, quita ${RETRY} y pon \`relevo:ready\` otra vez.`
+    : `${mention(values)}The run failed before it could decide what to do (job status: ${values.job_status}), so nothing was built. Read the log to see why: ${values.run}. When the cause is fixed, remove ${RETRY} and apply \`relevo:ready\` again.`;
+}
+
+// What the rescue step did with the work, for the situations where the work was not kept.
+function keptNote(values, es) {
+  const detail = present(values.rescue_detail) ? shorten(values.rescue_detail) : '';
+  const branch = values.rescue_branch;
+  if (values.rescue_state === 'unsafe') return es ? ` El trabajo hecho antes de detenerse no se guardó: ${detail}` : ` The work done before the stop was not kept: ${detail}`;
+  if (values.rescue_state === 'not_pushed') return es ? ` El trabajo hecho antes de detenerse no se pudo subir: ${detail}` : ` The work done before the stop could not be pushed: ${detail}`;
+  if (values.rescue_state === 'existing') return es ? ` La rama \`${branch}\` está en el remoto con commits que esta ejecución no tiene, así que no se tocó.` : ` The branch \`${branch}\` is on the remote with commits this run does not have, so it was not touched.`;
+  return '';
+}
+
+const SITUATIONS = ['kept', 'usage_limit', 'no_result'];
+
+function runNoOutcome(values, es) {
+  if (!SITUATIONS.includes(values.situation)) throw new Error(`message "run_no_outcome" has an unknown situation "${values.situation}"`);
+  const usageLimit = values.usage_limit === true || values.usage_limit === 'true';
+  if (values.situation === 'kept') {
+    if (!present(values.rescue_branch)) throw new Error('message "run_no_outcome" needs "rescue_branch" when the work was kept');
+    let why = es ? 'el runner la cortó, o el job se canceló o agotó su tiempo' : 'the runner cut it, or the job was cancelled or timed out';
+    if (values.cut === 'turns') why = es ? 'el runner la detuvo en su límite de turnos (--max-turns)' : 'the runner stopped it at its turn limit (--max-turns)';
+    if (values.cut === 'cost') why = es ? 'el runner la detuvo en su límite de costo (--max-budget-usd)' : 'the runner stopped it at its cost limit (--max-budget-usd)';
+    if (usageLimit) why = es ? 'se alcanzó el límite de uso (o el crédito) de la cuenta del modelo' : 'the usage limit (or the credit) of the model account was reached';
+    // The work of a run that was not on the branch of the issue is on a branch of its own: it is not the branch fix reads.
+    const own = String(values.rescue_branch).startsWith('rescue/');
+    const next = own
+      ? (es ? ' La ejecución no estaba en la rama del issue, así que el trabajo está en una rama aparte: cámbiate a ella y revísalo, o quita `relevo:qa-failed` y pon `relevo:ready` otra vez para construir desde el principio:' : ' The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or remove `relevo:qa-failed` and apply `relevo:ready` again to build from the start:')
+      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o quita \`relevo:qa-failed\` y pon \`relevo:ready\` otra vez para construir desde el principio:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start:`);
+    return es
+      ? `${mention(values)}La ejecución se detuvo antes de terminar (${why}). El trabajo hecho antes de detenerse se guardó en la rama \`${values.rescue_branch}\` como un commit de trabajo en curso.${next} ${values.run}`
+      : `${mention(values)}The run stopped before it finished (${why}). The work done before the stop was kept on the branch \`${values.rescue_branch}\` as a work-in-progress commit.${next} ${values.run}`;
+  }
+  const kept = keptNote(values, es);
+  // A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
+  if (values.situation === 'usage_limit') {
+    return es
+      ? `${mention(values)}La ejecución se detuvo porque se alcanzó el límite de uso (o el crédito) de la cuenta del modelo, así que no se construyó nada. El código no tiene ningún problema. Vuelve a poner \`relevo:ready\` al issue más tarde, después de quitar \`relevo:qa-failed\`: ${values.run}${kept}`
+      : `${mention(values)}The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:qa-failed\`: ${values.run}${kept}`;
+  }
+  if (!present(values.job_status)) throw new Error('message "run_no_outcome" needs "job_status" when the run ended without a result');
+  const cutnote = values.cut === 'turns'
+    ? (es ? ' El runner la detuvo en su límite de turnos (--max-turns).' : ' The runner stopped it at its turn limit (--max-turns).')
+    : values.cut === 'cost'
+      ? (es ? ' El runner la detuvo en su límite de costo (--max-budget-usd).' : ' The runner stopped it at its cost limit (--max-budget-usd).')
+      : '';
+  return es
+    ? `${mention(values)}La ejecución terminó sin resultado (estado del job: ${values.job_status}), así que no se construyó ni se informó nada.${cutnote} Lee el log para ver por qué: ${values.run}. Cuando la causa esté resuelta, quita ${RETRY} y pon \`relevo:ready\` otra vez.${kept}`
+    : `${mention(values)}The run ended without a result (job status: ${values.job_status}), so nothing was built or reported.${cutnote} Read the log to see why: ${values.run}. When the cause is fixed, remove ${RETRY} and apply \`relevo:ready\` again.${kept}`;
+}
+
 export function renderMessage(kind, data = {}, language = 'en') {
   if (!REQUIRED[kind]) throw new Error(`unknown message kind "${kind}"`);
   const values = { ...data };
@@ -525,6 +667,18 @@ export function renderMessage(kind, data = {}, language = 'en') {
   if (kind === 'blocked_notice' && values.urgent === true) {
     values.urgent_note = es ? 'La etiqueta de urgente no salta las dependencias: empieza primero en la cola cuando se fusionen.' : 'The urgent label does not skip dependencies: it goes first in the queue once they are merged.';
   }
+
+  // What the queue knows when an issue waits for a free agent. A figure the workflow could not read is written as unknown, never guessed.
+  if (kind === 'queued_agents') {
+    const unknown = es ? 'desconocido' : 'unknown';
+    values.active_text = present(values.active) ? `${values.active}${present(values.active_issues) ? ` (${values.active_issues})` : ''}` : unknown;
+    values.ahead_text = present(values.ahead) ? String(values.ahead) : unknown;
+    values.typical_text = present(values.typical_minutes) && present(values.typical_samples)
+      ? (es ? `unos ${values.typical_minutes} min (mediana de las últimas ${values.typical_samples} construcciones)` : `about ${values.typical_minutes} min (median of the last ${values.typical_samples} builds)`)
+      : unknown;
+  }
+  if (kind === 'run_failed_early') values.body = runFailedEarly(values, es);
+  if (kind === 'run_no_outcome') values.body = runNoOutcome(values, es);
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {
@@ -582,13 +736,14 @@ export function renderMessage(kind, data = {}, language = 'en') {
       : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`);
   }
 
-  const lines = CATALOG[pickLanguage(language)][kind];
+  // A language that lacks a kind uses the English text; tests/messages-language.test.mjs fails the build of Relevo before that happens.
+  const lines = CATALOG[language_]?.[kind] ?? CATALOG.en[kind];
   const out = [];
   lines.forEach((template) => {
     const names = [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
     const optionalEmpty = names.some((n) => !present(values[n]) && !n.endsWith('_suffix'));
     if (names.length > 0 && optionalEmpty) return;
-    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
+    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' || n === 'body' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
   });
 
   // Collapse repeated blank lines and trim the ends.

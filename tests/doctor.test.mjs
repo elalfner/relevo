@@ -2649,3 +2649,43 @@ test('Stale pin with an installed plugin that is itself behind - the fix updates
   assert.match(r.fix, /update the installed plugin first/);
   assert.match(r.message, /changelog here stops at 0\.14\.3/);
 });
+
+// ---------- Doctor reports an old pin of an action in a workflow (issue #132)
+
+const GO_WITH = (uses) => `# relevo-template: 0.14.5\nenv:\n  RELEVO_VERSION: '0.14.5'\njobs:\n  build:\n    steps:\n${uses.map((u) => `      - uses: ${u}\n`).join('')}`;
+const pinsOf = (text) => gatherFacts(probes({ localFiles: { 'relevo-go.yml': text }, remote: { 'relevo-go.yml': text } })).actionPins;
+const actionCheck = (text) => byId(runChecks({ ...healthy(), actionPins: pinsOf(text) }), 'automation.action-pins');
+
+test('Scenario: An older workflow - doctor warns with the file, the line, the action and the reason, and says it changes nothing', () => {
+  const text = GO_WITH(['actions/checkout@v4', 'actions/setup-node@v4']);
+  const check = actionCheck(text);
+  assert.equal(check.status, 'warn');
+  assert.match(check.message, /relevo-go\.yml:7 actions\/checkout@v4, relevo-go\.yml:8 actions\/setup-node@v4 run on Node\.js 20/);
+  assert.match(check.fix, /\/relevo:init/);
+  assert.match(check.fix, /doctor changes nothing/);
+});
+
+test('Scenario: Current pins - a commit pin with its version, or a newer tag, passes', () => {
+  const current = GO_WITH([
+    'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+    'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
+    'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0',
+    'supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0',
+    'actions/checkout@v5',
+  ]);
+  assert.equal(actionCheck(current).status, 'pass');
+});
+
+test('Scenario: A pin chosen on purpose - an old tag or an old commit with its version is reported every time and never edited', () => {
+  assert.equal(actionCheck(GO_WITH(['actions/create-github-app-token@v2'])).status, 'warn');
+  assert.equal(actionCheck(GO_WITH(['supabase/setup-cli@v1'])).status, 'warn');
+  assert.equal(actionCheck(GO_WITH(['actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v4.2.2'])).status, 'warn', 'a commit is judged by the version it names');
+  assert.equal(actionCheck(GO_WITH(['actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab'])).status, 'pass', 'a commit that names no version cannot be judged, so it is not reported');
+});
+
+test('an action that the templates do not use, a commented example and no workflow at all give no warning', () => {
+  assert.equal(actionCheck(GO_WITH(['subosito/flutter-action@v2', 'acme/own-action@v1'])).status, 'pass');
+  const commented = '# relevo-template: 0.14.5\njobs:\n  build:\n    steps:\n      #   uses: actions/setup-node@v4\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n';
+  assert.equal(actionCheck(commented).status, 'pass');
+  assert.equal(byId(runChecks({ ...healthy(), actionPins: [] }), 'automation.action-pins'), undefined);
+});
