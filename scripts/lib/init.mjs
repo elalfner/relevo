@@ -12,7 +12,7 @@ import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
 import { restrictedList } from './restricted-paths.mjs';
 import { activeCredentialLine, credentialMode, SUBSCRIPTION_SECRET, API_KEY_SECRET } from './execution-mode.mjs';
 import { claudeProposalText } from './restricted-settings.mjs';
-import { isVueWeb, pluginInstallScope, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
+import { byVersion, isVueWeb, pluginInstallScope, variableRunners, OPENSPEC_INSTALL, REQUIRED_SKILLS, SKILL_INSTALL, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, WORKFLOW_FILES, boostInstallCommands, recommendedInstallCommand } from './doctor.mjs';
 
 export const REVIEW_MODES = ['none', 'peer', 'roles'];
 
@@ -565,6 +565,20 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   if (links.length > 0) {
     if ((facts.secrets ?? []).includes('RELEVO_LINKS_TOKEN')) items.push(item('manual.links-token', 'ok', 'The RELEVO_LINKS_TOKEN secret exists (init never reads it)'));
     else items.push(item('manual.links-token', 'manual', `If ${links.join(', ')} ${links.length > 1 ? 'are' : 'is'} private, create a fine-grained token with read access to issues, pull requests and contents and store it yourself as the secret RELEVO_LINKS_TOKEN (init never reads or writes it; Relevo only reads with it, and public repositories need none)`));
+  }
+  // What `doctor` reports about the environment, as steps for the person. None of them is applied here: a token, a
+  // repository variable and the rules of a branch are the person's to change.
+  const unreadable = (facts.links ?? []).filter((l) => l.reachable === false).map((l) => l.repo);
+  if (unreadable.length > 0) items.push(item('manual.links-unreadable', 'manual', `${unreadable.join(', ')} cannot be read with your sign-in, so a file or dependency in ${unreadable.length > 1 ? 'them' : 'it'} would answer 404 to the automation: grant read access to issues, pull requests and contents on ${unreadable.length > 1 ? 'them' : 'it'} to the token stored as RELEVO_LINKS_TOKEN (init never reads or writes it), or copy the file the issue points to into this repository`));
+  variableRunners(facts).overrides.forEach(({ name, labels, wanted, value }) => {
+    items.push(item(`manual.runner-variable.${name}`, 'manual', `The runner the workflows use comes from the repository variable ${name} (${value === null ? 'not set, so the workflow fallback applies' : JSON.stringify(value)}), which wins over runner.labels: it runs on [${labels.join(', ')}] while relevo.yml says [${wanted.join(', ')}]. Set the variable to match relevo.yml, delete it, or change runner.labels yourself; init changes no variable`));
+  });
+  const baseProtection = facts.protection?.base;
+  if (!facts.protectionUnavailable && !facts.protectionError && baseProtection && typeof baseProtection.requiredChecks === 'boolean' && !baseProtection.requiredChecks) {
+    items.push(item('manual.branch-checks', 'manual', `${base} does not require status checks, and \`ship\` relies on them: add the rule "Require status checks to pass" with the checks of your CI to the ruleset of ${base} yourself (init does not change it)`));
+  }
+  if (facts.publishedVersion && facts.pluginVersion && byVersion(facts.publishedVersion, facts.pluginVersion) > 0) {
+    items.push(item('manual.plugin-update', 'manual', `The published Relevo is ${facts.publishedVersion} and the plugin installed here is ${facts.pluginVersion}; the workflows pin the version of the installed plugin, so update it first (claude plugin update relevo@relevo --scope user) and run init again to move the pins`));
   }
   if (hasSupabase) {
     items.push(item('manual.supabase-mcp', 'manual', 'To explore your Supabase database in Claude Code or Antigravity during /relevo:think, consider connecting the Supabase MCP server (see https://supabase.com/docs/guides/ai-tools)'));

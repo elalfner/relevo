@@ -69,6 +69,7 @@ export const OPENSPEC_INSTALL ='npm install --global @fission-ai/openspec (needs
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'];
 // The repository variable that pauses the ship workflow, and the secrets of the GitHub App it pushes with.
 export const SHIP_VARIABLE = 'RELEVO_CLOUD_SHIP';
+const PACKAGE_NAME = '@elalfner/relevo';
 export const SHIP_APP_SECRETS = ['RELEVO_SHIP_APP_ID', 'RELEVO_SHIP_APP_KEY'];
 const REQUIRED_WORKFLOWS = new Set(['relevo-go.yml']);
 // How to ask a tool that it is there (most answer --version), and how to install the ones Relevo knows.
@@ -280,6 +281,8 @@ export function gatherFacts(p) {
   // cannot run its commands, and the version is what the workflows should pin.
   const installedRoot = p.pluginRoot ?? PLUGIN_ROOT;
   f.pluginFolders = ['scripts', 'skills', 'agents', 'stacks', 'templates'].filter((d) => tryRun(() => readdirSync(resolve(installedRoot, d)).length > 0, false) !== true);
+  // The changelog that came with the installed plugin says what each version fixed.
+  f.changelog = tryRun(() => readFileSync(resolve(installedRoot, 'CHANGELOG.md'), 'utf8'), null);
   f.pluginVersion = tryRun(() => JSON.parse(readFileSync(resolve(installedRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null, null);
   // The installations Claude Code knows of: the user scope, and the project or local scope of this repository. null when
   // `claude` cannot list them. Only the command is read, never Claude Code's own files.
@@ -408,6 +411,22 @@ export function gatherFacts(p) {
       f.workflowSource = `default branch (${f.defaultBranch})`;
     }
     derivePluginFacts();
+    // The repository variables a `runs-on` reads: its value wins over runner.labels. A missing variable is "not set";
+    // any other failure is "could not be read", which is never taken for a match.
+    f.runnerVariables = {};
+    runnerVariableNames(f.workflows).forEach((name) => {
+      try {
+        f.runnerVariables[name] = { value: api(`repos/${f.repo}/actions/variables/${encodeURIComponent(name)}`).value ?? null };
+      } catch (err) {
+        f.runnerVariables[name] = /404|Not Found/i.test(String(err.stderr ?? err.message ?? err)) ? { value: null } : { unreadable: true };
+      }
+    });
+    // The version the registry publishes: asked only when a workflow pins one, with a short timeout; null offline, for a
+    // private package or on any error.
+    f.publishedVersion = Object.values(f.pluginPins ?? {}).some(Boolean) ? tryRun(() => {
+      const v = String(p.tool('npm', ['view', PACKAGE_NAME, 'version', '--fetch-timeout=8000', '--fetch-retries=0'])).trim();
+      return /^\d+\.\d+\.\d+$/.test(v) ? v : null;
+    }, null) : null;
     const plugin = f.pluginMarketplace && /^https:\/\/(?:.*@)?github\.com\/([^/@\s]+\/[^/@\s]+?)(?:\.git)?$/.exec(f.pluginMarketplace);
     const slug = plugin ? plugin[1] : f.pluginCheckouts[0]?.repo;
     f.pluginRepoPrivate = slug ? tryRun(() => api(`repos/${slug}`).private, null) : null;
@@ -822,13 +841,16 @@ function linkChecks(f) {
   const r = [];
   links.forEach((l) => {
     if (l.reachable) r.push(pass(`links.${l.repo}`, `${l.repo} can be read (${l.private ? 'private' : 'public'})`));
-    else r.push(fail(`links.${l.repo}`, `${l.repo} in links cannot be read with your sign-in`, 'check the name in links, and that you have access to the repository'));
+    else r.push(fail(`links.${l.repo}`, `${l.repo} in links cannot be read with your sign-in, so the automation may not read it either (a file in it would answer 404)`, `check the name in links; if it is private, make sure the token stored as the secret RELEVO_LINKS_TOKEN has read access to issues, pull requests and contents on ${l.repo}, or copy the file the issue points to into this repository`));
   });
   const anyPrivate = links.some((l) => l.private === true);
   if (!Array.isArray(f.secrets)) {
     r.push(warn('links.secret', 'could not list the repository secrets, so RELEVO_LINKS_TOKEN was not checked', 'check that you may read them, or look in Settings > Secrets'));
   } else if (f.secrets.includes('RELEVO_LINKS_TOKEN')) {
     r.push(pass('links.secret', 'the RELEVO_LINKS_TOKEN secret exists for reading linked repositories'));
+    // The value of the secret is never read, so which repositories its token covers cannot be known from here.
+    const privates = links.filter((l) => l.private === true && l.reachable).map((l) => l.repo);
+    if (privates.length > 0) r.push(note('links.token-scope', `${privates.join(', ')} ${privates.length === 1 ? 'is' : 'are'} private: doctor never reads the value of RELEVO_LINKS_TOKEN, so it cannot tell whether that token has read access to issues, pull requests and contents there; if a build answers 404 for a file in it, grant the token access to the repository or copy the file into this one`));
   } else if (anyPrivate) {
     r.push(fail('links.secret', `${links.filter((l) => l.private).map((l) => l.repo).join(', ')} is private and there is no RELEVO_LINKS_TOKEN secret, so a dependency on it can never be read`, 'create a fine-grained token with read access to issues, pull requests and contents of that repository and store it as the secret RELEVO_LINKS_TOKEN (Relevo only reads with it)'));
   } else {
@@ -1051,6 +1073,12 @@ export function runChecks(f) {
       if (p?.dismissStale) r.push(fail(`repo.dismiss-stale.${key}`, `${name} dismisses approvals when new commits are pushed; the spec archive commit pushed by \`ship\` would dismiss the approval`, `turn off "dismiss stale pull request approvals when new commits are pushed" on ${name}`));
       if (p?.lastPushApproval) r.push(fail(`repo.last-push.${key}`, `${name} requires the most recent push to be approved by someone else; the spec archive commit pushed by \`ship\` would need a new approval`, `turn off "require approval of the most recent reviewable push" on ${name}`));
     });
+  }
+  if (!f.protectionUnavailable && !f.protectionError && f.protection?.base) {
+    const baseName = f.config?.branches?.base ?? 'base';
+    r.push(f.protection.base.requiredChecks
+      ? pass('repo.protection.checks', `${baseName} requires status checks to pass before a merge`)
+      : warn('repo.protection.checks', `${baseName} does not require status checks: \`ship\` relies on them, so a pull request could merge with its checks failing or not run`, `require status checks on ${baseName} (a ruleset rule "Require status checks to pass", with the checks of your CI); /relevo:init lists it as a step and changes nothing`));
   }
   if (!f.protectionUnavailable && !f.protectionError) {
     r.push(f.pushScope ? pass('repo.push-scope', 'the agent can only create feature/* branches') : warn('repo.push-scope', 'nothing stops the unattended agent from creating branches other than feature/*', 'run /relevo:init to add the relevo-push-scope ruleset'));
@@ -1283,10 +1311,81 @@ function parseRunsOn(value) {
   return inner.split(',').map((l) => l.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
+/** The labels of a runner value: a JSON list (`["self-hosted","linux"]`), or one label. null when empty or not readable. */
+function parseRunnerValue(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (text.startsWith('[')) {
+    try {
+      const list = JSON.parse(text);
+      return Array.isArray(list) && list.length > 0 && list.every((l) => typeof l === 'string') ? list : null;
+    } catch {
+      return null;
+    }
+  }
+  // GitHub reads a plain string as ONE label, so `self-hosted, linux` is a single (and unlikely) label, not two.
+  const label = text.replace(/^['"]|['"]$/g, '').trim();
+  return label ? [label] : null;
+}
+
+/** The repository variables that the `runs-on` lines of the workflows read (`${{ vars.NAME || 'fallback' }}`). */
+export function runnerVariableNames(workflows) {
+  const names = new Set();
+  Object.values(workflows ?? {}).forEach((w) => {
+    if (typeof w?.text !== 'string') return;
+    [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*$/gm)].forEach((m) => {
+      const v = /\$\{\{.*?\bvars\.([A-Za-z_][A-Za-z0-9_]*)/.exec(m[1]);
+      if (v) names.add(v[1]);
+    });
+  });
+  return [...names];
+}
+
+/** What a `runs-on` expression that reads a variable resolves to: { name, value, labels } (`value` null when the variable is not set), or null when it cannot be judged. */
+function resolveVariableRunsOn(expression, variables) {
+  const v = /\bvars\.([A-Za-z_][A-Za-z0-9_]*)/.exec(expression);
+  if (!v) return null;
+  const name = v[1];
+  const state = variables?.[name];
+  if (!state || state.unreadable) return { name, unreadable: true };
+  if (state.value !== null && state.value !== undefined && String(state.value).trim() !== '') return { name, value: String(state.value), labels: parseRunnerValue(state.value) };
+  const fallback = /\|\|\s*(?:'([^']*)'|"([^"]*)")/.exec(expression);
+  return { name, value: null, labels: fallback ? parseRunnerValue(fallback[1] ?? fallback[2]) : null };
+}
+
+const sameLabels = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
+
+/**
+ * The workflows whose `runs-on` reads a repository variable: { overrides, unread, unparsed }. `overrides` are those whose
+ * effective runner differs from `runner.labels` (the variable wins); `unread` the variables that could not be read.
+ */
+export function variableRunners(f) {
+  const wanted = f.config?.runner?.labels ?? HOSTED_RUNNER;
+  const overrides = new Map();
+  const unread = new Set();
+  const unparsed = new Set();
+  Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
+    if (!w.present || typeof w.text !== 'string') return;
+    [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => m[1]).filter((l) => l.includes('${{') && /\bvars\./.test(l)).forEach((l) => {
+      const res = resolveVariableRunsOn(l, f.runnerVariables);
+      if (!res) return;
+      if (res.unreadable) unread.add(res.name);
+      else if (!res.labels) unparsed.add(`${file} (${res.name})`);
+      else if (!sameLabels(res.labels, wanted)) {
+        const key = `${res.name}\u0000${res.labels.join(', ')}\u0000${res.value ?? ''}`;
+        overrides.set(key, { name: res.name, labels: res.labels, value: res.value, wanted, files: [...(overrides.get(key)?.files ?? []), file] });
+      }
+    });
+  });
+  return { overrides: [...overrides.values()], unread, unparsed };
+}
+
 /**
  * Does every Relevo workflow run on the runner that relevo.yml names (`runner.labels`, else ubuntu-latest)? A workflow
  * edited by hand to another runner is reported with the file, because the next copy of the template would undo it. A
- * runner that is not GitHub's is only assumed to persist: Relevo cannot tell, and says so instead of claiming.
+ * workflow whose `runs-on` reads a repository variable runs on what the variable says: the variable wins over
+ * `runner.labels`, so a difference prints both. A runner that is not GitHub's is only assumed to persist: Relevo cannot
+ * tell, and says so instead of claiming.
  */
 function runnerChecks(f) {
   const wanted = f.config?.runner?.labels ?? HOSTED_RUNNER;
@@ -1298,8 +1397,8 @@ function runnerChecks(f) {
   Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
     if (!w.present || typeof w.text !== 'string') return;
     judged += 1;
-    const found = [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => parseRunsOn(m[1])).filter((l) => l !== null);
-    const other = found.find((labels) => !same(labels, wanted));
+    const literal = [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => parseRunsOn(m[1])).filter((l) => l !== null);
+    const other = literal.find((labels) => !same(labels, wanted));
     if (!other) return;
     const key = other.join(', ');
     differing.set(key, [...(differing.get(key) ?? []), file]);
@@ -1309,8 +1408,15 @@ function runnerChecks(f) {
     const id = differing.size === 1 ? 'automation.runner' : `automation.runner.${labels}`;
     r.push(fail(id, `${names} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says [${wanted.join(', ')}]`, same(wanted, HOSTED_RUNNER) ? `set runner.labels: [${labels}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${names}` : `change runs-on in ${names} to [${wanted.join(', ')}], or change runner.labels in relevo.yml`));
   });
-  if (r.length > 0) return r;
-  if (judged > 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
+  const { overrides, unread, unparsed } = variableRunners(f);
+  overrides.forEach(({ name, labels, value, files }) => {
+    const where = value === null ? `the repository variable ${name} is not set, so the fallback in the workflow applies` : `the repository variable ${name} is ${JSON.stringify(value)}`;
+    r.push(warn(`automation.runner.variable.${name}`, `${files.join(', ')} ${files.length === 1 ? 'runs' : 'run'} on [${labels.join(', ')}] (${where}), but relevo.yml runner.labels says [${wanted.join(', ')}]: the variable wins, so the file describes a runner that is not used`, `set the variable ${name} to match runner.labels [${wanted.join(', ')}], delete it if the workflow default is right, or change runner.labels in relevo.yml to [${labels.join(', ')}]`));
+  });
+  if (unread.size > 0) r.push(note('automation.runner.variable', `the repository variable ${[...unread].join(', ')} that the runner of the workflows is read from could not be read, so the effective runner was not checked`));
+  if (unparsed.size > 0) r.push(note('automation.runner.unparsed', `the runner of ${[...unparsed].join(', ')} comes from a variable that has no usable runner (unset with no fallback, or not a runner name or a list of them), so it was not judged`));
+  if (r.some((x) => x.status === 'fail' || x.status === 'warn')) return r;
+  if (judged > 0 && unread.size === 0 && unparsed.size === 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
   if (!same(wanted, HOSTED_RUNNER)) r.push(warn('automation.runner.persistence', `the runner [${wanted.join(', ')}] is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
   return r;
 }
@@ -1398,11 +1504,44 @@ function pluginInstallChecks(f) {
   if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
   if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog (that moves the scripts, not the text)'));
-  r.push(...versionChecks(f), ...workflowTextChecks(f));
+  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f));
   return r;
 }
 
-const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
+/** The changelog entries of the versions after `from` up to `to`: one line per heading, with the first sentence of each bullet. */
+export function changelogBetween(text, from, to) {
+  if (typeof text !== 'string') return [];
+  const sections = text.split(/^## /m).slice(1).map((chunk) => {
+    const m = /^\[?(\d+\.\d+\.\d+)\]?/.exec(chunk);
+    return m ? { version: m[1], body: chunk } : null;
+  }).filter(Boolean).filter((sec) => byVersion(sec.version, from) > 0 && byVersion(sec.version, to) <= 0);
+  return sections.sort((a, b) => byVersion(a.version, b.version)).flatMap((sec) => {
+    const bullets = [...sec.body.matchAll(/^- (.+)$/gm)].map((m) => m[1].replace(/\*\*/g, '').split(/(?<=\.)\s/)[0].trim().slice(0, 160));
+    return [`${sec.version}: ${bullets.slice(0, 3).join(' | ') || 'see the changelog'}`];
+  });
+}
+
+/**
+ * Is the version the workflows pin older than the published one? The pin decides which scripts a cloud run uses, so a fix
+ * released later is not there. The comparison needs the registry: when it cannot be read it is skipped with a note,
+ * never a warning.
+ */
+function stalePinChecks(f) {
+  const pins = Object.entries(f.pluginPins ?? {}).filter(([, v]) => v);
+  if (pins.length === 0) return [];
+  if (!f.publishedVersion) return [note('automation.plugin-latest', 'the published version of the Relevo package could not be read (offline or a private package), so the pins of the workflows were not compared with it')];
+  const old = pins.filter(([, v]) => byVersion(v, f.publishedVersion) < 0);
+  if (old.length === 0) return [pass('automation.plugin-latest', `the workflows pin the published version (${f.publishedVersion})`)];
+  const oldest = old.map(([, v]) => v).sort(byVersion)[0];
+  const fixes = changelogBetween(f.changelog, oldest, f.publishedVersion);
+  // The changelog on disk comes with the installed plugin, so it stops at that version.
+  const behind = f.pluginVersion && byVersion(f.pluginVersion, f.publishedVersion) < 0;
+  const what = fixes.length > 0 ? `; the newer versions changed: ${fixes.join('; ')}${behind ? ` (the changelog here stops at ${f.pluginVersion}; read the one of ${f.publishedVersion} for the rest)` : ''}` : `; read the changelog of ${f.publishedVersion} for what changed`;
+  const fix = behind ? `update the installed plugin first (claude plugin update relevo@relevo --scope user), then run /relevo:init: it merges the new template into each workflow and moves the pin to the installed version` : 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog';
+  return [warn('automation.plugin-latest', `${old.map(([file, v]) => `${file} (${v})`).join(', ')} pin an older version than the published ${f.publishedVersion}${what}`, fix)];
+}
+
+export const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
 
 /**
  * Which version each part is on, from what can be read here: the plugin in use, each installation `claude` lists and the
