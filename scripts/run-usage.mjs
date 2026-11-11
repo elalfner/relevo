@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Prints what a cloud run used, read from the execution log of the agent runner: one sentence, a blank line and a hidden
 // marker with the same figures, which the daily digest adds up. Usage:
-//   node scripts/run-usage.mjs --file <execution_file> [--subscription] [--progress-dir <dir>] [--config <relevo.yml>]
+//   node scripts/run-usage.mjs --file <execution_file> [--subscription] [--progress-dir <dir>] [--config <relevo.yml>] [--receipt <file>]
+// --receipt is the receipt of the validation gate (default .relevo-receipt/receipt.json): the seconds of each check go into the sentence and the marker.
 // --config gives the limits of the run: the sentence says when the turns (the subagents' included) or the cost went past them.
 // --progress-dir is where `go` kept the start of each phase and of each QA lens, the class of the outcome and the model plan: they go into the marker.
 // With a model plan the sentence also says which model each role used and why.
 // --subscription says that the cost is notional. Prints nothing when the log is missing or has no usage.
 // It never fails: exit 0 always, so a step that posts the text cannot fail a run.
 
-import { planFromJson, readUsage, usageLine, usageMarker } from './lib/run-usage.mjs';
+import { checksFromReceipt, planFromJson, readUsage, usageLine, usageMarker } from './lib/run-usage.mjs';
 import { lensSeconds, phaseSeconds, readClass, readLensLog, readPhaseLog } from './lib/phase-log.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { loadConfig } from './lib/config.mjs';
@@ -40,7 +41,14 @@ try {
 } catch {
   plan = null;
 }
-const line = usageLine(usage, { subscription, limits, plan });
+// The receipt the gate wrote in this working folder, when there is one: its checks and seconds. It is read as data.
+let checks = null;
+try {
+  checks = checksFromReceipt(readFileSync(arg('receipt') ?? '.relevo-receipt/receipt.json', 'utf8'));
+} catch {
+  checks = null;
+}
+const line = usageLine(usage, { subscription, limits, plan, checks });
 let phases = null;
 let lenses = null;
 let outcomeClass = null;
@@ -57,5 +65,5 @@ try {
   phases = null;
   lenses = null;
 }
-const marker = usageMarker(usage, { subscription, phases, lenses, outcomeClass, plan });
+const marker = usageMarker(usage, { subscription, phases, lenses, outcomeClass, plan, checks });
 if (line) console.log(marker ? `${line}\n\n${marker}` : line);
