@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
 import { planCases, relevoCi, renderInstructions, renderReport, verdict } from './lib/gate-selftest.mjs';
+import { isRestricted, restrictedListFromText } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const argv = process.argv.slice(2);
@@ -54,6 +55,7 @@ try { baseCommit = git(['rev-parse', '--verify', `${base}^{commit}`]).trim(); } 
 const toplevel = git(['rev-parse', '--show-toplevel']).trim();
 const scratch = mkdtempSync(join(tmpdir(), 'relevo-selftest-'));
 const wt = join(scratch, 'wt');
+const restricted = restrictedListFromText(readFileSync(configPath, 'utf8'));
 const results = [];
 let code = 0;
 try {
@@ -62,11 +64,12 @@ try {
   for (const rel of resolved.profile.installed ?? []) {
     const from = join(root, platform.path, rel);
     const to = join(wtRoot, platform.path, rel);
-    if (existsSync(from) && !existsSync(to)) { mkdirSync(dirname(to), { recursive: true }); symlinkSync(from, to); }
+    // A restricted path is never linked into the scratch worktree.
+    if (!isRestricted(join(platform.path, rel), restricted) && existsSync(from) && !existsSync(to)) { mkdirSync(dirname(to), { recursive: true }); symlinkSync(from, to); }
   }
   // The gate runs from the worktree: a relevo.yml the base does not have yet is copied in (it is removed with the worktree).
   const cfg = join(wtRoot, 'relevo.yml');
-  if (!existsSync(cfg)) copyFileSync(configPath, cfg);
+  if (!existsSync(cfg) && !isRestricted('relevo.yml', restricted)) copyFileSync(configPath, cfg);
   for (const c of planCases({ stack: platform.stack, testCommand })) {
     if (c.skipped) { results.push(c); continue; }
     const rel = join(platform.path, c.seed.path);
