@@ -372,4 +372,5 @@ test('Scenario: the developer has a short cost guide and receives the configured
   assert.match(go, /`operationGuidance`/);
   assert.match(go, /every launch of `relevo:dev` in any mode/);
   assert.match(go, /only the default cost guide applied/);
+  assert.match(go, /in \*\*fix\*\* mode that file describes gets the project guidance too/, 'the fix launches of qa-run.md get the guidance');
 });
