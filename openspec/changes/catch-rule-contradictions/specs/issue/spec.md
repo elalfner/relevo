@@ -26,3 +26,7 @@ The check of a draft SHALL compare the lines of its `Out of scope` section with 
 #### Scenario: No rules file
 - **WHEN** the project has no rules file
 - **THEN** only the comparison of `Out of scope` with the scenarios runs
+
+#### Scenario: A rules file that cannot be read
+- **WHEN** a file of `--rules-file` does not exist or cannot be read
+- **THEN** the check warns that the draft was not compared with it, and does not fail

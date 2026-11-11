@@ -77,8 +77,17 @@ if (stage === 'issue') {
   }
   // Without a valid relevo.yml there are no rules files to read; the issue is still compared with its own scenarios.
   const rulesFiles = loaded.ok ? [].concat(loaded.config.qa.rules_from ?? []) : [];
-  const rules = rulesFiles.flatMap((f) => (existsSync(join(root, f)) ? parseRules(f, readFileSync(join(root, f), 'utf8')) : []));
+  const unread = [];
+  const rules = rulesFiles.flatMap((f) => {
+    try {
+      return parseRules(f, readFileSync(join(root, f), 'utf8'));
+    } catch {
+      unread.push(f);
+      return [];
+    }
+  });
   result = checkIssueStage({ body, manifest, exists, env: process.env, variables, rules });
+  unread.forEach((f) => (result.notes ??= []).push(`the rules file ${f} could not be read, so the issue was not compared with it`));
 } else {
   const tasks = join(resolve(arg('change-dir')), 'tasks.md');
   result = checkSpecStage({

@@ -279,3 +279,12 @@ test('a scenario that needs an excluded line is a note and never stops the build
   assert.equal(r.decision, 'ok');
   assert.match(r.notes.join('\n'), /scenario 1/);
 });
+
+test('CLI: a rules file that cannot be read is a note, and the decision is not affected', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-pre2-'));
+  writeFileSync(join(dir, 'issue.md'), GOOD);
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nqa:\n  rules_from: missing-rules.md\n');
+  const r = spawnSync('node', [CLI, '--stage', 'issue', '--issue-file', join(dir, 'issue.md'), '--repo-root', dir, '--config', join(dir, 'relevo.yml')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).notes.join(' '), /missing-rules\.md could not be read/);
+});

@@ -9,7 +9,6 @@
 
 import { checkIssueDraft } from './lib/issue-check.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseRules } from './lib/rules-file.mjs';
 
@@ -35,10 +34,19 @@ const platforms = platformNames.length ? Object.fromEntries(platformNames.map((n
 const links = (arg('links') ?? '').split(',').map((f) => f.trim()).filter(Boolean);
 const repoRoot = arg('repo-root') ?? process.cwd();
 const rulesFiles = (arg('rules-file') ?? '').split(',').map((f) => f.trim()).filter(Boolean);
-const rules = rulesFiles.flatMap((f) => (existsSync(join(repoRoot, f)) ? parseRules(f, readFileSync(join(repoRoot, f), 'utf8')) : []));
+const unread = [];
+const rules = rulesFiles.flatMap((f) => {
+  try {
+    return parseRules(f, readFileSync(join(repoRoot, f), 'utf8'));
+  } catch {
+    unread.push(f);
+    return [];
+  }
+});
 const r = checkIssueDraft({ rules, title, body, platforms, links, language: arg('language') ?? 'en', repoRoot: arg('repo-root') ?? process.cwd(), rulesFile: (arg('rules-file') ?? '').split(',').map((f) => f.trim()).filter(Boolean) });
 const allows = r.allowPaths.length ? `, allows changes to ${r.allowPaths.join(', ')}` : '';
 console.log(`${r.scenarios} scenario(s), ${r.edgeCases} edge case(s), depends on ${[...r.dependsOn.map((n) => `#${n}`), ...r.dependsOnExternal.map((d) => `${d.repo}#${d.number}`)].join(', ') || 'nothing'}${allows}`);
+unread.forEach((f) => console.error(`warning: the rules file ${f} could not be read, so the draft was not compared with it`));
 r.warnings.forEach((w) => console.error(`warning: ${w}`));
 if (r.ok) {
   console.log('ready to create');

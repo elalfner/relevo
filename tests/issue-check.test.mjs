@@ -642,3 +642,11 @@ test('check-issue.mjs reads the rules file of --rules-file from the repository f
   assert.equal(run.status, 1);
   assert.match(run.stderr, /CLAUDE\.md:1/);
 });
+
+test('check-issue.mjs warns, and does not fail, when a rules file cannot be read', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-norules-'));
+  writeFileSync(join(dir, 'issue.md'), GOOD);
+  const run = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Birthday list', '--body-file', join(dir, 'issue.md'), '--rules-file', 'nope.md', '--repo-root', dir], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  assert.match(run.stderr, /warning: the rules file nope\.md could not be read, so the draft was not compared with it/);
+});
