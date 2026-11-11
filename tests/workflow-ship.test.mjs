@@ -72,3 +72,7 @@ test('Scenario: Private repository on a free plan - the token may read the check
   assert.match(permissions, /^  checks: read$/m);
   assert.match(permissions, /^  statuses: read$/m);
 });
+
+test('Scenario: Mergeability never computed - the header says the run waits inside the script', () => {
+  assert.match(text, /looks again for about 90 seconds, keeping the label/);
+});

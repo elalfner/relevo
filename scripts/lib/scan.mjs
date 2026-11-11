@@ -85,6 +85,31 @@ export function scanDiff(diffText) {
   return findings;
 }
 
+/** The added lines of a unified diff as [{ file, line, text }], numbered like the findings of `scanDiff`. */
+export function addedLines(diffText) {
+  const out = [];
+  let file = null;
+  let line = 0;
+  String(diffText).split('\n').forEach((raw) => {
+    if (raw.startsWith('+++ ')) {
+      const target = raw.slice(4).trim();
+      file = target === '/dev/null' ? null : target.replace(/^b\//, '');
+      return;
+    }
+    if (raw.startsWith('--- ') || raw.startsWith('diff --git') || raw.startsWith('index ')) return;
+    const hunk = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      line = Number.parseInt(hunk[1], 10);
+      return;
+    }
+    if (raw.startsWith('+')) {
+      out.push({ file, line, text: raw.slice(1) });
+      line += 1;
+    } else if (raw.startsWith(' ')) line += 1;
+  });
+  return out;
+}
+
 export function formatFindings(findings) {
   return findings
     .map((f) => `${f.file ?? '(unknown file)'}:${f.line}  ${f.kind === 'marker' ? 'temporary marker' : 'possible credential'} (${f.detail})`)

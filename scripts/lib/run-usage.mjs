@@ -178,8 +178,35 @@ export function limitsExceeded(usage, limits = {}) {
   return out;
 }
 
+// The model plan of the run (scripts/model-plan.mjs), as `go` saved it. Only fixed words and short strings are kept: the plan
+// is read from a file and goes into a comment.
+const PLAN_SOURCES = ['config', 'auto', 'issue'];
+const ESCALATION_REASONS = ['qa-rejected', 'gate-red'];
+const PLAN_ROLES = ['dev', 'spec', 'security', 'code', 'interface'];
+const text200 = (v) => String(v ?? '').replace(/[^\x20-\x7e]/g, ' ').trim().slice(0, 200);
+
+/** The roles of a saved plan as [{ role, model, effort, source, why }], and its notes; null when there is no usable plan. */
+export function planFromJson(raw) {
+  let data = raw;
+  if (typeof raw === 'string') {
+    try { data = JSON.parse(raw); } catch { return null; }
+  }
+  if (!data || typeof data !== 'object' || data.failed) return null;
+  const entry = (role, r) => (r && typeof r.model === 'string' && r.model && PLAN_SOURCES.includes(r.source)
+    ? { role, model: text200(r.model), ...(typeof r.effort === 'string' ? { effort: text200(r.effort) } : {}), source: r.source, ...(typeof r.why === 'string' ? { why: text200(r.why) } : {}) }
+    : null);
+  const roles = [entry('dev', data.dev), ...PLAN_ROLES.slice(1).map((lens) => entry(lens, data.qa?.[lens]))].filter(Boolean);
+  if (roles.length === 0) return null;
+  const notes = Array.isArray(data.notes) ? data.notes.map(text200).filter(Boolean).slice(0, 5) : [];
+  // The retries that ran the developer one name up the ladder (`model-plan.mjs escalate`); a malformed entry is left out.
+  const escalations = (Array.isArray(data.escalations) ? data.escalations : [])
+    .filter((e) => e && typeof e.from === 'string' && typeof e.to === 'string' && Number.isInteger(e.attempt) && ESCALATION_REASONS.includes(e.reason))
+    .map((e) => ({ attempt: e.attempt, from: text200(e.from), to: text200(e.to), reason: e.reason })).slice(0, 5);
+  return { roles, notes, escalations };
+}
+
 /** One line for a comment, or an empty string when there is nothing to say. */
-export function usageLine(usage, { subscription = false, limits = null } = {}) {
+export function usageLine(usage, { subscription = false, limits = null, plan = null } = {}) {
   if (!usage) return '';
   const parts = [];
   if (usage.turns !== null) parts.push(`${usage.turns} turn${usage.turns === 1 ? '' : 's'}${usage.subagentTurns ? ` (${usage.subagentTurns} by subagents)` : ''}`);
@@ -191,7 +218,10 @@ export function usageLine(usage, { subscription = false, limits = null } = {}) {
   const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${a.turns} turn${a.turns === 1 ? '' : 's'}${a.seconds ? `, ${(a.seconds / 60).toFixed(1)} min` : ''}${a.cost !== undefined ? `, about $${a.cost.toFixed(2)}` : ''}`;
   const byAgent = usage.agents?.length ? ` By agent: ${usage.agents.map(agent).join('; ')}.` : '';
   const byModel = usage.models?.length ? ` Cost by model: ${usage.models.map((m) => `${m.model} $${m.cost.toFixed(2)}`).join(', ')}.` : '';
-  return `This run used ${parts.join(', ')}.${warn}${byAgent}${byModel}`;
+  const role = (r) => `${r.role === 'dev' ? 'developer' : `${r.role} lens`} ${r.model}${r.effort ? `, ${r.effort}` : ''} (${r.source}${r.why ? `: ${r.why}` : ''})`;
+  const byPlan = plan?.roles?.length ? ` Models chosen: ${plan.roles.map(role).join('; ')}.${plan.notes?.length ? ` Notes on the plan: ${plan.notes.join('; ')}.` : ''}` : '';
+  const raised = plan?.escalations?.length ? ` The developer went up on a retry: ${plan.escalations.map((e) => `${e.from} to ${e.to} on attempt ${e.attempt} (${e.reason === 'gate-red' ? 'the gate was red' : 'QA rejected'})`).join('; ')}.` : '';
+  return `This run used ${parts.join(', ')}.${warn}${byAgent}${byModel}${byPlan}${raised}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without
@@ -202,7 +232,7 @@ const MARKER_RE = /<!-- relevo:usage (\{[^\n]*?\}) -->/g;
 const FIGURES = ['turns', 'cost', 'tokens'];
 
 /** The marker for a comment, from the same result as the sentence, or an empty string when there is nothing to say. */
-export function usageMarker(usage, { subscription = false, phases = null, lenses = null, outcomeClass = null } = {}) {
+export function usageMarker(usage, { subscription = false, phases = null, lenses = null, outcomeClass = null, plan = null } = {}) {
   if (!usage) return '';
   const figures = {};
   FIGURES.forEach((k) => {
@@ -218,6 +248,9 @@ export function usageMarker(usage, { subscription = false, phases = null, lenses
   if (Array.isArray(phases) && phases.length) figures.phases = phases;
   // The seconds of each QA lens, apart from the phases: the digest knows only the five phases.
   if (Array.isArray(lenses) && lenses.length) figures.lenses = lenses;
+  // The model and the effort each role was launched with, and where the choice came from; the digest ignores this key.
+  if (plan?.roles?.length) figures.plan = plan.roles;
+  if (plan?.escalations?.length) figures.escalated = plan.escalations;
   if (OUTCOME_CLASSES.includes(outcomeClass)) figures.class = outcomeClass;
   return `<!-- relevo:usage ${JSON.stringify(figures)} -->`;
 }
@@ -261,6 +294,13 @@ export function parseUsageMarker(comment) {
   }
   if (Array.isArray(data.models) && data.models.length && data.models.every((m) => m && typeof m.model === 'string' && num(m.cost) !== null)) {
     run.models = data.models.map((m) => ({ model: m.model, cost: m.cost }));
+  }
+  // The model plan: read only when every entry is well formed; a malformed one leaves the key out, not an error.
+  if (Array.isArray(data.plan) && data.plan.length && data.plan.every((r) => r && PLAN_ROLES.includes(r.role) && typeof r.model === 'string' && PLAN_SOURCES.includes(r.source))) {
+    run.plan = data.plan.map((r) => ({ role: r.role, model: r.model, source: r.source, ...(typeof r.effort === 'string' ? { effort: r.effort } : {}), ...(typeof r.why === 'string' ? { why: r.why } : {}) }));
+  }
+  if (Array.isArray(data.escalated) && data.escalated.length && data.escalated.every((e) => e && typeof e.from === 'string' && typeof e.to === 'string' && Number.isInteger(e.attempt) && ESCALATION_REASONS.includes(e.reason))) {
+    run.escalated = data.escalated.map((e) => ({ attempt: e.attempt, from: e.from, to: e.to, reason: e.reason }));
   }
   if (OUTCOME_CLASSES.includes(data.class)) run.class = data.class;
   return FIGURES.some((k) => run[k] !== undefined) ? run : null;

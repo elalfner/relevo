@@ -51,6 +51,19 @@ The first runs measured the evaluation and not the lenses, and each was correcte
 
 The total is about 2.84 USD in model usage. Three of the six runs are valid for their lens.
 
+## Cheaper models (2026-11-06)
+
+`--model <name>` runs every selected lens with one model instead of the one in its agent file, to check the models that `model: auto` can pick. One run per case, so the sample is small.
+
+| Lens | Model | Defects found | Good variants flagged | Cost (USD) |
+| --- | --- | --- | --- | --- |
+| `spec` | sonnet (default: opus) | 4/4 | 0/4 | 0.44 |
+| `security` | sonnet (default: opus) | 3/3 | 0/3 | 0.33 |
+| `code` | haiku (default: sonnet) | 1/1 | 1/1 | 0.01 |
+| `interface` | haiku (default: sonnet) | 3/3 | 1/3 | 0.04 |
+
+By the threshold above (every defect found, no good variant flagged): sonnet passes for `spec` and `security`; haiku does not pass for `code` and `interface`. It finds the seeded defects but also rejects clean changes (a missing `pubspec.yaml` in the fixture, a stub without a marker, one form), which would send correct work back to the developer. So `auto` should not go below sonnet for QA lenses until a larger sample says otherwise.
+
 ## What this does not show
 
 - It is a small sample of 11 cases; each case was run once in each run, so little is known about how much a lens varies between runs.

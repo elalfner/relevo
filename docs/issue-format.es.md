@@ -192,3 +192,14 @@ Si falta alguno de estos, no se construye nada y un comentario dice cuál.
 Nunca inventa escenarios ni casos borde. Si faltan, el issue vuelve a quien escribe la spec con la lista de lo que falta.
 
 Todo lo que en el issue sea ambiguo de un modo que cambie el comportamiento visible se trata como un defecto de la spec, no se adivina. Las ambigüedades pequeñas se resuelven con una suposición razonable que queda escrita en el `design.md` del cambio.
+
+### 9. El modelo de este issue (opcional)
+
+Cuando un rol de `agents` en `relevo.yml` es `auto`, el issue puede pedir un modelo con una línea cada uno, fuera de cualquier bloque de código:
+
+```markdown
+Model: haiku
+QA-model: sonnet
+```
+
+`Model:` es para el desarrollador y `QA-model:` para todas las lentes de QA. El valor es un solo nombre de modelo de `agents.ladder`. Puede bajar el modelo libremente y subirlo solo hasta el techo del rol; un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Un rol que no es `auto` conserva el modelo escrito en `relevo.yml`. La comprobación del issue acepta las líneas y solo avisa de una que no se puede leer. Son parte del texto, así que editar una después de `ready` cambia el hash del issue. Mira [Elegir el modelo de cada issue](configuration.es.md#elegir-el-modelo-de-cada-issue-auto).

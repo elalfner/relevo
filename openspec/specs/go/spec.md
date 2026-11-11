@@ -219,6 +219,37 @@ Every commit `go` makes SHALL stage named files only (never "add all"), scan the
 - **WHEN** the staged diff touches a protected path the issue does not allow
 - **THEN** nothing is committed or pushed and the issue is labelled `qa-failed` with the reason "protected path in the diff"
 
+### Requirement: A reviewed false positive of the credential scan can be listed with a reason
+A person SHALL be able to list a credential finding as reviewed in `.relevo/scan-exceptions.json`, a list of entries each with a `path`, a `pattern` and a `reason`. The scan of a diff (the safe commit and the validation gate) SHALL NOT report a credential finding whose file matches the `path` and whose added line contains the `pattern`; the match SHALL NOT depend on the line number. Every other finding SHALL be reported and refused as before. Temporary markers SHALL NOT be excepted. The list SHALL be read from the committed file (HEAD for a commit, the base ref for the gate), never from the working tree, and `.relevo/` is a protected path, so an unattended run cannot change it.
+
+#### Scenario: A listed line goes through
+- **WHEN** the staged diff holds a credential finding on a line that an entry lists by path and pattern, with a reason
+- **THEN** the commit is made and the report says one exception was applied, with its path and reason
+
+#### Scenario: The line moved
+- **WHEN** the listed line is at another line number of the same file
+- **THEN** the exception still applies
+
+#### Scenario: A finding that is not listed
+- **WHEN** the scan flags a line no entry covers, or a listed path with another line
+- **THEN** the commit is refused and nothing is pushed, as before
+
+#### Scenario: Too broad an entry
+- **WHEN** an entry names a folder, uses `**` or a bare `*` file name, has a pattern of fewer than 8 characters, or has no reason
+- **THEN** it is never applied and the report names it as refused
+
+#### Scenario: An edit that is not committed
+- **WHEN** the working tree holds an exception that the committed file does not
+- **THEN** it is not applied
+
+#### Scenario: A marker
+- **WHEN** a temporary marker is flagged on a listed line
+- **THEN** it is still refused
+
+#### Scenario: The gate
+- **WHEN** the validation gate scans a diff with a listed finding
+- **THEN** the scan passes and its detail says the exception was applied
+
 ### Requirement: Unrecoverable problems end in qa-failed
 Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a stated reason, and SHALL push the branch except when the reason is a possible credential, a temporary marker, a protected path in the diff or an issue that changed after `ready`, or when the branch already exists, which `go` never touches. When the reason is that QA rejected the work after the retries or that tasks were left unfinished, `go` SHALL first commit the work in progress, through the same safe commit as a successful build and with a message that says it is not approved, so that the push keeps it; if that commit is refused, `go` SHALL push nothing. It SHALL NOT open a pull request or advance the state.
 
@@ -1054,3 +1085,89 @@ The rescue and the failure path SHALL push the branch of the issue when the remo
 #### Scenario: The remote holds other commits
 - **WHEN** the remote branch has a commit that the working branch lacks
 - **THEN** nothing is pushed and the comment says the branch was not touched
+
+### Requirement: The model plan is made by a script before the first launch
+Before it launches the developer, `go` SHALL run the model plan, a script that prints for each role the model, the effort, the source of the choice (`config`, `auto` or `issue`) and the reason. `go` SHALL launch every agent with the model and the effort of the plan, and SHALL NOT choose a model itself. The plan SHALL be the same for the same inputs.
+
+#### Scenario: A small issue with the developer on auto
+- **WHEN** `agents.dev.model` is `auto`, the change has 3 tasks and 5 scenarios, and nothing in the issue is sensitive
+- **THEN** the plan gives the developer the floor of its range and says the issue is small
+
+#### Scenario: A large issue
+- **WHEN** the change has 20 tasks and scenarios together
+- **THEN** the plan gives the developer the ceiling of its range
+
+#### Scenario: A role that is not on auto
+- **WHEN** `agents.qa.code.model` is `sonnet`
+- **THEN** the plan gives the code lens `sonnet` with the source `config`, whatever the issue says
+
+### Requirement: The plan fails open
+When the model plan cannot be made, `go` SHALL launch every agent with the model and the effort of the configuration and SHALL say so in its report. An error of the plan SHALL NOT stop or fail a build.
+
+#### Scenario: The plan cannot be made
+- **WHEN** the script fails or prints something that is not a plan
+- **THEN** `go` launches every agent with the model and the effort of the configuration and says so in its report
+
+### Requirement: The plan scores the size of the change and two raises
+For a role on `auto`, the plan SHALL place the model in the range of the role by the size of the change (tasks plus scenarios: up to 6 takes the floor, up to 14 the middle rounded up, more the ceiling). It SHALL raise the pick one step, up to the ceiling, when the issue lists a dependency file in `Allow-paths:` or names a security-sensitive area, and the security lens SHALL go to the ceiling in both cases. With nothing to score, it SHALL use the default model of the role and SAY so.
+
+#### Scenario: A security-sensitive issue
+- **WHEN** the issue mentions an authentication or a credential and the security lens is on `auto`
+- **THEN** the security lens runs on its ceiling
+
+#### Scenario: Too few signals
+- **WHEN** the change has no tasks and no scenarios
+- **THEN** every role on `auto` uses the default model of the role and the reason says there was nothing to score
+
+### Requirement: What the issue asks for is clamped
+The issue MAY carry `Model:` for the developer and `QA-model:` for the lenses. For a role on `auto`, the plan SHALL use the value, SHALL NOT go above the ceiling of the role, and MAY go below its floor. It SHALL ignore the value, and say why in the plan, when `trust` is `public` or the name is not in the ladder.
+
+#### Scenario: The issue asks for a lower model
+- **WHEN** the issue says `Model: haiku` and the developer is on `auto` with the ceiling `sonnet`
+- **THEN** the developer runs on `haiku` with the source `issue`
+
+#### Scenario: The issue asks for a model above the ceiling
+- **WHEN** the issue says `Model: opus` and the ceiling of the developer is `sonnet`
+- **THEN** the developer runs on `sonnet` and the plan says the value was clamped to the ceiling
+
+#### Scenario: Public trust
+- **WHEN** `trust` is `public` and the issue carries `Model: haiku`
+- **THEN** the line is ignored and the plan says why
+
+#### Scenario: A name the ladder does not have
+- **WHEN** the issue says `Model: gpt-5`
+- **THEN** the line is ignored and the plan names the value and the ladder
+
+### Requirement: The plan never raises the cost limit
+The model plan SHALL NOT change `limits.run_max_cost`, `limits.run_max_turns` or `limits.run_max_minutes`, and no value of the issue SHALL bypass them.
+
+#### Scenario: A cheaper plan
+- **WHEN** the plan lowers the models of a small issue
+- **THEN** the limits of the run are the ones in `relevo.yml`
+
+#### Scenario: A line in the issue
+- **WHEN** the issue says `Model: opus` and the ceiling allows it
+- **THEN** the run is still stopped by `limits.run_max_cost`
+
+### Requirement: A retry of the developer runs one level up
+Before each launch of the developer in fix mode after a red gate or a rejection, `go` SHALL ask `scripts/model-plan.mjs escalate` for its model. For a developer on `auto` the script SHALL give the next name of `agents.ladder` after the model of the failed attempt, never past the `ceiling` of the role. In every other case it SHALL give the same model back. The lenses SHALL keep the model of the plan, and no limit of the run SHALL change.
+
+#### Scenario: QA rejects and the developer is on auto
+- **WHEN** the attempt 1 ran on `haiku`, QA rejected it and the ceiling of the developer is `opus`
+- **THEN** the retry runs on `sonnet`, and a second retry would run on `opus`
+
+#### Scenario: The developer is at its ceiling
+- **WHEN** the developer already runs on its ceiling and QA rejects the attempt
+- **THEN** the retry runs on the same model
+
+#### Scenario: The model of the developer is set in the configuration
+- **WHEN** `agents.dev.model` is a name and not `auto`
+- **THEN** the retry runs on that name
+
+#### Scenario: The red gate
+- **WHEN** the gate is red on an attempt that is not the last one
+- **THEN** the retry runs one name up, as after a rejection
+
+#### Scenario: The step cannot be made
+- **WHEN** the configuration cannot be read or the model is not in the ladder
+- **THEN** the retry runs on the model of the failed attempt and the run goes on

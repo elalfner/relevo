@@ -181,3 +181,25 @@ test('bad arguments exit with 3', () => {
   const dir = repo();
   assert.equal(spawnSync('node', [GATE, '--base', 'origin/main', '--config', join(dir, 'missing.yml')], { encoding: 'utf8' }).status, 3);
 });
+
+test('Scenario: A reviewed credential line passes the scan of the gate and the detail says so', () => {
+  const dir = repo();
+  writeFileSync(join(dir, '.relevo/scan-exceptions.json'), JSON.stringify({ exceptions: [{ path: 'form.js', pattern: "password = 'hunter2", reason: 'form field' }] }));
+  git(dir, 'add', '.');
+  git(dir, 'commit', '-qm', 'exceptions');
+  git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  writeFileSync(join(dir, 'form.js'), "const password = 'hunter2hunter2hunter2';\n");
+  const r = gate(dir, '--files', 'form.js');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const scan = receiptOf(dir).scans.find((s) => s.name === 'temporary markers and credentials');
+  assert.equal(scan.ok, true);
+  assert.match(scan.detail, /scan exceptions applied: 1/);
+});
+
+test('Scenario: A list that is only in the working tree does not excuse the gate', () => {
+  const dir = repo();
+  writeFileSync(join(dir, '.relevo/scan-exceptions.json'), JSON.stringify({ exceptions: [{ path: 'form.js', pattern: "password = 'hunter2", reason: 'form field' }] }));
+  writeFileSync(join(dir, 'form.js'), "const password = 'hunter2hunter2hunter2';\n");
+  const r = gate(dir, '--files', 'form.js');
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+});
