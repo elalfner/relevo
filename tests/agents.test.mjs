@@ -356,3 +356,21 @@ test('Scenario: QA rejects on a blocking interface rule only with evidence, and 
   assert.match(qa, /Say how many rules were left out/);
   assert.match(qa, /treat a \*\*mobile sketch\*\* like an image reference/);
 });
+
+test('Scenario: the developer has a short cost guide and receives the configured OpenSpec guidance (#130)', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  const guide = dev.split('## Cost guide')[1]?.split(/\n## /)[0];
+  assert.ok(guide, 'agents/dev.md has a Cost guide section');
+  const lines = guide.split('\n').filter((l) => l.trim());
+  assert.ok(lines.length <= 6, `the guide has ${lines.length} lines, at most 6`);
+  for (const re of [/bounded ranges/, /script/, /only the tests of what you changed/, /never rerun/]) assert.match(guide, re);
+  assert.match(dev, /project guidance/);
+  assert.match(dev, /it wins/);
+  assert.match(dev, /never overrides the "You must never" list/);
+  const go = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
+  assert.match(go, /`openspec instructions tasks --change "<change_id>" --json`/);
+  assert.match(go, /`operationGuidance`/);
+  assert.match(go, /every launch of `relevo:dev` in any mode/);
+  assert.match(go, /only the default cost guide applied/);
+  assert.match(go, /in \*\*fix\*\* mode that file describes gets the project guidance too/, 'the fix launches of qa-run.md get the guidance');
+});
