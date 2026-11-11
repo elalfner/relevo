@@ -11,7 +11,9 @@ import { withoutCode } from './issue-parse.mjs';
 import { ruleAt } from './rules-file.mjs';
 
 const STOP = new Set(('the and for with that this from are was were has have had not but all any can will shall must should may might its into onto than then them they their there these those each every always never only also such via per out of in on at by to a an is it as be or if no do does did so we you your our not more most some other which what when where who whom how why about over under after before between during without within would could').split(' ')
-  .concat('covered cover covers later future issue issues another separate separately scope handled handle part version release phase todo see for el la los las un una unos unas de del y o en con por para que se su sus al lo es son ser como pero sin sobre entre este esta estos estas cada siempre nunca solo también otro otra otros otras cubierto tarea issue'.split(' ')));
+  .concat('covered cover covers later future issue issues another separate separately scope handled handle part version release phase todo see for el la los las un una unos unas de del y o en con por para que se su sus al lo es son ser como pero sin sobre entre este esta estos estas cada siempre nunca solo también otro otra otros otras cubierto tarea issue'.split(' '))
+  // Generic verbs say what is done, not what it is done to.
+  .concat('change changes changing changed add adds adding added edit edits editing update updates updating modify modifies modifying allow allows allowing let lets letting block blocks blocking support supports supporting include includes including make makes making use uses using cambiar cambio cambios agregar permitir bloquear'.split(' ')));
 // A phrase that says a line requires something. A prohibition agrees with an exclusion, so it is never a requirement.
 const REQUIRE_RE = /\b(must|shall|required?|requires?|mandatory|always|every|each|need(?:s)? to|debe|deben|debes|obligatori[oa]s?|siempre|cada|requiere[n]?|todo[s]?|toda[s]?)\b/i;
 const FORBID_RE = /\b(must not|mustn't|shall not|never|do not|don't|does not|doesn't|cannot|can't|nunca|jam[aá]s|no debe[n]?|no se debe[n]?|prohibid[oa]s?|forbidden)\b/i;
@@ -30,10 +32,14 @@ export function terms(text) {
   return new Set(words.map(stem));
 }
 const sharedTerms = (a, b) => [...a].filter((t) => b.has(t));
-// Two content words in common, or every content word of a short exclusion ("export"), is the same subject.
+// The same subject: the other line holds at least three quarters of the content words of the exclusion, and at least two of them
+// (or all of them, for an exclusion of one or two words such as "export"). Run on the open issues of this repository, two shared
+// words alone flagged five of seventeen issues, all of them false positives.
 function sameSubject(limit, other) {
   const shared = sharedTerms(limit, other);
-  return shared.length >= 2 || (limit.size > 0 && limit.size <= 2 && shared.length === limit.size);
+  if (limit.size === 0) return false;
+  if (limit.size <= 2) return shared.length === limit.size;
+  return shared.length >= 2 && shared.length / limit.size >= 0.75;
 }
 
 // "Any other change", "the rest": an exclusion of the remainder, which excludes what nothing else in the issue asks for, so it cannot contradict a rule or a scenario.

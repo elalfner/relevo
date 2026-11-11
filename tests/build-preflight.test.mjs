@@ -272,3 +272,10 @@ test('CLI: the rules files of relevo.yml are read, exit 1 with the reason confli
   assert.equal(JSON.parse(withConfig.stdout).reason, 'conflict');
   assert.equal(run(join(dir, 'none.yml')).status, 0);
 });
+
+test('a scenario that needs an excluded line is a note and never stops the build', () => {
+  const body = `${GOOD}\n## Out of scope\n- the total shown on the screen\n`;
+  const r = checkIssueStage({ body });
+  assert.equal(r.decision, 'ok');
+  assert.match(r.notes.join('\n'), /scenario 1/);
+});

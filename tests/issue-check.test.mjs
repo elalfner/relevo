@@ -623,11 +623,11 @@ test('Scenario: the same draft with an Overrides decision passes', () => {
   assert.deepEqual(checkIssueDraft({ title: 'Birthday list', body: withOut('- export and the enable/disable actions', extra), rules: RULES121 }).problems, []);
 });
 
-test('Scenario: a scenario that needs what Out of scope excludes names both, with no rules', () => {
+test('Scenario: a scenario that needs what Out of scope excludes names both as a warning, with no rules', () => {
   const body = withOut('- showing the names of the clients with a birthday today');
   const r = checkIssueDraft({ title: 'Birthday list', body });
-  assert.equal(r.ok, false);
-  assert.match(r.problems.join('\n'), /scenario|WHEN/);
+  assert.equal(r.ok, true, 'a warning, never a problem');
+  assert.match(r.warnings.join('\n'), /Out of scope says.*scenario 1 \(WHEN/);
 });
 
 test('without rules and without a clash the draft still passes', () => {

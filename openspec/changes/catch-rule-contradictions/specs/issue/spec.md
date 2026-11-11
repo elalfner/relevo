@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: The check finds a draft that contradicts the project rules or itself
-The check of a draft SHALL compare the lines of its `Out of scope` section with the project rules (`qa.rules_from`) and with the draft's own scenarios, and SHALL report a problem for each pair that conflicts. A pair conflicts when an `Out of scope` line excludes something that a rule requires, or limits something that a scenario needs. A rule is a requirement unless it is marked `[advice]`. The problem SHALL quote both lines, name the file and line of a rule, and name the scenario by its position and its `WHEN` text, so that a person can confirm it by reading them. The check SHALL NOT decide which of the two wins. A rule that a decision of the draft overrides with a line `Overrides: <file>:<line>` SHALL be skipped.
+The check of a draft SHALL compare the lines of its `Out of scope` section with the project rules (`qa.rules_from`) and with the draft's own scenarios, and SHALL report each pair that conflicts: a problem when a rule is involved, a warning when only a scenario is. A pair conflicts when an `Out of scope` line excludes something that a rule requires, or limits something that a scenario needs. A rule is a requirement unless it is marked `[advice]`. The problem SHALL quote both lines, name the file and line of a rule, and name the scenario by its position and its `WHEN` text, so that a person can confirm it by reading them. The check SHALL NOT decide which of the two wins. A rule that a decision of the draft overrides with a line `Overrides: <file>:<line>` SHALL be skipped.
 
 #### Scenario: Out of scope excludes a required action
 - **WHEN** `Out of scope` says "export and the enable/disable actions" and a rule line says every list must offer export and enable/disable actions
@@ -9,7 +9,7 @@ The check of a draft SHALL compare the lines of its `Out of scope` section with 
 
 #### Scenario: Out of scope forbids what a scenario needs
 - **WHEN** `Out of scope` lists "changes to the detail page" and a scenario says WHEN the detail page opens THEN no error shows
-- **THEN** the check fails and names that scenario and that limit
+- **THEN** the check warns, naming that scenario and that limit, and does not fail
 
 #### Scenario: The rule is advice
 - **WHEN** the rule line is marked `[advice]`

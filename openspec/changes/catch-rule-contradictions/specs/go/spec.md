@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A contradiction is found before any agent turn
-Before the agent starts, `build-preflight.mjs --stage issue` SHALL run the same comparison as the check of a draft, against the files of `qa.rules_from`, and SHALL report each conflict as a finding of the kind `conflict`. With a finding the decision is `needs-spec`, the reason is `conflict`, and `missing` quotes both lines of each pair. No model turn is spent. Without a rules file or without `relevo.yml` the comparison of the issue with its own scenarios still runs. This stage is an optimisation: QA still reads the rules.
+Before the agent starts, `build-preflight.mjs --stage issue` SHALL run the same comparison as the check of a draft, against the files of `qa.rules_from`, and SHALL report each conflict as a finding of the kind `conflict`. With a finding the decision is `needs-spec`, the reason is `conflict`, and `missing` quotes both lines of each pair. No model turn is spent. A scenario that the words say needs an excluded line is listed in `notes` and never changes the decision. Without a rules file or without `relevo.yml` only that comparison with the scenarios runs. This stage is an optimisation: QA still reads the rules.
 
 #### Scenario: Conflict found at the preflight
 - **WHEN** the issue excludes in `Out of scope` something that a hard rule of `CLAUDE.md` requires

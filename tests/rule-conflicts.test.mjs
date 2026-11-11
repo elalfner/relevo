@@ -88,3 +88,10 @@ test('an exclusion of the remainder ("any other change to the home screen") cann
   const body = issue({ out: '- Any other change to the home screen.', scenarios: '- **WHEN** the home screen is shown\n- **THEN** the greeting is on top' });
   assert.deepEqual(findConflicts({ body, rules: parseRules('CLAUDE.md', '- The home screen must show the greeting.') }).conflicts, []);
 });
+
+test('a verb phrase that shares two words with a scenario is not the same subject (false positives found on real issues)', () => {
+  const body = issue({ out: '- Letting an unattended run edit protected paths.', scenarios: '- **WHEN** a build is rejected for a protected path\n- **THEN** the comment names the policy' });
+  assert.deepEqual(findConflicts({ body, rules: [] }).conflicts, []);
+  const body2 = issue({ out: '- Changing the model of the orchestrator before there is data.', scenarios: '- **WHEN** the shares show the orchestrator above half of the cost\n- **THEN** a decision is taken about the model' });
+  assert.deepEqual(findConflicts({ body: body2, rules: [] }).conflicts, []);
+});

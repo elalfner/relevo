@@ -60,13 +60,15 @@ export function checkIssueStage({ body, manifest = null, exists = () => true, en
   });
 
   const found = findConflicts({ body, rules });
-  found.conflicts.forEach((c) => findings.push({ kind: 'conflict', detail: conflictText(c) }));
+  // Only a rule blocks; a scenario that the words say needs an excluded line is a note, because the words alone are not reliable enough to stop a build.
+  found.conflicts.filter((c) => c.kind === 'rule').forEach((c) => findings.push({ kind: 'conflict', detail: conflictText(c) }));
+  const notes = found.conflicts.filter((c) => c.kind === 'scenario').map(conflictText);
   found.problems.forEach((detail) => findings.push({ kind: 'conflict', detail }));
 
   const hasReference = findings.some((f) => f.kind === 'reference');
   const hasInput = findings.some((f) => f.kind === 'input');
   const reason = findings.length === 0 ? null : hasReference ? REASONS.references : hasInput ? REASONS.inputs : REASONS.conflict;
-  return { decision: findings.length === 0 ? 'ok' : 'needs-spec', reason, findings, unverified };
+  return { decision: findings.length === 0 ? 'ok' : 'needs-spec', reason, findings, unverified, notes };
 }
 
 // ---------------------------------------------------------------- stage: spec

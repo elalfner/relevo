@@ -6,7 +6,7 @@ In a pilot on a real Vue project, several issues said "export and the enable/dis
 
 ## What Changes
 
-- A model-free check reads the issue against the project rules (`qa.rules_from`) and against itself: an `Out of scope` line that excludes something a hard rule requires, and an `Out of scope` limit that forbids what one of its own scenarios needs. Each finding quotes both lines (with the file and line of the rule) so a person can reproduce it by reading them.
+- A model-free check reads the issue against the project rules (`qa.rules_from`) and against itself: an `Out of scope` line that excludes something a hard rule requires, and an `Out of scope` limit that forbids what one of its own scenarios needs (the first blocks, the second only warns, because the words alone were not reliable enough to stop a build). Each finding quotes both lines (with the file and line of the rule) so a person can reproduce it by reading them.
 - The check runs where the issue text is already checked: `check-issue.mjs` before the issue is created, and `build-preflight.mjs --stage issue` before any agent turn of a build. A conflict sends the issue back to `needs-spec` with a new reason, `conflict`.
 - An issue can override a rule on purpose with a recorded decision: a line `Overrides: <file>:<line>` inside a `### D<n>.` decision. The check then skips that rule. It never decides which rule wins.
 - A rule of the rules file is a requirement by default. A line (or a heading and what is under it) marked `[advice]` is advice and never blocks.

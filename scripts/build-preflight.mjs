@@ -9,7 +9,7 @@
 // a task that changes a protected path, a restricted file, or adds a dependency that the issue does not allow.
 // `--stage issue` also compares `Out of scope` with the rules files (`qa.rules_from`) and with the scenarios: a contradiction
 // is a `conflict` finding that quotes both lines (the reason `conflict`), and a person decides which one wins.
-// It prints JSON: { stage, decision, reason, findings, unverified, missing }. A value of a secret is never read, printed or stored.
+// It prints JSON: { stage, decision, reason, findings, unverified, notes, missing }. A value of a secret is never read, printed or stored.
 // This is an optimisation and not a control: the guards that already enforce each rule stay in force.
 //   exit 0: decision ok   exit 1: decision needs-spec (the reason is in the output)   exit 2: bad arguments
 import { execFileSync } from 'node:child_process';
@@ -89,5 +89,5 @@ if (stage === 'issue') {
     restricted,
   });
 }
-console.log(JSON.stringify({ stage, ...result, unverified: result.unverified ?? [], missing: missingText(result), note: 'an optimisation and not a security control: the guards that enforce each rule stay in force' }));
+console.log(JSON.stringify({ stage, ...result, unverified: result.unverified ?? [], notes: result.notes ?? [], missing: missingText(result), note: 'an optimisation and not a security control: the guards that enforce each rule stay in force' }));
 process.exit(result.decision === 'ok' ? 0 : 1);

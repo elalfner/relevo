@@ -67,10 +67,12 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
     if (ref.kind === 'repo-file' && !links.includes(ref.repo)) problems.push(`Design reference: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
     if (ref.kind === 'attachment' && !ref.allowed) problems.push(`Design reference: ${ref.target} is not a GitHub attachment (github.com/user-attachments, user-images.githubusercontent.com)`);
   });
+  const scenarioNotes = [];
   const found = findConflicts({ body, rules });
-  found.conflicts.forEach((c) => problems.push(conflictText(c)));
+  // A line that a rule requires is a problem; one that a scenario needs is a warning (the words alone flagged real issues that were fine).
+  found.conflicts.forEach((c) => (c.kind === 'rule' ? problems : scenarioNotes).push(conflictText(c)));
   found.problems.forEach((p) => problems.push(p));
-  const warnings = [];
+  const warnings = [...scenarioNotes];
   const models = parseIssueModels(body);
   models.problems.forEach((m) => warnings.push(m));
   const bodyChars = String(body ?? "").length;
