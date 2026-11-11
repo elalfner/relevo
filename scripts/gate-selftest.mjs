@@ -83,8 +83,10 @@ try {
     if (status === 'could-not-run' && !failed.length) failed.push((r.stderr || r.stdout).trim().split('\n')[0] ?? 'the gate did not run');
     results.push({ ...c, status, failed, verdict: verdict(c, status) });
     // The next case starts from the base again.
+    // Only what the case added goes: the links to the installed paths and the receipt must stay for the next case.
     git(['reset', '-q', '--hard', baseCommit], wt);
-    git(['clean', '-qfdx', '-e', 'node_modules'], wt);
+    rmSync(file, { force: true });
+    rmSync(join(wtRoot, '.relevo-receipt'), { recursive: true, force: true });
   }
 } catch (err) {
   console.error(`the scratch worktree could not be used: ${String(err.stderr || err.message).trim()}`);

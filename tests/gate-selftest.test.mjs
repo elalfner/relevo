@@ -105,3 +105,13 @@ test('Scenario: a gate that cannot run is reported and the worktree is still rem
   assert.match(r.stdout, /could-not-run/);
   assert.equal(git(dir, 'worktree', 'list').trim().split('\n').length, 1);
 });
+
+test('Scenario: the installed paths of the profile stay linked for every case', () => {
+  // flutter lists .dart_tool/package_config.json as installed; every case needs it, not only the first.
+  const dir = repo({ testCmd: 'test -e .dart_tool/package_config.json && test ! -e test/relevo_selftest_test.dart' });
+  mkdirSync(join(dir, '.dart_tool'), { recursive: true });
+  writeFileSync(join(dir, '.dart_tool/package_config.json'), '{}\n');
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /docs: a docs-only change - gate green.*: ok/);
+});
