@@ -86,7 +86,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role fix --platform <platfo
 
 If `platform-of.mjs` exits 1, change nothing more and tell the person what it printed (the issue no longer names a valid platform: they correct the `Platform:` line and run `/relevo:fix` again). If `stack-profile.mjs` fails, show its message and stop.
 
-Launch the `relevo:dev` agent in **build** mode, with the `model` and `effort` of `agents.dev` (from `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`) as parameters of the Agent tool. Give it the change folder, the project rules files, the resolved profile, the folder of the platform (`path`), the skill paths and the base branch. The original tasks are all done, so the only pending ones are the corrections, and those are all it should touch.
+Make the model plan as `go` does in its step 4 (`model-plan.mjs` with the issue saved to a file, its title and the `tasks.md` of the change; when it prints `failed`, use the configuration, with the default model of the role for a role on `auto`). Launch the `relevo:dev` agent in **build** mode, with the `model` and `effort` of `dev` in that plan as parameters of the Agent tool; the lenses of the QA reference use the `qa` entries of the same plan. Give it the change folder, the project rules files, the resolved profile, the folder of the platform (`path`), the skill paths and the base branch. The original tasks are all done, so the only pending ones are the corrections, and those are all it should touch.
 
 Read its report. If its open questions are not "none", they mean the specification is still unclear: ask the person, update the specification and run the guard again.
 

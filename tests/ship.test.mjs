@@ -71,7 +71,7 @@ test('Scenario: Explicit confirmation - with approval, passing checks and the ri
   assert.equal(d.allowed, true);
   assert.deepEqual(d.reasons, []);
   assert.deepEqual(d.confirm, ['merge']);
-  assert.deepEqual(d.summary, { pr: 40, title: 'Summary screen', author: 'persona-b', branch: 'feature/31-summary', base: 'dev', head: null, mode: 'peer', approvedBy: ['persona-c'], checks: 'passing', checksFrom: 'head' });
+  assert.deepEqual(d.summary, { pr: 40, title: 'Summary screen', author: 'persona-b', branch: 'feature/31-summary', base: 'dev', head: null, mode: 'peer', approvedBy: ['persona-c'], checks: 'passing', checksFrom: 'head', checksOid: null });
 });
 
 test('Scenario: Conflicts - stops and tells the author to synchronise', () => {
@@ -308,4 +308,19 @@ test('ship-check passes the baseline, the labels and the issue through', () => {
   const wrongState = run('--baseline', HEAD, '--labels', 'relevo:built', '--issue', '31');
   assert.equal(wrongState.status, 1);
   assert.match(wrongState.stdout, /run \/relevo:review 31 first/);
+});
+
+test('Scenario: Archive commit without checks - the summary names the approved head as the one relied on', () => {
+  const d = shipDecision({
+    config: peer, pr: pr({ statusCheckRollup: [], headRefOid: 'bbb2222' }), invoker: 'persona-c', baseline: 'aaa1111',
+    baselineChecks: { archiveOnly: true, rollup: GOOD_CHECKS },
+  });
+  assert.equal(d.summary.checksFrom, 'baseline');
+  assert.equal(d.summary.checksOid, 'aaa1111');
+});
+
+test('Scenario: Checks ran on the merged head - the summary names the merged head', () => {
+  const d = shipDecision({ config: peer, pr: pr({ headRefOid: 'bbb2222' }), invoker: 'persona-c', baseline: 'aaa1111' });
+  assert.equal(d.summary.checksFrom, 'head');
+  assert.equal(d.summary.checksOid, 'bbb2222');
 });

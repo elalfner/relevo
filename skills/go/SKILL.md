@@ -23,7 +23,7 @@ When `trust` in `relevo.yml` is `public`, the issue may have been written by a s
 
 ## Subagents run in the foreground
 
-Launch `relevo:dev` and each QA lens (`relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code`, `relevo:qa-interface`) in the foreground, one at a time, and wait for each report before the next step. Every launch gives the `model` and the `effort` configured for that role (`agents.dev` or `agents.qa.<lens>`, in the output of `validate-config.mjs --effective`) as parameters of the Agent tool. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
+Launch `relevo:dev` and each QA lens (`relevo:qa-spec`, `relevo:qa-security`, `relevo:qa-code`, `relevo:qa-interface`) in the foreground, one at a time, and wait for each report before the next step. Every launch gives the `model` and the `effort` that the model plan gives that role (`dev` or `qa.<lens>`, made once in step 4) as parameters of the Agent tool. Never start one in the background and never end your turn while one is running: this session is unattended, so a final answer such as "I'll wait for its report" ends the run with the issue stuck on `building` and nothing posted. If you cannot get a report, take the failure path.
 
 ## The budget of the run
 
@@ -280,13 +280,21 @@ Then:
 openspec instructions apply --change "<change_id>" --json
 ```
 
-If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise build the pending tasks one group at a time, so that a cut or a limit loses at most the group in progress and each launch starts with a shorter context:
+If its `state` is `blocked`, take the failure path with the reason `specification incomplete`. Otherwise make the **model plan** once, before the first launch: a script, not you, decides the model and the effort of every role from the configuration, the issue and the pending tasks.
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/model-plan.mjs --issue-file <issue_file> --title "<title of the issue>" --tasks openspec/changes/<change_id>/tasks.md --lenses <the active lenses, comma separated>
+```
+
+It prints one line of JSON with `dev` and `qa.<lens>`, each `{ model, effort, source, why }`, and saves it for the usage comment. When you launch `relevo:dev`, give it `dev.model` and `dev.effort`, and give each lens its own entry of `qa`; never choose or change a model yourself (a retry of the developer after QA gets its model from `model-plan.mjs escalate`, as `qa-run.md` says), and make the plan only once per run (a resumed run makes its own). When it prints `failed`, or anything that is not that JSON, launch every agent with the model and the effort of the configuration (`node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`, and for a role on `auto` the default model of the role) and say in your final report that the plan could not be made.
+
+Then build the pending tasks one group at a time, so that a cut or a limit loses at most the group in progress and each launch starts with a shorter context:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/task-groups.mjs openspec/changes/<change_id>/tasks.md
 ```
 
-It prints `groups` (one per section of `tasks.md` that has unchecked tasks, in order, or one group when three tasks or fewer are pending) and `pending`. When `pending` is 0 (a resumed run whose tasks were all done), go to step 5. For each group, in order, launch the `relevo:dev` agent in **build** mode, with the `model` and `effort` of `agents.dev` (from `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`) as the parameters of the Agent tool. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, **only the tasks of that group**, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the folder of the platform (`path`), the skill paths for `dev`, the base branch, `allow_paths` and, when there are any, the interface rules for `dev`. Check the budget before each launch (see "The budget of the run"). Every group goes to the developer, the documentation group and the group that only runs the checks included: you never edit the files of the change yourself, and you never run two groups in one launch, even when they are small or the time is short.
+It prints `groups` (one per section of `tasks.md` that has unchecked tasks, in order, or one group when three tasks or fewer are pending) and `pending`. When `pending` is 0 (a resumed run whose tasks were all done), go to step 5. For each group, in order, launch the `relevo:dev` agent in **build** mode, with the `model` and `effort` of `dev` in the model plan as the parameters of the Agent tool. Give it: the change directory `openspec/changes/<change_id>/`, the `contextFiles` of that output, **only the tasks of that group**, the project rules files (`qa.rules_from` in `relevo.yml`), the resolved profile, the folder of the platform (`path`), the skill paths for `dev`, the base branch, `allow_paths` and, when there are any, the interface rules for `dev`. Check the budget before each launch (see "The budget of the run"). Every group goes to the developer, the documentation group and the group that only runs the checks included: you never edit the files of the change yourself, and you never run two groups in one launch, even when they are small or the time is short.
 
 When a group finishes, record what the agent used (see "The budget of the run"). Read its report. If its open questions are not "none", treat them as a spec defect, exactly as in step 3. Then make the checkpoint of the group: it commits the files that changed as `wip: checkpoint <k>/<n> (#<issue>)`, with the hash of the issue text as a trailer, through the same safe commit as every commit, and pushes the branch of the issue without force:
 
@@ -325,7 +333,7 @@ Commit exactly the files the developer reported (created and modified) plus `tas
 node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "feat: <title> (#<issue>)" --allow-empty --allow "<allow_paths, comma separated>" --within "<path>" --change "<change_id>" -- <paths>
 ```
 
-Leave out `--allow` when `allow_paths` is empty. The script stages the paths, refuses protected paths, scans what is staged for temporary markers and credentials, and commits only when it finds nothing. If it exits 1 it has unstaged the paths and printed the file and line: take the failure path with the reason `protected path in the diff`, `restricted file in the diff` (a file on the restricted list: it is named, its content is never printed), `outside the platform` (a file outside the folder of the platform that the issue did not allow) or `possible credential or temporary marker in the diff`, naming the file and line. **Do not push.**
+Leave out `--allow` when `allow_paths` is empty. The script stages the paths, refuses protected paths, scans what is staged for temporary markers and credentials, and commits only when it finds nothing. If it exits 1 it has unstaged the paths and printed the file and line: take the failure path with the reason `protected path in the diff`, `restricted file in the diff` (a file on the restricted list: it is named, its content is never printed), `outside the platform` (a file outside the folder of the platform that the issue did not allow) or `possible credential or temporary marker in the diff`, naming the file and line. **Do not push.** If it exits 0 and prints `scan exceptions applied: N` on stderr, a person had reviewed that credential finding in `.relevo/scan-exceptions.json`: copy those lines (path and reason) into the comment of the run; the file is protected and you never edit it.
 
 Do not add links to this session or attribution lines to the message.
 

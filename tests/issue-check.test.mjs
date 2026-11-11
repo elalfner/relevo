@@ -588,3 +588,20 @@ test('a link input is fetched like a code pointer, so it counts with the referen
   const body = `${GOOD}\n## Design reference\n\n${refs}\n\n## External inputs\n\n${links}\n`;
   assert.match(checkIssueDraft({ title: 'Home', body, links: ['acme/api'] }).problems.join('\n'), /Design reference and the linked External inputs have 6 references together; the most Relevo takes is 5/);
 });
+
+test('Scenario: The check of the issue - Model: and QA-model: lines are accepted and are not a missing section', () => {
+  const plain = checkIssueDraft({ title: 'Birthday list', body: GOOD });
+  const withModels = checkIssueDraft({ title: 'Birthday list', body: `${GOOD}\nModel: haiku\nQA-model: sonnet\n` });
+  assert.equal(withModels.ok, true);
+  assert.deepEqual(withModels.problems, plain.problems);
+  assert.deepEqual(withModels.warnings, plain.warnings);
+  assert.deepEqual(withModels.models, { dev: 'haiku', qa: 'sonnet' });
+  assert.deepEqual(plain.models, { dev: null, qa: null });
+});
+
+test('a model line that cannot be read is a warning, never a problem', () => {
+  const r = checkIssueDraft({ title: 'Birthday list', body: `${GOOD}\nModel: the strongest one\n` });
+  assert.equal(r.ok, true);
+  assert.ok(r.warnings.some((w) => /Model: must be a single model name/.test(w)));
+  assert.equal(r.models.dev, null);
+});

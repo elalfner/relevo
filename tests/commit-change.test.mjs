@@ -300,3 +300,67 @@ test('--allow-empty still commits normally when the paths have changes', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.equal(git(dir, 'show', '--name-only', '--format=', 'HEAD').trim(), 'lib/a.dart');
 });
+
+const EXCEPTION = { path: 'lib/form.dart', pattern: "password = 'hunter2", reason: 'form field, not a secret' };
+const LITERAL = "final password = 'hunter2hunter2hunter2';\n";
+const withList = (...entries) => repo({ '.relevo/scan-exceptions.json': JSON.stringify({ exceptions: entries }) });
+
+test('Scenario: A reviewed line is committed and the report says one exception was applied', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `// header\n${LITERAL}`);
+  const r = run(dir, '--message', 'feat: form (#9)', '--', 'lib/form.dart');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout.trim(), /^[0-9a-f]{7,}$/, 'stdout keeps only the hash');
+  assert.match(r.stderr, /scan exceptions applied: 1\n {2}lib\/form\.dart {2}reviewed: form field, not a secret/);
+  assert.ok(!r.stdout.includes('hunter2') && !r.stderr.includes('hunter2'));
+});
+
+test('Scenario: The listed line moved - still committed', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `${'// pad\n'.repeat(30)}${LITERAL}`);
+  assert.equal(run(dir, '--message', 'feat: form', '--', 'lib/form.dart').status, 0);
+});
+
+test('Scenario: A line that is not listed is refused as before, in the same file', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `${LITERAL}final token = 'abcdefghijklmnop1234';\n`);
+  const before = head(dir);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /lib\/form\.dart:2 {2}possible credential \(assigned-secret\)/);
+  assert.equal(head(dir), before);
+  assert.deepEqual(staged(dir), []);
+});
+
+test('Scenario: Too broad an entry is refused and named', () => {
+  const dir = withList({ ...EXCEPTION, path: 'lib/' });
+  put(dir, 'lib/form.dart', LITERAL);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /scan exception refused: lib\/ \(entry 1\) {2}the path is a folder/);
+});
+
+test('Scenario: A list edited in the working tree but not committed is not applied', () => {
+  const dir = repo();
+  put(dir, '.relevo/scan-exceptions.json', JSON.stringify({ exceptions: [EXCEPTION] }));
+  put(dir, 'lib/form.dart', LITERAL);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /possible credential \(assigned-secret\)/);
+});
+
+test('the list itself is a protected path and cannot be committed by a run', () => {
+  const dir = repo();
+  put(dir, '.relevo/scan-exceptions.json', JSON.stringify({ exceptions: [EXCEPTION] }));
+  const r = run(dir, '--message', 'chore: exceptions', '--', '.relevo/scan-exceptions.json');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /protected path/);
+});
+
+test('a temporary marker on a listed line is still refused', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `final password = 'hunter2hunter2hunter2'; // ${MARKER}\n`);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /temporary marker/);
+});

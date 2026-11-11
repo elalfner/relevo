@@ -16,7 +16,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/validation-gate.mjs --base origin/<base> --pl
 Announce the phase `qa` with the attempt, as the skill says, when the gate starts. No agent runs the gate. It runs `analyze` and `test` of the profile from the folder of the platform, the scan for temporary markers and credentials and the check for restricted files, and writes a receipt tied to the exact diff. Its first line is `green`, `red` or `could-not-run`:
 
 - **`could-not-run`** (exit 2): a tool the profile needs is missing, and the developer agent cannot install one. Do not retry. Take the failure path with the reason `automated validation could not run`, naming what the gate printed as missing.
-- **`red`** (exit 1): do not launch any lens. If this is not the last attempt, launch `relevo:dev` in **fix** mode and give it the end of the output of what failed: `.relevo-receipt/receipt.json` holds, for each command, its exit code and the capped tail of its output; give it that, not a summary of your own. This used an attempt: go back to step 1 with `<n> + 1`. On the last attempt take the failure path with the reason `automated validation failed after the retries` and the tail of the failing command as the first finding.
+- **`red`** (exit 1): do not launch any lens. If this is not the last attempt, raise the developer for the retry (see "The model of a retry" below) and launch `relevo:dev` in **fix** mode with that model, giving it the end of the output of what failed: `.relevo-receipt/receipt.json` holds, for each command, its exit code and the capped tail of its output; give it that, not a summary of your own. This used an attempt: go back to step 1 with `<n> + 1`. On the last attempt take the failure path with the reason `automated validation failed after the retries` and the tail of the failing command as the first finding.
 - **`green`** (exit 0): go on.
 
 ## 2. Plan the lenses
@@ -36,7 +36,7 @@ Once per round, before the first lens, list the files that are still as the inst
 For each active lens, in the order `spec`, `security`, `code`, `interface`:
 
 1. **Check the receipt first:** `node ${CLAUDE_PLUGIN_ROOT}/scripts/receipt-check.mjs`. If it exits 1 the diff changed since the gate ran (or the receipt is not green): run step 1 again before this lens. A lens never starts on a diff whose checks did not run.
-2. Record that the lens starts: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs lens <lens> --attempt <n>`. It changes no phase and only feeds the seconds of each lens in the usage record. Then launch the agent `relevo:qa-<lens>` in the foreground, giving the **model** and the **effort** configured for it when you launch it (`agents.qa.<lens>.model` and `agents.qa.<lens>.effort` in the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`): pass them as the `model` and `effort` parameters of the Agent tool. The effort given at launch is applied (measured in spike S1 of the design). Never start two together, and never end your turn while one is running.
+2. Record that the lens starts: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs lens <lens> --attempt <n>`. It changes no phase and only feeds the seconds of each lens in the usage record. Then launch the agent `relevo:qa-<lens>` in the foreground, giving the **model** and the **effort** that the model plan gives it when you launch it (`qa.<lens>` in the output of `model-plan.mjs`, made once by `go` before the first launch; when there is no plan, `agents.qa.<lens>` in the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs --effective`, and for a role on `auto` the default model of the role): pass them as the `model` and `effort` parameters of the Agent tool. The effort given at launch is applied (measured in spike S1 of the design). Never start two together, and never end your turn while one is running.
 3. Give it only what it reads, and with it the `not_the_change` list when it is not empty:
    - `spec`: the change folder, `<issue_file>`, the base branch, the rules files, the folder of the platform and `allow_paths`. It is given no stack section.
    - `security`: the change folder, the base branch, the folder of the platform and the output of `node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform> --lens security`.
@@ -63,7 +63,7 @@ It prints JSON and decides: `spec`, `security` and `code` always block, and `int
 
 If `all_non_fixable` is `true`, every blocking finding needs something that the developer agent cannot supply (an input the issue depends on, a decision of the specification, or something an unattended run may not do), so a retry cannot succeed: **do not retry**. Take the failure path with the reason `QA rejected: nothing the developer agent can fix`, with `finding_class` set to `first_non_fixable_class` and `retries_skipped` set to `true`. A finding with no class, or an unknown one, counts as `fixable`.
 
-Otherwise, if `<n>` is below `<qa_retries> + 1`: check the budget (`run-budget.mjs check`, as in step 3) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying; if not, announce `phase development --attempt <n> --of <qa_retries>`, launch `relevo:dev` in **fix** mode with the complete reports of all the lenses that rejected, together, run `intent-to-add.mjs` on the files of its new report, and go back to step 1 with `<n> + 1`, announcing `phase qa --attempt <n + 1> --of <qa_retries + 1>`.
+Otherwise, if `<n>` is below `<qa_retries> + 1`: check the budget (`run-budget.mjs check`, as in step 3) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying; if not, announce `phase development --attempt <n> --of <qa_retries>`, raise the developer for the retry (see "The model of a retry" below) and launch `relevo:dev` in **fix** mode with that model, giving it the complete reports of all the lenses that rejected, together, run `intent-to-add.mjs` on the files of its new report, and go back to step 1 with `<n> + 1`, announcing `phase qa --attempt <n + 1> --of <qa_retries + 1>`.
 
 If it was the last attempt, take the failure path with the reason `QA rejected after the retries` and the first finding of the aggregation; when `first_non_fixable_class` is not null, pass it as `finding_class` (and no `retries_skipped`).
 
@@ -74,3 +74,13 @@ The `advisory` list of the output holds the findings of the `interface` lens on 
 ## What this guards
 
 The receipt guards against an omission or a mistake: a lens cannot start on code whose checks did not run. It is not a defence against an agent that writes a false file; the guards of the commit (the protected paths, the restricted files, the scan) remain the enforcement.
+
+## The model of a retry
+
+Before each launch of `relevo:dev` in **fix** mode, ask a script for its model; do not choose it yourself:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/model-plan.mjs escalate --from <the model the developer ran with last time> --attempt <the number of the attempt that starts> --reason <gate-red | qa-rejected>
+```
+
+It prints `{ model, escalated, why }`. Launch the developer with `model`, and keep the effort of the plan. A developer on `auto` goes one name up `agents.ladder` on each retry and never past its `ceiling`; a developer whose model is set in `relevo.yml` stays where it is (`escalated` is `false`). The lenses keep the model of the plan. When the command prints anything else, launch with the model of the last attempt. `<the model the developer ran with last time>` is `dev.model` of the plan the first time and the `model` that this command printed afterwards. The cost limits are checked as for any launch, so a stronger model never raises them.

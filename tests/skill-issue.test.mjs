@@ -287,3 +287,11 @@ test('Scenario: The work needs a key - issue asks for the external inputs, write
 test('Scenario: Nothing is needed - issue writes no section', () => {
   assert.match(body, /needs nothing outside the repository, write no section/);
 });
+
+test('Scenario: A line in a draft - the skill may propose a model with its reason and writes it only when the person confirms', () => {
+  assert.match(text, /\*\*Model \(optional\)\.\*\*/);
+  assert.match(text, /`Model: <name>` for the developer, or `QA-model: <name>` for the QA lenses, with the reason in a sentence/);
+  assert.match(text, /write the line only if the person confirms it/);
+  assert.match(text, /the ceiling of the role still applies/);
+  assert.match(text, /Do not propose a line when no role is `auto`/);
+});
