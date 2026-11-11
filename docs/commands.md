@@ -134,6 +134,12 @@ The report starts with a line that says what it judged: the repository, and whet
 /relevo:doctor [--all]
 ```
 
+## Checking the gate and the CI without throwaway pull requests
+
+`node scripts/gate-selftest.mjs [--base <ref>] [--platform <name>] [--config relevo.yml]` seeds three cases in a scratch worktree (a failing unit test, a failing browser story and a docs-only change), runs the validation gate on each and prints what it returned and whether that is what the case expects (`ok`, `unexpected` or `could-not-run`). It exits 0 when every case that ran agreed, 1 when one did not. The worktree is detached from the base ref (by default `origin/<branches.base>`) and removed at the end: it never writes to the base branch or to your working tree, creates no branch and pushes nothing.
+
+A case that the stack cannot seed is skipped and the report says why: the browser story is seeded only when the `test` check of the platform runs Playwright. An `unexpected` result on a failing case means the check does not run what was seeded. If the repository has no `relevo.yml`, the platform has no stack profile or no `test` check, the command runs nothing and prints the cases as instructions. The report ends with the commands that show the remote CI aggregate on the same cases from a scratch branch and delete it afterwards; the command does not run them.
+
 ## The issue format
 
 `/relevo:issue` writes the issue and `/relevo:go` builds it, so the issue is the only thing the builder is given. Besides the scenarios and edge cases, it can carry what the agreement settled, in optional sections: `Outcome`, `Decisions` (each with an id `D1`, what was decided, why and what was discarded), `Constraints` (`C1`), `Code pointers`, `Verification`, `Assumptions` and `Open questions`. `go` copies them word for word into the change's design, and QA rejects a build that breaks a decision or a constraint, citing its id. An issue with an open question, or with the text `NEEDS CLARIFICATION`, is sent back to its writer as ambiguous. The format is in [Writing an issue Relevo can build](issue-format.md).
