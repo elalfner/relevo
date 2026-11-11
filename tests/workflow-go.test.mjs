@@ -364,6 +364,17 @@ test('the inputs that a person has to confirm are passed on to the hand-off and 
   assert.match(step, /RELEVO_INPUTS_TO_CONFIRM=/);
 });
 
+test('the notes of the preflight (#121) go to the same line of the hand-off, one line each, and never stop the build', () => {
+  const { step } = preflightStep();
+  assert.match(step, /r\.notes \?\? \[\]/);
+  assert.match(step, /"check: "/);
+  // The command of the step, run on a result with a note, prints it in the line that is exported.
+  const cmd = /unverified=\$\(printf '%s' "\$result" \| node -e '([^\n]*)'\)/.exec(step)?.[1];
+  assert.ok(cmd, 'the command is found');
+  const out = spawnSync('node', ['-e', cmd], { input: JSON.stringify({ unverified: [{ name: 'KEY', purpose: 'the key' }], notes: ['a\nb "c"'] }), encoding: 'utf8' });
+  assert.equal(out.stdout.trim(), 'KEY (the key); check: a b "c"');
+});
+
 test('the Antigravity workflow has the same step, because it is outside the blocks of the agent', async () => {
   const { agentWorkflow } = await import('../scripts/lib/agent-workflow.mjs');
   const blocks = readFileSync(`${root}templates/agents/antigravity-step.yml`, 'utf8');

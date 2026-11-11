@@ -14,6 +14,8 @@
 - [x] 3.1 Add the `conflict` finding to `checkIssueStage` (reason `conflict`) and read the rules files in `scripts/build-preflight.mjs` (without a valid `relevo.yml` there are no rules files, so only the comparison with the scenarios runs). Add `conflict` to `missingText`. Verify in `tests/build-preflight.test.mjs` (decision, reason, text, override, exit codes, no `relevo.yml`).
 - [x] 3.2 Add the reason `conflict` to `scripts/lib/next-step.mjs` (command, who, hint in English and Spanish, `NEXT_STEP_REASONS`). Verify in `tests/next-step.test.mjs` and `tests/messages.test.mjs` that the `needs_spec` comment with `reason: conflict` renders its next step.
 
+- [x] 3.3 Pass the `notes` of `build-preflight.mjs --stage issue` to the hand-off in `templates/workflows/relevo-go.yml`, in the existing `RELEVO_INPUTS_TO_CONFIRM` line with the prefix `check: ` (a dedicated line of the `built` message needs `skills/go/SKILL.md`, which issue #130 edits). Verify in `tests/workflow-go.test.mjs` by running the command of the step on a result with a note.
+
 ## 4. QA blocks on a hard rule
 
 - [x] 4.1 In `scripts/lib/qa-aggregate.mjs` parse `Rule:` citations, verify them against the entries of `rules-file.mjs`, promote the `interface` advisory finding on the last attempt, turn a `QA PASSED` report with a verified citation into a rejection with a synthesized finding, list `unverified`, and treat an `[advice]` rule as advisory; add `--rules-file` to `scripts/qa-aggregate.mjs`. Verify in `tests/qa-aggregate.test.mjs` (every scenario of the `go` delta, no rules file, exit codes, invalid citation line, the fail-closed first line is unchanged).

@@ -7,6 +7,10 @@ Before the agent starts, `build-preflight.mjs --stage issue` SHALL run the same 
 - **WHEN** the issue excludes in `Out of scope` something that a hard rule of `CLAUDE.md` requires
 - **THEN** the preflight exits 1 with the reason `conflict` and the agent does not start
 
+#### Scenario: Notes reach the hand-off
+- **WHEN** the preflight decides `ok` and has notes (a scenario clash, a rules file that could not be read)
+- **THEN** the workflow adds each as `check: <note>` on one line to the "Inputs to confirm" line of the hand-off, and the build goes on
+
 #### Scenario: Override recorded
 - **WHEN** the issue has a decision with `Overrides: CLAUDE.md:12` for that rule
 - **THEN** the preflight does not report it
