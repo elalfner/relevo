@@ -6,7 +6,7 @@ Defines what an installation of Relevo contains, how it is installed, and what a
 ## Requirements
 
 ### Requirement: An installation holds only what runs
-The published package SHALL contain the plugin manifest, scripts, skills, agents, stack profiles, templates, the licence and the notice, and nothing else from the repository, and the marketplace entry SHALL install the plugin from that package.
+The published package SHALL contain the plugin manifest, scripts, skills, agents, stack profiles, the knowledge folder, templates, the licence and the notice, and nothing else from the repository, and the marketplace entry SHALL install the plugin from that package.
 
 #### Scenario: Installing at project scope
 - **WHEN** a person installs the plugin with the project scope
@@ -15,6 +15,10 @@ The published package SHALL contain the plugin manifest, scripts, skills, agents
 #### Scenario: A file outside the package is needed at run time
 - **WHEN** a skill or script reads a file that the package does not contain
 - **THEN** a test fails, because an installation would not have it
+
+#### Scenario: The knowledge is in the package
+- **WHEN** the package is packed
+- **THEN** it contains the knowledge folder with the rules and the translations of each stack, and no fixture of the tests
 
 ### Requirement: One command installs it
 A command line, `relevo`, SHALL install the plugin for the machine, the project or the local scope, update it, run the doctor and print the version, and SHALL tell the person how to fix a missing prerequisite instead of failing silently. When no scope is given it SHALL ask in a terminal, with the project preselected, and otherwise use the project inside a git repository and the machine outside one, without waiting. `update` SHALL pass a scope only when one is given.

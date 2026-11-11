@@ -295,7 +295,7 @@ The format SHALL have these optional sections, with headings in English and cont
 - **THEN** the draft has `### D1.` with what was decided, why and what was discarded
 
 ### Requirement: An issue with unanswered questions is not complete
-The check SHALL fail a draft whose `Open questions` section has content or whose text contains `NEEDS CLARIFICATION`, and SHALL fail one whose decision or constraint ids are repeated or malformed. It SHALL warn, without failing, when the body is over 8,000 characters.
+The check SHALL fail a draft whose `Open questions` section has content or whose text contains `NEEDS CLARIFICATION`, and SHALL fail one whose decision or constraint ids are repeated or malformed. It SHALL warn, without failing, when the body is over 8,000 characters, not counting the fenced example code of the `Design reference` section, which has its own limits.
 
 #### Scenario: Open question
 - **WHEN** a draft has a question under `Open questions`
@@ -308,6 +308,10 @@ The check SHALL fail a draft whose `Open questions` section has content or whose
 #### Scenario: Long body
 - **WHEN** the body has 9,000 characters
 - **THEN** the check passes with a warning about the length
+
+#### Scenario: Long example code
+- **WHEN** the body has 5,000 characters of text and 12,000 characters of example code in `Design reference`
+- **THEN** the check gives no warning about the length of the body
 
 ### Requirement: Nothing from the agreement is lost on the way to the issue
 Before asking for approval, `issue` SHALL show which id of the agreement went to which section of which issue and which ids went nowhere, and a script SHALL verify it. An id SHALL be left out only when the person marks it as discarded.
@@ -423,3 +427,89 @@ An issue MAY carry a line `Model: <name>` for the developer and a line `QA-model
 #### Scenario: The hash
 - **WHEN** a person edits the `Model:` line after `ready`
 - **THEN** the hash of the issue changes and the run takes the path of an issue changed after `ready`
+
+### Requirement: An issue can declare the external inputs of its work
+The issue MAY have a section `External inputs` whose bullets each give `<kind>: <name>: <what it is for>`, with kind `file`, `link`, `secret`, `variable` or `manual`. The check SHALL fail a bullet with an unknown kind, a `file` that leaves the repository, or a `link` to a repository outside `links`, and SHALL pass an issue without the section.
+
+#### Scenario: A valid section
+- **WHEN** the issue lists a file of the repository, a file of a linked repository and a secret
+- **THEN** the check passes
+
+#### Scenario: An unknown kind
+- **WHEN** a bullet uses a kind that is not in the list
+- **THEN** the check fails and names the bullet and the kinds that exist
+
+#### Scenario: A link outside `links`
+- **WHEN** a bullet points to a repository that is not in `links`
+- **THEN** the check fails and says to add the repository to `links`
+
+#### Scenario: No section
+- **WHEN** the issue has no `External inputs` section
+- **THEN** the check passes
+
+### Requirement: `issue` asks for the external inputs
+`issue` SHALL ask which keys, assets, endpoints, files of other repositories or accounts the work needs that the issue does not already state, and SHALL write the answers in the `External inputs` section. It SHALL say that an input that a script cannot verify is listed in the hand-off for a person to confirm, and SHALL NOT invent an input.
+
+#### Scenario: The work needs a key
+- **WHEN** the idea needs an API key that no file of the repository holds
+- **THEN** `issue` asks where it lives and writes it as a `secret` or `manual` input
+
+#### Scenario: Nothing is needed
+- **WHEN** the person says the work needs nothing outside the repository
+- **THEN** `issue` writes no section
+
+### Requirement: `issue` asks the interface questions that the idea does not answer
+When the feature has a visible part, `issue` SHALL ask the interface questions that the rules and the stack give for it and that the idea and the agreement have not already answered, and SHALL NOT ask what the agreement settled.
+
+#### Scenario: Decisions already in the agreement
+- **WHEN** the agreement already settles how the loading and error states look
+- **THEN** `issue` does not ask about them and carries the decisions into the issue
+
+#### Scenario: A state nobody settled
+- **WHEN** nothing settles what the screen shows when there is no data
+- **THEN** `issue` asks
+
+### Requirement: The chosen option travels in `Design reference` as example code
+When the agreement holds a chosen preview, `issue` SHALL write it in a fenced block in `Design reference`, in a bullet that says what must match: for the web, the structure, the tokens and the states and not the sample text or exact pixel values; for a mobile sketch, the layout, the spacing, the states and the role of each colour, and that its markup is not to be reproduced.
+
+#### Scenario: A web preview
+- **WHEN** the person chose a preview of a web stack
+- **THEN** the issue has the preview as example code with a bullet that names structure, tokens and states
+
+#### Scenario: A mobile sketch
+- **WHEN** the person chose a sketch of a mobile stack
+- **THEN** the bullet names layout, spacing, states and colour roles and says that the markup is not to be copied, and the decision with its table of states is in `Decisions`
+
+#### Scenario: A picture instead
+- **WHEN** the person commits a picture of the sketch to the repository
+- **THEN** `issue` may point to that file instead of embedding the sketch
+
+### Requirement: Example code has its own limits
+The check SHALL warn when one block of example code in `Design reference` is over 16 KB and fail it over 32 KB, SHALL warn when all the blocks together are over 32 KB, and SHALL fail a body larger than GitHub accepts, with a message that suggests committing the file and pointing to it.
+
+#### Scenario: A large block
+- **WHEN** one block is 20 KB
+- **THEN** the check passes with a warning
+
+#### Scenario: A block over the limit
+- **WHEN** one block is 40 KB
+- **THEN** the check fails and says to commit the file and reference it
+
+#### Scenario: A body GitHub would refuse
+- **WHEN** the body is larger than GitHub accepts
+- **THEN** the check fails and says why
+
+### Requirement: Vague appearance words are a warning that becomes a question
+The check SHALL warn, without failing, about a vague appearance word in a scenario, a decision, a constraint or a reference bullet, using a list of words for each language with English as the fallback, and SHALL ignore a sentence that carries a number with a unit, a token name in backticks or a reference. `issue` SHALL show each warning and ask which value, token or reference is meant, and the person MAY keep the word on purpose.
+
+#### Scenario: A vague word
+- **WHEN** a scenario says that a loading indication is discreet and gives no value
+- **THEN** the check warns and `issue` asks which value or reference is meant
+
+#### Scenario: A word with a criterion
+- **WHEN** the sentence gives the width in pixels or names a token
+- **THEN** the check does not warn
+
+#### Scenario: Kept on purpose
+- **WHEN** the person says to keep the word
+- **THEN** the issue is created with it and the check still passes

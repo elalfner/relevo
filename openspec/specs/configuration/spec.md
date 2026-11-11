@@ -79,7 +79,7 @@ When `language` is set, hand-off messages, digests and prompts SHALL be produced
 - **THEN** it fails and tells the user to move the value to the secret store
 
 ### Requirement: Project rules are referenced, not copied
-When `qa.rules_from` names a file, or a list of files, the QA agent SHALL read each of them at each run and treat their rules as binding. Every listed file SHALL be a protected path.
+When `qa.rules_from` names a file, or a list of files, the `spec` lens SHALL read each of them at each run and treat their rules as binding. Every listed file SHALL be a protected path.
 
 #### Scenario: Rules change
 - **WHEN** the referenced rules file changes between two runs
@@ -87,7 +87,7 @@ When `qa.rules_from` names a file, or a list of files, the QA agent SHALL read e
 
 #### Scenario: Several rules files
 - **WHEN** `qa.rules_from` is `[CLAUDE.md, .ai/rules/backend.md]`
-- **THEN** QA reads both, and a diff that touches either is refused as a protected path
+- **THEN** the `spec` lens reads both, and a diff that touches either is refused as a protected path
 
 #### Scenario: Missing file in the list
 - **WHEN** a listed file does not exist
@@ -283,3 +283,59 @@ With `agent.build: antigravity` the value `auto` and the ladder SHALL be accepte
 #### Scenario: With Antigravity
 - **WHEN** `agent.build` is `antigravity` and a role is `auto`
 - **THEN** the setting is accepted and not applied, with the warning that the other settings of the agents already give
+
+### Requirement: The design system can be declared
+`relevo.yml` MAY declare `design.system.tokens`, `design.system.components` and `design.system.references`, each a list of paths inside the repository. The configuration SHALL fail a path that does not exist, leaves the repository, or is restricted or protected, and SHALL accept a file without these keys.
+
+#### Scenario: Declared paths
+- **WHEN** the keys list folders that exist in the repository
+- **THEN** the configuration is valid and the interface step reads those paths
+
+#### Scenario: A path outside the repository
+- **WHEN** a path leaves the repository
+- **THEN** validation fails and names the key and the path
+
+#### Scenario: A restricted path
+- **WHEN** a path is on the restricted list
+- **THEN** validation fails and says why
+
+#### Scenario: Nothing declared
+- **WHEN** the file has none of the keys
+- **THEN** it is valid and the interface step detects and asks
+
+### Requirement: The shipped configuration documents the keys
+The configuration that `init` offers SHALL show the three keys, commented out, with one line that says what each holds.
+
+#### Scenario: A new configuration file
+- **WHEN** `init` writes `relevo.yml`
+- **THEN** the three keys appear commented out with their explanation
+
+### Requirement: The settings of the agents are configuration keys
+`relevo.yml` MAY set `agents.dev.model`, `agents.dev.effort` and, for each lens, `agents.qa.<lens>.model` and `agents.qa.<lens>.effort`, with `<lens>` one of `spec`, `security`, `code` and `interface`. A model SHALL be a non-empty string. An effort SHALL be one of `low`, `medium`, `high`, `xhigh` and `max`. An unknown lens name or effort SHALL fail validation, and a file without the keys SHALL be valid.
+
+#### Scenario: Valid settings
+- **WHEN** the file sets a model and an effort for `agents.qa.security`
+- **THEN** validation passes
+
+#### Scenario: An unknown lens
+- **WHEN** the file sets `agents.qa.style.model`
+- **THEN** validation fails and names the lenses that exist
+
+#### Scenario: An unknown effort
+- **WHEN** an effort is `extreme`
+- **THEN** validation fails and lists the efforts that exist
+
+#### Scenario: No settings
+- **WHEN** the file has none of the keys
+- **THEN** it is valid and the defaults apply
+
+### Requirement: Validation can warn without blocking
+Validation SHALL have a level that reports a message without failing. A setting that is valid but that the agent in use does not apply SHALL produce a warning of that level and SHALL NOT be an error, so that a file can be shared between tools.
+
+#### Scenario: A setting that Antigravity does not apply
+- **WHEN** `agent.build` is `antigravity` and the file sets a model for a lens
+- **THEN** validation passes and reports a warning that the setting is not applied with this agent
+
+#### Scenario: A key that does not apply and is rejected
+- **WHEN** a key is marked as rejected for the agent in use
+- **THEN** validation still fails as it did before

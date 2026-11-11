@@ -178,7 +178,7 @@ After the gates pass, `go` SHALL create the change specification from the issue,
 - **THEN** a branch `feature/<n>-<slug>` is created from the current base branch, the tasks are implemented and QA passes
 
 ### Requirement: Adversarial QA with one retry
-QA SHALL compare the diff against the issue's scenarios and the project rules in `qa.rules_from`, run the platform's static analysis and tests, and return `QA PASSED` or `QA REJECTED` with file, line and reason. On rejection the developer agent SHALL get exactly `qa.retries` attempts to fix, then QA SHALL run again.
+QA SHALL compare the diff against the issue's scenarios and the project rules in `qa.rules_from` through its lenses, after the validation gate has run the platform's static analysis and tests once, and return `QA PASSED` or `QA REJECTED` with file, line and reason. On rejection, by the gate or by a lens, the developer agent SHALL get exactly `qa.retries` attempts to fix, then QA SHALL run again.
 
 #### Scenario: QA passes after a retry
 - **WHEN** the first QA run rejects and the second passes
@@ -193,16 +193,20 @@ QA SHALL compare the diff against the issue's scenarios and the project rules in
 - **THEN** QA rejects and names the task
 
 #### Scenario: Validation tooling missing
-- **WHEN** QA cannot run static analysis or tests because the tooling is not available
-- **THEN** QA rejects with the finding "automated validation could not run" and never passes code it could not check
+- **WHEN** the gate cannot run static analysis or tests because the tooling is not available
+- **THEN** the run ends with the reason "automated validation could not run" and no lens passes code whose checks did not run
 
 #### Scenario: Device-only scenario
 - **WHEN** a scenario can only be observed on a device or in another app
 - **THEN** QA does not reject it for lacking a test, checks that the code plausibly produces it, and lists it as left for on-device review
 
 #### Scenario: Verdict line
-- **WHEN** QA finishes
+- **WHEN** a lens or the aggregation finishes
 - **THEN** the first line of its output is exactly `QA PASSED` or `QA REJECTED`
+
+#### Scenario: A red gate
+- **WHEN** the gate reports that the tests fail
+- **THEN** no lens runs, the developer agent receives the output of the gate and one of its attempts is used
 
 ### Requirement: Safe commits
 Every commit `go` makes SHALL stage named files only (never "add all"), scan the staged diff for temporary markers (`NOCOMMIT`, `TEMP`, `DO NOT COMMIT`) and credential patterns, and refuse protected paths. It SHALL stop at the first finding without committing.
@@ -420,11 +424,11 @@ The diff QA reviews SHALL be the difference between the working tree and the bas
 - **THEN** the diff QA reviews still shows the developer's uncommitted work against the base branch
 
 ### Requirement: QA retries look only at what changed
-On a retry, QA SHALL audit the files in the developer's report and every finding of the previous report, and SHALL still run the static analysis and the full test suite.
+On a retry, each lens SHALL audit the files in the developer's report and every finding of its own previous report, and the gate SHALL still run the static analysis and the full test suite.
 
 #### Scenario: Retry scope
 - **WHEN** QA runs again after the developer fixed the findings of the first run
-- **THEN** QA checks each earlier finding first, reviews the diff of the reported files, and runs analysis and all tests
+- **THEN** the gate runs analysis and all tests again, and each lens checks each earlier finding of its own first, then reviews the diff of the reported files
 
 ### Requirement: OpenSpec commands come from a closed list
 `go`, `dev` and `qa` SHALL use only the OpenSpec commands on their own list. They SHALL NOT create files under `openspec/changes/` by hand. When an OpenSpec command fails they SHALL show its output and take the failure path, without trying other options.
@@ -453,22 +457,22 @@ Before claiming work or creating a branch, `go` SHALL check that the configurati
 - **THEN** `go` stops and changes nothing
 
 ### Requirement: The agents are generic and the stack comes from the profile
-`go` SHALL resolve the profile of the platform of the issue with the resolution command and give it to `relevo:dev` and `relevo:qa` together with the paths of the role skills. The agents SHALL NOT contain commands, file patterns or hygiene rules of one stack. The commands that verify the code and the generated files left out of the diff under review SHALL come from the profile.
+`go` SHALL resolve the profile of the platform of the issue with the resolution command and give it to `relevo:dev` and to each lens agent, each lens with the sections it reads, together with the paths of the role skills. The agents SHALL NOT contain commands, file patterns or hygiene rules of one stack. The commands that verify the code and the generated files left out of the diff under review SHALL come from the profile.
 
 #### Scenario: Flutter repository
 - **WHEN** `go` builds an issue in a repository whose platform has stack `flutter`
-- **THEN** the developer and QA receive the Flutter profile, QA runs its `analyze` and `test` commands, and the diff leaves out the profile's generated files
+- **THEN** the developer and the lenses receive the Flutter profile, the gate runs its `analyze` and `test` commands, and the diff leaves out the profile's generated files
 
 #### Scenario: Profile cannot be resolved
 - **WHEN** the resolution command fails
 - **THEN** `go` takes the failure path with the reason `profile not resolved` and builds nothing
 
 ### Requirement: The agents leave configuration alone
-`relevo:dev` SHALL NOT edit `relevo.yml`, anything under `.relevo/` or `skills-lock.json`, and `relevo:qa` SHALL reject a diff that touches them, as it already does for `GLOSSARY.md` and `docs/adr/`.
+`relevo:dev` SHALL NOT edit `relevo.yml`, anything under `.relevo/` or `skills-lock.json`, and the `spec` lens SHALL reject a diff that touches them, as it already does for `GLOSSARY.md` and `docs/adr/`.
 
 #### Scenario: Developer edits the configuration
 - **WHEN** the diff touches `relevo.yml`
-- **THEN** QA rejects it citing the file, and the commit script would refuse it anyway
+- **THEN** the `spec` lens rejects it citing the file, and the commit script would refuse it anyway
 
 ### Requirement: The gate resolves the platform of the issue
 Before claiming an issue, the planner SHALL resolve its platform. When it cannot (a missing `Platform:` line with several platforms, an unknown name, two different lines) the issue SHALL go to `needs-spec` with the reason `missing`, the specification writer SHALL be assigned, and the comment SHALL say which of the three it is and list the platforms. When it can, the `start` decision SHALL carry `platform`, `stack`, `path` and `targets`.
@@ -501,7 +505,7 @@ A commit of an unattended run SHALL touch only files inside the folder of the pl
 - **THEN** no path is refused for being outside it
 
 ### Requirement: Commands run from the folder of the platform
-`go` SHALL resolve the profile and the role skills for the platform of the decision and tell `relevo:dev` and `relevo:qa` the folder of the platform, from which the commands of the profile are run.
+`go` SHALL resolve the profile and the role skills for the platform of the decision and tell `relevo:dev` and the lenses the folder of the platform, and run the commands of the profile from it in the gate.
 
 #### Scenario: Monorepo
 - **WHEN** `go` builds an issue for `api` at `apps/api`
@@ -741,7 +745,7 @@ While a cloud build runs, `go` SHALL keep one progress comment on the issue, fou
 At the start of each step of a build, `go` SHALL announce the phase it enters: planning, specification, development, QA, the new attempt of development or QA with its number out of the allowed retries, and delivery. The announcement SHALL be kept outside the working tree of the repository so that it never appears in the diff of the change. When no announcement has been made, the phase SHALL be deduced from what exists in the working tree, and the progress comment SHALL still be kept.
 
 #### Scenario: QA starts
-- **WHEN** the agent launches the QA agent for the first time
+- **WHEN** the agent starts the validation gate for the first time
 - **THEN** the progress comment shows the QA phase
 
 #### Scenario: Retry after a rejection
@@ -1241,3 +1245,162 @@ When the repository's `openspec/config.yaml` sets a `context`, `rules` for `task
 #### Scenario: Retries get it too
 - **WHEN** the developer is launched again in fix or integrate mode
 - **THEN** it is given the same project guidance
+
+### Requirement: Inputs that the issue declares are checked before the agent starts
+Before the agent starts, the build job SHALL check each input listed in the `External inputs` section of the issue that a script can verify, and SHALL NOT start the agent when one is missing. It SHALL send the issue to `needs-spec` with the reason `inputs` and a comment that names each missing input.
+
+#### Scenario: A declared file does not exist
+- **WHEN** the issue lists a file of this repository as an input and the file does not exist on the base branch
+- **THEN** the agent does not start, the issue goes to `needs-spec` with the reason `inputs`, and the comment names the file
+
+#### Scenario: An issue without the section
+- **WHEN** the issue has no `External inputs` section
+- **THEN** this check passes and the build goes on
+
+#### Scenario: An input that a person confirms
+- **WHEN** the issue lists an input of the kind `manual`, or of a kind that the job cannot verify
+- **THEN** the build is not blocked and the hand-off lists the input for a person to confirm
+
+#### Scenario: A secret is never shown
+- **WHEN** the check looks at an input that is a secret or a variable
+- **THEN** it learns only whether it is present, and neither the value nor part of it appears in a comment, a log or a file
+
+### Requirement: A refused reference ends the run before the agent starts
+When the fetcher refuses a reference of the issue, the cloud build SHALL end without starting the agent. It SHALL send the issue to `needs-spec` with the reason and the text of the refusal, and SHALL NOT spend a model turn. A workflow that lacks this step SHALL keep working as it did.
+
+#### Scenario: A reference cannot be read
+- **WHEN** the fetch step refuses a reference because the file is not found or access is denied
+- **THEN** the agent step is skipped and the `needs-spec` comment names the reference and gives the reason of the refusal
+
+#### Scenario: An older workflow
+- **WHEN** a repository still has a workflow without the step
+- **THEN** `go` takes the `needs-spec` path itself, as before
+
+### Requirement: Installed dependencies are checked before the agent starts
+When the profile of the platform lists paths that must exist once its dependencies are installed, the build job SHALL check them right after the check of the tools. When one is missing, the run SHALL end as a missing tool does: no model turn, the issue `qa-failed`, and a comment that names the missing path and the step to enable.
+
+#### Scenario: Dependencies were not installed
+- **WHEN** a listed path does not exist after the install step
+- **THEN** the agent does not start, the issue becomes `qa-failed` and the comment names the path and says to enable the install step
+
+#### Scenario: A profile that lists no paths
+- **WHEN** the profile of the platform lists none
+- **THEN** no check is made
+
+### Requirement: The specification is checked before the developer agent runs
+After the specification is complete and before the developer agent runs, `go` SHALL check the task lines of `tasks.md` for a protected path and for a dependency manifest that the issue does not allow with `Allow-paths:`. When it finds one it SHALL end in `needs-spec` with the reason `policy` and SHALL name the task and the path.
+
+#### Scenario: A task edits a protected file
+- **WHEN** a task line says to change a file that no unattended run may change
+- **THEN** the developer agent does not run, the issue goes to `needs-spec` with the reason `policy`, and the comment quotes the task and names the path
+
+#### Scenario: A dependency the issue allowed
+- **WHEN** a task adds a dependency and the issue lists the manifest in `Allow-paths:`
+- **THEN** the check passes
+
+#### Scenario: A path only mentioned
+- **WHEN** a protected path appears in the design or in the description of a task but no task line changes it
+- **THEN** the check does not block the build
+
+### Requirement: The checks that need no model are never a security control
+Every rule that these checks apply SHALL be applied again by the guard that already enforces it, so that a defect in a check can cost a build or a late rejection and SHALL NOT let a protected change through.
+
+#### Scenario: The check misses a protected path
+- **WHEN** a task changes a protected path and the check does not detect it
+- **THEN** QA and the guards of the commit still refuse the change
+
+#### Scenario: The checks are absent
+- **WHEN** a workflow or a plugin version does not run these checks
+- **THEN** every guard behaves exactly as it did before
+
+### Requirement: Each QA finding carries a class
+Each numbered finding of a QA report SHALL carry a class: `fixable` when the developer agent can correct it, or `input`, `spec` or `policy` when it needs something that the issue, the project or a person must supply. A finding without a valid class SHALL count as `fixable`.
+
+#### Scenario: A finding of a missing input
+- **WHEN** QA rejects because a key or a file the issue depends on does not exist
+- **THEN** the finding has the class `input`
+
+#### Scenario: A report without classes
+- **WHEN** a QA report has no class on its findings
+- **THEN** every finding counts as `fixable` and the retries run as before
+
+### Requirement: Retries are skipped when no finding can be fixed by the developer agent
+When QA rejects and no finding is `fixable`, `go` SHALL skip the retries and end in the usual failure exit with the work kept as it is kept today. The comment SHALL state the class and the next step. When the findings are mixed, `go` SHALL retry as before and, if QA still rejects, SHALL name the class of the first finding that is not `fixable`.
+
+#### Scenario: Nothing the developer can fix
+- **WHEN** every finding of the report has the class `input`, `spec` or `policy`
+- **THEN** no second developer or QA cycle runs, the issue ends in the usual failure exit, and the comment says the class and what to supply
+
+#### Scenario: A mixed report
+- **WHEN** a report has a `fixable` finding and an `input` finding
+- **THEN** the developer agent is retried as before, and if QA still rejects the comment names the `input` class
+
+### Requirement: The usage record carries the phases and the class of the outcome
+The machine-readable usage comment of a run SHALL carry, besides its present figures, the seconds that each phase took with its attempt number and the class of the outcome: `built`, `inputs`, `policy`, `qa-non-fixable`, `qa-fixable-after-retries`, `conflict` or `other`. A reader that does not know these keys SHALL ignore them, and the visible progress comment SHALL NOT change.
+
+#### Scenario: A run that built the issue
+- **WHEN** a run ends with the issue built after one QA retry
+- **THEN** the record lists the phases in order with the attempt of each and the class `built`
+
+#### Scenario: An older reader
+- **WHEN** a reader that predates these keys reads the record
+- **THEN** it reads the figures it knows and ignores the rest
+
+#### Scenario: A comment from an older run
+- **WHEN** a usage comment has no phases or class
+- **THEN** it is read as it was, without an error
+
+### Requirement: The developer agent and QA receive the interface rules that the change touches
+After the specification is complete and before the developer agent runs, `go` SHALL select the interface rules for the stack and the text of the tasks and the design, and SHALL give the developer agent their "build it like this" lines and QA their "check this" lines, within the budget of the selection, with the number of rules left out.
+
+#### Scenario: A change that touches a form
+- **WHEN** the tasks mention a form on a stack with an interface
+- **THEN** the developer agent receives the core rules and the form rules, and QA receives the same rules in their "check this" form
+
+#### Scenario: A stack with no interface
+- **WHEN** the profile of the platform has no interface
+- **THEN** no interface rule is selected and the run goes on as before
+
+#### Scenario: Over the budget
+- **WHEN** more rules match than the budget holds
+- **THEN** the output says how many were left out and no blocking core rule is among them
+
+### Requirement: QA rejects on a blocking rule only with evidence
+QA SHALL treat a blocking interface rule as a reason to reject only with the evidence that every finding needs, and SHALL list the advisory rules and the rules that only a person can check under "left for on-device review" instead of rejecting for them.
+
+#### Scenario: A blocking rule broken
+- **WHEN** the diff shows an icon-only button with no accessible name on a stack where that rule is blocking
+- **THEN** QA rejects with the file and line and the rule
+
+#### Scenario: A rule only a person can check
+- **WHEN** a rule can be checked only by looking at the screen
+- **THEN** QA lists it for the on-device review and does not reject
+
+### Requirement: QA treats a mobile sketch like an image reference
+When a `Design reference` holds a sketch for a mobile stack, QA SHALL check that the code plausibly respects the layout, the states and the roles of the colours, and SHALL NOT compare the markup of the sketch with the widget tree of the code.
+
+#### Scenario: A sketch as a reference
+- **WHEN** the reference is a mobile sketch and the code shows the same states in the same order with the colours in the same roles
+- **THEN** QA does not reject for a difference in markup
+
+### Requirement: QA is the gate followed by the lenses
+After the developer agent finishes, `go` SHALL run the validation gate, and SHALL run the lenses only when the gate is green and its receipt is valid. It SHALL then aggregate the reports with a script, and SHALL end the run or hand the findings to the developer agent as the result says.
+
+#### Scenario: A green gate
+- **WHEN** the gate is green and its receipt matches the diff
+- **THEN** the active lenses run one after another and their reports are aggregated
+
+#### Scenario: A receipt that does not match
+- **WHEN** the diff changed after the receipt was written
+- **THEN** the gate runs again before any lens
+
+### Requirement: The limits of a run count every subagent
+The limits on the turns and the cost of a run, and the limit on its tokens with an agent that has no cost limit, SHALL include the turns, cost and tokens of the lens agents. Where the runtime does not count a subagent, Relevo SHALL count it from the log of the run.
+
+#### Scenario: Lenses use turns
+- **WHEN** the lenses of a run use turns
+- **THEN** those turns count towards `limits.run_max_turns`
+
+#### Scenario: A runtime that does not count subagents
+- **WHEN** the runtime leaves the turns of a subagent out of its count
+- **THEN** Relevo adds them from the log and applies the limit to the total
