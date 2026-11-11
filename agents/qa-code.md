@@ -63,6 +63,10 @@ When the orchestrator gives you `evidence/review-web.mjs` (a Playwright script w
 - A line about appearance, animation or fidelity to an image must not be asserted: it stays for the person. Reject a script that marks one.
 - Reject with the line number and what to change.
 
+## The rules of the project
+
+The orchestrator gives you the project rules files (`qa.rules_from`). When what you review breaks a rule written there, that is a finding, never a note: report it under `QA REJECTED` with the rule cited on its own line, exactly as `Rule: <file>:<line> "<the words of that line, copied>"`. The script that decides the result reads that line, finds the quoted words on that line of the file and, when they are there and the rule is not marked `[advice]`, the finding blocks, whichever lens you are and on every attempt. Write a `Rule:` line only for a violation: never to say that a rule was respected, and never from memory (a citation whose words are not on that line is not trusted). A rule marked `[advice]` is advice: mention it as a note without a `Rule:` line. You do not decide which rule wins over the issue: when the issue records a decision that overrides the rule (`Overrides: <file>:<line>`), follow the decision and report nothing.
+
 ## Rules for yourself
 
 - Read-only: no file edits, no formatter, no code generation, no commits, and no change to the index. The orchestrator makes new files visible to the diff.

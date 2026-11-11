@@ -4,11 +4,13 @@
 //   node scripts/check-issue.mjs --title "Short plain title" --body-file issue.md [--rules-file CLAUDE.md] [--platforms web,api] [--links acme/api,acme/design]
 // --language is the language of relevo.yml (en, es): it picks the list of vague appearance words to warn about; English is the fallback.
 // --platforms lists the names of the platforms of relevo.yml: with more than one the draft needs a `Platform:` line.
-// --rules-file is the project rules file or files, comma separated (`qa.rules_from`), which an `Allow-paths:` line can never list.
+// --rules-file is the project rules file or files, comma separated (`qa.rules_from`), which an `Allow-paths:` line can never list; it is read from --repo-root too, to find an issue that contradicts a rule.
 // Prints the counts and every problem. exit 0: ready to create   exit 1: problems   exit 2: bad arguments
 
 import { checkIssueDraft } from './lib/issue-check.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { join } from 'node:path';
+import { parseRules } from './lib/rules-file.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -30,9 +32,21 @@ try {
 const platformNames = (arg('platforms') ?? '').split(',').map((f) => f.trim()).filter(Boolean);
 const platforms = platformNames.length ? Object.fromEntries(platformNames.map((n) => [n, {}])) : null;
 const links = (arg('links') ?? '').split(',').map((f) => f.trim()).filter(Boolean);
-const r = checkIssueDraft({ title, body, platforms, links, language: arg('language') ?? 'en', repoRoot: arg('repo-root') ?? process.cwd(), rulesFile: (arg('rules-file') ?? '').split(',').map((f) => f.trim()).filter(Boolean) });
+const repoRoot = arg('repo-root') ?? process.cwd();
+const rulesFiles = (arg('rules-file') ?? '').split(',').map((f) => f.trim()).filter(Boolean);
+const unread = [];
+const rules = rulesFiles.flatMap((f) => {
+  try {
+    return parseRules(f, readFileSync(join(repoRoot, f), 'utf8'));
+  } catch {
+    unread.push(f);
+    return [];
+  }
+});
+const r = checkIssueDraft({ rules, title, body, platforms, links, language: arg('language') ?? 'en', repoRoot: arg('repo-root') ?? process.cwd(), rulesFile: (arg('rules-file') ?? '').split(',').map((f) => f.trim()).filter(Boolean) });
 const allows = r.allowPaths.length ? `, allows changes to ${r.allowPaths.join(', ')}` : '';
 console.log(`${r.scenarios} scenario(s), ${r.edgeCases} edge case(s), depends on ${[...r.dependsOn.map((n) => `#${n}`), ...r.dependsOnExternal.map((d) => `${d.repo}#${d.number}`)].join(', ') || 'nothing'}${allows}`);
+unread.forEach((f) => console.error(`warning: the rules file ${f} could not be read, so the draft was not compared with it`));
 r.warnings.forEach((w) => console.error(`warning: ${w}`));
 if (r.ok) {
   console.log('ready to create');

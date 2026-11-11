@@ -179,6 +179,16 @@ When the work needs something that is not in the repository (a key, a file, an e
 - A missing input sends the issue back to `needs-spec` with the reason `inputs`, before the agent starts and without spending a model turn. The comment names each missing input.
 - The section is optional. `/relevo:issue` asks for the inputs of the work and writes it.
 
+### 10. Contradictions with the project rules (checked, nothing to write)
+
+Before the issue is created, and again before a build spends a model turn, a script compares each line of `## Out of scope` with the project rules (`qa.rules_from`) and with the issue's own scenarios. When an `Out of scope` line excludes something that a rule requires, or limits something that a scenario needs, the issue goes back to its writer with both lines quoted (the file and line of the rule, the scenario and the limit). The script never decides which one wins: you do.
+
+- To change the issue, edit the line or the scenario.
+- To override the rule on purpose, record it in a decision: add the line `Overrides: CLAUDE.md:12` (the file and line of the rule) inside a `### D<n>.` block under `## Decisions`. The check then skips that rule, and QA follows the decision.
+- A rule is a requirement unless the rules file marks it as advice: write `[advice]` on its line, or on a heading to mark everything under it. A rule marked `[advice]` never blocks, and neither does a finding that cites it.
+
+A rule that the issue does not override still blocks in QA: a lens that finds a change breaking one cites it as `Rule: <file>:<line> "<its words>"`, and the build fails even when the finding comes from the `interface` lens on the last attempt.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.

@@ -525,3 +525,15 @@ test('the model of a retry stays as the previous change left it: lenses keep the
   assert.match(ref, /The lenses keep the model of the plan/);
   assert.match(ref, /model-plan\.mjs escalate --from/);
 });
+
+test('Scenario: a hard rule blocks - qa-run.md passes the rules files, explains the citation and keeps the parallel launch and the retry model (#121)', () => {
+  assert.match(ref, /--rules-file <qa\.rules_from, comma separated>/);
+  assert.match(ref, /Rule: <file>:<line> "<the words of that line>"/);
+  assert.match(ref, /the `interface` lens on the last attempt cannot leave it as a note/);
+  assert.match(ref, /`QA PASSED` but cites one becomes `QA REJECTED`/);
+  assert.match(ref, /\[advice\]/);
+  assert.match(ref, /`unverified`/);
+  assert.match(ref, /the rules files \(`qa\.rules_from`\), so that a lens that finds a broken rule can cite it/);
+  assert.match(ref, /## 3\. Launch the active lenses together, in the foreground/, 'the parallel launch stays');
+  assert.match(ref, /## The model of a retry/, 'the retry model stays');
+});

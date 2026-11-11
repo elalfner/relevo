@@ -605,3 +605,48 @@ test('a model line that cannot be read is a warning, never a problem', () => {
   assert.ok(r.warnings.some((w) => /Model: must be a single model name/.test(w)));
   assert.equal(r.models.dev, null);
 });
+
+// ---------------------------------------------------------------- a draft that contradicts the rules or itself (#121)
+import { parseRules } from '../scripts/lib/rules-file.mjs';
+
+const RULES121 = parseRules('CLAUDE.md', '- Every list must offer export and the enable/disable actions.\n');
+const withOut = (out, extra = '') => `${GOOD}\n## Out of scope\n${out}\n${extra}`;
+
+test('Scenario: a draft whose Out of scope excludes what a rule requires fails, quoting both lines', () => {
+  const r = checkIssueDraft({ title: 'Birthday list', body: withOut('- export and the enable/disable actions'), rules: RULES121 });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /"export and the enable\/disable actions".*CLAUDE\.md:1.*Every list must offer export/);
+});
+
+test('Scenario: the same draft with an Overrides decision passes', () => {
+  const extra = '\n## Decisions\n\n### D1. Export waits\nDecided: no export yet\nWhy: the API is not ready\nOverrides: CLAUDE.md:1\n';
+  assert.deepEqual(checkIssueDraft({ title: 'Birthday list', body: withOut('- export and the enable/disable actions', extra), rules: RULES121 }).problems, []);
+});
+
+test('Scenario: a scenario that needs what Out of scope excludes names both as a warning, with no rules', () => {
+  const body = withOut('- showing the names of the clients with a birthday today');
+  const r = checkIssueDraft({ title: 'Birthday list', body });
+  assert.equal(r.ok, true, 'a warning, never a problem');
+  assert.match(r.warnings.join('\n'), /Out of scope says.*scenario 1 \(WHEN/);
+});
+
+test('without rules and without a clash the draft still passes', () => {
+  assert.deepEqual(checkIssueDraft({ title: 'Birthday list', body: withOut('- a report of the clients') }).problems, []);
+});
+
+test('check-issue.mjs reads the rules file of --rules-file from the repository folder', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-conflict-'));
+  writeFileSync(join(dir, 'CLAUDE.md'), '- Every list must offer export and the enable/disable actions.\n');
+  writeFileSync(join(dir, 'issue.md'), withOut('- export and the enable/disable actions'));
+  const run = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Birthday list', '--body-file', join(dir, 'issue.md'), '--rules-file', 'CLAUDE.md', '--repo-root', dir], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /CLAUDE\.md:1/);
+});
+
+test('check-issue.mjs warns, and does not fail, when a rules file cannot be read', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-norules-'));
+  writeFileSync(join(dir, 'issue.md'), GOOD);
+  const run = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Birthday list', '--body-file', join(dir, 'issue.md'), '--rules-file', 'nope.md', '--repo-root', dir], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  assert.match(run.stderr, /warning: the rules file nope\.md could not be read, so the draft was not compared with it/);
+});

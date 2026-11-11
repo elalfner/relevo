@@ -77,6 +77,15 @@ const TABLE = {
         es: 'una tarea necesita algo que una corrida sin supervisión no puede hacer: lista el manifiesto de dependencias en Allow-paths: o cambia el issue para que no necesite la ruta protegida, y vuelve a ponerle ready',
       },
     },
+    // The check before the build found that the issue contradicts the project rules or its own scenarios.
+    conflict: {
+      command: '/relevo:issue {n}',
+      who: 'spec_writer',
+      hint: {
+        en: 'the issue contradicts a project rule or its own scenarios: decide which one wins, change the issue or record a decision with an "Overrides: <file>:<line>" line, then label it ready again',
+        es: 'el issue contradice una regla del proyecto o sus propios escenarios: decide cuál gana, cambia el issue o registra una decisión con una línea "Overrides: <archivo>:<línea>" y vuelve a ponerle ready',
+      },
+    },
   },
   'qa-failed': {
     // The recovery depends on what is on the branch.
@@ -204,7 +213,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
-  'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy'],
+  'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
   'qa-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'delete-branch', 'restricted', 'rebuild'],
 };
 
@@ -212,7 +221,7 @@ const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? '')
 
 /**
  * The next step for an issue in `state`.
- * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs` or `policy`) and of `qa-failed`
+ * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `qa-failed`
  * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
