@@ -132,6 +132,12 @@ El informe empieza con una línea que dice qué juzgó: el repositorio, y si los
 /relevo:doctor [--all]
 ```
 
+## Comprobar la compuerta y el CI sin pull requests desechables
+
+`node scripts/gate-selftest.mjs [--base <ref>] [--platform <nombre>] [--config relevo.yml]` siembra tres casos en un worktree de prueba (un test unitario que falla, una historia de navegador que falla y un cambio solo de documentación), ejecuta la compuerta de validación en cada uno e imprime lo que devolvió y si coincide con lo que el caso espera (`ok`, `unexpected` o `could-not-run`). Sale con 0 cuando todos los casos ejecutados coincidieron y con 1 cuando alguno no. El worktree se separa de la referencia base (por defecto `origin/<branches.base>`) y se elimina al final: no escribe en la rama base ni en tu copia de trabajo, no crea ninguna rama y no hace push.
+
+Un caso que la pila no puede sembrar se omite y el informe dice por qué: la historia de navegador solo se siembra cuando la comprobación `test` de la plataforma ejecuta Playwright. Un resultado `unexpected` en un caso que debe fallar significa que la comprobación no ejecuta lo que se sembró. Si el repositorio no tiene `relevo.yml`, la plataforma no tiene perfil de pila o no tiene comprobación `test`, el comando no ejecuta nada e imprime los casos como instrucciones. El informe termina con los comandos que muestran el agregado del CI remoto sobre los mismos casos desde una rama de prueba y la borran después; el comando no los ejecuta.
+
 ## El formato del issue
 
 `/relevo:issue` escribe el issue y `/relevo:go` lo construye, así que el issue es lo único que recibe quien construye. Además de los escenarios y los casos borde, puede llevar lo que el acuerdo dejó decidido, en secciones opcionales: `Outcome`, `Decisions` (cada una con un id `D1`, lo decidido, el porqué y lo descartado), `Constraints` (`C1`), `Code pointers`, `Verification`, `Assumptions` y `Open questions`. `go` las copia palabra por palabra al diseño del cambio, y QA rechaza una construcción que rompa una decisión o una restricción, citando su id. Un issue con una pregunta abierta, o con el texto `NEEDS CLARIFICATION`, vuelve a quien lo escribió como ambiguo. El formato está en [Writing an issue Relevo can build](issue-format.md).

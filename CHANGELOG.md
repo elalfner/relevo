@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`scripts/gate-selftest.mjs` checks the gate without throwaway pull requests.** It seeds a failing unit test, a failing browser story and a docs-only change in a detached scratch worktree, runs the validation gate on each and reports what it did against what the case expects. It never writes to the base branch or the working tree, leaves no branch, skips a case the stack cannot seed and says why, and prints the cases as instructions when the CI is not Relevo's. The steps for the remote CI aggregate are printed, not run.
+
 ## [0.14.5] - 2026-11-05
 
 ### Added
