@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { intentToAdd } from './lib/intent-to-add.mjs';
-import { checkKey, currentDiff, ensureExcluded, gitIn, readStore, recordResult, resolveContext, reusable } from './lib/check-store.mjs';
+import { checkKey, currentDiff, treeHash, ensureExcluded, gitIn, readStore, recordResult, resolveContext, reusable } from './lib/check-store.mjs';
 import { checkRestricted, formatRestricted, restrictedInDiff, restrictedListFromText } from './lib/restricted-paths.mjs';
 import { formatFindings } from './lib/scan.mjs';
 import { EXCEPTIONS_FILE, formatExceptionReport, scanWithExceptions } from './lib/scan-exceptions.mjs';
@@ -38,13 +38,15 @@ try {
   if (files.length) intentToAdd({ git: (a) => git(a), exists: (p) => existsSync(join(root, p)), paths: files, list });
   const baseCommit = git(['rev-parse', base]).trim();
   const { diff, hash } = currentDiff({ root, base, profile });
+  // The key of a result uses the fingerprint of the tree, which counts the new files the same way `long-run.mjs` does.
+  const tree = treeHash({ root, base, profile });
   const store = has('fresh') ? {} : readStore(root);
 
   const commands = [];
   for (const key of ['analyze', 'test']) {
     const command = profile.commands[key];
     if (!command) continue;
-    const id = checkKey({ hash, command, path: platform.path });
+    const id = checkKey({ hash: tree, command, path: platform.path });
     // The same diff, command and folder passed before and never failed: do not run it again, and say so in the receipt.
     if (reusable(store, id)) {
       const last = store[id].last;

@@ -19,6 +19,7 @@ function repo({ test: testCmd = 'true' } = {}) {
   git(dir, 'config', 'user.name', 't');
   writeFileSync(join(dir, 'relevo.yml'), `limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    path: .\n    stack: flutter\n    targets: [android]\n    checks:\n      analyze: "true"\n      test: ${JSON.stringify(testCmd)}\n`);
   writeFileSync(join(dir, 'a.txt'), 'base\n');
+  writeFileSync(join(dir, '.gitignore'), 'runs.txt\n');
   git(dir, 'add', '.');
   git(dir, 'commit', '-qm', 'base');
   git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
@@ -164,4 +165,35 @@ test('The helpers: ids, last line and tails', () => {
   assert.equal(tailLines('a\nb\nc\n', 2), 'b\nc');
   assert.equal(statusOf(join(tmpdir(), 'relevo-no-such-run')).state, 'unknown');
   assert.match(statusLine('i', tmpdir(), { state: 'passed', exit_code: 0, seconds: 3 }), /^passed exit=0 3s \| i/);
+});
+
+test('Scenario: a new file - the developer runs the suite before intent-to-add and the gate still reuses it', () => {
+  const dir = repo({ test: 'echo run >> $PWD/runs.txt' });
+  writeFileSync(join(dir, 'new.txt'), 'a new file the developer wrote\n');
+  assert.equal(lr(dir, 'start', '--id', 'test', '--check', 'test', '--base', 'origin/main').status, 0);
+  assert.equal(waitDone(dir, 'test').status, 0);
+  const g = spawnSync('node', [GATE, '--base', 'origin/main', '--config', join(dir, 'relevo.yml'), '--files', 'new.txt'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(g.status, 0, g.stdout + g.stderr);
+  assert.equal(readFileSync(join(dir, 'runs.txt'), 'utf8').trim().split('\n').length, 1, 'the suite ran once');
+  assert.equal(JSON.parse(readFileSync(join(dir, '.relevo-receipt/receipt.json'), 'utf8')).commands.find((c) => c.name === 'test').reused, true);
+  // The check changed nothing in the index of the repository.
+  assert.equal(git(dir, 'diff', '--cached', '--name-only').trim(), '');
+});
+
+test('Scenario: a new file that changes after the run - nothing is reused', () => {
+  const dir = repo({ test: 'echo run >> $PWD/runs.txt' });
+  writeFileSync(join(dir, 'new.txt'), 'first\n');
+  lr(dir, 'start', '--id', 'test', '--check', 'test', '--base', 'origin/main');
+  waitDone(dir, 'test');
+  writeFileSync(join(dir, 'new.txt'), 'second\n');
+  spawnSync('node', [GATE, '--base', 'origin/main', '--config', join(dir, 'relevo.yml'), '--files', 'new.txt'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(readFileSync(join(dir, 'runs.txt'), 'utf8').trim().split('\n').length, 2);
+});
+
+test('A tool that redraws its progress line with carriage returns gives readable lines', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-lr-'));
+  lr(dir, 'start', '--id', 'p', '--', 'printf "00:01 +1\\r00:02 +2\\r00:03 +3: All tests passed!\\n"');
+  const r = waitDone(dir, 'p');
+  assert.match(r.stdout, /last: 00:03 \+3: All tests passed!/);
+  assert.deepEqual(lr(dir, 'status', '--id', 'p', '--tail', '2').stdout.trim().split('\n').slice(1), ['00:02 +2', '00:03 +3: All tests passed!']);
 });

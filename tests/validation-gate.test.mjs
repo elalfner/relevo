@@ -20,6 +20,7 @@ function repo({ analyze = 'true', test: testCmd = 'true', generated = [] } = {})
   writeFileSync(join(dir, 'relevo.yml'), `limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    path: .\n    stack: flutter\n    targets: [android]\n${checks}`);
   mkdirSync(join(dir, '.relevo/stacks'), { recursive: true });
   writeFileSync(join(dir, 'a.txt'), 'base\n');
+  writeFileSync(join(dir, '.gitignore'), 'runs.txt\n');
   git(dir, 'add', '.');
   git(dir, 'commit', '-qm', 'base');
   git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD');

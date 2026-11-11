@@ -44,7 +44,8 @@ export function logTail(dir, bytes = 8192) {
   } finally { closeSync(fd); }
 }
 
-const clean = (s) => String(s).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/[^\t\n\x20-\x7e]/g, '');
+// A carriage return starts a new line: tools that redraw a progress line (flutter, npm) write many of them.
+const clean = (s) => String(s).replace(/\r\n?/g, '\n').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/[^\t\n\x20-\x7e]/g, '');
 /** The last non-empty line of a text, without colours or control characters, cut to `max` characters. */
 export function lastLine(text, max = 160) {
   const line = clean(text).split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? '';

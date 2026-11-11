@@ -8,8 +8,10 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { resolveProfile } from './stack-profile.mjs';
@@ -50,6 +52,28 @@ export const gitIn = (root, args) => execFileSync('git', args, { encoding: 'utf8
 export function currentDiff({ root, base, profile }) {
   const diff = gitIn(root, ['diff', base, '--', '.', ...excludeSpecs(profile.generated)]);
   return { diff, hash: diffHash(diff) };
+}
+
+/**
+ * The fingerprint of the work tree that a check ran on, for the key of a result: the diff against the base, with every file git
+ * does not track yet (and does not ignore) counted as part of it. It is the same before and after `intent-to-add.mjs`, which
+ * the orchestrator runs between the developer's run of the suite and the gate, so a new file does not make the two differ.
+ * It uses a copy of the index, so nothing is staged or changed. The hash of the receipt is not this one.
+ */
+export function treeHash({ root, base, profile }) {
+  const untracked = gitIn(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
+  if (untracked.length === 0) return currentDiff({ root, base, profile }).hash;
+  const tmp = mkdtempSync(join(tmpdir(), 'relevo-index-'));
+  try {
+    const env = { ...process.env, GIT_INDEX_FILE: join(tmp, 'index') };
+    const run = (args, input) => execFileSync('git', args, { encoding: 'utf8', cwd: root, env, input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
+    // An index of its own, built from the last commit; the files that the real index adds (intent-to-add) and the untracked
+    // ones are marked as added in it, so the diff has all of them whatever the real index says.
+    run(['read-tree', 'HEAD']);
+    const added = [...new Set([...gitIn(root, ['ls-files', '--cached', '-z']).split('\0'), ...untracked])].filter((p) => p && existsSync(join(root, p)));
+    run(['add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'], added.join('\0'));
+    return diffHash(run(['diff', base, '--', '.', ...excludeSpecs(profile.generated)]));
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
 }
 
 const storePath = (root) => resolve(root, RECEIPT_DIR, CHECKS_FILE);

@@ -17,7 +17,7 @@ import { spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CHECK_NAMES, checkKey, currentDiff, ensureExcluded, recordResult, resolveContext } from './lib/check-store.mjs';
+import { CHECK_NAMES, checkKey, ensureExcluded, recordResult, resolveContext, treeHash } from './lib/check-store.mjs';
 import { DEFAULT_WAIT_SECONDS, EXIT, MAX_WAIT_SECONDS, RUN_DIR, logTail, readSpec, runDir, statusLine, statusOf, tailLines, validId } from './lib/long-run.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
@@ -95,7 +95,7 @@ async function supervise(dir) {
   if (spec.check) {
     try {
       ctx = resolveContext({ configPath: spec.check.config, platformName: spec.check.platform });
-      if (ctx.ok) before = currentDiff({ root: ctx.root, base: spec.check.base, profile: ctx.profile }).hash;
+      if (ctx.ok) before = treeHash({ root: ctx.root, base: spec.check.base, profile: ctx.profile });
     } catch { before = null; }
   }
   const code = await new Promise((done) => {
@@ -108,7 +108,7 @@ async function supervise(dir) {
   // The check is recorded before the end is written, so a `wait` that sees the end also sees the record.
   if (spec.check && before) {
     try {
-      const after = currentDiff({ root: ctx.root, base: spec.check.base, profile: ctx.profile }).hash;
+      const after = treeHash({ root: ctx.root, base: spec.check.base, profile: ctx.profile });
       if (after === before) recordResult(ctx.root, { key: checkKey({ hash: before, command: spec.command, path: ctx.platform.path }), name: spec.check.name, command: spec.command, exit_code: code, duration_ms, output: logTail(dir, 8192) });
     } catch { /* the gate then runs the check itself */ }
   }
