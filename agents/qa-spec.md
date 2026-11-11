@@ -70,7 +70,7 @@ Look for the heading `Documentation from the issue` in `design.md`. If it is the
 
 ### 6. Decisions and constraints from the issue
 
-Look in `design.md` for headings that start `From the issue:`. Each must be contained, unchanged, in the issue (`node <plugin>/scripts/issue-sections.mjs --body-file <issue_file> --copy "<the names after From the issue:>"`). Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding: reject a change that breaks one, citing its id, the file and line. A decision under `Discarded` is not a rule. `Code pointers` are hints, not rules: do not reject for ignoring one. A pointer to a file of another repository is in `.relevo-design/manifest.json` with `section` `code-pointer`; read it from there when you need it, and never treat it as a reference to match. `Verification` is for the person's review: list it under **Left for on-device review**.
+Look in `design.md` for headings that start `From the issue:`. Each must be contained, unchanged, in the issue (`node <the issue-sections.mjs path you were given> --body-file <issue_file> --copy "<the names after From the issue:>"`). Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding: reject a change that breaks one, citing its id, the file and line. A decision under `Discarded` is not a rule. `Code pointers` are hints, not rules: do not reject for ignoring one. A pointer to a file of another repository is in `.relevo-design/manifest.json` with `section` `code-pointer`; read it from there when you need it, and never treat it as a reference to match. `Verification` is for the person's review: list it under **Left for on-device review**.
 
 ## Rules for yourself
 

@@ -360,7 +360,7 @@ test('Scenario: the reference of QA exists and names each step, and go, fix and 
   assert.ok(existsSync(root('skills/go/references/qa-run.md')));
   [
     ['the gate', /validation-gate\.mjs --base origin\/<base>/], ['a red gate uses an attempt', /A red gate uses an attempt/], ['could not run', /`automated validation could not run`/],
-    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['each lens is recorded when it starts', /progress\.mjs lens <lens> --attempt <n>/], ['one at a time, in the foreground', /one at a time, in the foreground/],
+    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['each lens is recorded when it starts', /progress\.mjs lens <lens> --attempt <n>/], ['together, in the foreground', /Launch the active lenses together, in the foreground/],
     ['the model of the lens', /model plan gives it/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
     ['an invalid report is asked again once', /Ask that lens again, once/], ['a second invalid report', /`lens report invalid`/], ['the advisory notes', /`qa_notes`/], ['the receipt is not a boundary', /not a defence against an agent that writes a false file/],
   ].forEach(([what, re]) => assert.match(ref, re, what));
@@ -403,7 +403,7 @@ test('Scenario: The budget guard stops a run only on what it can read - the skil
 
 test('the QA reference checks the budget before each lens and before a retry, and records each lens', () => {
   const qa = readFileSync(new URL('../skills/go/references/qa-run.md', import.meta.url), 'utf8');
-  assert.match(qa, /Before each lens, check the budget of the run/);
+  assert.match(qa, /\*\*Check the budget of the run\*\*[^\n]*once per batch|applied once per batch[\s\S]*Check the budget of the run/);
   assert.match(qa, /run-budget\.mjs record --agent relevo:qa-<lens>/);
   assert.match(qa, /check the budget \(`run-budget\.mjs check`[^)]*\) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying/);
 });
@@ -448,7 +448,7 @@ test('the feature commit may be empty because the checkpoints hold the files, an
 test('Scenario: the lenses leave out what the install step left - the list is made once per round and given to every lens', () => {
   assert.match(ref, /tree-baseline\.mjs list/);
   assert.match(ref, /`not_the_change`/);
-  assert.ok(ref.indexOf('tree-baseline.mjs list') < ref.indexOf('For each active lens, in the order'), 'the list is made before the first lens');
+  assert.ok(ref.indexOf('tree-baseline.mjs list') < ref.indexOf('record that it starts'), 'the list is made before the first batch');
   for (const lens of ['spec', 'security', 'code', 'interface']) {
     const agent = readFileSync(root(`agents/qa-${lens}.md`), 'utf8');
     assert.match(agent, /not_the_change/, `qa-${lens} knows the list`);
@@ -484,4 +484,44 @@ test('Scenario: the plan cannot be made - go launches with the configuration and
   assert.match(text, /When it prints `failed`, or anything that is not that JSON, launch every agent with the model and the effort of the configuration/);
   assert.match(text, /say in your final report that the plan could not be made/);
   assert.match(ref, /when there is no plan, `agents\.qa\.<lens>`/);
+});
+
+// ---------- the lenses run together (#125)
+
+test('Scenario: Several active lenses - they are launched together, in one turn, and the build waits for all the reports', () => {
+  assert.match(ref, /launched \*\*in the same turn\*\*/);
+  assert.match(ref, /Then wait for all the reports/);
+  assert.match(ref, /lens-plan\.mjs[^\n]*\n```[\s\S]*`batches`/);
+  assert.match(ref, /--max-parallel <the limit>/, 'a concurrency limit falls back to batches');
+  assert.match(body, /together in one turn as `qa-run\.md` says/);
+  assert.doesNotMatch(body + ref, /one at a time, in the foreground|Never start two together/);
+});
+
+test('Scenario: No lens starts without a valid receipt - checked right before every batch, and before the lens asked again', () => {
+  const step = ref.slice(ref.indexOf('## 3. Launch'), ref.indexOf('## 4. Aggregate'));
+  assert.ok(step.indexOf('receipt-check.mjs') !== -1 && step.indexOf('receipt-check.mjs') < step.indexOf('progress.mjs lens <lens> --attempt <n>`'), 'the receipt is checked before any lens is recorded or launched');
+  assert.match(step, /A lens never starts on a diff whose checks did not run/);
+  assert.match(step, /Check again before each later batch/);
+  assert.match(step, /after the budget check and the receipt check/);
+});
+
+test('Scenario: One lens ends with no report - the others are kept, it is asked once, and the comment names it', () => {
+  assert.match(ref, /A lens that gives no report/);
+  assert.match(ref, /the other lenses finish and their reports are kept/);
+  assert.match(ref, /reason `lens report invalid`, naming that lens; do not retry the developer agent/);
+});
+
+test('Scenario: Two lenses overlap - each has its own start and end record', () => {
+  assert.match(ref, /progress\.mjs lens <lens> --attempt <n> --end/);
+});
+
+test('Scenario: The spec lens checks the decisions of the issue - it is given the resolved path of the script, never a search', () => {
+  assert.match(ref, /`\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/issue-sections\.mjs`, written out in full/);
+  assert.match(ref, /never search the filesystem for a script/);
+});
+
+test('the model of a retry stays as the previous change left it: lenses keep the model of the plan, the retry is escalated by the script', () => {
+  assert.match(ref, /## The model of a retry/);
+  assert.match(ref, /The lenses keep the model of the plan/);
+  assert.match(ref, /model-plan\.mjs escalate --from/);
 });

@@ -22,3 +22,15 @@ export function planLenses({ interfaceKind = null, extraRules = null } = {}) {
 
 /** The lines `SKIPPED <lens>: <reason>` for the report. */
 export const skippedLines = (plan) => plan.filter((p) => !p.active).map((p) => `SKIPPED ${p.lens}: ${p.reason}`);
+
+/**
+ * The batches in which the active lenses are launched: all of them together, or batches of at most `max` when the runtime
+ * limits the subagents that run at once. A skipped lens is in no batch. Returns [[lens, ...], ...].
+ */
+export function batchLenses(plan, max = Infinity) {
+  const size = Number.isInteger(max) && max > 0 ? max : Infinity;
+  const active = plan.filter((p) => p.active).map((p) => p.lens);
+  const batches = [];
+  for (let i = 0; i < active.length; i += size) batches.push(active.slice(i, i + size));
+  return batches;
+}
