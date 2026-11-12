@@ -51,11 +51,66 @@ test('Scenario: A role that is not on auto keeps its model, whatever the issue s
   assert.match(p.notes.join('|'), /QA-model: of the issue is ignored: no QA lens is auto/);
 });
 
-test('Scenario: The issue asks for a lower model - it is used, even below the floor', () => {
-  const config = cfg('agents:\n  dev:\n    model: auto\n    floor: sonnet\n    ceiling: sonnet\n');
+test('Scenario: The issue asks for a lower model inside the range - it is used', () => {
+  const config = cfg('agents:\n  dev:\n    model: auto\n    floor: haiku\n    ceiling: sonnet\n');
   const p = planModels({ config, issue: issue(10, 'Model: haiku\n'), tasksText: tasks(10) });
   assert.equal(p.dev.model, 'haiku');
   assert.equal(p.dev.source, 'issue');
+  assert.match(p.dev.why, /the issue asks for haiku$/);
+});
+
+test('Scenario: The issue asks for a model below the floor - it is raised to the floor and the plan says so (#162)', () => {
+  const config = cfg('agents:\n  dev:\n    model: auto\n    floor: sonnet\n    ceiling: sonnet\n');
+  const p = planModels({ config, issue: issue(10, 'Model: haiku\n'), tasksText: tasks(10) });
+  assert.equal(p.dev.model, 'sonnet');
+  assert.equal(p.dev.source, 'issue');
+  assert.match(p.dev.why, /raised to the floor sonnet/);
+});
+
+test('Scenario: QA-model below the floor - every lens runs on the floor and the plan says so (#162)', () => {
+  const p = planModels({ config: cfg(ALL_AUTO), issue: issue(2, 'QA-model: haiku\n'), tasksText: tasks(2) });
+  ['spec', 'security', 'code', 'interface'].forEach((l) => {
+    assert.equal(p.qa[l].model, 'sonnet', l);
+    assert.equal(p.qa[l].source, 'issue');
+    assert.match(p.qa[l].why, /the issue asks for haiku, raised to the floor sonnet/);
+  });
+});
+
+test('Scenario: One QA-model, lenses with different floors - each lens is clamped by its own range (#162)', () => {
+  const yaml = ALL_AUTO.replace('security:\n      model: auto', 'security:\n      model: auto\n      floor: opus').replace('code:\n      model: auto', 'code:\n      model: auto\n      floor: haiku');
+  const p = planModels({ config: cfg(yaml), issue: issue(2, 'QA-model: sonnet\n'), tasksText: tasks(2) });
+  assert.equal(p.qa.security.model, 'opus', 'raised to its own floor');
+  assert.equal(p.qa.code.model, 'sonnet', 'inside its range');
+  assert.equal(p.qa.spec.model, 'sonnet');
+});
+
+test('a role that is not on auto is never changed by the issue, in either direction (#162)', () => {
+  const yaml = 'agents:\n  qa:\n    security:\n      model: opus\n    code:\n      model: auto\n';
+  const p = planModels({ config: cfg(yaml), issue: issue(2, 'QA-model: haiku\n'), tasksText: tasks(2) });
+  assert.equal(p.qa.security.model, 'opus');
+  assert.equal(p.qa.security.source, 'config');
+  assert.equal(p.qa.code.model, 'sonnet', 'the one on auto is raised to its floor');
+});
+
+test('Scenario: Nothing to score and a default model outside the range - it is moved into it (#162)', () => {
+  const nothing = { title: 'A change', body: 'No sections.' };
+  const raised = planModels({ config: cfg('agents:\n  dev:\n    model: auto\n    floor: opus\n    ceiling: opus\n'), issue: nothing, tasksText: null });
+  assert.equal(raised.dev.model, 'opus', 'the default sonnet is below the floor');
+  assert.match(raised.dev.why, /nothing to score/);
+  assert.match(raised.dev.why, /raised to the floor opus/);
+  const lowered = planModels({ config: cfg('agents:\n  dev:\n    model: auto\n    floor: haiku\n    ceiling: haiku\n'), issue: nothing, tasksText: null });
+  assert.equal(lowered.dev.model, 'haiku', 'the default sonnet is above the ceiling');
+  assert.match(lowered.dev.why, /lowered to the ceiling haiku/);
+  const outside = planModels({ config: cfg('agents:\n  ladder: [mini, big]\n  dev:\n    model: auto\n    floor: mini\n    ceiling: big\n'), issue: nothing, tasksText: null });
+  assert.equal(outside.dev.model, 'mini', 'a default that is not in the ladder is not used: the floor is');
+  assert.match(outside.dev.why, /not in agents\.ladder/);
+});
+
+test('Nothing to score and a default inside the range - the model and the reason are as before', () => {
+  const p = planModels({ config: cfg(ALL_AUTO), issue: { title: 'A change', body: 'No sections.' }, tasksText: null });
+  assert.equal(p.dev.model, 'sonnet');
+  assert.equal(p.dev.why, 'the default model of the role: there was nothing to score');
+  assert.equal(p.qa.security.model, 'opus');
 });
 
 test('Scenario: The issue asks for a model above the ceiling - it is clamped and the plan says so', () => {

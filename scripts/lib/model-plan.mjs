@@ -4,7 +4,8 @@
 //
 // A script decides, not the main agent: the same inputs give the same plan, and the plan says for each role where its model
 // came from (`config`, `auto` or `issue`) and why. A role that is not `auto` keeps what relevo.yml says. Nothing here reads or
-// changes a limit: `limits.run_max_cost`, `run_max_turns` and `run_max_minutes` stay the hard stops.
+// changes a limit: `limits.run_max_cost`, `run_max_turns` and `run_max_minutes` stay the hard stops. A role on `auto` always stays
+// inside its range: a model that the issue asks for is clamped to the floor and to the ceiling, and so is the default model of the role.
 //
 // The effort is not scored in this stage: every role keeps the configured effort.
 
@@ -90,11 +91,22 @@ export function planModels({ config, issue = {}, tasksText = null, lenses = QA_L
         notes.push(`the issue asks for "${askedName}" for ${path}, which is not in agents.ladder (${ladder.join(', ')}), so the line is ignored`);
       } else if (idx > ladder.indexOf(ceiling)) {
         return { model: ceiling, effort: role.effort, source: 'issue', why: `the issue asks for ${askedName}, clamped to the ceiling ${ceiling}` };
+      } else if (idx < ladder.indexOf(floor)) {
+        // The floor is the lowest the configuration allows for this role: an issue cannot go under it, as it cannot go over the ceiling.
+        return { model: floor, effort: role.effort, source: 'issue', why: `the issue asks for ${askedName}, raised to the floor ${floor}` };
       } else {
         return { model: askedName, effort: role.effort, source: 'issue', why: `the issue asks for ${askedName}` };
       }
     }
-    if (size === 'none') return { model: defaults.model, effort: role.effort, source: 'auto', why: `the default model of the role: ${explain()}` };
+    if (size === 'none') {
+      // The default model of the role is a name like any other: it is kept inside the range, and a name the ladder does not have is not used.
+      const at = ladder.indexOf(defaults.model);
+      const moved = at === -1 ? ` (${defaults.model} is not in agents.ladder, so the floor ${floor} is used)`
+        : at < ladder.indexOf(floor) ? ` (${defaults.model} was raised to the floor ${floor})`
+          : at > ladder.indexOf(ceiling) ? ` (${defaults.model} was lowered to the ceiling ${ceiling})` : '';
+      const model = at === -1 || at < ladder.indexOf(floor) ? floor : at > ladder.indexOf(ceiling) ? ceiling : defaults.model;
+      return { model, effort: role.effort, source: 'auto', why: `the default model of the role${moved}: ${explain()}` };
+    }
     const raised = deps || sensitive;
     const level = isSecurity && raised ? 2 : Math.min(2, LEVEL[size] + (raised ? 1 : 0));
     const model = ladder[pickIndex(ladder, floor, ceiling, level)];
