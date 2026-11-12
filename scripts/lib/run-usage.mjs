@@ -186,38 +186,59 @@ function timeOf(v) {
 }
 
 const infoOf = (e) => (e && e.type === 'rate_limit_event' && e.rate_limit_info && typeof e.rate_limit_info === 'object' ? e.rate_limit_info : null);
+const WINDOW_NAME = /^[a-z0-9_]{1,30}$/;
 
 /**
- * The quota windows that the log of the run reports: [{ window, before, after, resets? }], where `window` is the `rateLimitType` of the
- * rate-limit events, `before` and `after` are the utilisation (a percent) of the first and the last event of that window, and
- * `resets` is the last reset time the log gives for it (milliseconds since the epoch). A figure that is not a number from 0 to 1 is
- * left out, and a window with no figure is not listed. Nothing is estimated: a log without these events (an API-key repository has no
- * weekly window) gives an empty list. `entriesOrText` is the text of the log or its parsed entries.
+ * The windows that one rate-limit event reports: [{ window, utilization, resetsAt, status }]. A real log (a subscription run seen in
+ * the sandbox) has `unifiedWindows` with every window the account has (`five_hour`, `seven_day`), each with its own utilisation,
+ * reset time and status, and the top-level fields of the window that is the closest to its limit (`rateLimitType`). The windows
+ * come first and the top level fills the one that `unifiedWindows` lacks. A window whose name is not a plain word is left out.
+ */
+function windowsOf(info) {
+  const out = new Map();
+  const add = (name, w) => {
+    if (typeof name !== 'string' || !WINDOW_NAME.test(name) || !w || typeof w !== 'object' || out.has(name)) return;
+    out.set(name, { window: name, utilization: num(w.utilization), resetsAt: timeOf(w.resetsAt), status: typeof w.status === 'string' ? w.status : null });
+  };
+  if (info.unifiedWindows && typeof info.unifiedWindows === 'object' && !Array.isArray(info.unifiedWindows)) {
+    Object.entries(info.unifiedWindows).forEach(([name, w]) => add(name, w));
+  }
+  add(info.rateLimitType, info);
+  return [...out.values()];
+}
+
+/**
+ * The quota windows that the log of the run reports: [{ window, before, after, resets? }], where `window` is the name of the window
+ * (`five_hour`, `seven_day`...), `before` and `after` are the utilisation (a percent) in the first and in the last rate-limit event
+ * that reports it, and `resets` is the last reset time the log gives for it (milliseconds since the epoch). A figure that is not a
+ * number from 0 to 1 is left out, and a window with no figure is not listed. Nothing is estimated: a log without these events
+ * (an API-key repository has no weekly window) gives an empty list. `entriesOrText` is the text of the log or its parsed entries.
  */
 export function quotaOf(entriesOrText) {
   const all = Array.isArray(entriesOrText) ? entriesOrText : entries(entriesOrText);
   const windows = new Map();
   all.forEach((e) => {
     const info = infoOf(e);
-    if (!info || typeof info.rateLimitType !== 'string' || !/^[a-z0-9_]{1,30}$/.test(info.rateLimitType)) return;
-    const w = windows.get(info.rateLimitType) ?? { window: info.rateLimitType };
-    const u = num(info.utilization);
-    if (u !== null && u >= 0 && u <= 1) {
-      const pct = Math.round(u * 100);
-      if (w.before === undefined) w.before = pct;
-      w.after = pct;
-    }
-    const at = timeOf(info.resetsAt);
-    if (at !== null) w.resets = at;
-    windows.set(info.rateLimitType, w);
+    if (!info) return;
+    windowsOf(info).forEach(({ window, utilization, resetsAt }) => {
+      const w = windows.get(window) ?? { window };
+      if (utilization !== null && utilization >= 0 && utilization <= 1) {
+        const pct = Math.round(utilization * 100);
+        if (w.before === undefined) w.before = pct;
+        w.after = pct;
+      }
+      if (resetsAt !== null) w.resets = resetsAt;
+      windows.set(window, w);
+    });
   });
   return [...windows.values()].filter((w) => w.before !== undefined);
 }
 
 /**
- * When the usage limit that stopped the run resets, in milliseconds since the epoch, or null. It is the reset time of the last
- * rate-limit event whose status is not `allowed*`, and only when it is later than `now` and at most 8 days away: a time in the past
- * or far away is not credible, so the caller backs off and says so instead of using it.
+ * When the usage limit that stopped the run resets, in milliseconds since the epoch, or null. It comes from the last rate-limit event
+ * that is not `allowed*`: the reset time of every window of it that is not allowed (the top-level window and each of `unifiedWindows`),
+ * the latest of them, because the account can run again only when all of them have reset. A time that is not later than `now` or is more
+ * than 8 days away is not credible and is left out; when none is credible the caller backs off and says so instead of using one.
  */
 export function limitReset(text, now = Date.now()) {
   const all = entries(text).filter((e) => e && typeof e === 'object');
@@ -225,8 +246,11 @@ export function limitReset(text, now = Date.now()) {
     const info = infoOf(e);
     return info && typeof info.status === 'string' && !info.status.startsWith('allowed');
   });
-  const at = hit ? timeOf(infoOf(hit).resetsAt) : null;
-  return at !== null && at > now && at - now <= 8 * DAY_MS ? at : null;
+  if (!hit) return null;
+  const info = infoOf(hit);
+  const blocked = windowsOf(info).filter((w) => w.window === info.rateLimitType || (w.status !== null && !w.status.startsWith('allowed')));
+  const times = blocked.map((w) => w.resetsAt).filter((at) => at !== null && at > now && at - now <= 8 * DAY_MS);
+  return times.length ? Math.max(...times) : null;
 }
 
 /** The limits of relevo.yml that a run went past: [{ limit, used, max }], empty when it kept within them or the figure is unknown. */

@@ -458,3 +458,34 @@ test('usage-limit.mjs prints the reset time when the log has a credible one, and
   const none = spawnSync('node', [CLI('usage-limit.mjs'), '--file', write('nore.txt', 'Claude AI usage limit reached')], { encoding: 'utf8' });
   assert.deepEqual([none.status, none.stdout], [0, '']);
 });
+
+// --- A real event, captured from a one-turn run with a subscription token in the sandbox (anonymous: ids removed) ---
+const REAL_EVENT = { type: 'rate_limit_event', rate_limit_info: {
+  status: 'allowed_warning', resetsAt: 1794495600, rateLimitType: 'seven_day', utilization: 0.84, overageStatus: 'rejected',
+  overageDisabledReason: 'org_level_disabled', isUsingOverage: false, surpassedThreshold: 0.75,
+  unifiedWindows: {
+    five_hour: { utilization: 0.16, resetsAt: 1794480600, status: 'allowed' },
+    seven_day: { utilization: 0.84, resetsAt: 1794495600, status: 'allowed_warning', surpassedThreshold: 0.75 },
+  },
+} };
+
+test('a real event: both windows are read from unifiedWindows, with their own reset times', () => {
+  const log = JSON.stringify([REAL_EVENT, result]);
+  assert.deepEqual(quotaOf(log), [
+    { window: 'five_hour', before: 16, after: 16, resets: 1794480600000 },
+    { window: 'seven_day', before: 84, after: 84, resets: 1794495600000 },
+  ]);
+  assert.match(usageLine(readUsage(log)), /Quota: the 5-hour window at 16 % \(resets 2026-11-12 10:50 UTC\); the weekly window at 84 % \(resets 2026-11-12 15:00 UTC\)\.$/);
+  assert.equal(limitReset(log, 1794400000000), null, 'an allowed event is not a limit');
+});
+
+test('a limit that rejects one window waits for the latest reset of the windows that are not allowed', () => {
+  const rejected = (over) => JSON.stringify([{ type: 'rate_limit_event', rate_limit_info: { ...REAL_EVENT.rate_limit_info, status: 'rejected', ...over } }]);
+  const now = 1794400000000;
+  assert.equal(limitReset(rejected({}), now), 1794495600000, 'the window of rateLimitType');
+  const both = rejected({ unifiedWindows: { five_hour: { utilization: 1, resetsAt: 1794480600, status: 'rejected' }, seven_day: { utilization: 1, resetsAt: 1794495600, status: 'rejected' } } });
+  assert.equal(limitReset(both, now), 1794495600000, 'the account runs again when the last one resets');
+  const five = rejected({ rateLimitType: 'five_hour', resetsAt: 1794480600, unifiedWindows: { five_hour: { utilization: 1, resetsAt: 1794480600, status: 'rejected' }, seven_day: { utilization: 0.5, resetsAt: 1794495600, status: 'allowed' } } });
+  assert.equal(limitReset(five, now), 1794480600000, 'an allowed window does not delay the retry');
+  assert.equal(limitReset(rejected({ resetsAt: 1700000000, unifiedWindows: undefined }), now), null, 'a reset in the past is not credible');
+});

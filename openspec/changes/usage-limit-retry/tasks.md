@@ -5,6 +5,7 @@
 - [x] 1.1 In `scripts/lib/run-usage.mjs` add `quotaOf(text)` (windows with first and last utilisation, reset time) and `limitReset(text)` (credible future time or `null`); make `readUsage` return `usage.quota`. Verify in `tests/usage.test.mjs`: two windows, a malformed figure, no events, a plain-text log, reset as seconds, milliseconds and ISO, a reset in the past or beyond 8 days gives `null`, API-key log gives no quota.
 - [x] 1.2 Add the quota phrases to `USAGE_TEXT` in English and Spanish, add the quota sentence to `usageLine` and `quota` to `usageMarker`; `parseUsageMarker` ignores it. Verify in `tests/usage.test.mjs` (sentence, marker, absence) and `tests/messages-language.test.mjs` (both languages, same placeholders).
 - [x] 1.3 Make `scripts/usage-limit.mjs` print the reset time (ISO) on its standard output when it has one, keeping the exit code. Verify with a test that runs the script on a log with and without a reset.
+- [x] 1.4 Read `unifiedWindows` (every window of a real event, each with its reset and status) in `quotaOf`, and take the latest reset of the windows that are not allowed in `limitReset`. Verify in `tests/usage.test.mjs` with the real event captured in the sandbox: both windows, an allowed window does not delay the retry, the latest rejected reset wins.
 
 ## 2. The retry decision
 
