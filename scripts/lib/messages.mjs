@@ -187,7 +187,7 @@ export const CATALOG = {
       '#{{issue}} "{{title}}" is queued',
       '',
       'The limit of concurrent agents is reached. It starts automatically when a run finishes.',
-      'Running now: {{active_text}}',
+      'Running or starting now: {{active_text}}',
       'Ahead of it in the queue: {{ahead_text}}',
       'Recent builds: {{typical_text}}',
       'These figures are read when the issue is queued; they are not updated while it waits.',
@@ -376,7 +376,7 @@ export const CATALOG = {
       '#{{issue}} "{{title}}" está en cola',
       '',
       'Se alcanzó el límite de agentes simultáneos. Empieza solo cuando termine una ejecución.',
-      'En ejecución ahora: {{active_text}}',
+      'En ejecución o por arrancar ahora: {{active_text}}',
       'Delante en la cola: {{ahead_text}}',
       'Construcciones recientes: {{typical_text}}',
       'Estas cifras se leen cuando el issue entra en la cola; no se actualizan mientras espera.',
@@ -626,9 +626,17 @@ function runNoOutcome(values, es) {
     if (usageLimit) why = es ? 'se alcanzó el límite de uso (o el crédito) de la cuenta del modelo' : 'the usage limit (or the credit) of the model account was reached';
     // The work of a run that was not on the branch of the issue is on a branch of its own: it is not the branch fix reads.
     const own = String(values.rescue_branch).startsWith('rescue/');
+    // On the branch of the issue a later run resumes (resume-check): from the last checkpoint, or from the work kept at the stop.
+    // `checkpoints` is optional: the report says what it knows and never "from the start" there.
+    const saved = Number(values.checkpoints);
+    const resume = present(values.checkpoints) && Number.isInteger(saved) && saved >= 1
+      ? { en: `resume from the last checkpoint (${saved} saved) and build only the pending tasks`, es: `reanudar desde el último checkpoint (${saved} guardados) y construir solo las tareas pendientes` }
+      : present(values.checkpoints) && saved === 0
+        ? { en: 'resume from the work kept on the branch (no checkpoint was saved yet)', es: 'reanudar desde el trabajo guardado en la rama (todavía no hay ningún checkpoint)' }
+        : { en: 'resume from the last point saved on the branch', es: 'reanudar desde el último punto guardado en la rama' };
     const next = own
       ? (es ? ' La ejecución no estaba en la rama del issue, así que el trabajo está en una rama aparte: cámbiate a ella y revísalo, o quita `relevo:qa-failed` y pon `relevo:ready` otra vez para construir desde el principio:' : ' The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or remove `relevo:qa-failed` and apply `relevo:ready` again to build from the start:')
-      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o quita \`relevo:qa-failed\` y pon \`relevo:ready\` otra vez para construir desde el principio:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start:`);
+      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o quita \`relevo:qa-failed\` y pon \`relevo:ready\` otra vez para ${resume.es}. Si el texto del issue cambió o una persona hizo un commit en la rama, la ejecución se detiene con \`branch already exists\`; borra la rama remota para empezar de cero:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to ${resume.en}. If the text of the issue changed or a person committed to the branch, the run stops with \`branch already exists\`; delete the remote branch to start over:`);
     return es
       ? `${mention(values)}La ejecución se detuvo antes de terminar (${why}). El trabajo hecho antes de detenerse se guardó en la rama \`${values.rescue_branch}\` como un commit de trabajo en curso.${next} ${values.run}`
       : `${mention(values)}The run stopped before it finished (${why}). The work done before the stop was kept on the branch \`${values.rescue_branch}\` as a work-in-progress commit.${next} ${values.run}`;
