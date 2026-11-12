@@ -25,8 +25,8 @@ Work on branch `fail-closed-guards-161-162-163` (from `dev`); run `git branch --
 
 ## 4. Changelog, spec check and the whole suite
 
-- [ ] 4.1 Add an entry under `## [Unreleased]` in `CHANGELOG.md`, following its convention (`### Fixed` or `### Changed` as the file uses, issue numbers in the title, the breaking part of #162 stated), with no change to `.claude-plugin/plugin.json`; verify with `node --test tests/changelog.test.mjs`.
-- [ ] 4.2 Run `openspec validate fail-closed-guards-161-162-163 --strict` and `npm test`; report each failure honestly, and verify that no file of #118 (`usage-limit.mjs`, `relevo-queue.yml`, `relevo-go.yml`, `run-usage.mjs`) or #135 (`skills/go/SKILL.md`, `agents/dev.md`, `issue-parse.mjs`) is in `git diff --stat dev`.
+- [x] 4.1 Add an entry under `## [Unreleased]` in `CHANGELOG.md`, following its convention (`### Fixed` or `### Changed` as the file uses, issue numbers in the title, the breaking part of #162 stated), with no change to `.claude-plugin/plugin.json`; verify with `node --test tests/changelog.test.mjs`.
+- [x] 4.2 Run `openspec validate fail-closed-guards-161-162-163 --strict` and `npm test`; report each failure honestly, and verify that no file of #118 (`usage-limit.mjs`, `relevo-queue.yml`, `relevo-go.yml`, `run-usage.mjs`) or #135 (`skills/go/SKILL.md`, `agents/dev.md`, `issue-parse.mjs`) is in `git diff --stat dev`.
 
 ## Workflow follow-up
 
