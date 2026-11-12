@@ -75,3 +75,31 @@ test('the command prints the groups as JSON and exits 2 without a readable file'
   assert.equal(spawnSync(process.execPath, [CLI], { encoding: 'utf8' }).status, 2);
   assert.equal(spawnSync(process.execPath, [CLI, join(dir, 'missing.md')], { encoding: 'utf8' }).status, 2);
 });
+
+test('Scenario: Three replicas - each is a group of its own, flagged replica, and the small-change rule does not join them', () => {
+  const text = `## 1. Template
+
+- [ ] 1.1 build the orders screen
+
+## 2. Replicas
+
+- [ ] 2.1 [replica] Invoices screen
+  - Rename: Orders -> Invoices
+- [ ] 2.2 [replica] Payments screen
+- [ ] 2.3 [replica] Refunds screen
+`;
+  const r = taskGroups(text);
+  assert.equal(r.pending, 4);
+  assert.deepEqual(r.groups.map((g) => [g.tasks.join(','), g.replica === true, g.section]), [['1.1', false, '1'], ['2.1', true, '2'], ['2.2', true, '2'], ['2.3', true, '2']]);
+  assert.equal(r.groups[1].title, 'Invoices screen');
+});
+
+test('a change with two small normal groups and a replica joins only the normal ones', () => {
+  const r = taskGroups('## 1. A\n\n- [ ] 1.1 a\n\n## 2. B\n\n- [ ] 2.1 b\n\n## 3. R\n\n- [ ] 3.1 [replica] c\n');
+  assert.deepEqual(r.groups.map((g) => [g.tasks.join(','), g.replica === true]), [['1.1,2.1', false], ['3.1', true]]);
+  assert.equal(r.pending, 3);
+});
+
+test('a checked replica is not pending', () => {
+  assert.deepEqual(taskGroups('## 1. R\n\n- [x] 1.1 [replica] done\n- [ ] 1.2 [replica] todo\n').groups.map((g) => g.tasks), [['1.2']]);
+});

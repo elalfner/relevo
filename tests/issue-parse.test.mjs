@@ -165,3 +165,25 @@ test('External inputs: a link gives its repository and its path', () => {
   const { inputs } = parseIssueBody(`${GOOD}\n## External inputs\n\n- link: \`acme/api:lib/schema.graphqls\`: the schema\n`).externalInputs;
   assert.deepEqual([inputs[0].repo, inputs[0].path], ['acme/api', 'lib/schema.graphqls']);
 });
+
+test('Scenario: A valid pattern - the Pattern: line names an issue of this repository', () => {
+  const r = parseIssueBody('## Summary\n\nPattern: #12\n');
+  assert.equal(r.pattern, 12);
+  assert.deepEqual(r.patternProblems, []);
+  assert.equal(parseIssueBody('- Pattern: `#7`').pattern, 7);
+  assert.equal(parseIssueBody('no line here').pattern, null);
+});
+
+test('Scenario: A pattern that cannot be used - another repository, several numbers, two lines, a code block', () => {
+  ['Pattern: acme/api#12', 'Pattern: #12, #13', 'Pattern: like the orders screen'].forEach((line) => {
+    const r = parseIssueBody(line);
+    assert.equal(r.pattern, null, line);
+    assert.equal(r.patternProblems.length, 1, line);
+  });
+  const two = parseIssueBody('Pattern: #1\nPattern: #2');
+  assert.equal(two.pattern, null);
+  assert.match(two.patternProblems[0], /more than one/);
+  const fenced = parseIssueBody('```\nPattern: #9\n```\n');
+  assert.equal(fenced.pattern, null);
+  assert.deepEqual(fenced.patternProblems, []);
+});

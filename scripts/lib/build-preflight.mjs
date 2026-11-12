@@ -14,6 +14,8 @@ import { parseExternalInputs, parseIssueBody } from './issue-parse.mjs';
 import { checkProtected, isSoftProtected, matchesGlob } from './protected-paths.mjs';
 import { checkRestricted, restrictedList } from './restricted-paths.mjs';
 import { conflictText, findConflicts } from './rule-conflicts.mjs';
+import { patternFinding } from './pattern.mjs';
+import { checkRecipe } from './replica-plan.mjs';
 import { assumedLine, externalAssumptions, settleAssumptions } from './assumptions.mjs';
 
 export const REASONS = { references: 'missing', inputs: 'inputs', policy: 'policy', conflict: 'conflict' };
@@ -26,12 +28,13 @@ export const REASONS = { references: 'missing', inputs: 'inputs', policy: 'polic
  * exists      (path) => boolean: does the file exist on the base branch?
  * env         the environment of the step, where a secret is present only if the workflow chose to expose it
  * variables   the names of the variables of the repository (a list), or null when they are not known
+ * pattern     { number, result } of the issue's `Pattern: #N` (result from findPatternChange), or null when it was not looked up
  * rules       the lines of the rules files (parseRules of each), to find an issue that contradicts a rule; [] when there is none
  *
  * Returns { decision: 'ok' | 'needs-spec', reason, findings, unverified }. `unverified` lists the inputs that a person
  * has to confirm: the manual ones and the ones this job cannot check. A value of a secret is never read or returned.
  */
-export function checkIssueStage({ body, manifest = null, exists = () => true, env = {}, variables = null, rules = [] }) {
+export function checkIssueStage({ body, manifest = null, exists = () => true, env = {}, variables = null, rules = [], pattern = null }) {
   const findings = [];
   const unverified = [];
   const { inputs } = parseExternalInputs(body);
@@ -59,6 +62,14 @@ export function checkIssueStage({ body, manifest = null, exists = () => true, en
       unverified.push({ kind: 'manual', name: input.name, purpose: input.purpose });
     }
   });
+
+  // The pattern: a line that cannot be used, or a change that is not merged or does not exist, is an input that is not available.
+  parseIssueBody(body).patternProblems.forEach((detail) => findings.push({ kind: 'input', input_kind: 'pattern', name: 'Pattern:', detail }));
+  if (pattern) {
+    const finding = patternFinding(pattern.number, pattern.result);
+    if (finding) findings.push(finding);
+    else if (pattern.result.state === 'unknown') unverified.push({ kind: 'pattern', name: `#${pattern.number}`, purpose: pattern.result.detail });
+  }
 
   const found = findConflicts({ body, rules });
   // Only a rule blocks; a scenario that the words say needs an excluded line is a note, because the words alone are not reliable enough to stop a build.
@@ -108,12 +119,13 @@ export const pathTokens = (line) => [...String(line).matchAll(TOKEN)].map((m) =>
  * designText   the text of design.md, to list the assumptions about names outside the repository that `search` does not find
  * search       (name) => path or null over the files of the repository (assumptions.mjs repoSearch); without it the assumptions are not read
  * exists       (name) => boolean: is the name a file of the repository?
+ * hasPattern   the issue has a valid `Pattern: #N` line (the recipe of tasks.md may name `pattern` as its template)
  *
  * Returns { decision, reason, findings, assumptions, assumed } where a finding is { kind: 'path' | 'dependency', task, path?, tier?, rule? }.
  * Only the task lines are read, and only a path that follows a verb that changes something counts: a file that a
  * task reads, or that the design only mentions, does not stop the build.
  */
-export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platformPaths = [], restricted = restrictedList(), designText = '', search = null, exists = () => false }) {
+export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platformPaths = [], restricted = restrictedList(), designText = '', search = null, exists = () => false, hasPattern = false }) {
   const findings = [];
   String(tasksText ?? '').split('\n').forEach((raw) => {
     const m = TASK_LINE.exec(raw);
@@ -128,9 +140,12 @@ export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platfo
       findings.push({ kind: 'dependency', task });
     }
   });
+  // The recipe of a replicated build: a replica task without its rename map or differences sends the issue back (reason `missing`).
+  const recipe = checkRecipe(tasksText, { hasPattern });
+  recipe.problems.forEach((detail) => findings.push({ kind: 'recipe', detail }));
   // An assumption never changes the decision: a lexical match is not reliable enough to stop a build. It goes to the hand-off.
   const assumptions = search ? settleAssumptions(externalAssumptions(designText), { search, exists }).confirm : [];
-  return { decision: findings.length === 0 ? 'ok' : 'needs-spec', reason: findings.length === 0 ? null : REASONS.policy, findings, assumptions, assumed: assumedLine(assumptions) };
+  return { decision: findings.length === 0 ? 'ok' : 'needs-spec', reason: findings.length === 0 ? null : findings.every((f) => f.kind === 'recipe') ? 'missing' : REASONS.policy, findings, assumptions, assumed: assumedLine(assumptions) };
 }
 
 // ---------------------------------------------------------------- text for the comment
@@ -140,6 +155,7 @@ export function missingText(result) {
   const lines = result.findings.map((f) => {
     if (f.kind === 'reference') return `${f.name}: ${f.detail}`;
     if (f.kind === 'conflict') return f.detail;
+    if (f.kind === 'recipe') return `replication recipe: ${f.detail}`;
     if (f.kind === 'input') return `External input ${f.input_kind} \`${f.name}\`: ${f.detail}`;
     if (f.kind === 'dependency') return `task "${f.task}" adds a dependency, but the issue has no Allow-paths: line for its manifest`;
     const why = f.tier === 'soft' ? 'a dependency file that the issue does not allow in Allow-paths:' : f.tier === 'restricted' ? 'a restricted file that no run reads or changes' : `a protected path (${f.rule}) that an unattended run never changes`;

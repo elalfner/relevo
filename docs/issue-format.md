@@ -198,6 +198,16 @@ While you write the issue, a script warns about two things and never fails the c
 
 The hand-off also lists, under "Shared code touched", the files of the build that more than one file imports or that live in a shared folder (`components/`, `shared/`, `common/`...). It is information for the reviewer; nothing is blocked.
 
+### 12. A pattern to follow (optional)
+
+```markdown
+Pattern: #12
+```
+
+Names an issue of this repository whose change is already merged and that solved the same kind of work (a screen, an endpoint, a form). `go` finds the pull request that closed it into the base branch and gives the developer its diff as the template. Only one `#N` of this repository is read; another repository, several numbers or a second line are reported and ignored. A pattern that does not exist or whose change is not merged yet stops the build before it starts, with the reason `inputs`; a lookup that fails (no network) never blocks and is listed as not verified. The change is found through the pull request that mentions `#N` (in its title or body, as the pull requests of Relevo do) and was merged into the base branch when the issue was closed; a change made by hand that never names the issue is reported as not merged.
+
+The line alone changes nothing about how tasks are built. What makes a build a *replicated* one is the recipe that the specification writes into `tasks.md` (its format is in [Where `go` runs](execution.md#replicated-builds)) and a script checks. Every replica needs a rename map and the differences of its target, so the issue must list the differences of each target, or it goes back to the spec writer (reason `missing`). The first target is built normally and must pass the gate and the QA lenses before any replica starts; each replica is then one launch of the developer on a cheaper model (one name below the planned model of `agents.ladder`, never below the floor of the developer), checked by the gate before the next one, and built by the planned model after it fails twice. Replicas go through the same protected paths, scans, QA and `limits.run_max_cost` as any other work.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.

@@ -90,3 +90,25 @@ test('the arguments are checked: k and of are positive whole numbers with k <= o
   assert.equal(run('--decision', b64(DECISION), '--k', 'x', '--of', '3'), 2);
   assert.equal(run('--decision', 'garbage', '--k', '1', '--of', '3'), 2);
 });
+
+test('Scenario: A replica touches a protected path - its checkpoint is refused like any other, and the template checkpoint stays', () => {
+  const f = fixture();
+  put(f.work, 'src/orders.js', 'export const orders = 1;\n');
+  assert.equal(checkpoint(f, 1, 3).code, 0);
+  // Group 2 is a replica: the cheaper model also wrote a workflow, which no unattended run may change.
+  put(f.work, 'src/invoices.js', 'export const invoices = 1;\n');
+  put(f.work, '.github/workflows/replica.yml', 'name: x\n');
+  const { code, out } = checkpoint(f, 2, 3);
+  assert.equal(code, 1);
+  assert.equal(out.state, 'unsafe');
+  assert.match(out.detail, /\.github\/workflows\/replica\.yml/);
+  assert.deepEqual(remoteSubjects(f), ['wip: checkpoint 1/3 (#7)']);
+});
+
+test('a replica that leaks a credential is refused too', () => {
+  const f = fixture();
+  put(f.work, 'src/invoices.js', `export const key = '${['AK', 'IA'].join('')}ABCDEFGHIJKLMNOP';\n`);
+  const { code, out } = checkpoint(f, 2, 3);
+  assert.equal(code, 1);
+  assert.equal(out.state, 'unsafe');
+});
