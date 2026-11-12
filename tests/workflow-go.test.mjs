@@ -176,7 +176,7 @@ test('Scenario: Output for a start - the decide job exposes platform, stack and 
 test('Scenario: Issue for a Supabase platform - the Supabase CLI step is active, guarded by the stack, and comes before the agent', () => {
   const build = jobText('build');
   const active = build.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  assert.match(active, /- if: needs\.decide\.outputs\.stack == 'supabase'\n\s+uses: supabase\/setup-cli@v1/);
+  assert.match(active, /- if: needs\.decide\.outputs\.stack == 'supabase'\n\s+uses: supabase\/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3\.2\.0/);
   assert.ok(active.indexOf('supabase/setup-cli') < active.indexOf('name: Check the toolchain'), 'the CLI is installed before the toolchain check');
   assert.ok(active.indexOf('supabase/setup-cli') < active.indexOf('anthropics/claude-code-action'));
 });
@@ -238,8 +238,11 @@ test('Scenario: Limit reached / Another failure - the final step tells a usage l
   assert.match(finalStep, /if: always\(\)/);
   assert.match(finalStep, /EXECUTION_FILE: \$\{\{ steps\.agent\.outputs\.execution_file \}\}/);
   assert.match(finalStep, /usage-limit\.mjs --file "\$EXECUTION_FILE"/);
-  assert.match(finalStep, /usage limit \(or the credit\) of the model account was reached/);
-  assert.match(finalStep, /The run ended without a result \(job status: \$JOB_STATUS\)/, 'the generic text stays for any other failure');
+  // The words are in the message catalog (issue #127); the step only decides which situation it is.
+  assert.match(finalStep, /elif \[ "\$limit_reached" = "true" \]; then\n\s+situation=usage_limit/);
+  assert.match(finalStep, /situation=no_result/, 'the generic situation stays for any other failure');
+  assert.match(finalStep, /for candidate in "\$RUNNER_TEMP\/relevo\/scripts\/render-message\.mjs"/);
+  assert.match(finalStep, /node "\$render" run_no_outcome --config relevo\.yml/);
   assert.match(build, /- id: agent\n\s+uses: anthropics\/claude-code-action@v1/);
 });
 
@@ -402,9 +405,11 @@ test('Scenario: A finished build starts the queue - a job of its own, after the 
 
 test('Scenario: Permissions of the jobs - only the job that starts the queue can write actions, never the one that runs the agent', () => {
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf('\njobs:')), /^\s*actions:/m);
-  assert.doesNotMatch(jobText('decide'), /^\s*actions:/m);
+  assert.doesNotMatch(jobText('decide'), /^\s*actions: write/m, 'the light job only reads the runs, for the queue comment');
+  assert.match(jobText('decide'), /^\s+actions: read$/m);
   assert.doesNotMatch(jobText('build'), /^\s*actions:/m);
   assert.equal([...workflow.matchAll(/^\s+actions: write$/gm)].length, 1);
+  assert.equal([...workflow.matchAll(/^\s+actions: read$/gm)].length, 1, 'read in the decide job only');
 });
 
 test('Scenario: No build ran - a decision that builds nothing does not start the queue', () => {
@@ -443,8 +448,8 @@ test('Scenario: The job is cut and the run recorded no outcome - a step that alw
 
 test('The report says when the work is on a rescue branch, which is not the branch that fix reads', () => {
   const report = stepOf('Report a run that ended without an outcome');
-  assert.match(report, /case "\$RESCUE_BRANCH" in rescue\/\*\)/);
-  assert.match(report, /not on the branch of the issue, so the work is on a branch of its own/);
+  assert.match(report, /rescue_branch: e\.RESCUE_BRANCH/, 'the catalog decides the text from the name of the branch (rescue/...)');
+  assert.doesNotMatch(report, /not on the branch of the issue/, 'no inline English: it lives in the catalog');
 });
 
 // The lines of the rescue step that decide the class, run in bash with the stubs of the real inputs.
@@ -489,14 +494,12 @@ test('The report of a run with no outcome says what the rescue did, and the pack
   assert.match(report, /RESCUE_STATE: \$\{\{ steps\.rescue\.outputs\.state \}\}/);
   assert.match(report, /RESCUE_BRANCH: \$\{\{ steps\.rescue\.outputs\.branch \}\}/);
   assert.match(report, /RESCUE_DETAIL: \$\{\{ steps\.rescue\.outputs\.detail \}\}/);
-  assert.match(report, /The work done before the stop was kept on the branch/);
-  assert.match(report, /\/relevo:fix \$ISSUE/);
-  assert.match(report, /was not kept: \$RESCUE_DETAIL/);
-  assert.match(report, /could not be pushed: \$RESCUE_DETAIL/);
-  assert.match(report, /is on the remote with commits this run does not have, so it was not touched/);
+  assert.match(report, /rescue_state: e\.RESCUE_STATE, rescue_branch: e\.RESCUE_BRANCH, rescue_detail: e\.RESCUE_DETAIL/);
+  assert.match(report, /if \[ "\$RESCUE_STATE" = "kept" \]; then\n\s+situation=kept/);
   const install = stepOf('Install the Relevo scripts for the reports');
   assert.match(install, /scripts\/rescue-work\.mjs/);
   assert.match(install, /scripts\/progress\.mjs/);
+  assert.match(install, /scripts\/render-message\.mjs/, 'the comment is rendered by the catalog');
 });
 
 test('the step that keeps the work holds no token the build job did not have, and the requeue job still has the only actions: write', () => {
@@ -508,8 +511,7 @@ test('the step that keeps the work holds no token the build job did not have, an
 test('Scenario: A limit of the runner - the report names the turn limit or the cost limit when the log says, and the package install checks for the script', () => {
   const report = stepOf('Report a run that ended without an outcome');
   assert.match(report, /cut=\$\(node \.relevo-plugin\/scripts\/run-cut\.mjs --file "\$EXECUTION_FILE"\)/);
-  assert.match(report, /The runner stopped it at its turn limit \(--max-turns\)\./);
-  assert.match(report, /The runner stopped it at its cost limit \(--max-budget-usd\)\./);
-  assert.match(report, /why="the runner stopped it at its turn limit \(--max-turns\)"/, 'the kept-work comment names it too');
+  assert.match(report, /CUT="\$cut"/, 'the limit that cut the run goes to the catalog, which names it in both situations');
+  assert.match(report, /cut: e\.CUT/);
   assert.match(stepOf('Install the Relevo scripts for the reports'), /scripts\/run-cut\.mjs/);
 });

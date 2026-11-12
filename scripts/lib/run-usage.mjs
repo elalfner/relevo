@@ -6,6 +6,7 @@
 // used, and anything missing is simply left out. Nothing found means nothing is said, never an error.
 
 import { OUTCOME_CLASSES } from './phase-log.mjs';
+import { pickLanguage, usagePhrase } from './messages.mjs';
 
 function entries(text) {
   const t = String(text ?? '').trim();
@@ -222,24 +223,28 @@ export function checksFromReceipt(raw) {
   return checks.length ? checks : null;
 }
 
-/** One line for a comment, or an empty string when there is nothing to say. */
-export function usageLine(usage, { subscription = false, limits = null, plan = null, checks = null } = {}) {
+/** One line for a comment, or an empty string when there is nothing to say. The words come from the catalog of messages.mjs in `language`. */
+export function usageLine(usage, { subscription = false, limits = null, plan = null, checks = null, language = 'en' } = {}) {
   if (!usage) return '';
+  const t = (key, vars) => usagePhrase(language, key, vars);
+  const number = (n) => n.toLocaleString(pickLanguage(language) === 'es' ? 'es-ES' : 'en-US');
+  const turns = (n) => t(n === 1 ? 'turn_one' : 'turn_many', { n });
   const parts = [];
-  if (usage.turns !== null) parts.push(`${usage.turns} turn${usage.turns === 1 ? '' : 's'}${usage.subagentTurns ? ` (${usage.subagentTurns} by subagents)` : ''}`);
-  if (usage.cost !== null) parts.push(`about $${usage.cost.toFixed(2)}${subscription ? ' (notional: a subscription is not billed per run)' : ''}`);
-  if (usage.tokens !== null) parts.push(`${usage.tokens.toLocaleString('en-US')} tokens${usage.cached ? ` (plus ${usage.cached.toLocaleString('en-US')} from the cache)` : ''}`);
+  if (usage.turns !== null) parts.push(`${turns(usage.turns)}${usage.subagentTurns ? t('by_subagents', { n: usage.subagentTurns }) : ''}`);
+  if (usage.cost !== null) parts.push(`${t('cost', { cost: usage.cost.toFixed(2) })}${subscription ? t('notional') : ''}`);
+  if (usage.tokens !== null) parts.push(`${t('tokens', { n: number(usage.tokens) })}${usage.cached ? t('cached', { n: number(usage.cached) }) : ''}`);
   if (!parts.length) return '';
   const over = limitsExceeded(usage, limits ?? {});
-  const warn = over.map((o) => ` It went past ${o.limit} (${o.max}) with ${o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`}${o.limit.endsWith('turns') && usage.subagentTurns ? ': the runner counts only the turns of the main agent, so the turns of the subagents were not stopped' : ''}.`).join('');
-  const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${a.turns} turn${a.turns === 1 ? '' : 's'}${a.seconds ? `, ${(a.seconds / 60).toFixed(1)} min` : ''}${a.cost !== undefined ? `, about $${a.cost.toFixed(2)}` : ''}`;
-  const byAgent = usage.agents?.length ? ` By agent: ${usage.agents.map(agent).join('; ')}.` : '';
-  const byModel = usage.models?.length ? ` Cost by model: ${usage.models.map((m) => `${m.model} $${m.cost.toFixed(2)}`).join(', ')}.` : '';
-  const role = (r) => `${r.role === 'dev' ? 'developer' : `${r.role} lens`} ${r.model}${r.effort ? `, ${r.effort}` : ''} (${r.source}${r.why ? `: ${r.why}` : ''})`;
-  const byPlan = plan?.roles?.length ? ` Models chosen: ${plan.roles.map(role).join('; ')}.${plan.notes?.length ? ` Notes on the plan: ${plan.notes.join('; ')}.` : ''}` : '';
-  const raised = plan?.escalations?.length ? ` The developer went up on a retry: ${plan.escalations.map((e) => `${e.from} to ${e.to} on attempt ${e.attempt} (${e.reason === 'gate-red' ? 'the gate was red' : 'QA rejected'})`).join('; ')}.` : '';
-  const byCheck = checks?.length ? ` Checks of the gate: ${checks.map((c) => (c.reused ? `${c.name} reused (${c.original}s when it ran)` : `${c.name} ${c.seconds}s`)).join(', ')}.` : '';
-  return `This run used ${parts.join(', ')}.${warn}${byAgent}${byModel}${byCheck}${byPlan}${raised}`;
+  const warn = over.map((o) => t('went_past', { limit: o.limit, max: o.max, used: o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`, why: o.limit.endsWith('turns') && usage.subagentTurns ? t('subagents_not_stopped') : '' })).join('');
+  const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
+  const byAgent = usage.agents?.length ? t('by_agent', { list: usage.agents.map(agent).join('; ') }) : '';
+  const byModel = usage.models?.length ? t('by_model', { list: usage.models.map((m) => `${m.model} $${m.cost.toFixed(2)}`).join(', ') }) : '';
+  const role = (r) => `${r.role === 'dev' ? t('developer') : t('lens', { role: r.role })} ${r.model}${r.effort ? `, ${r.effort}` : ''} (${r.source}${r.why ? `: ${r.why}` : ''})`;
+  // The notes of the plan come from model-plan.mjs, which writes them in English: they are quoted as they are, like a finding.
+  const byPlan = plan?.roles?.length ? `${t('models_chosen', { list: plan.roles.map(role).join('; ') })}${plan.notes?.length ? t('plan_notes', { list: plan.notes.join('; ') }) : ''}` : '';
+  const raised = plan?.escalations?.length ? t('raised', { list: plan.escalations.map((e) => t('raised_item', { from: e.from, to: e.to, attempt: e.attempt, reason: t(e.reason === 'gate-red' ? 'gate_red' : 'qa_rejected') })).join('; ') }) : '';
+  const byCheck = checks?.length ? t('by_check', { list: checks.map((c) => (c.reused ? t('check_reused', { name: c.name, original: c.original }) : t('check_seconds', { name: c.name, seconds: c.seconds }))).join(', ') }) : '';
+  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byModel}${byCheck}${byPlan}${raised}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without

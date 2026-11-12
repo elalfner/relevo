@@ -344,3 +344,47 @@ test('The command reads the receipt of the working folder, or the one it is give
   assert.doesNotMatch(run(empty).stdout, /Checks of the gate/);
   assert.equal(run(empty, '--receipt', join(empty, 'missing.json')).status, 0);
 });
+
+// ---------- The usage comment follows the language (issue #127)
+
+const RICH = {
+  turns: 120, cost: 3.5, tokens: 1234567, cached: 7654321, subagentTurns: 80,
+  agents: [{ name: 'relevo:dev', model: 'sonnet', effort: 'high', turns: 40, seconds: 90, cost: 1.5 }],
+  models: [{ model: 'sonnet', cost: 3.5 }],
+};
+const RICH_OPTIONS = {
+  subscription: true,
+  limits: { run_max_turns: 100, run_max_cost: 3 },
+  checks: [{ name: 'test', seconds: 30 }, { name: 'analyze', seconds: 0, reused: true, original: 12 }],
+  plan: { roles: [{ role: 'dev', model: 'sonnet', effort: 'high', source: 'auto', why: 'default' }, { role: 'spec', model: 'sonnet', source: 'auto' }], escalations: [{ from: 'sonnet', to: 'opus', attempt: 2, reason: 'gate-red' }, { from: 'sonnet', to: 'opus', attempt: 3, reason: 'qa' }] },
+};
+
+test('the English sentence with every optional part is what it always was', () => {
+  assert.equal(
+    usageLine(RICH, RICH_OPTIONS),
+    'This run used 120 turns (80 by subagents), about $3.50 (notional: a subscription is not billed per run), 1,234,567 tokens (plus 7,654,321 from the cache). It went past limits.run_max_turns (100) with 120: the runner counts only the turns of the main agent, so the turns of the subagents were not stopped. It went past limits.run_max_cost (3) with $3.50. By agent: relevo:dev (sonnet, high) 40 turns, 1.5 min, about $1.50. Cost by model: sonnet $3.50. Checks of the gate: test 30s, analyze reused (12s when it ran). Models chosen: developer sonnet, high (auto: default); spec lens sonnet (auto). The developer went up on a retry: sonnet to opus on attempt 2 (the gate was red); sonnet to opus on attempt 3 (QA rejected).',
+  );
+});
+
+test('Scenario: Two languages - with language es the sentence has no English phrase of the catalog', () => {
+  const es = usageLine(RICH, { ...RICH_OPTIONS, language: 'es' });
+  assert.match(es, /^Esta ejecución usó 120 turnos \(80 de subagentes\), unos \$3\.50 \(nocional: una suscripción no se factura por ejecución\), /);
+  assert.match(es, /Superó limits\.run_max_turns \(100\) con 120: el runner cuenta solo los turnos del agente principal/);
+  assert.match(es, /Por agente: relevo:dev \(sonnet, high\) 40 turnos, 1\.5 min, unos \$1\.50\./);
+  assert.match(es, /Costo por modelo: sonnet \$3\.50\./);
+  assert.match(es, /Checks de la puerta: test 30s, analyze reutilizado \(12s cuando corrió\)\./);
+  assert.match(es, /Modelos elegidos: desarrollador sonnet, high \(auto: default\); lente spec sonnet \(auto\)\./);
+  assert.match(es, /subió de modelo en un reintento: sonnet a opus en el intento 2 \(la puerta estaba en rojo\); sonnet a opus en el intento 3 \(QA la rechazó\)\./);
+  ['This run', ' turns', 'By agent', 'Cost by model', 'Checks of the gate', 'Models chosen', 'went up', 'notional'].forEach((phrase) => assert.ok(!es.includes(phrase), `English phrase "${phrase}" in the Spanish sentence`));
+  assert.equal(usageLine(readUsage(JSON.stringify([{ type: 'result', num_turns: 1, total_cost_usd: 0.5 }])), { language: 'es' }), 'Esta ejecución usó 1 turno, unos $0.50.');
+});
+
+test('run-usage.mjs reads the language from --language, else from the config, else English', () => {
+  const log = write('lang.json', ARRAY);
+  const config = write('relevo-es.yml', 'language: es\n');
+  const run = (...args) => spawnSync(process.execPath, ['scripts/run-usage.mjs', '--file', log, ...args], { encoding: 'utf8' }).stdout;
+  assert.match(run('--config', config), /^Esta ejecución usó 37 turnos/);
+  assert.match(run('--config', config, '--language', 'en'), /^This run used 37 turns/);
+  assert.match(run('--language', 'es'), /^Esta ejecución usó 37 turnos/);
+  assert.match(run(), /^This run used 37 turns/);
+});

@@ -60,7 +60,41 @@ export function labelEvent(timeline, labelName) {
 export const readyEvent = labelEvent;
 
 /**
- * Collect everything `planGo` needs. Returns { issues, completed, completedExternal, unreadable, running, permissions }.
+ * How long the last completed builds of the go workflow took, in minutes: the `build` job of the most recent completed runs that
+ * ran one, up to `limit` builds found among the last `scan` runs (a run that only decided has no such job, and so has a run of
+ * the queue, so they are skipped and do not push the builds out of the window; a skipped or cancelled job has no duration worth
+ * reporting).
+ * Returns null when it cannot be read (no `actions: read`, no such workflow, a network error on the list of runs, or every request
+ * for the jobs failed): a queue comment says "unknown" then and the plan never fails because of it. A request for the jobs of one
+ * run that fails (a transient error) only leaves that run out; the builds found in the others are kept.
+ */
+export function readRecentBuilds({ gh, repo, workflow = 'relevo-go.yml', limit = 10, scan = 30 }) {
+  try {
+    const runs = apiJson(gh, `repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=${scan}`).workflow_runs ?? [];
+    const minutes = [];
+    let failed = 0;
+    for (const run of runs) {
+      if (minutes.length >= limit) break;
+      let jobs;
+      try {
+        jobs = apiJson(gh, `repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`).jobs ?? [];
+      } catch {
+        failed += 1;
+        continue;
+      }
+      const build = jobs.find((j) => j.name === 'build' && ['success', 'failure'].includes(j.conclusion) && j.started_at && j.completed_at);
+      if (!build) continue;
+      const ms = Date.parse(build.completed_at) - Date.parse(build.started_at);
+      if (Number.isFinite(ms) && ms >= 0) minutes.push(Math.round((ms / 60000) * 10) / 10);
+    }
+    return failed > 0 && minutes.length === 0 ? null : minutes;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Collect everything `planGo` needs. Returns { issues, completed, completedExternal, unreadable, running, permissions, recentBuilds } (the last one a function).
  * `running` is supplied by the caller (workflow runs in progress). `ghLinks` reads issues of linked repositories
  * (`config.links` only; a repository outside the list is never asked).
  */
@@ -125,7 +159,8 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
     }
   });
 
-  return { issues, completed, completedExternal, unreadable, running, permissions };
+  // The recent builds are read only if a queue comment needs them (planGo calls the function), so a plan that queues nothing pays no extra request.
+  return { issues, completed, completedExternal, unreadable, running, permissions, recentBuilds: () => readRecentBuilds({ gh, repo }) };
 }
 
 /** The `gh` commands that carry out one decision (labels, assignees and comment). Pure. */

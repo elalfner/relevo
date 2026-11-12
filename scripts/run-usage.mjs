@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Prints what a cloud run used, read from the execution log of the agent runner: one sentence, a blank line and a hidden
 // marker with the same figures, which the daily digest adds up. Usage:
-//   node scripts/run-usage.mjs --file <execution_file> [--subscription] [--progress-dir <dir>] [--config <relevo.yml>] [--receipt <file>]
+//   node scripts/run-usage.mjs --file <execution_file> [--subscription] [--progress-dir <dir>] [--config <relevo.yml>] [--receipt <file>] [--language <xx>]
+// The sentence is written in --language, else in the `language` of --config (English when neither is given).
 // --receipt is the receipt of the validation gate (default .relevo-receipt/receipt.json): the seconds of each check go into the sentence and the marker.
 // --config gives the limits of the run: the sentence says when the turns (the subagents' included) or the cost went past them.
 // --progress-dir is where `go` kept the start of each phase and of each QA lens, the class of the outcome and the model plan: they go into the marker.
@@ -28,8 +29,14 @@ try {
 const usage = readUsage(text);
 const subscription = process.argv.includes('--subscription');
 let limits = null;
+// The language of the sentence: --language, else the `language` of the config, else English.
+let language = arg('language') ?? null;
 try {
-  if (arg('config')) limits = loadConfig(readFileSync(arg('config'), 'utf8')).config?.limits ?? null;
+  if (arg('config')) {
+    const config = loadConfig(readFileSync(arg('config'), 'utf8')).config;
+    limits = config?.limits ?? null;
+    language ??= config?.language ?? null;
+  }
 } catch {
   limits = null;
 }
@@ -48,7 +55,7 @@ try {
 } catch {
   checks = null;
 }
-const line = usageLine(usage, { subscription, limits, plan, checks });
+const line = usageLine(usage, { subscription, limits, plan, checks, language: language ?? 'en' });
 let phases = null;
 let lenses = null;
 let outcomeClass = null;

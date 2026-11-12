@@ -42,6 +42,7 @@ if (arg('input')) {
 
 // The whole queue is planned so that the limits stay right, but the queue only acts on the issues that are
 // already waiting: a freshly ready issue is handled by the `go` run its label started.
+if (state.recent_builds !== undefined) state.recentBuilds = state.recent_builds;
 const { decisions: planned } = planGo({ config, repo, ...state });
 const decisions = ownedByQueue(planned, state.issues, resolveLabelNames(config.labels));
 const summary = {};

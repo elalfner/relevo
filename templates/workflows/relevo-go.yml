@@ -23,6 +23,9 @@ env:
   RELEVO_VERSION: '0.14.5'
   # The version of OpenSpec that the job installs for itself.
   OPENSPEC_VERSION: '1.14.3'
+  # The version of Bun that the build job installs, caches and hands to the agent action. It is the one claude-code-action
+  # installs on its own (and downloads again on every run); change it by hand if you pin another version of that action.
+  BUN_VERSION: '1.4.4'
 
 on:
   issues:
@@ -51,6 +54,13 @@ jobs:
     if: vars.RELEVO_CLOUD_GO != 'off' && (github.event_name == 'workflow_dispatch' || (github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The same permissions as the workflow plus `actions: read`, to read how long the recent builds took for the comment of a queued
+    # issue (without it the comment says "unknown"). Read only: `actions: write` is held by the `requeue` job and nowhere else.
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: read
     outputs:
       action: ${{ steps.plan.outputs.action }}
       decision_b64: ${{ steps.plan.outputs.decision_b64 }}
@@ -60,11 +70,12 @@ jobs:
       path: ${{ steps.plan.outputs.path }}
     steps:
       # The repository holds relevo.yml; the plugin holds the scripts that apply the gates.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          package-manager-cache: false
 
       - name: Install the Relevo scripts
         # The published package at the version pinned above; no repository is cloned for them. A package without the
@@ -73,7 +84,7 @@ jobs:
           mkdir -p .relevo-plugin
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
-          for f in scripts/go-plan.mjs; do
+          for f in scripts/go-plan.mjs scripts/render-message.mjs; do
             [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
 
@@ -115,7 +126,15 @@ jobs:
           fi
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
           gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
-          gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          # The words come from the message catalog, in the language of relevo.yml. This step runs because a step before it failed,
+          # possibly the one that installs the scripts: then the English sentence below is posted, so the issue is still told.
+          body=""
+          if [ -f .relevo-plugin/scripts/render-message.mjs ]; then
+            body=$(ASSIGNEE="$assignee" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, job_status: e.JOB_STATUS, run: e.RUN_URL}))' \
+              | node .relevo-plugin/scripts/render-message.mjs run_failed_early --config relevo.yml) || body=""
+          fi
+          [ -n "$body" ] || body="${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          gh issue comment "$ISSUE" --body "$body"
 
       # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
       - name: Remove what this job added
@@ -132,13 +151,14 @@ jobs:
       issues: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          package-manager-cache: false
 
       # The agent runs the project's own checks (QA runs them), so the toolchain of the stack of the platform of the
       # issue is installed here. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
@@ -158,12 +178,13 @@ jobs:
           tools: composer
       # Supabase: the CLI runs the checks of the profile against containers on the runner, which already has Docker.
       - if: needs.decide.outputs.stack == 'supabase'
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
         with:
           version: latest
-      # Vue needs only Node, which this job installed above; to cache the packages, uncomment:
+      # Vue needs only Node, which this job installed above; to cache the packages, uncomment (this cache is saved when the job
+      # ends, after the agent: docs/security.md says what that means):
       #   - if: needs.decide.outputs.stack == 'vue'
-      #     uses: actions/setup-node@v4
+      #     uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       #     with:
       #       node-version: 22
       #       cache: npm
@@ -189,13 +210,75 @@ jobs:
       #     working-directory: ${{ needs.decide.outputs.path }}
       #     run: composer install --no-scripts --no-interaction
 
+      # The tools that the build downloads are kept in the cache, under a key that names the pinned version, the operating
+      # system and the architecture, so raising a pin installs and caches the new one and restores nothing of the old one. A
+      # cache is restored first and saved by its own step right after the install and BEFORE the agent starts: a cache that
+      # a post step saved when the job ends would hold whatever the agent (which has Bash) left in those files. Nothing is
+      # saved after the agent. If the cache service cannot be reached the tools are installed as before.
+      - name: Restore OpenSpec from the cache
+        id: openspec_cache
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/openspec
+          key: openspec-${{ env.OPENSPEC_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
       - name: Install OpenSpec
+        # After a restore npm only checks that the pinned version is there; without one it installs it.
         # Under the temporary folder of the job, at the pinned version: nothing global is left on a runner that persists.
         run: |
           npm install --prefix "$RUNNER_TEMP/openspec" "@fission-ai/openspec@$OPENSPEC_VERSION" --no-fund --no-audit
           echo "$RUNNER_TEMP/openspec/node_modules/.bin" >> "$GITHUB_PATH"
         env:
           OPENSPEC_TELEMETRY: '0'
+
+      - name: Save OpenSpec to the cache
+        if: steps.openspec_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/openspec
+          key: openspec-${{ env.OPENSPEC_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      # Bun is what claude-code-action runs on. The action downloads it on every run (it turns its own cache off), so the job
+      # installs the pinned version itself and gives the action its path (path_to_bun_executable). The binary that comes out
+      # of the cache must report BUN_VERSION or the job stops here, before the agent.
+      - name: Restore Bun from the cache
+        id: bun_cache
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/bun/bun
+          key: bun-${{ env.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install Bun
+        id: bun_install
+        if: steps.bun_cache.outputs.cache-hit != 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          # The cache of this action would be saved when the job ends, after the agent: it is off, and the step below saves it.
+          no-cache: true
+
+      - name: Check the version of Bun
+        id: bun
+        env:
+          BUN_INSTALLED: ${{ steps.bun_install.outputs.bun-path }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/bun"
+          [ -z "$BUN_INSTALLED" ] || cp "$BUN_INSTALLED" "$RUNNER_TEMP/bun/bun"
+          chmod +x "$RUNNER_TEMP/bun/bun"
+          actual=$("$RUNNER_TEMP/bun/bun" --version)
+          [ "$actual" = "$BUN_VERSION" ] || { echo "::error::Bun reports version $actual but the workflow pins $BUN_VERSION"; exit 1; }
+          echo "path=$RUNNER_TEMP/bun/bun" >> "$GITHUB_OUTPUT"
+
+      - name: Save Bun to the cache
+        if: steps.bun_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/bun/bun
+          key: bun-${{ env.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       # Stops before the agent, without spending a model turn, when the runner lacks a tool that the profile of the
       # platform lists (the Flutter SDK, PHP and Composer, ...): otherwise the developer writes the code and QA only
@@ -358,6 +441,9 @@ jobs:
           #    `pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN`. Then replace the line above with:
           # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
+          # The action downloads Bun again on every run unless it is given one: this is the pinned and cached one that the step
+          # "Check the version of Bun" verified.
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
           # The queue starts builds with `gh workflow run`, so the actor is the Actions bot and the action refuses
           # it unless it is allowed. Only this one bot: never '*', which would let outside apps start runs.
           allowed_bots: github-actions
@@ -478,7 +564,7 @@ jobs:
           mkdir -p .relevo-plugin
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
-          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/run-cut.mjs scripts/rescue-work.mjs scripts/progress.mjs scripts/tree-baseline.mjs; do
+          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/run-cut.mjs scripts/rescue-work.mjs scripts/progress.mjs scripts/tree-baseline.mjs scripts/render-message.mjs; do
             [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
 
@@ -569,31 +655,33 @@ jobs:
           # Which limit of the runner cut the run, when its log says (the script prints nothing otherwise).
           cut=""
           [ -n "$EXECUTION_FILE" ] && cut=$(node .relevo-plugin/scripts/run-cut.mjs --file "$EXECUTION_FILE")
-          cutnote=""
-          [ "$cut" = "turns" ] && cutnote=" The runner stopped it at its turn limit (--max-turns)."
-          [ "$cut" = "cost" ] && cutnote=" The runner stopped it at its cost limit (--max-budget-usd)."
-          # What the step before did with the work of a run that ended with no outcome.
-          kept=""
-          case "$RESCUE_STATE" in
-            unsafe) kept=" The work done before the stop was not kept: $RESCUE_DETAIL" ;;
-            not_pushed) kept=" The work done before the stop could not be pushed: $RESCUE_DETAIL" ;;
-            existing) kept=" The branch \`$RESCUE_BRANCH\` is on the remote with commits this run does not have, so it was not touched." ;;
-          esac
+          # What happened decides the text: the rescue step kept the work, or the model account reached its usage limit (a
+          # quota or an empty credit balance is not a failure of the code), or the run simply ended without a result.
+          situation=no_result
           if [ "$RESCUE_STATE" = "kept" ]; then
-            why="the runner cut it, or the job was cancelled or timed out"
-            [ "$cut" = "turns" ] && why="the runner stopped it at its turn limit (--max-turns)"
-            [ "$cut" = "cost" ] && why="the runner stopped it at its cost limit (--max-budget-usd)"
-            [ "$limit_reached" = "true" ] && why="the usage limit (or the credit) of the model account was reached"
-            next=" Run \`/relevo:fix $ISSUE\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start:"
-            # The work of a run that was not on the branch of the issue is on a branch of its own: it is not the branch fix reads.
-            case "$RESCUE_BRANCH" in rescue/*) next=" The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to build from the start:" ;; esac
-            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped before it finished ($why). The work done before the stop was kept on the branch \`$RESCUE_BRANCH\` as a work-in-progress commit.$next $RUN_URL"
-          # A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
+            situation=kept
           elif [ "$limit_reached" = "true" ]; then
-            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:qa-failed\`: $RUN_URL$kept"
-          else
-            gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported.$cutnote Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again.$kept"
+            situation=usage_limit
           fi
+          # The words come from the message catalog, in the language of relevo.yml, so that language: es is honoured. The
+          # package that the toolchain check unpacked has the script; the one installed for the reports is the second choice.
+          render=""
+          for candidate in "$RUNNER_TEMP/relevo/scripts/render-message.mjs" .relevo-plugin/scripts/render-message.mjs; do
+            if [ -f "$candidate" ]; then render="$candidate"; break; fi
+          done
+          body=""
+          if [ -n "$render" ]; then
+            body=$(ASSIGNEE="$assignee" SITUATION="$situation" CUT="$cut" LIMIT_REACHED="$limit_reached" node -e 'const e = process.env; console.log(JSON.stringify({situation: e.SITUATION, issue: e.ISSUE, run: e.RUN_URL, job_status: e.JOB_STATUS, assignee: e.ASSIGNEE, cut: e.CUT, usage_limit: e.LIMIT_REACHED === "true", rescue_state: e.RESCUE_STATE, rescue_branch: e.RESCUE_BRANCH, rescue_detail: e.RESCUE_DETAIL}))' \
+              | node "$render" run_no_outcome --config relevo.yml) || body=""
+          fi
+          # The one text that stays here: when the scripts cannot render the comment (a package without the script, a failure of node)
+          # the issue still has to be told, in English.
+          if [ -z "$body" ]; then
+            kept=""
+            [ "$RESCUE_STATE" = "kept" ] && kept=" The work done before the stop was kept on the branch \`$RESCUE_BRANCH\`."
+            body="${assignee:+@$assignee }The run ended without an outcome (job status: $JOB_STATUS), so nothing was built or reported.$kept Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          fi
+          gh issue comment "$ISSUE" --body "$body"
           echo "reported=true" >> "$GITHUB_OUTPUT"
 
       # The progress report ends here, after every report above so that its last line is true: first the check is asked to
