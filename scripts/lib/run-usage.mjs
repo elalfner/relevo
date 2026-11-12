@@ -65,6 +65,9 @@ function inputSideWeight(u) {
  * Returns { models, agents }, each null when the log does not have what it needs. The estimated costs of the agents of
  * a model add up to its real cost.
  */
+// The Agent `description` that `go` gives the launch of a replica (and of its fix): `replica 2.1`.
+const REPLICA_LAUNCH = /^replica (\d{1,3}\.\d{1,3})$/i;
+
 function breakdown(all, result) {
   const models = Object.entries(result.modelUsage && typeof result.modelUsage === 'object' ? result.modelUsage : {})
     .filter(([, m]) => m && num(m.costUSD) !== null)
@@ -122,8 +125,23 @@ function breakdown(all, result) {
   const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
 
   const agents = [clean({ name: 'main', model: modelOfAgent.get('')?.model ?? null, turns: num(result.num_turns), cost: costOf('') })];
+  // A launch that `go` named `replica <task id>` is shown apart: one entry per target, whatever the number of launches (attempts).
+  const byTarget = new Map();
   done.forEach((usage, id) => {
     const call = calls.get(id) ?? {};
+    const target = typeof call.description === 'string' ? REPLICA_LAUNCH.exec(call.description.trim()) : null;
+    if (target) {
+      const t = byTarget.get(target[1]) ?? { id: target[1], attempts: 0, turns: 0, seconds: 0, cost: 0, costKnown: true };
+      t.attempts += 1;
+      t.turns += usage.tool_uses + 1;
+      if (num(usage.duration_ms) !== null) t.seconds += Math.round(usage.duration_ms / 1000);
+      const cost = costOf(id);
+      if (cost === null) t.costKnown = false;
+      else t.cost += cost;
+      t.model = modelOfAgent.get(id)?.model ?? (typeof call.model === 'string' ? call.model : t.model);
+      byTarget.set(target[1], t);
+      return;
+    }
     const name = started.get(id)?.subagent_type ?? call.subagent_type;
     agents.push(clean({
       name: typeof name === 'string' && name ? name : 'subagent',
@@ -134,7 +152,8 @@ function breakdown(all, result) {
       cost: costOf(id),
     }));
   });
-  return { models: models.length ? models : null, agents };
+  const replicas = [...byTarget.values()].map(({ costKnown, cost, seconds, ...t }) => clean({ ...t, seconds: seconds || null, cost: costKnown ? cost : null }));
+  return { models: models.length ? models : null, agents, replicas: replicas.length ? replicas : null };
 }
 
 /**
@@ -169,6 +188,7 @@ export function readUsage(text) {
   if (quota.length) usage.quota = quota;
   if (detail.models) usage.models = detail.models;
   if (detail.agents) usage.agents = detail.agents;
+  if (detail.replicas) usage.replicas = detail.replicas;
   return usage;
 }
 
@@ -321,6 +341,13 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   const warn = over.map((o) => t('went_past', { limit: o.limit, max: o.max, used: o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`, why: o.limit.endsWith('turns') && usage.subagentTurns ? t('subagents_not_stopped') : '' })).join('');
   const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
   const byAgent = usage.agents?.length ? t('by_agent', { list: usage.agents.map(agent).join('; ') }) : '';
+  const attempts = (n) => t(n === 1 ? 'attempt_one' : 'attempt_many', { n });
+  const replica = (r) => t('replica_item', { id: r.id, model: r.model ? ` (${r.model})` : '', attempts: attempts(r.attempts), turns: turns(r.turns), cost: r.cost !== undefined ? t('agent_cost', { cost: r.cost.toFixed(2) }) : '' });
+  // The total of the replicas and the rest of the run are said only when every figure is there; nothing is estimated.
+  const replicaCost = usage.replicas?.length && usage.replicas.every((r) => r.cost !== undefined) ? usage.replicas.reduce((total, r) => total + r.cost, 0) : null;
+  const byReplicas = usage.replicas?.length
+    ? `${t('by_replicas', { list: usage.replicas.map(replica).join('; ') })}${replicaCost !== null && usage.cost !== null ? t('replicas_total', { replicas: replicaCost.toFixed(2), rest: Math.max(usage.cost - replicaCost, 0).toFixed(2) }) : ''}`
+    : '';
   const byModel = usage.models?.length ? t('by_model', { list: usage.models.map((m) => `${m.model} $${m.cost.toFixed(2)}`).join(', ') }) : '';
   const role = (r) => `${r.role === 'dev' ? t('developer') : t('lens', { role: r.role })} ${r.model}${r.effort ? `, ${r.effort}` : ''} (${r.source}${r.why ? `: ${r.why}` : ''})`;
   // The notes of the plan come from model-plan.mjs, which writes them in English: they are quoted as they are, like a finding.
@@ -330,7 +357,7 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   const windowName = (w) => (w === 'five_hour' ? t('window_five_hour') : w === 'seven_day' ? t('window_seven_day') : t('window_other', { type: w.replace(/_/g, ' ') }));
   const quota = (q) => `${windowName(q.window)} ${q.before === q.after ? t('quota_at', { pct: q.before }) : t('quota_moved', { before: q.before, after: q.after })}${q.resets ? t('quota_resets', { at: formatUtc(q.resets) }) : ''}`;
   const byQuota = usage.quota?.length ? t('by_quota', { list: usage.quota.map(quota).join('; ') }) : '';
-  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byModel}${byCheck}${byQuota}${byPlan}${raised}`;
+  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byReplicas}${byModel}${byCheck}${byQuota}${byPlan}${raised}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without
@@ -352,6 +379,8 @@ export function usageMarker(usage, { subscription = false, phases = null, lenses
   // Which agent used what, and the real cost of each model; the digest adds up only the totals and ignores these keys.
   if (Array.isArray(usage.agents) && usage.agents.length) figures.agents = usage.agents.map((a) => ({ ...a, ...(a.cost !== undefined ? { cost: Math.round(a.cost * 10000) / 10000 } : {}) }));
   if (Array.isArray(usage.models) && usage.models.length) figures.models = usage.models;
+  // The replicas apart from the other agents (one entry per target); the digest ignores this key.
+  if (Array.isArray(usage.replicas) && usage.replicas.length) figures.replicas = usage.replicas.map((r) => ({ ...r, ...(r.cost !== undefined ? { cost: Math.round(r.cost * 10000) / 10000 } : {}) }));
   figures.notional = Boolean(subscription);
   // Where the time went and how the run ended. Readers that do not know these keys ignore them.
   if (Array.isArray(phases) && phases.length) figures.phases = phases;
@@ -404,6 +433,10 @@ export function parseUsageMarker(comment) {
     const good = data.agents.every((a) => a && typeof a.name === 'string' && num(a.turns) !== null && (a.model === undefined || typeof a.model === 'string')
       && (a.effort === undefined || typeof a.effort === 'string') && (a.seconds === undefined || num(a.seconds) !== null) && (a.cost === undefined || num(a.cost) !== null));
     if (good) run.agents = data.agents.map(({ name, model, effort, turns, seconds, cost }) => ({ name, turns, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
+  }
+  if (Array.isArray(data.replicas) && data.replicas.length && data.replicas.every((r) => r && typeof r.id === 'string' && Number.isInteger(r.attempts) && num(r.turns) !== null
+    && (r.model === undefined || typeof r.model === 'string') && (r.seconds === undefined || num(r.seconds) !== null) && (r.cost === undefined || num(r.cost) !== null))) {
+    run.replicas = data.replicas.map(({ id, model, attempts, turns, seconds, cost }) => ({ id, attempts, turns, ...(model !== undefined ? { model } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
   }
   if (Array.isArray(data.models) && data.models.length && data.models.every((m) => m && typeof m.model === 'string' && num(m.cost) !== null)) {
     run.models = data.models.map((m) => ({ model: m.model, cost: m.cost }));

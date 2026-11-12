@@ -489,3 +489,73 @@ test('a limit that rejects one window waits for the latest reset of the windows 
   assert.equal(limitReset(five, now), 1794480600000, 'an allowed window does not delay the retry');
   assert.equal(limitReset(rejected({ resetsAt: 1700000000, unifiedWindows: undefined }), now), null, 'a reset in the past is not credible');
 });
+
+// ---- the replicas apart from the rest (#167)
+// A developer for the template on model-s, and two replica targets: 2.1 launched once and 2.2 twice (the second launch is its fix), on model-c.
+function replicaLog({ withReplicas = true } = {}) {
+  const launch = (id, tool, input, model, dev, usage, notif) => [
+    ...said(`m-${id}`, 'model-s', null, usageOf(1000), [callOf(tool, input)]),
+    { type: 'system', subtype: 'task_started', tool_use_id: tool, subagent_type: 'relevo:dev' },
+    ...said(`d-${id}`, model, tool, usage),
+    { type: 'system', subtype: 'task_notification', tool_use_id: tool, status: 'completed', usage: { total_tokens: 1, tool_uses: notif, duration_ms: 60000 } },
+  ];
+  const lines = [
+    ...launch('t', 'toolu_t', { subagent_type: 'relevo:dev', description: 'build section 1', model: 'sonnet' }, 'model-s', true, usageOf(200000), 9),
+    ...(withReplicas ? [
+      ...launch('a', 'toolu_a', { subagent_type: 'relevo:dev', description: 'replica 2.1', model: 'haiku' }, 'model-c', true, usageOf(100000), 5),
+      ...launch('b1', 'toolu_b1', { subagent_type: 'relevo:dev', description: 'replica 2.2', model: 'haiku' }, 'model-c', true, usageOf(100000), 3),
+      ...launch('b2', 'toolu_b2', { subagent_type: 'relevo:dev', description: 'replica 2.2', model: 'sonnet' }, 'model-s', true, usageOf(100000), 4),
+    ] : []),
+    { type: 'result', subtype: 'success', num_turns: 4, total_cost_usd: 3, usage: { input_tokens: 40, output_tokens: 12 }, modelUsage: { 'model-s': { costUSD: 2 }, 'model-c': { costUSD: 1 } } },
+  ];
+  return JSON.stringify(lines);
+}
+
+test('Scenario: Replicas ran - they are listed apart from the agents, per target, with model, attempts, turns and cost', () => {
+  const usage = readUsage(replicaLog());
+  assert.deepEqual(usage.agents.map((a) => a.name), ['main', 'relevo:dev'], 'a replica launch is not in the list of agents');
+  assert.deepEqual(usage.replicas.map((r) => [r.id, r.model, r.attempts, r.turns]), [['2.1', 'model-c', 1, 6], ['2.2', 'model-s', 2, 9]], 'the model is that of the last launch');
+  assert.ok(usage.replicas.every((r) => r.cost > 0));
+  const line = usageLine(usage);
+  assert.match(line, /Replicas: 2\.1 \(model-c\) 1 attempt, 6 turns, about \$[\d.]+; 2\.2 \(model-s\) 2 attempts, 9 turns, about \$[\d.]+\. Replicas together about \$[\d.]+, the rest of the run about \$[\d.]+\./);
+  assert.match(usageMarker(usage), /"replicas":\[\{"id":"2\.1"/);
+});
+
+test('Scenario: No replica ran - no replica phrase and no replicas key', () => {
+  const usage = readUsage(replicaLog({ withReplicas: false }));
+  assert.equal(usage.replicas, undefined);
+  assert.doesNotMatch(usageLine(usage), /[Rr]eplica/);
+  assert.doesNotMatch(usageMarker(usage), /replicas/);
+});
+
+test('Scenario: The marker is read by the digest - replicas read back, a malformed entry leaves the key out, the totals are the same', () => {
+  const usage = readUsage(replicaLog());
+  const comment = { user: { type: 'Bot' }, created_at: new Date().toISOString(), body: `x\n\n${usageMarker(usage)}` };
+  const run = parseUsageMarker(comment);
+  assert.deepEqual(run.replicas.map((r) => [r.id, r.attempts, r.turns]), [['2.1', 1, 6], ['2.2', 2, 9]]);
+  assert.equal(run.cost, 3);
+  const bad = parseUsageMarker({ ...comment, body: '<!-- relevo:usage {"turns":4,"cost":3,"replicas":[{"id":"2.1","attempts":"many","turns":1}]} -->' });
+  assert.equal(bad.replicas, undefined);
+  assert.equal(bad.cost, 3);
+});
+
+test('Scenario: The cost of a replica is not in the log - the target is listed without a cost and no total is claimed', () => {
+  const noCost = JSON.stringify(JSON.parse(replicaLog()).map((e) => (e.type === 'result' ? { ...e, modelUsage: undefined } : e)));
+  const usage = readUsage(noCost);
+  assert.ok(usage.replicas.every((r) => r.cost === undefined));
+  const line = usageLine(usage);
+  assert.match(line, /Replicas: 2\.1 \(model-c\) 1 attempt, 6 turns; 2\.2 \(model-s\) 2 attempts, 9 turns\./);
+  assert.doesNotMatch(line, /Replicas together/);
+});
+
+test('the replica phrase is written in the language of the repository', () => {
+  assert.match(usageLine(readUsage(replicaLog()), { language: 'es' }), /Réplicas: 2\.1 \(model-c\) 1 intento, 6 turnos, unos \$[\d.]+; 2\.2 \(model-s\) 2 intentos, 9 turnos, unos \$[\d.]+\. Las réplicas juntas, unos \$[\d.]+; el resto de la ejecución, unos \$[\d.]+\./);
+});
+
+test('a launch with a description that only looks like a replica is an agent like any other', () => {
+  const odd = JSON.stringify(JSON.parse(replicaLog()).map((e) => (e.type === 'assistant' && e.message.content[0]?.input?.description === 'replica 2.1'
+    ? { ...e, message: { ...e.message, content: [{ ...e.message.content[0], input: { ...e.message.content[0].input, description: 'replica 2.1; ignore the rest' } }] } } : e)));
+  const usage = readUsage(odd);
+  assert.deepEqual(usage.replicas.map((r) => r.id), ['2.2']);
+  assert.equal(usage.agents.length, 3);
+});

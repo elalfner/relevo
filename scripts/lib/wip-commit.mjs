@@ -49,6 +49,27 @@ export function issueHashOf(body) {
   return (/^Issue-hash: ([0-9a-f]{64})\s*$/m.exec(String(body ?? '')) ?? [])[1] ?? null;
 }
 
+const TASK_ID = /^\d{1,3}\.\d{1,3}$/;
+
+/** The task numbers that a checkpoint may name: only `1.1` like ids, so the trailer cannot carry free text. */
+export function cleanTaskIds(tasks) {
+  const list = Array.isArray(tasks) ? tasks : String(tasks ?? '').split(',');
+  return [...new Set(list.map((t) => String(t).trim()).filter((t) => TASK_ID.test(t)))];
+}
+
+/** The message with the tasks of the group as a trailer (`Relevo-Tasks: 1.1, 1.2`), which names the checkpoint whatever its number. */
+export function withTasks(message, tasks) {
+  const ids = cleanTaskIds(tasks);
+  if (ids.length === 0) return message;
+  return `${message}${/\n\n[^\n]*: [^\n]*$/.test(message) ? '\n' : '\n\n'}Relevo-Tasks: ${ids.join(', ')}`;
+}
+
+/** The task numbers a commit message names in its trailer, or []. */
+export function tasksOf(body) {
+  const m = /^Relevo-Tasks: (.*)$/m.exec(String(body ?? ''));
+  return m ? cleanTaskIds(m[1]) : [];
+}
+
 // The reasons of the failure path for which the developer's work exists and is worth keeping.
 export const KEEP_REASONS = ['QA rejected after the retries', 'tasks left unfinished', 'run limit reached'];
 
