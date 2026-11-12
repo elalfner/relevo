@@ -181,6 +181,16 @@ La especificación escribe la receta en `tasks.md` y un script la verifica (ver 
 
 Cada tarea marcada `[replica]` necesita una línea `Rename:` y otra `Differences:`. `go` construye primero los grupos que no son réplicas, luego pasa el gate y los lentes de QA sobre esa plantilla con sus propios reintentos, y solo después replica. Cada réplica es su propio grupo: un lanzamiento del desarrollador en modo réplica con solo su plantilla, mapa de renombres y diferencias, con el modelo de `replica-plan.mjs model` (un nombre por debajo del modelo planeado, sin bajar de `agents.dev.floor`; el modelo planeado cuando el mismo objetivo falló el gate dos veces; `model-plan.mjs escalate` tras un tercer fallo, o tras el segundo cuando el modelo planeado ya es el más barato, caso en que una réplica no ahorra nada), su propio checkpoint, y el gate antes de empezar la siguiente. Los lentes corren una vez al final sobre toda la rama, así que una construcción replicada los corre dos veces. Los checkpoints, las rutas protegidas, el escaneo de credenciales, la guarda de presupuesto y `limits.run_max_cost` se aplican a una réplica igual que a cualquier otro trabajo, y no se agregó ninguna clave de configuración. `replica-plan.mjs check` valida la receta y `pattern-check.mjs` busca el cambio fusionado de `Pattern:`. Cuando hubo réplicas, el comentario de consumo las lista aparte de los demás agentes (cada objetivo con su modelo, intentos, turnos y un costo estimado, y lo que costaron las réplicas frente al resto de la ejecución), y el marcador las lleva en `replicas`; una ejecución sin réplicas no recibe esa frase.
 
+**Una réplica solo es más barata cuando el desarrollador está en `auto`.** El modelo de una réplica es un nombre por debajo del modelo planeado del desarrollador, y el modelo planeado solo se elige para un desarrollador en `auto` (ver [Elegir el modelo de cada issue](configuration.es.md#elegir-el-modelo-de-cada-issue-auto)). La configuración por defecto escribe el modelo del desarrollador, `agents.dev.model: sonnet`: lo decidió el repositorio, así que cada réplica corre en `sonnet` y replicar no ahorra nada. Para tener réplicas más baratas, pon el desarrollador en `auto`:
+
+```yaml
+agents:
+  dev:
+    model: auto
+```
+
+En `auto` el modelo planeado sigue el tamaño del cambio (tareas pendientes más escenarios: hasta 6 toma el piso, `haiku` con el rango por defecto; más toma `sonnet`). Un cambio pequeño ya se planea en `haiku` y sus réplicas no tienen nada más barato que usar (`replica-plan.mjs model` dice que el desarrollador ya está en el piso), mientras que uno mediano se planea en `sonnet` y sus réplicas corren en `haiku`. El comentario de consumo muestra el modelo en que corrió cada réplica, que es la forma de comprobarlo.
+
 ## Cuánto tarda cada etapa
 
 El resumen termina con una línea que dice adónde se va el tiempo de un issue: la mediana de cada etapa que terminó en los últimos siete días y, entre paréntesis, cuántas fueron. Las cinco etapas siguen las etiquetas del ciclo de vida:
