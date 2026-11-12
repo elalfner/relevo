@@ -105,3 +105,14 @@ test('every kind renders in every language with no placeholder left over', () =>
     });
   });
 });
+
+test('the kept rescue comment renders in every language with no placeholder left, with and without the number of checkpoints', () => {
+  const kept = { situation: 'kept', issue: 1, run: 'http://r', assignee: 'a', rescue_branch: 'feature/1-x' };
+  [{}, { checkpoints: 0 }, { checkpoints: 3 }, { rescue_branch: 'rescue/feature/1-x' }].forEach((extra) => {
+    SUPPORTED_LANGUAGES.forEach((language) => {
+      const text = renderMessage('run_no_outcome', { ...kept, ...extra }, language);
+      assert.doesNotMatch(text, /\{\{|undefined|NaN/, `kept/${language}/${JSON.stringify(extra)} left a placeholder`);
+      if (!extra.rescue_branch) assert.doesNotMatch(text, /from the start|desde el principio/);
+    });
+  });
+});
