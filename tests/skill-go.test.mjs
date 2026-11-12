@@ -571,3 +571,21 @@ test('Scenario: The hand-off lists the assumptions and the shared code - both co
   assert.match(body, /`shared_code` \(the `line` of `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/shared-code\.mjs --base <base>`/);
   assert.match(body, /Write neither of them yourself: they come from the scripts/);
 });
+
+test('Scenario: a replicated build - the recipe is checked by a script, the template is checked first and each replica has its own launch, model and gate', () => {
+  const dev = readFileSync(root('agents/dev.md'), 'utf8');
+  assert.match(body, /A replicated build\./);
+  assert.match(body, /scripts\/replica-plan\.mjs check --tasks/);
+  assert.match(body, /You never decide that a task is a replica/);
+  assert.match(body, /Check the template before replicating it/);
+  assert.match(body, /a replica is never launched from a template that did not pass/);
+  assert.match(body, /replica-plan\.mjs model --dev-model/);
+  assert.match(body, /scripts\/pattern-check\.mjs/);
+  assert.match(body, /never two in one launch/);
+  assert.match(body, /After the second failure the model it prints is the stronger one/);
+  assert.match(body, /Check the budget first/);
+  assert.match(body, /its checkpoint goes through the safe commit/);
+  assert.match(dev, /## Replica mode/);
+  assert.match(dev, /Mode: build \| fix \| integrate \| replica/);
+  assert.match(dev, /do not correct the template and do not guess/);
+});
