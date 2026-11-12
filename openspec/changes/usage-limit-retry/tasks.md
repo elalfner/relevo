@@ -28,7 +28,7 @@
 ## 6. Integration
 
 - [x] 6.1 Run `npm test` and `openspec validate usage-limit-retry --strict`; replay a recorded log with a rate-limit event through `usage-limit.mjs`, `limit-retry.mjs` and `render-message.mjs` in both languages and check the output by reading it.
-- [ ] 6.2 Open the draft pull request against `dev` listing what was not verified and what to test by hand (a real limit log, the field of the reset time, the retry in a sandbox).
+- [x] 6.2 Open the draft pull request against `dev` listing what was not verified and what to test by hand (a real limit log, the field of the reset time, the retry in a sandbox).
 
 ## Workflow follow-up
 
