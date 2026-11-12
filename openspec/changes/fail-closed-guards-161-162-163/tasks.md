@@ -4,10 +4,10 @@ Work on branch `fail-closed-guards-161-162-163` (from `dev`); run `git branch --
 
 ## 1. #161 an advice citation on an always-blocking lens
 
-- [ ] 1.1 In `tests/qa-aggregate.test.mjs`, add the tests of the scenarios "A real problem that cites advice on the side" (`security` lens, vulnerability text, cites an `[advice]` line, text does not name it: the result is `QA REJECTED`, in `findings`), the same on the `spec` lens, and "Advice and a hard rule, or advice and an unverified line"; run `node --test tests/qa-aggregate.test.mjs` and keep the output that shows the first two failing.
-- [ ] 1.2 Change the fixture of the existing `Advice` test so the text of the finding repeats the quote, and add the case of a `code` lens on attempt 1 that cites advice only (unchanged: advisory); confirm both pass on the old code.
-- [ ] 1.3 Change the `adviceOnly` test in `scripts/lib/qa-aggregate.mjs` as design D1 says (an always-blocking lens needs the text of the finding, without the `Rule:` citation, to hold the quote of every advice line it cites); verify the file's tests pass and `git diff --stat` shows the edit is limited to that expression and one small helper.
-- [ ] 1.4 Update the sentence on advice in `docs/configuration.md` and `docs/issue-format.md` and their Spanish pages, and `skills/go/references/qa-run.md` where it says a finding that cites advice is a note, and verify with `node --test tests/docs-claims.test.mjs tests/readme-sync.test.mjs`.
+- [x] 1.1 In `tests/qa-aggregate.test.mjs`, add the tests of the scenarios "A real problem that cites advice on the side" (`security` lens, vulnerability text, cites an `[advice]` line, text does not name it: the result is `QA REJECTED`, in `findings`), the same on the `spec` lens, and "Advice and a hard rule, or advice and an unverified line"; run `node --test tests/qa-aggregate.test.mjs` and keep the output that shows the first two failing.
+- [x] 1.2 Change the fixture of the existing `Advice` test so the text of the finding repeats the quote, and add the case of the `interface` lens on attempt 1 that cites advice only (unchanged: advisory) and one of the `code` lens with a real problem and advice on the side (blocks); confirm what is unchanged passes on the old code.
+- [x] 1.3 Change the `adviceOnly` test in `scripts/lib/qa-aggregate.mjs` as design D1 says (an always-blocking lens needs the text of the finding, without the `Rule:` citation, to hold the quote of every advice line it cites); verify the file's tests pass and `git diff --stat` shows the edit is limited to that expression and one small helper.
+- [x] 1.4 Update the sentence on advice in `docs/configuration.md` and `docs/issue-format.md` and their Spanish pages, and `skills/go/references/qa-run.md` where it says a finding that cites advice is a note, and verify with `node --test tests/docs-claims.test.mjs tests/readme-sync.test.mjs`.
 
 ## 2. #162 the model asked for by the issue and the default model
 

@@ -78,7 +78,7 @@ agents:
   ```
   The defaults change only on the evidence of an evaluation of the reviewers on seeded defects.
 - **A model is a name, not a list.** Write an alias or a full identifier; Relevo does not check it against a list because the list changes, and the runtime refuses one it does not know.
-- **No setting turns a reviewer off or lowers what it blocks.** A project's exceptions go in its own rules file (`qa.rules_from`), which the `spec` reviewer already reads. Every rule of that file is a requirement unless its line (or the heading above it) is marked `[advice]`; a finding that cites a requirement as `Rule: <file>:<line> "<its words>"` blocks, whichever reviewer wrote it.
+- **No setting turns a reviewer off or lowers what it blocks.** A project's exceptions go in its own rules file (`qa.rules_from`), which the `spec` reviewer already reads. Every rule of that file is a requirement unless its line (or the heading above it) is marked `[advice]`; a finding that cites a requirement as `Rule: <file>:<line> "<its words>"` blocks, whichever reviewer wrote it. A finding that cites an `[advice]` line is a note only when its text names that advice; a real problem found by `spec`, `security` or `code` that carries an advice line on the side still blocks.
 - **With Antigravity** the settings are accepted and are not applied: they are not written to the agents it renders. `/relevo:doctor` and `/relevo:init` print a warning that names each one and go on.
 
 ### Choosing the model for each issue: `auto`

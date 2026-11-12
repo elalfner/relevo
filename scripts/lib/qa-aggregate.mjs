@@ -11,6 +11,15 @@ const FINDING_RE = /^\s*(\d+)[.)]\s+(.*)$/;
 const RULE_RE = /\bRule\b\**\s*[:=]\s*\**\s*`?([^\s`"“”:]+):(\d+)`?\s*["“'`](.+?)["”'`]\s*\.?\s*$/i;
 const DEVICE_HEADING_RE = /^\s*(?:#{1,6}\s*|\*\*)?Left for on-device review\b/i;
 
+const squash = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** Does the finding itself, outside its `Rule:` citation, repeat the quoted words? An empty quote never does. */
+function namesQuote(text, quote) {
+  const cut = RULE_RE.exec(text);
+  const q = squash(quote);
+  return q !== '' && squash(cut ? text.slice(0, cut.index) : text).includes(q);
+}
+
 /** The first non-blank line of a report is exactly QA PASSED or QA REJECTED: returns 'PASSED', 'REJECTED' or null. */
 export function verdictOf(text) {
   const first = String(text ?? '').split('\n').find((l) => l.trim() !== '');
@@ -86,7 +95,10 @@ export function aggregate({ reports, plan, attempt, retries, reasked = [], rules
         const checked = f.cites.map((c) => ({ c, v: check(c) }));
         checked.filter((x) => !x.v && rules.length > 0).forEach((x) => unverified.push({ lens: p.lens, number: f.number, cited: `${x.c.file}:${x.c.line}`, quote: x.c.quote }));
         const hard = checked.find((x) => x.v?.hard);
-        const adviceOnly = !hard && checked.some((x) => x.v) && checked.every((x) => x.v && !x.v.hard);
+        // A lens that always blocks keeps a finding blocking unless the finding names each advice rule it cites: a real problem
+        // that carries an advice line on the side is not a note.
+        const adviceOnly = !hard && checked.some((x) => x.v) && checked.every((x) => x.v && !x.v.hard)
+          && (!ALWAYS.includes(p.lens) || checked.every((x) => namesQuote(f.text, x.c.quote)));
         const { cites, ...rest } = f;
         if (hard) { hardRule += 1; findings.push({ lens: p.lens, ...rest, rule: { file: hard.v.rule.file, line: hard.v.rule.line, text: hard.v.rule.text } }); rejecting.add(p.lens); }
         else if (blocks && !adviceOnly) { findings.push({ lens: p.lens, ...rest }); rejecting.add(p.lens); }
