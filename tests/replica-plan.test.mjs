@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
@@ -163,4 +163,42 @@ test('the template command lists the files of the checkpoint, without the specif
   const r = cli(['template', '--k', '1', '--of', '3', '--issue', '7'], dir);
   assert.deepEqual([r.status, r.out.files], [0, ['src/a.vue']]);
   assert.equal(cli(['template', '--k', '3', '--of', '3', '--issue', '7'], dir).status, 1);
+});
+
+// ---- the reason of the model of a replica is kept for the usage comment (replica-model-reason)
+test('Scenario: the reason is recorded - model --task writes replica-models.json, appends, and writes nothing without --task or without the folder', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rp-'));
+  writeFileSync(join(dir, 'relevo.yml'), `limits:\n  run_max_cost: 5\n${AUTO_DEV}`);
+  const progress = join(dir, 'progress');
+  const run = (args, folder) => {
+    const env = { ...process.env };
+    delete env.RELEVO_PROGRESS_DIR;
+    if (folder) env.RELEVO_PROGRESS_DIR = folder;
+    const r = spawnSync('node', [CLI, 'model', '--dev-model', 'sonnet', '--config', join(dir, 'relevo.yml'), ...args], { encoding: 'utf8', env });
+    return { status: r.status, out: JSON.parse(r.stdout) };
+  };
+  const plain = run(['--failures', '0']);
+  const first = run(['--failures', '0', '--task', '2.1'], progress);
+  assert.deepEqual(first, plain, 'the printed answer is the same with and without --task');
+  const file = join(progress, 'replica-models.json');
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), [{ task: '2.1', model: 'haiku', failures: 0, why: plain.out.why }]);
+  const second = run(['--failures', '2', '--task', '2.1'], progress);
+  assert.equal(second.out.model, 'sonnet');
+  const records = JSON.parse(readFileSync(file, 'utf8'));
+  assert.deepEqual(records.map((r) => [r.task, r.model, r.failures]), [['2.1', 'haiku', 0], ['2.1', 'sonnet', 2]], 'a second launch of the same target is appended');
+  assert.equal(records[1].why, second.out.why);
+  const other = join(dir, 'other');
+  assert.deepEqual(run(['--failures', '0'], other), plain, 'without --task the answer is the same');
+  assert.equal(existsSync(join(other, 'replica-models.json')), false, 'and nothing is written');
+  assert.deepEqual(run(['--failures', '0', '--task', '2.1']), plain, 'without the folder there is nothing to write and nothing fails');
+});
+
+test('the record is written even when the developer is not on auto, with that reason', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rp-'));
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\n');
+  const env = { ...process.env, RELEVO_PROGRESS_DIR: join(dir, 'progress') };
+  const r = spawnSync('node', [CLI, 'model', '--dev-model', 'sonnet', '--failures', '0', '--task', '3.1', '--config', join(dir, 'relevo.yml')], { encoding: 'utf8', env });
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.model, 'sonnet');
+  assert.match(JSON.parse(readFileSync(join(dir, 'progress', 'replica-models.json'), 'utf8'))[0].why, /not on auto, so the repository decided its model/);
 });

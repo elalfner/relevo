@@ -192,6 +192,36 @@ export function readUsage(text) {
   return usage;
 }
 
+/**
+ * The reason that the model of each replica was chosen with, from `replica-models.json` of the progress folder (`replica-plan.mjs
+ * model --task <id>` appends one record per launch): { <task id>: <reason> }, the last record of each task. It is read as data: a
+ * record that is not well formed is skipped, line breaks and comment marks are taken out (the reason goes inside the hidden marker
+ * of a comment) and a long one is cut. Text that is not JSON gives nothing.
+ */
+export function replicaReasonsFromJson(text) {
+  let records;
+  try {
+    records = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  if (!Array.isArray(records)) return {};
+  const reasons = {};
+  records.forEach((r) => {
+    if (!r || typeof r.task !== 'string' || typeof r.why !== 'string') return;
+    const why = r.why.replace(/<!--|-->/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240).trim();
+    if (why) reasons[r.task] = why;
+  });
+  return reasons;
+}
+
+/** The figures with `why` on each replica that has a reason (the targets without one stay as they were). */
+export function withReplicaReasons(usage, reasons) {
+  if (!usage?.replicas?.length || !reasons) return usage;
+  usage.replicas = usage.replicas.map((r) => (typeof reasons[r.id] === 'string' ? { ...r, why: reasons[r.id] } : r));
+  return usage;
+}
+
 const DAY_MS = 86400000;
 
 /**
@@ -342,7 +372,7 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
   const byAgent = usage.agents?.length ? t('by_agent', { list: usage.agents.map(agent).join('; ') }) : '';
   const attempts = (n) => t(n === 1 ? 'attempt_one' : 'attempt_many', { n });
-  const replica = (r) => t('replica_item', { id: r.id, model: r.model ? ` (${r.model})` : '', attempts: attempts(r.attempts), turns: turns(r.turns), cost: r.cost !== undefined ? t('agent_cost', { cost: r.cost.toFixed(2) }) : '' });
+  const replica = (r) => t('replica_item', { id: r.id, model: r.model ? ` (${r.model})` : '', attempts: attempts(r.attempts), turns: turns(r.turns), cost: r.cost !== undefined ? t('agent_cost', { cost: r.cost.toFixed(2) }) : '', why: r.why ? t('replica_why', { why: r.why }) : '' });
   // The total of the replicas and the rest of the run are said only when every figure is there; nothing is estimated.
   const replicaCost = usage.replicas?.length && usage.replicas.every((r) => r.cost !== undefined) ? usage.replicas.reduce((total, r) => total + r.cost, 0) : null;
   const byReplicas = usage.replicas?.length
@@ -435,8 +465,8 @@ export function parseUsageMarker(comment) {
     if (good) run.agents = data.agents.map(({ name, model, effort, turns, seconds, cost }) => ({ name, turns, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
   }
   if (Array.isArray(data.replicas) && data.replicas.length && data.replicas.every((r) => r && typeof r.id === 'string' && Number.isInteger(r.attempts) && num(r.turns) !== null
-    && (r.model === undefined || typeof r.model === 'string') && (r.seconds === undefined || num(r.seconds) !== null) && (r.cost === undefined || num(r.cost) !== null))) {
-    run.replicas = data.replicas.map(({ id, model, attempts, turns, seconds, cost }) => ({ id, attempts, turns, ...(model !== undefined ? { model } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
+    && (r.model === undefined || typeof r.model === 'string') && (r.seconds === undefined || num(r.seconds) !== null) && (r.cost === undefined || num(r.cost) !== null) && (r.why === undefined || typeof r.why === 'string'))) {
+    run.replicas = data.replicas.map(({ id, model, attempts, turns, seconds, cost, why }) => ({ id, attempts, turns, ...(model !== undefined ? { model } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}), ...(why !== undefined ? { why } : {}) }));
   }
   if (Array.isArray(data.models) && data.models.length && data.models.every((m) => m && typeof m.model === 'string' && num(m.cost) !== null)) {
     run.models = data.models.map((m) => ({ model: m.model, cost: m.cost }));

@@ -597,3 +597,8 @@ test('Scenario: a replicated build - the recipe is checked by a script, the temp
   assert.match(dev, /Mode: build \| fix \| integrate \| replica/);
   assert.match(dev, /do not correct the template and do not guess/);
 });
+
+test('Scenario: The reason of a replica model is kept - step 3 of a replicated build passes the task id to replica-plan.mjs model (replica-model-reason)', () => {
+  const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
+  assert.match(step4, /replica-plan\.mjs model --dev-model <[^>]+> --failures <[^>]+> --task <task id>/);
+});
