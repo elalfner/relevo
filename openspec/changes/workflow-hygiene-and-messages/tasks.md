@@ -9,7 +9,7 @@
 ## 2. The queue comment
 
 - [x] 2.1 In `scripts/lib/plan.mjs` count `ahead` (issues queued for an agent slot before this one) and list the active issues; pass `active`, `active_issues`, `ahead` and `typical_minutes`/`typical_samples` to `queued_agents`, and `built_issues` to `queued_capacity`. Verify in `tests/plan.test.mjs`: two running and one ahead, urgent first, an already queued issue counted, no `ahead` for the first.
-- [x] 2.2 In `scripts/lib/github.mjs` read the `build` job of the last 10 completed runs of `relevo-go.yml` into `recent_builds_min` (or `null` on any error); `scripts/go-plan.mjs` passes it to `planGo`. Verify with a fake `gh` in `tests/github.test.mjs`: durations, fewer than three, a 403, a run with no `build` job.
+- [x] 2.2 In `scripts/lib/github.mjs` read the `build` job of the most recent completed runs of `relevo-go.yml`, up to 10 builds among the last 30 runs, into `recent_builds_min` (or `null` on any error); `scripts/go-plan.mjs` passes it to `planGo`. Verify with a fake `gh` in `tests/github.test.mjs`: durations, fewer than three, a 403, a run with no `build` job.
 - [x] 2.3 Render the new lines of `queued_agents` and `queued_capacity` in both languages, `unknown`/`desconocido` for an absent figure, and no number when the data is missing. Verify in `tests/messages.test.mjs`.
 
 ## 3. The usage comment in the language

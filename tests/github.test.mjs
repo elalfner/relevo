@@ -384,7 +384,19 @@ test('readRecentBuilds: the minutes of the build job of the last completed runs,
     5: [job('build', 2, 3, 'cancelled'), job('build', 1, 6)],
   } });
   assert.deepEqual(readRecentBuilds({ gh, repo: REPO }), [30, 20, 5]);
-  assert.match(gh.calls[0], /repos\/acme\/app\/actions\/workflows\/relevo-go\.yml\/runs\?status=completed&per_page=10$/);
+  assert.match(gh.calls[0], /repos\/acme\/app\/actions\/workflows\/relevo-go\.yml\/runs\?status=completed&per_page=30$/);
+});
+
+test('readRecentBuilds: runs that only decided do not push the builds out of the window, and it stops at ten builds', () => {
+  // 25 runs that only decided, then 12 builds: all of the 37 are asked for as far as the window of 30 allows.
+  const ids = Array.from({ length: 30 }, (_, i) => i + 1);
+  const jobs = Object.fromEntries(ids.map((id) => [id, id <= 20 ? [job('decide', 0, 1)] : [job('decide', 0, 1), job('build', 1, 1 + (id - 20))]]));
+  const gh = runsGh({ runs: ids, jobs });
+  const minutes = readRecentBuilds({ gh, repo: REPO });
+  assert.deepEqual(minutes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'ten builds, the ones of the most recent runs of the window');
+  assert.equal(gh.calls.filter((c) => c.includes('/jobs')).length, 30, 'it asked for the jobs of runs 1 to 30 only until ten builds were found');
+  const few = readRecentBuilds({ gh: runsGh({ runs: ids, jobs: { 29: [job('build', 0, 5)] } }), repo: REPO });
+  assert.deepEqual(few, [5], 'fewer than ten builds in the window is what was found');
 });
 
 test('readRecentBuilds: no runs is an empty list, an unreadable repository (no actions: read) is null', () => {

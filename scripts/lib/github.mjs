@@ -60,22 +60,25 @@ export function labelEvent(timeline, labelName) {
 export const readyEvent = labelEvent;
 
 /**
- * How long the last completed builds of the go workflow took, in minutes: the `build` job of each of the last `limit` completed
- * runs that ran (a run that only decided has no such job, and a skipped or cancelled job has no duration worth reporting).
+ * How long the last completed builds of the go workflow took, in minutes: the `build` job of the most recent completed runs that
+ * ran one, up to `limit` builds found among the last `scan` runs (a run that only decided has no such job, and so has a run of
+ * the queue, so they are skipped and do not push the builds out of the window; a skipped or cancelled job has no duration worth
+ * reporting).
  * Returns null when it cannot be read (no `actions: read`, no such workflow, a network error): a queue comment says "unknown"
  * then and the plan never fails because of it.
  */
-export function readRecentBuilds({ gh, repo, workflow = 'relevo-go.yml', limit = 10 }) {
+export function readRecentBuilds({ gh, repo, workflow = 'relevo-go.yml', limit = 10, scan = 30 }) {
   try {
-    const runs = apiJson(gh, `repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=${limit}`).workflow_runs ?? [];
+    const runs = apiJson(gh, `repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=${scan}`).workflow_runs ?? [];
     const minutes = [];
-    runs.slice(0, limit).forEach((run) => {
+    for (const run of runs.slice(0, scan)) {
+      if (minutes.length >= limit) break;
       const jobs = apiJson(gh, `repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`).jobs ?? [];
       const build = jobs.find((j) => j.name === 'build' && ['success', 'failure'].includes(j.conclusion) && j.started_at && j.completed_at);
-      if (!build) return;
+      if (!build) continue;
       const ms = Date.parse(build.completed_at) - Date.parse(build.started_at);
       if (Number.isFinite(ms) && ms >= 0) minutes.push(Math.round((ms / 60000) * 10) / 10);
-    });
+    }
     return minutes;
   } catch {
     return null;
