@@ -145,3 +145,36 @@ test('the scans still refuse a checkpoint that names tasks (C2: a protected path
   assert.equal(JSON.parse(r.stdout.trim().split('\n').pop()).state, 'unsafe');
   assert.equal(git(work, 'log', '--oneline', 'origin/dev..HEAD').trim(), '');
 });
+
+// ---- the work kept at a limit names its tasks and the template is found in it (rescue-commit-tasks)
+const keep = (work) => {
+  const r = spawnSync(process.execPath, [script('rescue-work.mjs'), '--decision', Buffer.from(JSON.stringify(DECISION)).toString('base64')], { cwd: work, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout.trim().split('\n').pop());
+};
+
+test('Scenario: The template was in the work that was kept - a run cut during the template group leaves it in the limit commit and the lookup by section finds it', () => {
+  const work = fixture();
+  put(work, 'openspec/changes/7-x/tasks.md', TASKS(1));
+  put(work, 'src/Orders.vue', 'orders\n');
+  assert.equal(keep(work).state, 'kept');
+  const found = template(work, '--section', '1');
+  assert.equal(found.status, 0, JSON.stringify(found.out));
+  assert.deepEqual(found.out.files, ['src/Orders.vue']);
+  assert.equal(found.out.commits.length, 1);
+  assert.equal(template(work, '--section', '2').status, 1, 'a section that no commit names is still not found');
+});
+
+test('Scenario: A task kept at a limit after a checkpoint - the lookup finds it by its section, the checkpoint stays the one of its own section, and a limit commit is not a checkpoint', () => {
+  const work = fixture();
+  put(work, 'openspec/changes/7-x/tasks.md', TASKS(1));
+  put(work, 'src/Orders.vue', 'orders\n');
+  checkpoint(work, { k: 1, tasks: ['1.1', '1.2'] }, 3);
+  put(work, 'openspec/changes/7-x/tasks.md', TASKS(2));
+  put(work, 'docs/orders.md', 'docs\n');
+  assert.equal(keep(work).state, 'kept');
+  assert.deepEqual(template(work, '--section', '2').out.files, ['docs/orders.md']);
+  const first = template(work, '--section', '1');
+  assert.deepEqual([first.out.files, first.out.commits.length], [['src/Orders.vue'], 1], 'the limit commit does not name 1.1 and 1.2, a checkpoint already does');
+  assert.equal(template(work, '--k', '2', '--of', '3').status, 1, 'the lookup by number reads checkpoints only');
+});

@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { taskGroups } from '../scripts/lib/task-groups.mjs';
+import { doneTaskIds, taskGroups } from '../scripts/lib/task-groups.mjs';
 
 const CLI = fileURLToPath(new URL('../scripts/task-groups.mjs', import.meta.url));
 
@@ -102,4 +102,28 @@ test('a change with two small normal groups and a replica joins only the normal 
 
 test('a checked replica is not pending', () => {
   assert.deepEqual(taskGroups('## 1. R\n\n- [x] 1.1 [replica] done\n- [ ] 1.2 [replica] todo\n').groups.map((g) => g.tasks), [['1.2']]);
+});
+
+test('doneTaskIds lists the checked tasks in order, once each, and nothing else', () => {
+  const text = `# Tasks
+
+## 1. A
+
+- [x] 1.1 done
+- [X] 1.2 done too
+- [ ] 1.3 pending
+  - [x] a note that is not a task
+
+## 2. B
+
+- [x] 2.1 [replica] Invoices
+  - Rename: Orders -> Invoices
+- [x]  3.1 two spaces
+- [x] 10.12 a big number
+- [x] not-a-number
+- [x] 1.1 again
+`;
+  assert.deepEqual(doneTaskIds(text), ['1.1', '1.2', '2.1', '3.1', '10.12']);
+  assert.deepEqual(doneTaskIds(''), []);
+  assert.deepEqual(doneTaskIds(undefined), []);
 });

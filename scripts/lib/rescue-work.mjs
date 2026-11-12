@@ -10,7 +10,9 @@
 // `git(args) -> stdout` is injected so the logic can be tested; it throws when git fails.
 
 import { commitChange, refusalText } from './commit-change.mjs';
-import { isCheckpoint, withIssueHash, withTasks, wipSubject } from './wip-commit.mjs';
+import { isCheckpoint, tasksOf, withIssueHash, withTasks, wipSubject } from './wip-commit.mjs';
+import { doneTaskIds } from './task-groups.mjs';
+import { readFileSync } from './guarded-fs.mjs';
 import { changedSince } from './tree-baseline.mjs';
 
 // What a run leaves in the working tree that is not the work: tools and the folders of the Relevo scripts.
@@ -50,6 +52,24 @@ export function readDecision(b64) {
 }
 
 /**
+ * The tasks that the commit of a run stopped at a limit holds: the ones checked in the `tasks.md` of the change, in the working tree,
+ * that no commit of the branch over the base already names (a checkpoint, or an earlier limit commit). It is what the boxes say, read
+ * when the run cannot say anything more. `[]` for no task, and for anything that cannot be read (no change, no base, no file, a git
+ * error): the commit is then made as it always was.
+ */
+export function limitTasks({ git, decision }) {
+  try {
+    if (!decision.change || !decision.base) return [];
+    const done = doneTaskIds(readFileSync(`openspec/changes/${decision.change}/tasks.md`, 'utf8'));
+    if (done.length === 0) return [];
+    const named = new Set(git(['log', '--format=%b%x1e', `origin/${decision.base}..HEAD`]).split('\x1e').flatMap((body) => tasksOf(body)));
+    return done.filter((id) => !named.has(id));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Commit and push what a cut run left, or what a group of tasks just finished (a checkpoint). Returns
  * { state, branch, files, commit, detail }:
  *   kept        the work is on the branch of the issue on the remote
@@ -62,6 +82,7 @@ export function readDecision(b64) {
  *   baseline  { path: fingerprint } of what the install step left in the working tree before the agent started: a file still
  *             at that content is not work of the agent and is left out (see tree-baseline.mjs)
  *   tasks    the numbers of the tasks of the group (a checkpoint): they go in as a trailer, so the checkpoint is found by them and not by its number
+ *            Without them, and without a `subject`, the commit of a run cut at a limit names the tasks that are checked and that no commit names yet (`limitTasks`).
  *   subject  the subject of the commit (`wip: stopped by limit (#N)` by default); the hash of the issue text goes in as a trailer
  */
 export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null, tasks = null, baseline = {} }) {
@@ -128,7 +149,7 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     let committed;
     try {
       committed = commitChange({
-        git, message: withTasks(withIssueHash(subject ?? wipSubject(decision.issue, 'limit'), decision.issueHash), tasks), paths, allow: decision.allow, rulesFile, platformPaths,
+        git, message: withTasks(withIssueHash(subject ?? wipSubject(decision.issue, 'limit'), decision.issueHash), tasks ?? (subject === null ? limitTasks({ git, decision }) : null)), paths, allow: decision.allow, rulesFile, platformPaths,
         within: decision.within, change: decision.change, restricted,
       });
     } catch (error) {
