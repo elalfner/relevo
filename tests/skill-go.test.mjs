@@ -424,6 +424,14 @@ test('Scenario: The developer builds one section of tasks at a time - the skill 
   assert.match(step4, /Check the budget before each launch/);
 });
 
+test('Scenario: A resumed replicated build - the checkpoint names its tasks and the template is asked for by section (#167)', () => {
+  const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
+  assert.match(step4, /checkpoint\.mjs --decision <base64> --k <number of the group> --of <number of groups> --tasks </);
+  assert.match(step4, /replica-plan\.mjs template --section K --issue <issue> --base <base>/);
+  assert.doesNotMatch(step4, /replica-plan\.mjs template --k/);
+  assert.match(step4, /`description` `replica <task id>`[^]*\*\*fix\*\* mode, with the same `description` `replica <task id>`/);
+});
+
 test('Scenario: A later run resumes from the checkpoints - step 2 asks the script, resumes or stops, and step 3 writes nothing when resumed', () => {
   const step2 = body.slice(body.indexOf('### 2. Branch'), body.indexOf('### 3. Specification'));
   assert.match(step2, /resume-check\.mjs <base> <branch> <issue> <issue_hash>/);

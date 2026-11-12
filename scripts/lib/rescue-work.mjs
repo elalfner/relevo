@@ -10,7 +10,7 @@
 // `git(args) -> stdout` is injected so the logic can be tested; it throws when git fails.
 
 import { commitChange, refusalText } from './commit-change.mjs';
-import { withIssueHash, wipSubject } from './wip-commit.mjs';
+import { withIssueHash, withTasks, wipSubject } from './wip-commit.mjs';
 import { changedSince } from './tree-baseline.mjs';
 
 // What a run leaves in the working tree that is not the work: tools and the folders of the Relevo scripts.
@@ -61,9 +61,10 @@ export function readDecision(b64) {
  * the remote tip is allowed, and any other push is refused, so nothing is ever overwritten.
  *   baseline  { path: fingerprint } of what the install step left in the working tree before the agent started: a file still
  *             at that content is not work of the agent and is left out (see tree-baseline.mjs)
+ *   tasks    the numbers of the tasks of the group (a checkpoint): they go in as a trailer, so the checkpoint is found by them and not by its number
  *   subject  the subject of the commit (`wip: stopped by limit (#N)` by default); the hash of the issue text goes in as a trailer
  */
-export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null, baseline = {} }) {
+export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null, tasks = null, baseline = {} }) {
   const result = (state, extra = {}) => ({ state, branch: decision.branch, files: 0, commit: null, detail: '', ...extra });
   let current;
   try {
@@ -127,7 +128,7 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     let committed;
     try {
       committed = commitChange({
-        git, message: withIssueHash(subject ?? wipSubject(decision.issue, 'limit'), decision.issueHash), paths, allow: decision.allow, rulesFile, platformPaths,
+        git, message: withTasks(withIssueHash(subject ?? wipSubject(decision.issue, 'limit'), decision.issueHash), tasks), paths, allow: decision.allow, rulesFile, platformPaths,
         within: decision.within, change: decision.change, restricted,
       });
     } catch (error) {

@@ -224,7 +224,7 @@ The secret that exists decides the mode, and the active credential line of the `
 - **THEN** the mode is reported as before and nothing is added
 
 ### Requirement: The consumption of a run is shown by agent and by model
-When the execution log has them, the comment about a cloud run SHALL list for the main agent and each subagent its model, effort, turns, minutes, tokens and an estimated cost, and SHALL give the real cost of each model. The cost of an agent SHALL be written as an estimate. The hidden marker of the comment SHALL carry the same figures under `agents` and `models`. A figure the log does not have SHALL be left out, and a log with none of these figures SHALL give the comment it gives today.
+When the execution log has them, the comment about a cloud run SHALL list for the main agent and each subagent its model, effort, turns, minutes, tokens and an estimated cost, and SHALL give the real cost of each model. The cost of an agent SHALL be written as an estimate. The launches of replicas SHALL NOT be in that list: they are shown apart (see "The usage comment shows the replicas apart from the rest"). The hidden marker of the comment SHALL carry the same figures under `agents` and `models`. A figure the log does not have SHALL be left out, and a log with none of these figures SHALL give the comment it gives today.
 
 #### Scenario: A run with subagents
 - **WHEN** the log shows a developer and four QA lenses, each with its model and tool calls
@@ -308,3 +308,22 @@ When the execution log carries rate-limit events with a window and a utilisation
 #### Scenario: A malformed figure
 - **WHEN** an event has a utilisation that is not a number between 0 and 1
 - **THEN** that figure is left out and the others are shown
+
+### Requirement: The usage comment shows the replicas apart from the rest
+When a log has launches of replicas, the usage comment SHALL list each target apart from the other agents, with its model, its attempts (launches), its turns and an estimated cost, and SHALL say what the replicas cost together and what the rest of the run cost, when the figures are there. The hidden marker SHALL carry the same under `replicas`. When no replica ran, no replica phrase and no `replicas` key SHALL be written, and the comment SHALL be the one it was.
+
+#### Scenario: Replicas ran
+- **WHEN** a run has two replica targets, one of them launched twice
+- **THEN** the comment lists both targets with model, attempts, turns and cost, apart from the other agents, with the cost of the replicas and of the rest
+
+#### Scenario: No replica ran
+- **WHEN** the log has no replica launch
+- **THEN** the comment and the marker have no replica phrase or key
+
+#### Scenario: The cost of a replica is not in the log
+- **WHEN** a replica's cost cannot be estimated
+- **THEN** the target is listed without a cost and no total is claimed
+
+#### Scenario: The marker is read by the digest
+- **WHEN** the daily digest reads a marker with `replicas`
+- **THEN** it reads the totals as before and ignores the key

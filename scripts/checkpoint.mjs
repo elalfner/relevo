@@ -2,16 +2,18 @@
 // A checkpoint of a build: after the developer finishes group `k` of `n` of the tasks, the files that changed are
 // committed as `wip: checkpoint k/n (#N)` and the branch of the issue is pushed, so that a cut or a limit loses at most
 // the group in progress. Usage:
-//   node scripts/checkpoint.mjs --decision <base64> --k <n> --of <n> [--config relevo.yml]
+//   node scripts/checkpoint.mjs --decision <base64> --k <n> --of <n> [--tasks 1.1,1.2] [--config relevo.yml]
 // The commit goes through the same safe commit as every commit of Relevo (protected paths, restricted files, temporary
-// markers, credentials) and carries the hash of the issue text as a trailer, which a later run compares before it resumes.
+// markers, credentials) and carries the hash of the issue text as a trailer, which a later run compares before it resumes, and
+// the numbers of the tasks of the group (`Relevo-Tasks:`): a resumed run numbers its groups again, so a checkpoint is found by
+// the tasks it covers (`replica-plan.mjs template --section K`) and not by `k/n`.
 // The push is a fast-forward only; nothing is forced.
 // Prints one line of JSON { state, branch, files, commit, detail }.
 //   exit 0: kept, or nothing to keep, or not pushed (the build goes on; the final push will say if it cannot)
 //   exit 1: a commit was refused (`unsafe`): the detail names the file and why, and the build takes the failure path
 //   exit 2: bad arguments
 
-import { checkpointSubject } from './lib/wip-commit.mjs';
+import { checkpointSubject, cleanTaskIds } from './lib/wip-commit.mjs';
 import { readDecision } from './lib/rescue-work.mjs';
 import { runRescue } from './lib/rescue-run.mjs';
 
@@ -30,7 +32,7 @@ if (!decision || k === null || n === null || k > n) {
 }
 let result;
 try {
-  result = runRescue({ decision, configPath: arg('config') ?? 'relevo.yml', subject: checkpointSubject(decision.issue, k, n) });
+  result = runRescue({ decision, configPath: arg('config') ?? 'relevo.yml', subject: checkpointSubject(decision.issue, k, n), tasks: cleanTaskIds(arg('tasks')) });
 } catch (error) {
   result = { state: 'not_pushed', branch: decision.branch, files: 0, commit: null, detail: `the checkpoint failed: ${String(error.message).slice(0, 200)}` };
 }
