@@ -51,7 +51,9 @@ See `proposal.md` for the motivation. State of `dev` at ad8202d, read before wri
 
 ## Open Questions
 
-These are for the maintainer; the artifacts use the recommended answer.
+None open. The maintainer confirmed the decisions of this change and left the two questions to the recommendation:
 
-1. **How should a script tell "the advice rule is what the finding is about" from a side remark (#161)?** The issue gives two scenarios and no rule. Recommended: D1 (the finding names the rule in its own text). Alternatives: A (never downgrade on `spec`, `security` and `code`), or keep the current behavior. This changes the spec scenarios and one existing test.
-2. **Should the fail-open path `configPlan` (the plan could not be made) also keep a role on `auto` inside its range (#162)?** Today it gives the default model of the role, so a repository with `floor: opus` runs QA on `sonnet` when the plan fails. The issue's code pointers name only `decide`, and "the plan fails open" is a requirement of its own, so this change leaves it. Say if it should be included.
+1. **How a script tells "the advice rule is what the finding is about" from a side remark (#161): resolved as D1.** The finding names the advice rule in its own text; the alternative (never downgrade on `spec`, `security` and `code`) is not taken.
+2. **Whether the fail-open path `configPlan` also keeps a role on `auto` inside its range (#162): resolved as out of scope.** It still gives the default model of the role; it is the plan that `go` uses when the plan cannot be made, and "the plan fails open" is a requirement of its own. If it matters later it is a change of its own.
+
+Also confirmed: #162 reverses the earlier decision that an issue may go below the floor (D2), and #163 matches by nesting (D4).
