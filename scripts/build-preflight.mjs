@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // The checks that need no model, before a build spends one. Usage:
 //   node scripts/build-preflight.mjs --stage issue --issue-file issue.md [--manifest .relevo-design/manifest.json]
-//        [--base dev] [--variables variables.json] [--config relevo.yml] [--repo-root .]
+//        [--base dev] [--repo owner/name] [--variables variables.json] [--config relevo.yml] [--repo-root .]
 //   node scripts/build-preflight.mjs --stage spec --issue-file issue.md --change-dir openspec/changes/<id> [--config relevo.yml]
 // `--stage issue` reads what the issue says: the references the fetcher refused and the inputs the issue declares
 // (a `file` must exist on the base branch, a `link` must have been fetched, a `variable` must be set, a `secret` counts
 // only when the workflow exposed it, a `manual` input never blocks). `--stage spec` reads the task lines of tasks.md:
 // a task that changes a protected path, a restricted file, or adds a dependency that the issue does not allow.
+// `--stage issue` also looks for the merged change of a `Pattern: #N` (the repository is `--repo` or $GITHUB_REPOSITORY): one that is not merged or
+// does not exist is an `inputs` finding, a lookup that fails is `unverified`.
 // `--stage issue` also compares `Out of scope` with the rules files (`qa.rules_from`) and with the scenarios: a contradiction
 // is a `conflict` finding that quotes both lines (the reason `conflict`), and a person decides which one wins.
 // `--stage spec` also lists the assumptions of design.md that name something outside the repository and that no file of it holds
@@ -24,6 +26,9 @@ import { restrictedList, restrictedListFromText } from './lib/restricted-paths.m
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { parseRules } from './lib/rules-file.mjs';
 import { repoSearch } from './lib/assumptions.mjs';
+import { findPatternChange } from './lib/pattern.mjs';
+import { realGh } from './lib/github.mjs';
+import { parseIssueBody } from './lib/issue-parse.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -89,7 +94,14 @@ if (stage === 'issue') {
       return [];
     }
   });
-  result = checkIssueStage({ body, manifest, exists, env: process.env, variables, rules });
+  // The merged change of the pattern, when the issue names one. A lookup that cannot be made never blocks (it is `unverified`).
+  let pattern = null;
+  const patternNumber = parseIssueBody(body).pattern;
+  if (patternNumber !== null) {
+    const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
+    pattern = { number: patternNumber, result: repo && base ? findPatternChange({ repo, number: patternNumber, base, gh: realGh }) : { state: 'unknown', detail: 'no repository or base branch was given to look for it' } };
+  }
+  result = checkIssueStage({ body, manifest, exists, env: process.env, variables, rules, pattern });
   unread.forEach((f) => (result.notes ??= []).push(`the rules file ${f} could not be read, so the issue was not compared with it`));
 } else {
   const tasks = join(resolve(arg('change-dir')), 'tasks.md');
@@ -102,6 +114,7 @@ if (stage === 'issue') {
     // The assumptions of design.md (its own and the ones copied from the issue) that name something outside the repository.
     designText: existsSync(join(resolve(arg('change-dir')), 'design.md')) ? read(join(resolve(arg('change-dir')), 'design.md'), 'design.md') : '',
     search: repoSearch(root),
+    hasPattern: parseIssueBody(body).pattern !== null,
     exists: (name) => existsSync(join(root, name)),
   });
 }

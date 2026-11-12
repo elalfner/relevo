@@ -150,6 +150,24 @@ When the issue is made `ready` again and its branch exists on the remote, `go` a
 
 The checkpoints stay in the history of the branch, because squashing them would need a force push; the squash of `/relevo:ship` removes them from the base branch.
 
+## Replicated builds
+
+The specification writes the recipe into `tasks.md`, and a script checks it (see also `Pattern:` in [Writing an issue](issue-format.md)):
+
+```markdown
+## Replication recipe
+
+- Template: `section 1`          (or `pattern`, or `src/a.vue`, `tests/a.test.ts`)
+
+## 2. Replicas
+
+- [ ] 2.1 [replica] Invoices screen
+  - Rename: Orders -> Invoices, orders -> invoices
+  - Differences: a total column; no status filter       (or `none`)
+```
+
+Every task marked `[replica]` needs a `Rename:` and a `Differences:` line. `go` builds the groups that are not replicas first, then runs the gate and the QA lenses on that template with their own retries, and only then replicates. Each replica is its own group: one launch of the developer in replica mode with only its template, rename map and differences, on `replica-plan.mjs model` (one name below the planned model, not below `agents.dev.floor`; the planned model after the same target failed the gate twice; `model-plan.mjs escalate` after a third failure, or after the second when the planned model is already the cheapest, in which case a replica saves nothing), its own checkpoint, and the gate before the next one starts. The lenses run once at the end on the whole branch, so a replicated build runs them twice. Checkpoints, protected paths, the credential scan, the budget guard and `limits.run_max_cost` apply to a replica exactly as to any other work, and no configuration key was added. `replica-plan.mjs check` validates the recipe and `pattern-check.mjs` finds the merged change of `Pattern:`.
+
 ## How long each stage takes
 
 The digest ends with one line that tells where the time of an issue goes: the median of each stage that finished in the last seven days, and in brackets how many finished. The five stages follow the labels of the lifecycle:

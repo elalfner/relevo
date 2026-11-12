@@ -198,6 +198,16 @@ Mientras escribes el issue, un script avisa de dos cosas y nunca hace fallar la 
 
 El traspaso también lista, en "Código compartido tocado", los archivos del build que más de un archivo importa o que viven en una carpeta compartida (`components/`, `shared/`, `common/`...). Es información para quien revisa; no se bloquea nada.
 
+### 12. Un patrón a seguir (opcional)
+
+```markdown
+Pattern: #12
+```
+
+Nombra un issue de este repositorio cuyo cambio ya está fusionado y que resolvió el mismo tipo de trabajo (una pantalla, un endpoint, un formulario). `go` busca el pull request que lo cerró en la rama base y le da al desarrollador su diff como plantilla. Solo se lee un `#N` de este repositorio; otro repositorio, varios números o una segunda línea se informan y se ignoran. Un patrón que no existe o cuyo cambio aún no está fusionado detiene la construcción antes de empezar, con la razón `inputs`; una consulta que falla (sin red) nunca bloquea y se lista como no verificada. El cambio se encuentra por el pull request que menciona `#N` (en su título o cuerpo, como los pull requests de Relevo) y se fusionó en la rama base cuando se cerró el issue; un cambio hecho a mano que nunca nombra el issue se informa como no fusionado.
+
+La línea sola no cambia cómo se construyen las tareas. Lo que vuelve *replicada* a una construcción es la receta que la especificación escribe en `tasks.md` (su formato está en [Dónde corre `go`](execution.es.md#construcciones-replicadas)) y que un script verifica. Cada réplica necesita un mapa de renombres y las diferencias de su objetivo, así que el issue debe listar las diferencias de cada objetivo, o vuelve a quien escribe la spec (razón `missing`). El primer objetivo se construye normal y debe pasar el gate y los lentes de QA antes de que empiece cualquier réplica; cada réplica es luego un lanzamiento del desarrollador con un modelo más barato (un nombre por debajo del modelo planeado de `agents.ladder`, nunca bajo el piso del desarrollador), comprobada por el gate antes de la siguiente, y construida por el modelo planeado si falla dos veces. Las réplicas pasan por las mismas rutas protegidas, escaneos, QA y `limits.run_max_cost` que cualquier otro trabajo.
+
 ## Qué más necesita `go` del issue
 
 - **Un hito.** El hito es el lote al que pertenece el issue.
