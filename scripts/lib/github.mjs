@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { resolveLabelNames } from './labels.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
 import { renderMessage } from './messages.mjs';
+import { retryState } from './limit-retry.mjs';
 
 /** The real client: runs the GitHub CLI and returns its output. */
 export function realGh(args) {
@@ -119,6 +120,16 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
     issue.ready_by = by;
     // The same timeline answers for the urgent label: who asked for the early start.
     if (issue.labels.includes(names.urgent)) issue.urgent_by = labelEvent(timeline, names.urgent).by;
+  });
+
+  // The retry time that a comment of a bot gave to an issue that stopped at a usage limit (see limit-retry.mjs). Only `queued` issues
+  // (held until then) and `building` ones (a retry in progress) need it. A comment list that cannot be read leaves it out.
+  issues.filter((i) => i.labels.includes(names.queued) || i.labels.includes(names.building)).forEach((issue) => {
+    try {
+      issue.limit_retry = retryState(apiJson(gh, `repos/${repo}/issues/${issue.number}/comments?per_page=100`, { paginate: true }));
+    } catch {
+      issue.limit_retry = null;
+    }
   });
 
   const wanted = new Set();

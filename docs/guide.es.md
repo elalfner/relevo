@@ -60,7 +60,7 @@ Cuando la puerta está roja, el agente de desarrollo lo corrige antes de que cor
 
 ### Se acabó la cuota
 
-Una ejecución en la nube que se detiene por un límite de uso o un crédito vacío lo dice en el último comentario. El issue no se pierde: vuelve a poner `ready` más tarde, o constrúyelo en tu máquina con `/relevo:go <n> --local`. Con una suscripción la cuota se comparte con el uso interactivo de la misma cuenta, así que un día muy activo puede agotarla.
+Una ejecución en la nube que se detiene por un límite de uso o un crédito vacío lo dice en el último comentario, y el issue vuelve solo a `queued`: el comentario dice cuándo se reintentará (después de la hora de restablecimiento que da el log de la ejecución, en UTC, o, si el log no la da, tras una espera de 30 minutos, luego 2 horas y luego 5 horas, y dice que esa hora es una estimación). El reintento continúa desde el trabajo que se guardó en la rama, empieza solo (los demás issues en espera siguen cuando termina) y se hace como máximo 3 veces; después el issue queda en `qa-failed` y el comentario te pide que lo revises, y puedes volver a poner `ready` o construirlo en tu máquina con `/relevo:go <n> --local`. Si pones `ready` tú mismo, empieza de inmediato. Con una suscripción la cuota se comparte con el uso interactivo de la misma cuenta, así que un día muy activo puede agotarla.
 
 ### No sé cuál es el comportamiento correcto
 

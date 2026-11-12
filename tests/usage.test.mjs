@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checksFromReceipt, limitsExceeded, parseUsageMarker, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
+import { checksFromReceipt, limitReset, limitsExceeded, parseUsageMarker, quotaOf, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
 const write = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
@@ -387,4 +387,105 @@ test('run-usage.mjs reads the language from --language, else from the config, el
   assert.match(run('--config', config, '--language', 'en'), /^This run used 37 turns/);
   assert.match(run('--language', 'es'), /^Esta ejecución usó 37 turnos/);
   assert.match(run(), /^This run used 37 turns/);
+});
+
+// --- The quota and the reset time (usage-limit-retry) ---
+const ev = (info) => ({ type: 'rate_limit_event', rate_limit_info: info });
+const NOW = Date.parse('2026-11-12T10:00:00Z');
+const quotaLog = [
+  ev({ status: 'allowed', rateLimitType: 'seven_day', utilization: 0.75 }),
+  ev({ status: 'allowed', rateLimitType: 'five_hour', utilization: 0.02 }),
+  ev({ status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.77 }),
+  ev({ status: 'allowed', rateLimitType: 'five_hour', utilization: 0.03, resetsAt: Date.parse('2026-11-12T13:00:00Z') / 1000 }),
+  result,
+];
+
+test('Scenario: Subscription run - each window goes from its first utilisation to its last', () => {
+  assert.deepEqual(quotaOf(JSON.stringify(quotaLog)), [
+    { window: 'seven_day', before: 75, after: 77 },
+    { window: 'five_hour', before: 2, after: 3, resets: Date.parse('2026-11-12T13:00:00Z') },
+  ]);
+  const line = usageLine(readUsage(JSON.stringify(quotaLog)));
+  assert.match(line, / Quota: the weekly window went from 75 % to 77 %; the 5-hour window went from 2 % to 3 % \(resets 2026-11-12 13:00 UTC\)\.$/);
+  assert.match(usageLine(readUsage(JSON.stringify(quotaLog)), { language: 'es' }), / Cuota: la ventana semanal pasó de 75 % a 77 %; la ventana de 5 horas pasó de 2 % a 3 % \(se restablece 2026-11-12 13:00 UTC\)\.$/);
+  const marker = JSON.parse(usageMarker(readUsage(JSON.stringify(quotaLog))).match(/relevo:usage (.*) -->/)[1]);
+  assert.equal(marker.quota.length, 2);
+  assert.equal(parseUsageMarker({ user: { type: 'Bot' }, body: usageMarker(readUsage(JSON.stringify(quotaLog))) }).turns, 37);
+});
+
+test('Scenario: API-key repository - no window, no quota phrase and no key', () => {
+  const log = JSON.stringify([ev({ status: 'allowed' }), ev({ status: 'allowed', rateLimitType: 'five_hour' }), result]);
+  assert.deepEqual(quotaOf(log), []);
+  assert.equal(readUsage(log).quota, undefined);
+  assert.doesNotMatch(usageLine(readUsage(log)), /Quota/);
+  assert.doesNotMatch(usageMarker(readUsage(log)), /quota/);
+  assert.deepEqual(quotaOf('plain text'), []);
+});
+
+test('Scenario: A malformed figure - it is left out and the others are shown', () => {
+  const log = JSON.stringify([
+    ev({ rateLimitType: 'seven_day', utilization: '75' }),
+    ev({ rateLimitType: 'seven_day', utilization: 7.5 }),
+    ev({ rateLimitType: 'seven_day', utilization: 0.5 }),
+    ev({ rateLimitType: 'opus_special', utilization: 0.1 }),
+    ev({ rateLimitType: 'bad type!', utilization: 0.1 }),
+  ]);
+  assert.deepEqual(quotaOf(log), [{ window: 'seven_day', before: 50, after: 50 }, { window: 'opus_special', before: 10, after: 10 }]);
+  assert.match(usageLine({ turns: 1, cost: null, tokens: null, quota: quotaOf(log) }), /the weekly window at 50 %; the opus special window at 10 %/);
+});
+
+test('limitReset: seconds, milliseconds and ISO are read; a time that is past or beyond 8 days is not credible', () => {
+  const at = (v) => limitReset(JSON.stringify([ev({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: v })]), NOW);
+  const t = Date.parse('2026-11-12T13:00:00Z');
+  assert.equal(at(t / 1000), t);
+  assert.equal(at(t), t);
+  assert.equal(at('2026-11-12T13:00:00Z'), t);
+  assert.equal(at(NOW / 1000 - 60), null, 'in the past');
+  assert.equal(at((NOW + 9 * 86400000) / 1000), null, 'beyond 8 days');
+  assert.equal(at('soon'), null);
+  assert.equal(at(undefined), null);
+  assert.equal(limitReset(JSON.stringify([ev({ status: 'allowed', resetsAt: t / 1000 })]), NOW), null, 'an allowed event is not a limit');
+  assert.equal(limitReset('Claude AI usage limit reached|1760000000', NOW), null, 'a time in free text is never read');
+  assert.equal(limitReset('', NOW), null);
+});
+
+test('usage-limit.mjs prints the reset time when the log has a credible one, and still exits 0', () => {
+  const future = Math.floor(Date.now() / 1000) + 3 * 3600;
+  const log = write('reset.json', JSON.stringify([ev({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: future })]));
+  const r = spawnSync('node', [CLI('usage-limit.mjs'), '--file', log], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), new Date(future * 1000).toISOString());
+  const none = spawnSync('node', [CLI('usage-limit.mjs'), '--file', write('nore.txt', 'Claude AI usage limit reached')], { encoding: 'utf8' });
+  assert.deepEqual([none.status, none.stdout], [0, '']);
+});
+
+// --- A real event, captured from a one-turn run with a subscription token in the sandbox (anonymous: ids removed) ---
+const REAL_EVENT = { type: 'rate_limit_event', rate_limit_info: {
+  status: 'allowed_warning', resetsAt: 1794495600, rateLimitType: 'seven_day', utilization: 0.84, overageStatus: 'rejected',
+  overageDisabledReason: 'org_level_disabled', isUsingOverage: false, surpassedThreshold: 0.75,
+  unifiedWindows: {
+    five_hour: { utilization: 0.16, resetsAt: 1794480600, status: 'allowed' },
+    seven_day: { utilization: 0.84, resetsAt: 1794495600, status: 'allowed_warning', surpassedThreshold: 0.75 },
+  },
+} };
+
+test('a real event: both windows are read from unifiedWindows, with their own reset times', () => {
+  const log = JSON.stringify([REAL_EVENT, result]);
+  assert.deepEqual(quotaOf(log), [
+    { window: 'five_hour', before: 16, after: 16, resets: 1794480600000 },
+    { window: 'seven_day', before: 84, after: 84, resets: 1794495600000 },
+  ]);
+  assert.match(usageLine(readUsage(log)), /Quota: the 5-hour window at 16 % \(resets 2026-11-12 10:50 UTC\); the weekly window at 84 % \(resets 2026-11-12 15:00 UTC\)\.$/);
+  assert.equal(limitReset(log, 1794400000000), null, 'an allowed event is not a limit');
+});
+
+test('a limit that rejects one window waits for the latest reset of the windows that are not allowed', () => {
+  const rejected = (over) => JSON.stringify([{ type: 'rate_limit_event', rate_limit_info: { ...REAL_EVENT.rate_limit_info, status: 'rejected', ...over } }]);
+  const now = 1794400000000;
+  assert.equal(limitReset(rejected({}), now), 1794495600000, 'the window of rateLimitType');
+  const both = rejected({ unifiedWindows: { five_hour: { utilization: 1, resetsAt: 1794480600, status: 'rejected' }, seven_day: { utilization: 1, resetsAt: 1794495600, status: 'rejected' } } });
+  assert.equal(limitReset(both, now), 1794495600000, 'the account runs again when the last one resets');
+  const five = rejected({ rateLimitType: 'five_hour', resetsAt: 1794480600, unifiedWindows: { five_hour: { utilization: 1, resetsAt: 1794480600, status: 'rejected' }, seven_day: { utilization: 0.5, resetsAt: 1794495600, status: 'allowed' } } });
+  assert.equal(limitReset(five, now), 1794480600000, 'an allowed window does not delay the retry');
+  assert.equal(limitReset(rejected({ resetsAt: 1700000000, unifiedWindows: undefined }), now), null, 'a reset in the past is not credible');
 });

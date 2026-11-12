@@ -6,7 +6,7 @@
 // used, and anything missing is simply left out. Nothing found means nothing is said, never an error.
 
 import { OUTCOME_CLASSES } from './phase-log.mjs';
-import { pickLanguage, usagePhrase } from './messages.mjs';
+import { formatUtc, pickLanguage, usagePhrase } from './messages.mjs';
 
 function entries(text) {
   const t = String(text ?? '').trim();
@@ -165,9 +165,92 @@ export function readUsage(text) {
     usage.turns += sub;
     usage.subagentTurns = sub;
   }
+  const quota = quotaOf(all);
+  if (quota.length) usage.quota = quota;
   if (detail.models) usage.models = detail.models;
   if (detail.agents) usage.agents = detail.agents;
   return usage;
+}
+
+const DAY_MS = 86400000;
+
+/**
+ * A time that a rate-limit event gives, in milliseconds since the epoch, or null. Accepted: seconds or milliseconds since the
+ * epoch (a number below 1e12 is seconds) and an ISO string. The unit is not documented, so anything else is null.
+ */
+function timeOf(v) {
+  let ms = null;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) ms = v < 1e12 ? v * 1000 : v;
+  else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) ms = Date.parse(v);
+  return Number.isFinite(ms) && ms !== null ? ms : null;
+}
+
+const infoOf = (e) => (e && e.type === 'rate_limit_event' && e.rate_limit_info && typeof e.rate_limit_info === 'object' ? e.rate_limit_info : null);
+const WINDOW_NAME = /^[a-z0-9_]{1,30}$/;
+
+/**
+ * The windows that one rate-limit event reports: [{ window, utilization, resetsAt, status }]. A real log (a subscription run seen in
+ * the sandbox) has `unifiedWindows` with every window the account has (`five_hour`, `seven_day`), each with its own utilisation,
+ * reset time and status, and the top-level fields of the window that is the closest to its limit (`rateLimitType`). The windows
+ * come first and the top level fills the one that `unifiedWindows` lacks. A window whose name is not a plain word is left out.
+ */
+function windowsOf(info) {
+  const out = new Map();
+  const add = (name, w) => {
+    if (typeof name !== 'string' || !WINDOW_NAME.test(name) || !w || typeof w !== 'object' || out.has(name)) return;
+    out.set(name, { window: name, utilization: num(w.utilization), resetsAt: timeOf(w.resetsAt), status: typeof w.status === 'string' ? w.status : null });
+  };
+  if (info.unifiedWindows && typeof info.unifiedWindows === 'object' && !Array.isArray(info.unifiedWindows)) {
+    Object.entries(info.unifiedWindows).forEach(([name, w]) => add(name, w));
+  }
+  add(info.rateLimitType, info);
+  return [...out.values()];
+}
+
+/**
+ * The quota windows that the log of the run reports: [{ window, before, after, resets? }], where `window` is the name of the window
+ * (`five_hour`, `seven_day`...), `before` and `after` are the utilisation (a percent) in the first and in the last rate-limit event
+ * that reports it, and `resets` is the last reset time the log gives for it (milliseconds since the epoch). A figure that is not a
+ * number from 0 to 1 is left out, and a window with no figure is not listed. Nothing is estimated: a log without these events
+ * (an API-key repository has no weekly window) gives an empty list. `entriesOrText` is the text of the log or its parsed entries.
+ */
+export function quotaOf(entriesOrText) {
+  const all = Array.isArray(entriesOrText) ? entriesOrText : entries(entriesOrText);
+  const windows = new Map();
+  all.forEach((e) => {
+    const info = infoOf(e);
+    if (!info) return;
+    windowsOf(info).forEach(({ window, utilization, resetsAt }) => {
+      const w = windows.get(window) ?? { window };
+      if (utilization !== null && utilization >= 0 && utilization <= 1) {
+        const pct = Math.round(utilization * 100);
+        if (w.before === undefined) w.before = pct;
+        w.after = pct;
+      }
+      if (resetsAt !== null) w.resets = resetsAt;
+      windows.set(window, w);
+    });
+  });
+  return [...windows.values()].filter((w) => w.before !== undefined);
+}
+
+/**
+ * When the usage limit that stopped the run resets, in milliseconds since the epoch, or null. It comes from the last rate-limit event
+ * that is not `allowed*`: the reset time of every window of it that is not allowed (the top-level window and each of `unifiedWindows`),
+ * the latest of them, because the account can run again only when all of them have reset. A time that is not later than `now` or is more
+ * than 8 days away is not credible and is left out; when none is credible the caller backs off and says so instead of using one.
+ */
+export function limitReset(text, now = Date.now()) {
+  const all = entries(text).filter((e) => e && typeof e === 'object');
+  const hit = [...all].reverse().find((e) => {
+    const info = infoOf(e);
+    return info && typeof info.status === 'string' && !info.status.startsWith('allowed');
+  });
+  if (!hit) return null;
+  const info = infoOf(hit);
+  const blocked = windowsOf(info).filter((w) => w.window === info.rateLimitType || (w.status !== null && !w.status.startsWith('allowed')));
+  const times = blocked.map((w) => w.resetsAt).filter((at) => at !== null && at > now && at - now <= 8 * DAY_MS);
+  return times.length ? Math.max(...times) : null;
 }
 
 /** The limits of relevo.yml that a run went past: [{ limit, used, max }], empty when it kept within them or the figure is unknown. */
@@ -244,7 +327,10 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   const byPlan = plan?.roles?.length ? `${t('models_chosen', { list: plan.roles.map(role).join('; ') })}${plan.notes?.length ? t('plan_notes', { list: plan.notes.join('; ') }) : ''}` : '';
   const raised = plan?.escalations?.length ? t('raised', { list: plan.escalations.map((e) => t('raised_item', { from: e.from, to: e.to, attempt: e.attempt, reason: t(e.reason === 'gate-red' ? 'gate_red' : 'qa_rejected') })).join('; ') }) : '';
   const byCheck = checks?.length ? t('by_check', { list: checks.map((c) => (c.reused ? t('check_reused', { name: c.name, original: c.original }) : t('check_seconds', { name: c.name, seconds: c.seconds }))).join(', ') }) : '';
-  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byModel}${byCheck}${byPlan}${raised}`;
+  const windowName = (w) => (w === 'five_hour' ? t('window_five_hour') : w === 'seven_day' ? t('window_seven_day') : t('window_other', { type: w.replace(/_/g, ' ') }));
+  const quota = (q) => `${windowName(q.window)} ${q.before === q.after ? t('quota_at', { pct: q.before }) : t('quota_moved', { before: q.before, after: q.after })}${q.resets ? t('quota_resets', { at: formatUtc(q.resets) }) : ''}`;
+  const byQuota = usage.quota?.length ? t('by_quota', { list: usage.quota.map(quota).join('; ') }) : '';
+  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byModel}${byCheck}${byQuota}${byPlan}${raised}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without
@@ -274,6 +360,8 @@ export function usageMarker(usage, { subscription = false, phases = null, lenses
   // The model and the effort each role was launched with, and where the choice came from; the digest ignores this key.
   // The seconds of each check of the gate, and whether it was reused; the digest ignores this key.
   if (Array.isArray(checks) && checks.length) figures.checks = checks;
+  // The quota windows the log reported, with the utilisation at the start and at the end; the digest ignores this key.
+  if (Array.isArray(usage.quota) && usage.quota.length) figures.quota = usage.quota;
   if (plan?.roles?.length) figures.plan = plan.roles;
   if (plan?.escalations?.length) figures.escalated = plan.escalations;
   if (OUTCOME_CLASSES.includes(outcomeClass)) figures.class = outcomeClass;

@@ -92,6 +92,7 @@ const SAMPLE = {
   run_progress_closed: { run_url: 'http://r', summary_line: 's' },
   run_failed_early: { issue: 1, job_status: 'failure', run: 'http://r', assignee: 'a' },
   run_no_outcome: { situation: 'no_result', issue: 1, job_status: 'cancelled', run: 'http://r', assignee: 'a' },
+  usage_limit_retry: { issue: 1, assignee: 'a', run: 'http://r', attempt: 1, max: 3, at: '2026-11-12T13:01:00.000Z', reason: 'reset' },
 };
 
 test('every kind renders in every language with no placeholder left over', () => {
