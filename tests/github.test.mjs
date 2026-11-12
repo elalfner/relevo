@@ -399,6 +399,19 @@ test('readRecentBuilds: runs that only decided do not push the builds out of the
   assert.deepEqual(few, [5], 'fewer than ten builds in the window is what was found');
 });
 
+test('readRecentBuilds: a request for the jobs of one run that fails leaves that run out, and the builds of the others are kept', () => {
+  const jobs = { 1: [job('build', 0, 5)], 3: [job('build', 0, 7)] };
+  const base = runsGh({ runs: [1, 2, 3], jobs });
+  const gh = (args) => {
+    if (args[args.length - 1].includes('/runs/2/jobs')) throw new Error('HTTP 502');
+    return base(args);
+  };
+  assert.deepEqual(readRecentBuilds({ gh, repo: REPO }), [5, 7]);
+  // When every request for the jobs fails there is nothing to report: unknown, not an empty list that reads as "no builds".
+  const allFail = (args) => { if (args[args.length - 1].includes('/jobs')) throw new Error('HTTP 403'); return base(args); };
+  assert.equal(readRecentBuilds({ gh: allFail, repo: REPO }), null);
+});
+
 test('readRecentBuilds: no runs is an empty list, an unreadable repository (no actions: read) is null', () => {
   assert.deepEqual(readRecentBuilds({ gh: runsGh({ runs: [], jobs: {} }), repo: REPO }), []);
   assert.equal(readRecentBuilds({ gh: runsGh({ runs: [1], jobs: {}, fail: 'HTTP 403: Resource not accessible by integration' }), repo: REPO }), null);
