@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: An issue can declare a pattern to follow
-`go` SHALL read a `Pattern: #N` line of an issue like `Depends-on:` and `Allow-paths:`: outside code blocks, with or without a list marker. The number SHALL be an issue of the same repository other than the issue itself; anything else on the line (another repository, several numbers, no number, the issue itself) SHALL be reported as a problem and SHALL NOT be used. The line SHALL NOT block the issue by itself: it only names where the template comes from.
+`go` SHALL read a `Pattern: #N` line of an issue like `Depends-on:` and `Allow-paths:`: outside code blocks, with or without a list marker. The number SHALL be an issue of the same repository; anything else on the line (another repository, several numbers, no number, a second line) SHALL be reported as a problem and SHALL NOT be used, and `pattern-check.mjs` SHALL report a pattern that is the issue itself. The line SHALL NOT block the issue by itself: it only names where the template comes from.
 
 #### Scenario: A valid pattern
 - **WHEN** the body has `Pattern: #12`
 - **THEN** the parsed issue has the pattern 12 and no problem
 
 #### Scenario: A pattern that cannot be used
-- **WHEN** the line is `Pattern: acme/api#12`, `Pattern: #12, #13` or names the issue itself
+- **WHEN** the line is `Pattern: acme/api#12` or `Pattern: #12, #13`
 - **THEN** the parsed issue has no pattern and names the problem
 
 ### Requirement: The pattern change is found before building

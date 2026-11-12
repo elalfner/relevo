@@ -321,3 +321,64 @@ test('the command: stage spec prints the assumptions of design.md and exits 0', 
   assert.deepEqual(r.json.assumptions.map((a) => a.missing), [['orders.export']], '`total` is in src/types.ts; openspec/ is not searched');
   assert.match(r.json.assumed, /orders\.export/);
 });
+
+// ---------------------------------------------------------------- pattern
+
+const withPattern = (line) => `${GOOD}\n${line}\n`;
+const found = (state) => ({ number: 12, result: { state, detail: `d ${state}` } });
+
+test('Scenario: The pattern is not merged - needs-spec with the reason inputs, naming #12', () => {
+  const r = checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('not-merged') });
+  assert.deepEqual([r.decision, r.reason], ['needs-spec', 'inputs']);
+  assert.match(missingText(r), /#12.*not merged/);
+  assert.equal(checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('missing') }).reason, 'inputs');
+});
+
+test('Scenario: The pattern is merged - the preflight passes', () => {
+  assert.equal(checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('merged') }).decision, 'ok');
+});
+
+test('Scenario: The lookup fails - the build goes on and the pattern is listed as unverified', () => {
+  const r = checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('unknown') });
+  assert.equal(r.decision, 'ok');
+  assert.deepEqual(r.unverified.map((u) => [u.kind, u.name]), [['pattern', '#12']]);
+});
+
+test('a Pattern: line that cannot be used is an input finding', () => {
+  const r = checkIssueStage({ body: withPattern('Pattern: acme/api#12') });
+  assert.deepEqual([r.decision, r.reason], ['needs-spec', 'inputs']);
+});
+
+test('the command line gives up on the lookup when it has no repository, and never blocks', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pf-pat-'));
+  const file = join(dir, 'issue.md');
+  writeFileSync(file, withPattern('Pattern: #12'));
+  const env = { ...process.env };
+  delete env.GITHUB_REPOSITORY;
+  const run = spawnSync('node', [CLI, '--stage', 'issue', '--issue-file', file, '--config', join(dir, 'none.yml')], { encoding: 'utf8', env });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(run.stdout).unverified[0].kind, 'pattern');
+});
+
+// ---------------------------------------------------------------- recipe
+
+const REPLICATED = (body) => `## 1. Template\n\n- [ ] 1.1 build the orders screen\n\n## Replication recipe\n\n- Template: \`section 1\`\n\n## 2. Replicas\n\n- [ ] 2.1 [replica] Invoices screen\n${body}`;
+
+test('Scenario: The differences are not listed - the specification stage sends the issue back with the reason missing', () => {
+  const r = checkSpecStage({ tasksText: REPLICATED('  - Rename: Orders -> Invoices\n') });
+  assert.deepEqual([r.decision, r.reason], ['needs-spec', 'missing']);
+  assert.match(missingText(r), /replication recipe: task 2\.1 has no Differences:/);
+});
+
+test('a complete recipe passes the specification stage, and a path finding keeps the reason policy', () => {
+  const ok = REPLICATED('  - Rename: Orders -> Invoices\n  - Differences: none\n');
+  assert.equal(checkSpecStage({ tasksText: ok }).decision, 'ok');
+  const both = checkSpecStage({ tasksText: `${REPLICATED('  - Rename: A -> B\n')}\n- [ ] 2.2 edit .github/workflows/ci.yml\n` });
+  assert.equal(both.reason, 'policy');
+});
+
+test('the pattern as template needs the Pattern: line of the issue', () => {
+  const tasks = REPLICATED('  - Rename: A -> B\n  - Differences: none\n').replace('`section 1`', '`pattern`');
+  assert.equal(checkSpecStage({ tasksText: tasks }).decision, 'needs-spec');
+  assert.equal(checkSpecStage({ tasksText: tasks, hasPattern: true }).decision, 'ok');
+});

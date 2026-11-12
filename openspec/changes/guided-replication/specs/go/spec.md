@@ -1,17 +1,17 @@
 ## ADDED Requirements
 
 ### Requirement: The recipe of a replicated build is declared in tasks.md
-A task of `tasks.md` marked `[replica]` SHALL be a replica of a template, and no agent SHALL decide that a task is a replica. The `## Replication recipe` section SHALL name the template as `group K`, `pattern` or backticked paths. Each replica task SHALL have a `Rename:` line (`old -> new` pairs) and a `Differences:` line (or `none`).
+A task of `tasks.md` marked `[replica]` SHALL be a replica of a template, and no agent SHALL decide that a task is a replica. The `## Replication recipe` section SHALL name the template as `section K`, `pattern` or backticked paths. Each replica task SHALL have a `Rename:` line (`old -> new` pairs) and a `Differences:` line (or `none`).
 
 #### Scenario: A marked task
 - **WHEN** a task line starts with `[replica]` after its number
 - **THEN** it is a replica task, and an unmarked task is built normally
 
 ### Requirement: A script checks the recipe before the build
-`scripts/replica-plan.mjs check` SHALL validate the recipe with no model, and the specification stage of the build preflight SHALL send the issue back with the reason `missing` when it fails. `group K` SHALL be a group that is not a replica and comes before the replicas; `pattern` SHALL need a `Pattern:` line in the issue.
+`scripts/replica-plan.mjs check` SHALL validate the recipe with no model, and the specification stage of the build preflight SHALL send the issue back with the reason `missing` when it fails. `section K` SHALL be a group that is not a replica and comes before the replicas; `pattern` SHALL need a `Pattern:` line in the issue.
 
 #### Scenario: A complete recipe
-- **WHEN** the recipe names `group 1` and every replica task has a rename map and differences
+- **WHEN** the recipe names `section 1` and every replica task has a rename map and differences
 - **THEN** the check passes and lists the replica tasks
 
 #### Scenario: The differences are not listed
@@ -19,7 +19,7 @@ A task of `tasks.md` marked `[replica]` SHALL be a replica of a template, and no
 - **THEN** the check names the task and the issue goes back with the reason `missing`
 
 #### Scenario: The template cannot exist
-- **WHEN** the recipe names `pattern` and the issue has no `Pattern:`, or names a group that is itself a replica or comes after the replicas
+- **WHEN** the recipe names `pattern` and the issue has no `Pattern:`, or names a section that holds replicas or comes after the first replica
 - **THEN** the check names the problem
 
 ### Requirement: A replica task is built by its own cheaper launch
@@ -52,7 +52,7 @@ A task of `tasks.md` marked `[replica]` SHALL be a replica of a template, and no
 Before the first replica launches, `go` SHALL run the gate and the QA lenses on the work built so far, with the same retries as step 5. A template that does not pass SHALL end the run through the failure path and SHALL NOT be replicated.
 
 #### Scenario: The template passes
-- **WHEN** group 1 built the template and the gate and QA pass
+- **WHEN** section 1 built the template and the gate and QA pass
 - **THEN** the replicas start
 
 #### Scenario: The template is rejected

@@ -150,6 +150,24 @@ Cuando el issue vuelve a `ready` y su rama existe en el remoto, `go` consulta a 
 
 Los checkpoints quedan en el historial de la rama, porque aplastarlos exigiría un force push; el squash de `/relevo:ship` los quita de la rama base.
 
+## Construcciones replicadas
+
+La especificación escribe la receta en `tasks.md` y un script la verifica (ver también `Pattern:` en [Cómo escribir un issue](issue-format.es.md)):
+
+```markdown
+## Replication recipe
+
+- Template: `section 1`          (o `pattern`, o `src/a.vue`, `tests/a.test.ts`)
+
+## 2. Replicas
+
+- [ ] 2.1 [replica] Pantalla de facturas
+  - Rename: Orders -> Invoices, orders -> invoices
+  - Differences: una columna de total; sin filtro de estado       (o `none`)
+```
+
+Cada tarea marcada `[replica]` necesita una línea `Rename:` y otra `Differences:`. `go` construye primero los grupos que no son réplicas, luego pasa el gate y los lentes de QA sobre esa plantilla con sus propios reintentos, y solo después replica. Cada réplica es su propio grupo: un lanzamiento del desarrollador en modo réplica con solo su plantilla, mapa de renombres y diferencias, con el modelo de `replica-plan.mjs model` (un nombre por debajo del modelo planeado, sin bajar de `agents.dev.floor`; el modelo planeado cuando el mismo objetivo falló el gate dos veces; `model-plan.mjs escalate` tras un tercer fallo), su propio checkpoint, y el gate antes de empezar la siguiente. Los lentes corren una vez al final sobre toda la rama, así que una construcción replicada los corre dos veces. Los checkpoints, las rutas protegidas, el escaneo de credenciales, la guarda de presupuesto y `limits.run_max_cost` se aplican a una réplica igual que a cualquier otro trabajo, y no se agregó ninguna clave de configuración. `replica-plan.mjs check` valida la receta y `pattern-check.mjs` busca el cambio fusionado de `Pattern:`.
+
 ## Cuánto tarda cada etapa
 
 El resumen termina con una línea que dice adónde se va el tiempo de un issue: la mediana de cada etapa que terminó en los últimos siete días y, entre paréntesis, cuántas fueron. Las cinco etapas siguen las etiquetas del ciclo de vida:
