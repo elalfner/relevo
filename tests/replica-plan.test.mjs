@@ -101,10 +101,13 @@ test('Scenario: Two failures - the planned model builds it, and a third asks for
   assert.deepEqual([three.model, three.escalate], ['sonnet', true]);
 });
 
-test('Scenario: Already at the floor - the reason says nothing is saved', () => {
+test('Scenario: Already at the floor - the reason says nothing is saved, and two failures ask for an escalation at once', () => {
   const r = replicaModel({ config: cfg(AUTO_DEV), devModel: 'haiku', failures: 0 });
   assert.equal(r.model, 'haiku');
   assert.match(r.why, /saves nothing/);
+  const two = replicaModel({ config: cfg(AUTO_DEV), devModel: 'haiku', failures: 2 });
+  assert.deepEqual([two.model, two.escalate], ['haiku', true]);
+  assert.deepEqual([replicaModel({ config: cfg(AUTO_DEV), devModel: 'haiku', failures: 1 }).escalate], [false]);
 });
 
 test('Scenario: The developer is set in the configuration - every replica keeps that name', () => {

@@ -42,7 +42,7 @@ A task of `tasks.md` marked `[replica]` SHALL be a replica of a template, and no
 
 #### Scenario: Already at the floor
 - **WHEN** the planned model is the floor
-- **THEN** the replica runs on it and the reason says that nothing is saved
+- **THEN** the replica runs on it and the reason says that nothing is saved, and after two failures the script asks for an escalation from it, because the plan has no stronger model
 
 #### Scenario: The developer is set in the configuration
 - **WHEN** `agents.dev.model` is a name

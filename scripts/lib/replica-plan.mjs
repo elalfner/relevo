@@ -143,7 +143,8 @@ export const FAILURES_BEFORE_STRONGER = 2;
  *   devModel   the model of the developer in the model plan (`dev.model`), which is the stronger one
  *   failures   how many times this same target failed the gate (or was rejected) already
  *
- * Returns { model, escalate, why }. `escalate` is true when even the stronger model failed (3 or more): ask
+ * Returns { model, escalate, why }. `escalate` is true when even the stronger model failed (3 or more), or when there was none (the
+ * replicas already ran on the planned model): ask
  * `model-plan.mjs escalate --from <model>` for the next one. Only `agents.ladder` and `agents.dev.floor` are read.
  */
 export function replicaModel({ config, devModel, failures = 0 }) {
@@ -152,10 +153,17 @@ export function replicaModel({ config, devModel, failures = 0 }) {
   const ladder = config.agents.ladder;
   const top = ladder.indexOf(devModel);
   if (top === -1) return { model: devModel, escalate: false, why: `"${devModel}" is not in agents.ladder (${ladder.join(', ')}), so there is no cheaper model to pick` };
-  if (failures >= FAILURES_BEFORE_STRONGER + 1) return { model: devModel, escalate: true, why: `this target failed ${failures} times, ${devModel} included: raise it with model-plan.mjs escalate` };
-  if (failures >= FAILURES_BEFORE_STRONGER) return { model: devModel, escalate: false, why: `this target failed ${failures} times on the cheaper model, so the stronger model ${devModel} builds it` };
   const floor = ladder.indexOf(dev.floor);
   const at = Math.max(top - 1, floor === -1 ? 0 : floor);
-  if (at >= top) return { model: devModel, escalate: false, why: `${devModel} is already the floor of the developer, so a replica saves nothing` };
-  return { model: ladder[at], escalate: false, why: `one name below ${devModel} in agents.ladder, not below the floor ${ladder[Math.max(floor, 0)]}` };
+  const cheap = ladder[Math.min(at, top)];
+  if (failures < FAILURES_BEFORE_STRONGER) {
+    return cheap === devModel
+      ? { model: devModel, escalate: false, why: `${devModel} is already the floor of the developer, so a replica saves nothing` }
+      : { model: cheap, escalate: false, why: `one name below ${devModel} in agents.ladder, not below the floor ${ladder[Math.max(floor, 0)]}` };
+  }
+  // After two failures the stronger model builds it. When the replicas already ran on the planned model there is no stronger
+  // one in the plan, so the next name up the ladder is asked for (model-plan.mjs escalate), from the last model that ran.
+  if (cheap === devModel) return { model: devModel, escalate: true, why: `this target failed ${failures} times on ${devModel}, which is already the planned model: raise it with model-plan.mjs escalate` };
+  if (failures === FAILURES_BEFORE_STRONGER) return { model: devModel, escalate: false, why: `this target failed ${failures} times on the cheaper model, so the stronger model ${devModel} builds it` };
+  return { model: devModel, escalate: true, why: `this target failed ${failures} times, ${devModel} included: raise it with model-plan.mjs escalate` };
 }
