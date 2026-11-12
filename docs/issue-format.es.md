@@ -185,7 +185,7 @@ Antes de crear el issue, y otra vez antes de que un build gaste un turno de mode
 
 - Para cambiar el issue, edita la línea o el escenario.
 - Para saltarte la regla a propósito, déjalo escrito en una decisión: agrega la línea `Overrides: CLAUDE.md:12` (archivo y línea de la regla) dentro de un bloque `### D<n>.` de `## Decisions`. La comprobación salta esa regla y QA sigue la decisión.
-- Una regla es un requisito salvo que el archivo de reglas la marque como consejo: escribe `[advice]` en su línea, o en un encabezado para marcar todo lo que está debajo. Una regla marcada `[advice]` nunca bloquea, ni tampoco un hallazgo que la cite.
+- Una regla es un requisito salvo que el archivo de reglas la marque como consejo: escribe `[advice]` en su línea, o en un encabezado para marcar todo lo que está debajo. Una regla marcada `[advice]` nunca bloquea, y un hallazgo que trata solo de ella (su texto repite las palabras de la línea) es una nota; un hallazgo del revisor `spec`, `security` o `code` que describe otro problema bloquea aunque cite una línea de consejo.
 
 Una regla que el issue no salta sigue bloqueando en QA: un revisor que encuentra un cambio que la rompe la cita como `Rule: <archivo>:<línea> "<sus palabras>"`, y el build falla aunque el hallazgo venga del revisor `interface` en el último intento.
 
@@ -231,4 +231,4 @@ Model: haiku
 QA-model: sonnet
 ```
 
-`Model:` es para el desarrollador y `QA-model:` para todas las lentes de QA. El valor es un solo nombre de modelo de `agents.ladder`. Puede bajar el modelo libremente y subirlo solo hasta el techo del rol; un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Un rol que no es `auto` conserva el modelo escrito en `relevo.yml`. La comprobación del issue acepta las líneas y solo avisa de una que no se puede leer. Son parte del texto, así que editar una después de `ready` cambia el hash del issue. Mira [Elegir el modelo de cada issue](configuration.es.md#elegir-el-modelo-de-cada-issue-auto).
+`Model:` es para el desarrollador y `QA-model:` para todas las lentes de QA. El valor es un solo nombre de modelo de `agents.ladder`. Puede elegir cualquier modelo entre el piso (`floor`) y el techo (`ceiling`) del rol: un valor por encima del techo se baja hasta él y uno por debajo del piso se sube hasta él, y el plan lo dice (cada lente de QA con su propio rango); un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Un rol que no es `auto` conserva el modelo escrito en `relevo.yml`. La comprobación del issue acepta las líneas y solo avisa de una que no se puede leer. Son parte del texto, así que editar una después de `ready` cambia el hash del issue. Mira [Elegir el modelo de cada issue](configuration.es.md#elegir-el-modelo-de-cada-issue-auto).

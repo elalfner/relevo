@@ -74,3 +74,58 @@ test('the report never carries the pattern or the secret', () => {
   const text = formatExceptionReport(scanWithExceptions(diff('src/schema.ts', LINE), list(entry)));
   assert.ok(!text.includes('hunter2'));
 });
+
+// #163: an exception excuses the finding that its pattern describes, not the whole line.
+const AWS_EXAMPLE = 'AKIAIOSFODNN7EXAMPLE';
+const GH_TOKEN = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';
+const AWS_OTHER = 'AKIAABCDEFGHIJKLMNOP';
+const envEntry = { path: 'config/sample.env', pattern: AWS_EXAMPLE, reason: 'the example key of the AWS documentation' };
+const kinds = (r) => r.findings.map((f) => f.detail).sort();
+
+test('Scenario: A second credential on the listed line - it is reported and the line is not excused (#163)', () => {
+  const r = scanWithExceptions(diff('config/sample.env', `+AWS_KEY=${AWS_EXAMPLE} GH=${GH_TOKEN}\n`), list(envEntry));
+  assert.deepEqual(kinds(r), ['github-token']);
+  assert.equal(r.findings[0].line, 11);
+  assert.deepEqual(r.applied, [{ path: 'config/sample.env', reason: 'the example key of the AWS documentation' }], 'the reviewed finding is still counted');
+});
+
+test('the line that holds only the reviewed text is excused and counted, as before (#163)', () => {
+  const r = scanWithExceptions(diff('config/sample.env', `+AWS_KEY=${AWS_EXAMPLE}\n`), list(envEntry));
+  assert.deepEqual(r.findings, []);
+  assert.equal(r.applied.length, 1);
+  assert.deepEqual(scanWithExceptions(diff('config/sample.env', `+AWS_KEY=${AWS_EXAMPLE}\n`, 400), list(envEntry)).findings, [], 'the line moved');
+});
+
+test('Scenario: A second key of the same kind on the listed line - the other key is reported (#163)', () => {
+  const r = scanWithExceptions(diff('config/sample.env', `+KEYS=${AWS_EXAMPLE},${AWS_OTHER}\n`), list(envEntry));
+  assert.deepEqual(kinds(r), ['aws-access-key']);
+  assert.deepEqual(r.applied, [], 'one finding covers both keys and one of them is not described by the pattern');
+});
+
+test('Scenario: A pattern that is not on the finding - the credential is reported (#163)', () => {
+  const next = { path: 'config/sample.env', pattern: 'example only, not real', reason: 'a comment is not the credential' };
+  const r = scanWithExceptions(diff('config/sample.env', `+AWS_KEY=${AWS_OTHER} # example only, not real\n`), list(next));
+  assert.deepEqual(kinds(r), ['aws-access-key']);
+  assert.deepEqual(r.applied, []);
+});
+
+test('a pattern that holds the credential with its name, or lies inside the matched assignment, still excuses it (#163)', () => {
+  const wide = { ...envEntry, pattern: `AWS_KEY=${AWS_EXAMPLE}` };
+  assert.deepEqual(scanWithExceptions(diff('config/sample.env', `+AWS_KEY=${AWS_EXAMPLE}\n`), list(wide)).findings, []);
+  const inside = scanWithExceptions(diff('src/schema.ts', LINE), list(entry));
+  assert.deepEqual(inside.findings, [], "'password: 'hunter2' lies inside the assigned secret");
+});
+
+test('two entries on one line: each excuses its own finding, and one left over is reported (#163)', () => {
+  const gh = { path: 'config/sample.env', pattern: GH_TOKEN, reason: 'a revoked token kept as an example' };
+  const both = scanWithExceptions(diff('config/sample.env', `+A=${AWS_EXAMPLE} B=${GH_TOKEN}\n`), list(envEntry, gh));
+  assert.deepEqual(both.findings, []);
+  assert.equal(both.applied.length, 2);
+  const one = scanWithExceptions(diff('config/sample.env', `+A=${AWS_EXAMPLE} B=${GH_TOKEN}\n`), list(gh));
+  assert.deepEqual(kinds(one), ['aws-access-key']);
+});
+
+test('a marker next to a reviewed credential is still reported (#163)', () => {
+  const r = scanWithExceptions(diff('config/sample.env', `+AWS_KEY=${AWS_EXAMPLE} # ${MARKER}\n`), list(envEntry));
+  assert.ok(r.findings.some((f) => f.kind === 'marker'));
+});

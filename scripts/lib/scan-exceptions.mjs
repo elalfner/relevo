@@ -2,12 +2,13 @@
 // listed with a reason" of the go specification.
 //
 // The list is `.relevo/scan-exceptions.json`: { "exceptions": [{ "path", "pattern", "reason" }] }. An entry excuses a credential
-// finding when the file matches `path` (a file or a glob of files) and the added line contains `pattern` as plain text; the
-// line number never matters. Temporary markers are never excused. `.relevo/` is a protected path and the list is read from a
-// commit, so an unattended run cannot change it.
+// finding when the file matches `path` (a file or a glob of files) and `pattern`, as plain text, is on the text that the finding
+// matched (it holds it or lies inside it); another credential on the same line is not excused. The line number never matters.
+// Temporary markers are never excused. `.relevo/` is a protected path and the list is read from a commit, so an unattended run
+// cannot change it.
 
 import { matchesGlob } from './protected-paths.mjs';
-import { addedLines, scanDiff } from './scan.mjs';
+import { addedLines, credentialMatches, scanDiff } from './scan.mjs';
 
 export const EXCEPTIONS_FILE = '.relevo/scan-exceptions.json';
 export const MIN_PATTERN_LENGTH = 8;
@@ -61,18 +62,37 @@ export function scanWithExceptions(diffText, exceptionsText) {
   const texts = new Map(addedLines(diffText).map((l) => [`${l.file}:${l.line}`, l.text]));
   const applied = [];
   const excused = new Set();
-  // A line is excused only when every finding on it is a credential that the same entry covers.
   const byLine = new Map();
   all.forEach((f) => byLine.set(`${f.file}:${f.line}`, [...(byLine.get(`${f.file}:${f.line}`) ?? []), f]));
   byLine.forEach((fs, key) => {
-    if (fs.some((f) => f.kind !== 'credential')) return;
+    // A line with anything but a credential on it is never excused.
+    if (fs.some((f) => f.kind !== 'credential') || !fs[0].file) return;
     const text = texts.get(key) ?? '';
-    const entry = entries.find((e) => fs[0].file && matchesGlob(fs[0].file, e.path) && text.includes(e.pattern));
-    if (!entry) return;
-    excused.add(key);
-    applied.push({ path: fs[0].file, reason: entry.reason });
+    const matches = credentialMatches(text);
+    const used = new Set();
+    fs.forEach((f) => {
+      // An entry covers a finding only when it describes every match of that kind on the line. When that cannot be told
+      // (no match was found for the finding), nothing is excused.
+      const entry = entries.find((e) => matchesGlob(f.file, e.path) && describes(e.pattern, text, matches.filter((m) => m.name === f.detail)));
+      if (!entry) return;
+      excused.add(f);
+      if (!used.has(entry)) { used.add(entry); applied.push({ path: f.file, reason: entry.reason }); }
+    });
   });
-  return { findings: all.filter((f) => !excused.has(`${f.file}:${f.line}`)), applied, refused };
+  return { findings: all.filter((f) => !excused.has(f)), applied, refused };
+}
+
+/**
+ * Does the `pattern` describe all of `matches` (the places where one kind of credential matched in `text`)? Every match has to be
+ * nested with an occurrence of the pattern: the pattern holds the match (`KEY=<the key>`) or lies inside it (the start of the
+ * assignment). A pattern that is merely on the same line, or that touches a match by an edge, describes nothing.
+ */
+function describes(pattern, text, matches) {
+  if (matches.length === 0) return false;
+  const spots = [];
+  for (let at = text.indexOf(pattern); at !== -1; at = text.indexOf(pattern, at + 1)) spots.push({ start: at, end: at + pattern.length });
+  const nested = (a, b) => (a.start <= b.start && b.end <= a.end) || (b.start <= a.start && a.end <= b.end);
+  return matches.every((m) => spots.some((p) => nested(p, m)));
 }
 
 /** Lines that say what was excused and what was refused. Never contains the pattern or the secret. */

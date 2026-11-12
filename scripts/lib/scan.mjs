@@ -46,6 +46,21 @@ export function findCredentials(text, { strict = false } = {}) {
   return found;
 }
 
+/**
+ * Returns [{ name, start, end }] for every credential-looking match in `text`, with where it sits: the same matches as
+ * `findCredentials` (which reports a kind once, however many matches it has), without the opaque-token check, which needs `strict`.
+ */
+export function credentialMatches(text) {
+  const out = [];
+  CREDENTIAL_PATTERNS.forEach(({ name, re, accept }) => {
+    const all = re.global ? re : new RegExp(re.source, `${re.flags}g`);
+    for (const match of text.matchAll(all)) {
+      if (!accept || accept(match, text)) out.push({ name, start: match.index, end: match.index + match[0].length });
+    }
+  });
+  return out;
+}
+
 /** Returns the marker found in a line of text, or null. */
 export function findMarker(text) {
   const m = text.match(MARKER_RE);

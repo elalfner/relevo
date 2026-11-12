@@ -185,7 +185,7 @@ Before the issue is created, and again before a build spends a model turn, a scr
 
 - To change the issue, edit the line or the scenario.
 - To override the rule on purpose, record it in a decision: add the line `Overrides: CLAUDE.md:12` (the file and line of the rule) inside a `### D<n>.` block under `## Decisions`. The check then skips that rule, and QA follows the decision.
-- A rule is a requirement unless the rules file marks it as advice: write `[advice]` on its line, or on a heading to mark everything under it. A rule marked `[advice]` never blocks, and neither does a finding that cites it.
+- A rule is a requirement unless the rules file marks it as advice: write `[advice]` on its line, or on a heading to mark everything under it. A rule marked `[advice]` never blocks, and a finding that is only about it (its text repeats the words of the line) is a note; a finding of the `spec`, `security` or `code` reviewer that describes another problem still blocks even when it cites an advice line.
 
 A rule that the issue does not override still blocks in QA: a lens that finds a change breaking one cites it as `Rule: <file>:<line> "<its words>"`, and the build fails even when the finding comes from the `interface` lens on the last attempt.
 
@@ -231,4 +231,4 @@ Model: haiku
 QA-model: sonnet
 ```
 
-`Model:` is for the developer and `QA-model:` for every QA lens. The value is a single model name of `agents.ladder`. It can lower the model freely and can raise it only up to the ceiling of the role; a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. A role that is not `auto` keeps the model written in `relevo.yml`. The check of the issue accepts the lines and only warns about one that cannot be read. They are part of the text, so editing one after `ready` changes the hash of the issue. See [Choosing the model for each issue](configuration.md#choosing-the-model-for-each-issue-auto).
+`Model:` is for the developer and `QA-model:` for every QA lens. The value is a single model name of `agents.ladder`. It can choose any model between the `floor` and the `ceiling` of the role: a value above the ceiling is lowered to it and one below the floor is raised to it, and the plan says so (each QA lens by its own range); a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. A role that is not `auto` keeps the model written in `relevo.yml`. The check of the issue accepts the lines and only warns about one that cannot be read. They are part of the text, so editing one after `ready` changes the hash of the issue. See [Choosing the model for each issue](configuration.md#choosing-the-model-for-each-issue-auto).

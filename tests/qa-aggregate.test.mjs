@@ -157,7 +157,7 @@ test('Scenario: The quote is not on that line - it is listed as unverified and c
 });
 
 test('Scenario: Advice - a finding that cites a rule marked [advice] is an advisory note', () => {
-  const r = withRules({ ...ok, spec: rejected('1. Names are long. Rule: CLAUDE.md:4 "Prefer short names"') });
+  const r = withRules({ ...ok, spec: rejected('1. Names are long: "Prefer short names" was not followed. Rule: CLAUDE.md:4 "Prefer short names"') });
   assert.equal(r.result, 'QA PASSED');
   assert.equal(r.advisory.length, 1);
   assert.deepEqual(r.findings, []);
@@ -185,4 +185,64 @@ test('CLI: --rules-file reads the files from --repo-root and prints unverified',
   const r = spawnSync('node', [cli, ...base, '--rules-file', 'CLAUDE.md,missing.md', '--repo-root', dir], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.deepEqual(JSON.parse(r.stdout).rules_unread, ['missing.md']);
+});
+
+// #161: advice downgrades a finding of an always-blocking lens (spec, security) only when the finding names the rule.
+const ADVICE_RULES = parseRules('CLAUDE.md', `# Rules
+Every list must offer export.
+Prefer small functions [advice]
+`);
+const ADVICE_CITE = 'Rule: CLAUDE.md:3 "prefer small functions"';
+const withAdvice = (reports, o = {}) => aggregate({ reports, plan: o.plan ?? ALL, attempt: o.attempt ?? 1, retries: o.retries ?? 1, rules: ADVICE_RULES });
+
+test('Scenario: A real problem that cites advice on the side - the security lens still blocks', () => {
+  const r = withAdvice({ ...ok, security: rejected(`1. The query is built from user input, so it can be injected (db.js:9). ${ADVICE_CITE}`) });
+  assert.equal(r.result, 'QA REJECTED');
+  assert.equal(r.findings.length, 1);
+  assert.equal(r.findings[0].lens, 'security');
+  assert.deepEqual(r.advisory, []);
+});
+
+test('the same on the spec lens, with the citation on its own line', () => {
+  const r = withAdvice({ ...ok, spec: rejected('1. The scenario for an empty list is not implemented (list.js:4).', `   ${ADVICE_CITE}`) });
+  assert.equal(r.result, 'QA REJECTED');
+  assert.equal(r.findings[0].lens, 'spec');
+  assert.deepEqual(r.advisory, []);
+});
+
+test('Scenario: An always-blocking lens reports only that advice was not followed - it is advisory', () => {
+  const r = withAdvice({ ...ok, spec: rejected(`1. The function in list.js:4 is long, so "Prefer small functions" was not followed. ${ADVICE_CITE}`) });
+  assert.equal(r.result, 'QA PASSED');
+  assert.equal(r.advisory.length, 1);
+  assert.deepEqual(r.findings, []);
+});
+
+test('a finding that cites two advice lines must name both, or it blocks', () => {
+  const rules = parseRules('CLAUDE.md', 'Prefer small functions [advice]\nPrefer short names [advice]\n');
+  const agg = (text) => aggregate({ reports: { ...ok, security: rejected(text) }, plan: ALL, attempt: 1, retries: 1, rules });
+  const both = 'Rule: CLAUDE.md:1 "prefer small functions"\n   Rule: CLAUDE.md:2 "prefer short names"';
+  assert.equal(agg(`1. Both "prefer small functions" and "prefer short names" were ignored.\n   ${both}`).result, 'QA PASSED');
+  assert.equal(agg(`1. "prefer small functions" was ignored.\n   ${both}`).result, 'QA REJECTED');
+});
+
+test('Scenario: Advice and a hard rule, or advice and an unverified line', () => {
+  const hard = withAdvice({ ...ok, security: rejected(`1. A long function. ${ADVICE_CITE}`, '   Rule: CLAUDE.md:2 "Every list must offer export"') });
+  assert.equal(hard.result, 'QA REJECTED');
+  assert.equal(hard.findings[0].rule.line, 2, 'the hard rule decides');
+  const unverified = withAdvice({ ...ok, security: rejected(`1. "prefer small functions" was ignored. ${ADVICE_CITE}`, '   Rule: CLAUDE.md:99 "nothing"') });
+  assert.equal(unverified.result, 'QA REJECTED');
+  assert.equal(unverified.unverified.length, 1);
+});
+
+test('the interface lens, which blocks only while a retry remains, keeps treating an advice citation as a note', () => {
+  const iface = rejected(`1. Too long. ${ADVICE_CITE}`);
+  assert.equal(withAdvice({ ...ok, interface: iface }, { attempt: 1, retries: 1 }).result, 'QA PASSED', 'blocks by retry, advice stays a note');
+  assert.equal(withAdvice({ ...ok, interface: iface }, { attempt: 2, retries: 1 }).result, 'QA PASSED');
+});
+
+test('the code lens always blocks: a real problem with advice on the side blocks, a finding that names the advice is a note', () => {
+  const real = withAdvice({ ...ok, code: rejected(`1. The loop never ends when the list is empty (list.js:8). ${ADVICE_CITE}`) });
+  assert.equal(real.result, 'QA REJECTED');
+  const note = withAdvice({ ...ok, code: rejected(`1. "Prefer small functions" was not followed in list.js. ${ADVICE_CITE}`) });
+  assert.equal(note.result, 'QA PASSED');
 });
