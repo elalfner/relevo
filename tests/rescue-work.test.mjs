@@ -283,3 +283,73 @@ test('an unreadable decision keeps nothing and still exits 0', () => {
   assert.equal(JSON.parse(r.stdout).state, 'nothing');
   assert.equal(hasRemoteBranch(f), false);
 });
+
+// ---------- The number of checkpoints the branch holds goes to the comment of the run (#167)
+
+function commitCheckpoint(f, file, k, n) {
+  put(f.work, file, `${k}\n`);
+  git(f.work, 'add', '.');
+  git(f.work, 'commit', '-qm', `wip: checkpoint ${k}/${n} (#7)`);
+}
+
+test('Scenario: The number of checkpoints is known - the result and the output file carry the checkpoints the branch holds over the base', () => {
+  const f = fixture();
+  commitCheckpoint(f, 'src/one.js', 1, 3);
+  commitCheckpoint(f, 'src/two.js', 2, 3);
+  put(f.work, 'src/late.js', 'y\n');
+  const outFile = join(f.root, 'github-output');
+  writeFileSync(outFile, '');
+  const out = rescue(f, { args: ['--github-output', outFile] });
+  assert.equal(out.state, 'kept', out.detail);
+  assert.equal(out.checkpoints, 2, 'the limit commit of the rescue is not a checkpoint');
+  const lines = readFileSync(outFile, 'utf8').trim().split('\n');
+  assert.deepEqual(lines.map((l) => l.split('=')[0]), ['state', 'branch', 'detail', 'checkpoints']);
+  assert.equal(lines[3], 'checkpoints=2');
+});
+
+test('a branch with no checkpoint reports 0, which is a number and not an unknown', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'x\n');
+  const outFile = join(f.root, 'github-output');
+  writeFileSync(outFile, '');
+  const out = rescue(f, { args: ['--github-output', outFile] });
+  assert.equal(out.state, 'kept', out.detail);
+  assert.equal(out.checkpoints, 0);
+  assert.match(readFileSync(outFile, 'utf8'), /^checkpoints=0$/m);
+});
+
+test('Scenario: The number of checkpoints cannot be counted - nothing is reported, never 0', () => {
+  const countless = (f, decision, wrap = (g) => g) => rescueWork({ git: wrap((args) => git(f.work, ...args)), decision: readDecision(b64(decision)) });
+  // No base branch in the decision.
+  const noBase = fixture();
+  put(noBase.work, 'src/a.js', 'x\n');
+  const a = countless(noBase, { ...DECISION, base: undefined });
+  assert.equal(a.state, 'kept', a.detail);
+  assert.ok(!('checkpoints' in a));
+  // The list of commits cannot be read.
+  const broken = fixture();
+  commitCheckpoint(broken, 'src/one.js', 1, 2);
+  put(broken.work, 'src/b.js', 'x\n');
+  const b = countless(broken, DECISION, (g) => (args) => {
+    if (args[0] === 'log') throw new Error('git log failed');
+    return g(args);
+  });
+  assert.equal(b.state, 'kept', b.detail);
+  assert.ok(!('checkpoints' in b));
+  // The work went to a branch of its own: there is no checkpoint count to give.
+  const own = fixture();
+  git(own.work, 'checkout', '-q', 'dev'); // the branch of the issue exists here, so the work goes to `rescue/`
+  put(own.work, 'src/c.js', 'x\n');
+  const c = rescue(own);
+  assert.equal(c.branch, 'rescue/feature/7-x');
+  assert.ok(!('checkpoints' in c));
+});
+
+test('a result that is not kept carries no number of checkpoints', () => {
+  const f = fixture();
+  commitCheckpoint(f, 'src/one.js', 1, 2);
+  put(f.work, '.github/workflows/x.yml', 'on: push\n');
+  const out = rescue(f);
+  assert.equal(out.state, 'unsafe');
+  assert.ok(!('checkpoints' in out));
+});

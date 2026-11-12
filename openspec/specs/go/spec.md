@@ -963,7 +963,7 @@ When `go` stops because of a limit, it SHALL commit the work in progress with th
 - **THEN** `fix` treats it as work in progress, the same as the work that QA rejected
 
 ### Requirement: The work is kept when the runner cuts the run
-When the agent step is cut by the runner or the job is cancelled or times out, and the issue is still `building` or `ready`, a step that always runs SHALL commit and push the working tree the same way, before the report of the run and before the cleanup. It SHALL NOT push when a commit is refused, SHALL NOT force-push and SHALL NOT overwrite a remote branch: it pushes only a fast-forward of what the remote has. When the work is kept on the branch of the issue, the comment SHALL say that applying `relevo:ready` again resumes from the last checkpoint and builds only the pending tasks (with the number of checkpoints when it is known, and what it resumes from when there is none), and that a changed issue text or a commit by a person stops the run instead. It SHALL NOT say that the run builds from the start. When the work is on a branch of its own because the run was not on the branch of the issue, the comment MAY say that the run builds from the start.
+When the agent step is cut by the runner or the job is cancelled or times out, and the issue is still `building` or `ready`, a step that always runs SHALL commit and push the working tree the same way, before the report of the run and before the cleanup. It SHALL NOT push when a commit is refused, SHALL NOT force-push and SHALL NOT overwrite a remote branch: it pushes only a fast-forward of what the remote has. When the work is kept on the branch of the issue, the comment SHALL say that applying `relevo:ready` again resumes from the last checkpoint and builds only the pending tasks (with the number of checkpoints when it is known, and what it resumes from when there is none), and that a changed issue text or a commit by a person stops the run instead. It SHALL NOT say that the run builds from the start. When the work is on a branch of its own because the run was not on the branch of the issue, the comment MAY say that the run builds from the start. The number of checkpoints SHALL be the number the branch holds over the base branch, counted by the same rule the resume check uses; when it cannot be counted the comment SHALL NOT state a number and SHALL NOT say that none exists.
 
 #### Scenario: The job is cut and the run recorded no outcome
 - **WHEN** the agent step is cancelled or ends without an outcome and the working tree holds changes
@@ -976,6 +976,14 @@ When the agent step is cut by the runner or the job is cancelled or times out, a
 #### Scenario: The branch holds no checkpoint
 - **WHEN** the work was kept on the branch of the issue and no checkpoint exists, or their number is not known
 - **THEN** the comment says that `relevo:ready` resumes from the work kept on the branch, and does not say "from the start"
+
+#### Scenario: The number of checkpoints is known
+- **WHEN** the work was kept on the branch of the issue and the branch holds 2 checkpoints over the base branch
+- **THEN** the comment says that `relevo:ready` resumes from the last checkpoint and that 2 are saved
+
+#### Scenario: The number of checkpoints cannot be counted
+- **WHEN** the count fails or the base branch is not known
+- **THEN** the comment uses the wording for an unknown count and does not say that no checkpoint was saved
 
 #### Scenario: The scans refuse the rescue commit
 - **WHEN** the changes include a protected path, a restricted file, a temporary marker or a possible credential

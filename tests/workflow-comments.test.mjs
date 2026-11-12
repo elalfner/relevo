@@ -146,3 +146,23 @@ test('Scenario: The scripts cannot be run - the build job posts one English sent
 test('the build job uses the copy of the plugin installed for the reports when the toolchain check did not unpack one', () => {
   assert.match(run(1, { language: 'es', renderAt: '.relevo-plugin' }).body, /^@ana La ejecución terminó sin resultado/);
 });
+
+test('Scenario: The number of checkpoints is known - the report step passes the count of the rescue to the comment, and an empty count stays unknown', () => {
+  const kept = { RESCUE_STATE: 'kept', RESCUE_BRANCH: 'feature/12-x' };
+  assert.match(run(1, { language: 'en', env: { ...kept, RESCUE_CHECKPOINTS: '2' } }).body, /resume from the last checkpoint \(2 saved\) and build only the pending tasks/);
+  assert.match(run(1, { language: 'es', env: { ...kept, RESCUE_CHECKPOINTS: '2' } }).body, /reanudar desde el último checkpoint \(2 guardados\)/);
+  assert.match(run(1, { language: 'en', env: { ...kept, RESCUE_CHECKPOINTS: '0' } }).body, /resume from the work kept on the branch \(no checkpoint was saved yet\)/);
+  // A count the rescue could not make is an empty output: it is not 0, so the comment must not say that none exists.
+  ['', undefined].forEach((value) => {
+    const env = value === undefined ? kept : { ...kept, RESCUE_CHECKPOINTS: value };
+    const body = run(1, { language: 'en', env }).body;
+    assert.match(body, /resume from the last point saved on the branch/);
+    assert.doesNotMatch(body, /no checkpoint was saved yet/);
+  });
+  // Anything that is not a whole number is ignored.
+  assert.match(run(1, { language: 'en', env: { ...kept, RESCUE_CHECKPOINTS: 'many' } }).body, /resume from the last point saved on the branch/);
+});
+
+test('the report step reads the count from the output of the rescue step', () => {
+  assert.match(workflow, /RESCUE_CHECKPOINTS: \$\{\{ steps\.rescue\.outputs\.checkpoints \}\}/);
+});

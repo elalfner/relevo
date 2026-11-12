@@ -10,7 +10,7 @@
 // `git(args) -> stdout` is injected so the logic can be tested; it throws when git fails.
 
 import { commitChange, refusalText } from './commit-change.mjs';
-import { withIssueHash, withTasks, wipSubject } from './wip-commit.mjs';
+import { isCheckpoint, withIssueHash, withTasks, wipSubject } from './wip-commit.mjs';
 import { changedSince } from './tree-baseline.mjs';
 
 // What a run leaves in the working tree that is not the work: tools and the folders of the Relevo scripts.
@@ -143,7 +143,22 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
   } catch (error) {
     return result('not_pushed', { files: paths.length, commit, detail: `the push failed: ${firstLine(error)}` });
   }
-  return result('kept', { files: paths.length, commit, detail: commit ? `committed ${paths.length} file(s) as ${commit}` : 'the commits of the branch were pushed' });
+  return result('kept', { files: paths.length, commit, detail: commit ? `committed ${paths.length} file(s) as ${commit}` : 'the commits of the branch were pushed', ...checkpointsOf(git, decision) });
+}
+
+/**
+ * The number of checkpoints the branch holds over the base, counted with the rule of the resume check, for the comment of a run
+ * that was cut: `{ checkpoints }`, or `{}` when it cannot be counted (no base, a branch of its own, a git error). An unknown is
+ * never reported as 0, which the comment reads as "no checkpoint was saved".
+ */
+function checkpointsOf(git, decision) {
+  if (decision.base === null || decision.branch.startsWith('rescue/')) return {};
+  try {
+    const subjects = git(['log', '--format=%s', `origin/${decision.base}..HEAD`]).split('\n');
+    return { checkpoints: subjects.filter((subject) => isCheckpoint(subject, decision.issue)).length };
+  } catch {
+    return {};
+  }
 }
 
 function firstLine(error) {
