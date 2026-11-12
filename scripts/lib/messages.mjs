@@ -46,6 +46,7 @@ const REQUIRED = {
   run_progress_closed: [],
   run_failed_early: ['issue', 'job_status', 'run'],
   run_no_outcome: ['situation', 'issue', 'run'],
+  usage_limit_retry: ['issue', 'at', 'attempt', 'max', 'reason', 'run'],
 };
 
 // The lifecycle state whose next step each message shows (see next-step.mjs, the only place that knows the commands).
@@ -247,6 +248,7 @@ export const CATALOG = {
     ],
     run_failed_early: ['{{body}}'],
     run_no_outcome: ['{{body}}'],
+    usage_limit_retry: ['{{body}}', '', '{{marker}}'],
   },
   es: {
     built: [
@@ -435,6 +437,7 @@ export const CATALOG = {
     ],
     run_failed_early: ['{{body}}'],
     run_no_outcome: ['{{body}}'],
+    usage_limit_retry: ['{{body}}', '', '{{marker}}'],
   },
 };
 
@@ -468,6 +471,13 @@ export const USAGE_TEXT = {
     by_check: ' Checks of the gate: {{list}}.',
     check_reused: '{{name}} reused ({{original}}s when it ran)',
     check_seconds: '{{name}} {{seconds}}s',
+    by_quota: ' Quota: {{list}}.',
+    window_five_hour: 'the 5-hour window',
+    window_seven_day: 'the weekly window',
+    window_other: 'the {{type}} window',
+    quota_at: 'at {{pct}} %',
+    quota_moved: 'went from {{before}} % to {{after}} %',
+    quota_resets: ' (resets {{at}})',
   },
   es: {
     used: 'Esta ejecución usó {{parts}}.',
@@ -495,8 +505,20 @@ export const USAGE_TEXT = {
     by_check: ' Checks de la puerta: {{list}}.',
     check_reused: '{{name}} reutilizado ({{original}}s cuando corrió)',
     check_seconds: '{{name}} {{seconds}}s',
+    by_quota: ' Cuota: {{list}}.',
+    window_five_hour: 'la ventana de 5 horas',
+    window_seven_day: 'la ventana semanal',
+    window_other: 'la ventana {{type}}',
+    quota_at: 'en {{pct}} %',
+    quota_moved: 'pasó de {{before}} % a {{after}} %',
+    quota_resets: ' (se restablece {{at}})',
   },
 };
+
+/** A time (milliseconds since the epoch) as `2026-11-12 18:30 UTC`: the same in every language. */
+export function formatUtc(ms) {
+  return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
 
 /** The phrase `key` of the usage comment in `language`, with its {{placeholders}} filled; English when the language lacks it. */
 export function usagePhrase(language, key, vars = {}) {
@@ -581,7 +603,7 @@ function keptNote(values, es) {
   return '';
 }
 
-const SITUATIONS = ['kept', 'usage_limit', 'no_result'];
+const SITUATIONS = ['kept', 'usage_limit', 'usage_limit_stopped', 'no_result'];
 
 function runNoOutcome(values, es) {
   if (!SITUATIONS.includes(values.situation)) throw new Error(`message "run_no_outcome" has an unknown situation "${values.situation}"`);
@@ -602,6 +624,16 @@ function runNoOutcome(values, es) {
       : `${mention(values)}The run stopped before it finished (${why}). The work done before the stop was kept on the branch \`${values.rescue_branch}\` as a work-in-progress commit.${next} ${values.run}`;
   }
   const kept = keptNote(values, es);
+  // The retries after a usage limit were used up: the issue is not queued again and a person is asked.
+  if (values.situation === 'usage_limit_stopped') {
+    const max = present(values.max) ? values.max : 3;
+    const keptBranch = values.rescue_state === 'kept' && present(values.rescue_branch)
+      ? (es ? ` El trabajo hecho está en la rama \`${values.rescue_branch}\`: \`/relevo:fix ${values.issue}\` continúa desde ahí.` : ` The work done is on the branch \`${values.rescue_branch}\`: \`/relevo:fix ${values.issue}\` continues from it.`)
+      : kept;
+    return es
+      ? `${mention(values)}La ejecución volvió a detenerse por el límite de uso (o el crédito) de la cuenta del modelo, tras ${max} reintentos automáticos. Los reintentos se detuvieron aquí para no gastar la cuota que esperan. El código no tiene ningún problema: cuando la cuota esté disponible, quita ${RETRY} y pon \`relevo:ready\` otra vez, o constrúyelo en tu máquina con \`/relevo:go ${values.issue} --local\`. ${values.run}${keptBranch}`
+      : `${mention(values)}The run stopped at the usage limit (or the credit) of the model account again, after ${max} automatic retries. The retries stopped here so that they do not use the quota they wait for. Nothing is wrong with the code: when the quota is back, remove ${RETRY} and apply \`relevo:ready\` again, or build it on your machine with \`/relevo:go ${values.issue} --local\`. ${values.run}${keptBranch}`;
+  }
   // A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
   if (values.situation === 'usage_limit') {
     return es
@@ -617,6 +649,26 @@ function runNoOutcome(values, es) {
   return es
     ? `${mention(values)}La ejecución terminó sin resultado (estado del job: ${values.job_status}), así que no se construyó ni se informó nada.${cutnote} Lee el log para ver por qué: ${values.run}. Cuando la causa esté resuelta, quita ${RETRY} y pon \`relevo:ready\` otra vez.${kept}`
     : `${mention(values)}The run ended without a result (job status: ${values.job_status}), so nothing was built or reported.${cutnote} Read the log to see why: ${values.run}. When the cause is fixed, remove ${RETRY} and apply \`relevo:ready\` again.${kept}`;
+}
+
+// The comment of an issue that goes back to the queue after a usage limit. `at` is an ISO time: the log's reset time plus a minute
+// (reason `reset`) or a back-off (reason `backoff`), which the comment says is a guess. The work kept on the branch is named.
+function usageLimitRetry(values, es) {
+  const when = Date.parse(values.at);
+  if (!Number.isFinite(when)) throw new Error('message "usage_limit_retry" needs "at" to be an ISO time');
+  const at = formatUtc(when);
+  if (!Number.isInteger(Number(values.attempt)) || !['reset', 'backoff'].includes(values.reason)) throw new Error('message "usage_limit_retry" needs a whole "attempt" and a "reason" of reset or backoff');
+  // The marker is built here from the checked fields, never taken from the data. Its format is the one of limit-retry.mjs.
+  values.marker = `<!-- relevo:retry ${JSON.stringify({ at: new Date(when).toISOString(), attempt: Number(values.attempt), reason: values.reason })} -->`;
+  const why = values.reason === 'reset'
+    ? (es ? `La cuenta recupera su cuota después de ${at}, según el log de la ejecución.` : `The quota of the account resets at ${at}, according to the log of the run.`)
+    : (es ? `El log de la ejecución no dice cuándo se restablece la cuota, así que el reintento es después de ${at}: es una espera creciente (30 minutos, 2 horas, 5 horas), no una predicción.` : `The log of the run does not say when the quota resets, so the retry is after ${at}: it is a growing wait (30 minutes, 2 hours, 5 hours), not a prediction.`);
+  const keptBranch = values.rescue_state === 'kept' && present(values.rescue_branch)
+    ? (es ? ` El trabajo hecho antes de detenerse está en la rama \`${values.rescue_branch}\` y el reintento continúa desde ahí.` : ` The work done before the stop is on the branch \`${values.rescue_branch}\` and the retry continues from it.`)
+    : '';
+  return es
+    ? `${mention(values)}La ejecución se detuvo porque se alcanzó el límite de uso (o el crédito) de la cuenta del modelo. El código no tiene ningún problema. El issue volvió a la cola y se reintenta solo (reintento ${values.attempt} de ${values.max}). ${why} La cola lo mira cada 30 minutos, así que puede empezar un poco después.${keptBranch} ${values.run}`
+    : `${mention(values)}The run stopped because the usage limit (or the credit) of the model account was reached. Nothing is wrong with the code. The issue is back in the queue and retries by itself (retry ${values.attempt} of ${values.max}). ${why} The queue looks every 30 minutes, so it can start a little later.${keptBranch} ${values.run}`;
 }
 
 export function renderMessage(kind, data = {}, language = 'en') {
@@ -679,6 +731,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
   }
   if (kind === 'run_failed_early') values.body = runFailedEarly(values, es);
   if (kind === 'run_no_outcome') values.body = runNoOutcome(values, es);
+  if (kind === 'usage_limit_retry') values.body = usageLimitRetry(values, es);
 
   // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
   if (STATE_OF[kind]) {

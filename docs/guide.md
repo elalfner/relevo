@@ -60,7 +60,7 @@ When the gate is red the developer agent fixes it before any reviewer runs, and 
 
 ### The quota ran out
 
-A cloud run that stops at a usage limit or an empty credit says so in the last comment. The issue is not lost: apply `ready` again later, or build it on your machine with `/relevo:go <n> --local`. With a subscription the quota is shared with the interactive use of the same account, so a busy day can use it up.
+A cloud run that stops at a usage limit or an empty credit says so in the last comment, and the issue goes back to `queued` by itself: the comment says when it will retry (after the reset time that the log of the run gives, in UTC, or, when the log does not give one, after a back-off of 30 minutes, then 2 hours, then 5 hours, and it says that the time is a guess). The retry continues from the work that was kept on the branch, starts alone (the other waiting issues follow when it ends) and is made at most 3 times; after that the issue is `qa-failed` and the comment asks you to look, and you can apply `ready` again or build it on your machine with `/relevo:go <n> --local`. Applying `ready` yourself starts it at once. With a subscription the quota is shared with the interactive use of the same account, so a busy day can use it up.
 
 ### I do not know the correct behaviour
 

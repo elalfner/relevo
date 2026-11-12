@@ -564,7 +564,7 @@ jobs:
           mkdir -p .relevo-plugin
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
-          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/run-cut.mjs scripts/rescue-work.mjs scripts/progress.mjs scripts/tree-baseline.mjs scripts/render-message.mjs; do
+          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/limit-retry.mjs scripts/run-cut.mjs scripts/rescue-work.mjs scripts/progress.mjs scripts/tree-baseline.mjs scripts/render-message.mjs; do
             [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
 
@@ -649,29 +649,53 @@ jobs:
             fi
           fi
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
           limit_reached=false
-          [ -n "$EXECUTION_FILE" ] && node .relevo-plugin/scripts/usage-limit.mjs --file "$EXECUTION_FILE" && limit_reached=true
+          [ -n "$EXECUTION_FILE" ] && node .relevo-plugin/scripts/usage-limit.mjs --file "$EXECUTION_FILE" > /dev/null && limit_reached=true
           # Which limit of the runner cut the run, when its log says (the script prints nothing otherwise).
           cut=""
           [ -n "$EXECUTION_FILE" ] && cut=$(node .relevo-plugin/scripts/run-cut.mjs --file "$EXECUTION_FILE")
-          # What happened decides the text: the rescue step kept the work, or the model account reached its usage limit (a
-          # quota or an empty credit balance is not a failure of the code), or the run simply ended without a result.
-          situation=no_result
-          if [ "$RESCUE_STATE" = "kept" ]; then
-            situation=kept
-          elif [ "$limit_reached" = "true" ]; then
-            situation=usage_limit
-          fi
           # The words come from the message catalog, in the language of relevo.yml, so that language: es is honoured. The
           # package that the toolchain check unpacked has the script; the one installed for the reports is the second choice.
           render=""
           for candidate in "$RUNNER_TEMP/relevo/scripts/render-message.mjs" .relevo-plugin/scripts/render-message.mjs; do
             if [ -f "$candidate" ]; then render="$candidate"; break; fi
           done
+          # A usage limit is not a failure of the code: the issue goes back to the queue with a retry time and one comment says when,
+          # instead of `qa-failed`. It is bounded (3 retries), it never retries when the work done was not kept (the rescue step says),
+          # and it needs the comment of the catalog (the hidden retry time is in it): without that comment the path below runs.
+          retry_body=""
+          limit_stop=""
+          if [ "$limit_reached" = "true" ] && [ -n "$render" ] && [ -f .relevo-plugin/scripts/limit-retry.mjs ]; then
+            decision=$(node .relevo-plugin/scripts/limit-retry.mjs --file "$EXECUTION_FILE" --rescue-state "$RESCUE_STATE" --repo "$GITHUB_REPOSITORY" --issue "$ISSUE" 2>/dev/null) || decision=""
+            action=$(printf '%s' "$decision" | jq -r '.action // empty' 2>/dev/null) || action=""
+            if [ "$action" = "retry" ]; then
+              retry_body=$(ASSIGNEE="$assignee" RETRY_JSON="$decision" node -e 'const e = process.env, d = JSON.parse(e.RETRY_JSON); console.log(JSON.stringify({issue: e.ISSUE, run: e.RUN_URL, assignee: e.ASSIGNEE, at: d.at, reason: d.reason, attempt: d.attempt, max: d.max, rescue_state: e.RESCUE_STATE, rescue_branch: e.RESCUE_BRANCH}))' \
+                | node "$render" usage_limit_retry --config relevo.yml) || retry_body=""
+            else
+              limit_stop=$(printf '%s' "$decision" | jq -r '.reason // empty' 2>/dev/null) || limit_stop=""
+            fi
+          fi
+          if [ -n "$retry_body" ]; then
+            gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:queued
+            gh issue comment "$ISSUE" --body "$retry_body"
+            echo "reported=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          # What happened decides the text: the rescue step kept the work, or the model account reached its usage limit (a
+          # quota or an empty credit balance is not a failure of the code; after the retries were used up it says so), or the run
+          # simply ended without a result.
+          situation=no_result
+          if [ "$limit_stop" = "bound" ]; then
+            situation=usage_limit_stopped
+          elif [ "$RESCUE_STATE" = "kept" ]; then
+            situation=kept
+          elif [ "$limit_reached" = "true" ]; then
+            situation=usage_limit
+          fi
           body=""
           if [ -n "$render" ]; then
-            body=$(ASSIGNEE="$assignee" SITUATION="$situation" CUT="$cut" LIMIT_REACHED="$limit_reached" node -e 'const e = process.env; console.log(JSON.stringify({situation: e.SITUATION, issue: e.ISSUE, run: e.RUN_URL, job_status: e.JOB_STATUS, assignee: e.ASSIGNEE, cut: e.CUT, usage_limit: e.LIMIT_REACHED === "true", rescue_state: e.RESCUE_STATE, rescue_branch: e.RESCUE_BRANCH, rescue_detail: e.RESCUE_DETAIL}))' \
+            body=$(ASSIGNEE="$assignee" SITUATION="$situation" CUT="$cut" LIMIT_REACHED="$limit_reached" node -e 'const e = process.env; console.log(JSON.stringify({situation: e.SITUATION, issue: e.ISSUE, run: e.RUN_URL, job_status: e.JOB_STATUS, assignee: e.ASSIGNEE, cut: e.CUT, usage_limit: e.LIMIT_REACHED === "true", max: 3, rescue_state: e.RESCUE_STATE, rescue_branch: e.RESCUE_BRANCH, rescue_detail: e.RESCUE_DETAIL}))' \
               | node "$render" run_no_outcome --config relevo.yml) || body=""
           fi
           # The one text that stays here: when the scripts cannot render the comment (a package without the script, a failure of node)

@@ -4,7 +4,7 @@
 //
 //   node scripts/requeue.mjs --repo owner/name [--config relevo.yml] [--dry-run] [--credential false]
 //   node scripts/requeue.mjs --input state.json [--config relevo.yml]
-//   prints {"start":[12,15],"summary":{...}}
+//   prints {"start":[12,15],"stagger_seconds":60,"summary":{...}}  (the seconds to wait between two dispatches)
 //   exit 0: evaluated   exit 2: invalid or missing configuration, or bad arguments
 
 import { existsSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { loadConfig } from './lib/config.mjs';
 import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
 import { planGo } from './lib/plan.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
-import { ownedByQueue, startable } from './lib/requeue.mjs';
+import { ownedByQueue, staggerSeconds, startable } from './lib/requeue.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -52,4 +52,5 @@ decisions.forEach((d) => {
 const dry = process.argv.includes('--dry-run') || Boolean(arg('input'));
 if (!dry) applyDecisions(decisions, { gh: realGh, repo, config });
 // Without a model credential the cloud cannot build, so nothing is dispatched (and nothing would be commented again every run).
-console.log(JSON.stringify({ start: arg('credential') === 'false' ? [] : startable(decisions), summary }));
+const start = arg('credential') === 'false' ? [] : startable(decisions);
+console.log(JSON.stringify({ start, stagger_seconds: staggerSeconds(start.length), summary }));

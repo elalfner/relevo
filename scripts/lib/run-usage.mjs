@@ -6,7 +6,7 @@
 // used, and anything missing is simply left out. Nothing found means nothing is said, never an error.
 
 import { OUTCOME_CLASSES } from './phase-log.mjs';
-import { pickLanguage, usagePhrase } from './messages.mjs';
+import { formatUtc, pickLanguage, usagePhrase } from './messages.mjs';
 
 function entries(text) {
   const t = String(text ?? '').trim();
@@ -165,9 +165,68 @@ export function readUsage(text) {
     usage.turns += sub;
     usage.subagentTurns = sub;
   }
+  const quota = quotaOf(all);
+  if (quota.length) usage.quota = quota;
   if (detail.models) usage.models = detail.models;
   if (detail.agents) usage.agents = detail.agents;
   return usage;
+}
+
+const DAY_MS = 86400000;
+
+/**
+ * A time that a rate-limit event gives, in milliseconds since the epoch, or null. Accepted: seconds or milliseconds since the
+ * epoch (a number below 1e12 is seconds) and an ISO string. The unit is not documented, so anything else is null.
+ */
+function timeOf(v) {
+  let ms = null;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) ms = v < 1e12 ? v * 1000 : v;
+  else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) ms = Date.parse(v);
+  return Number.isFinite(ms) && ms !== null ? ms : null;
+}
+
+const infoOf = (e) => (e && e.type === 'rate_limit_event' && e.rate_limit_info && typeof e.rate_limit_info === 'object' ? e.rate_limit_info : null);
+
+/**
+ * The quota windows that the log of the run reports: [{ window, before, after, resets? }], where `window` is the `rateLimitType` of the
+ * rate-limit events, `before` and `after` are the utilisation (a percent) of the first and the last event of that window, and
+ * `resets` is the last reset time the log gives for it (milliseconds since the epoch). A figure that is not a number from 0 to 1 is
+ * left out, and a window with no figure is not listed. Nothing is estimated: a log without these events (an API-key repository has no
+ * weekly window) gives an empty list. `entriesOrText` is the text of the log or its parsed entries.
+ */
+export function quotaOf(entriesOrText) {
+  const all = Array.isArray(entriesOrText) ? entriesOrText : entries(entriesOrText);
+  const windows = new Map();
+  all.forEach((e) => {
+    const info = infoOf(e);
+    if (!info || typeof info.rateLimitType !== 'string' || !/^[a-z0-9_]{1,30}$/.test(info.rateLimitType)) return;
+    const w = windows.get(info.rateLimitType) ?? { window: info.rateLimitType };
+    const u = num(info.utilization);
+    if (u !== null && u >= 0 && u <= 1) {
+      const pct = Math.round(u * 100);
+      if (w.before === undefined) w.before = pct;
+      w.after = pct;
+    }
+    const at = timeOf(info.resetsAt);
+    if (at !== null) w.resets = at;
+    windows.set(info.rateLimitType, w);
+  });
+  return [...windows.values()].filter((w) => w.before !== undefined);
+}
+
+/**
+ * When the usage limit that stopped the run resets, in milliseconds since the epoch, or null. It is the reset time of the last
+ * rate-limit event whose status is not `allowed*`, and only when it is later than `now` and at most 8 days away: a time in the past
+ * or far away is not credible, so the caller backs off and says so instead of using it.
+ */
+export function limitReset(text, now = Date.now()) {
+  const all = entries(text).filter((e) => e && typeof e === 'object');
+  const hit = [...all].reverse().find((e) => {
+    const info = infoOf(e);
+    return info && typeof info.status === 'string' && !info.status.startsWith('allowed');
+  });
+  const at = hit ? timeOf(infoOf(hit).resetsAt) : null;
+  return at !== null && at > now && at - now <= 8 * DAY_MS ? at : null;
 }
 
 /** The limits of relevo.yml that a run went past: [{ limit, used, max }], empty when it kept within them or the figure is unknown. */
@@ -244,7 +303,10 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   const byPlan = plan?.roles?.length ? `${t('models_chosen', { list: plan.roles.map(role).join('; ') })}${plan.notes?.length ? t('plan_notes', { list: plan.notes.join('; ') }) : ''}` : '';
   const raised = plan?.escalations?.length ? t('raised', { list: plan.escalations.map((e) => t('raised_item', { from: e.from, to: e.to, attempt: e.attempt, reason: t(e.reason === 'gate-red' ? 'gate_red' : 'qa_rejected') })).join('; ') }) : '';
   const byCheck = checks?.length ? t('by_check', { list: checks.map((c) => (c.reused ? t('check_reused', { name: c.name, original: c.original }) : t('check_seconds', { name: c.name, seconds: c.seconds }))).join(', ') }) : '';
-  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byModel}${byCheck}${byPlan}${raised}`;
+  const windowName = (w) => (w === 'five_hour' ? t('window_five_hour') : w === 'seven_day' ? t('window_seven_day') : t('window_other', { type: w.replace(/_/g, ' ') }));
+  const quota = (q) => `${windowName(q.window)} ${q.before === q.after ? t('quota_at', { pct: q.before }) : t('quota_moved', { before: q.before, after: q.after })}${q.resets ? t('quota_resets', { at: formatUtc(q.resets) }) : ''}`;
+  const byQuota = usage.quota?.length ? t('by_quota', { list: usage.quota.map(quota).join('; ') }) : '';
+  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byModel}${byCheck}${byQuota}${byPlan}${raised}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without
@@ -274,6 +336,8 @@ export function usageMarker(usage, { subscription = false, phases = null, lenses
   // The model and the effort each role was launched with, and where the choice came from; the digest ignores this key.
   // The seconds of each check of the gate, and whether it was reused; the digest ignores this key.
   if (Array.isArray(checks) && checks.length) figures.checks = checks;
+  // The quota windows the log reported, with the utilisation at the start and at the end; the digest ignores this key.
+  if (Array.isArray(usage.quota) && usage.quota.length) figures.quota = usage.quota;
   if (plan?.roles?.length) figures.plan = plan.roles;
   if (plan?.escalations?.length) figures.escalated = plan.escalations;
   if (OUTCOME_CLASSES.includes(outcomeClass)) figures.class = outcomeClass;

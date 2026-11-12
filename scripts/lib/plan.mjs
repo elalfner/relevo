@@ -11,6 +11,8 @@
 //   completed  issue numbers closed as completed (their pull request merged)
 //   running    issue numbers with an agent run in progress
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
+//   now        ms since the epoch (the clock of the plan; the tests give it)
+//   (an issue may carry `limit_retry: { at, attempt, reason }`: the retry time that the comment of a usage limit gave, `at` in ms; see limit-retry.mjs)
 //   retry      { issue, by } | null  the person `by` retries the `qa-failed` issue `issue`: it is planned as if `by` had made it `ready`
 //
 // Output: { decisions: [...], summary }, in the order the issues were processed.
@@ -20,6 +22,7 @@ import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
 import { issueHash } from './issue-hash.mjs';
 import { resolvePlatform } from './platform-of.mjs';
+import { EPISODE_MS } from './limit-retry.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
 // In a public repository only maintainers may start work: anyone with write access could otherwise start a
@@ -53,7 +56,7 @@ export function withoutCredential(decisions, issues = []) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now() }) {
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);
   const open = issues.filter((i) => i.state === 'open');
@@ -112,6 +115,12 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   const isRetry = (issue) => Boolean(retry) && retry.issue === issue.number && has(issue, 'qa-failed');
   const startedBy = (issue) => (isRetry(issue) ? retry.by : issue.ready_by);
 
+  // An issue that waits for a usage limit to reset: `queued` with a retry time that has not come. It is held: it takes no slot and says nothing.
+  const holdsForLimit = (issue) => has(issue, 'queued') && Boolean(issue.limit_retry) && issue.limit_retry.at > now;
+  // An issue that is retrying after a usage limit and is due. Only one such issue runs at a time: the first shows whether the quota is back.
+  const retrying = (issue) => has(issue, 'queued') && Boolean(issue.limit_retry);
+  let probeBusy = open.some((i) => has(i, 'building') && i.limit_retry && now - i.limit_retry.at <= EPISODE_MS);
+
   const candidates = open
     .filter((i) => has(i, 'ready') || has(i, 'queued') || has(i, 'blocked') || isRetry(i))
     .sort((a, b) => Number(isUrgent(b)) - Number(isUrgent(a)) || byReadyAt(a, b));
@@ -148,6 +157,11 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   candidates.forEach((issue) => {
     if (runningSet.has(issue.number)) {
       decision(issue, 'skip', 'an agent is already running for this issue');
+      return;
+    }
+
+    if (holdsForLimit(issue)) {
+      decision(issue, 'skip', `the usage limit of the model account has not reset: it retries after ${new Date(issue.limit_retry.at).toISOString()}`);
       return;
     }
 
@@ -261,6 +275,12 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       return;
     }
 
+    // A retry after a usage limit starts alone: the others wait until it ends (the queue is evaluated when it does).
+    if (retrying(issue) && probeBusy) {
+      decision(issue, 'skip', 'another issue that retries after a usage limit is running or starting');
+      return;
+    }
+
     // Global limit on concurrent agents.
     if (freeSlots <= 0) {
       const active = [...runningSet].sort((a, b) => a - b);
@@ -293,6 +313,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
     freeSlots -= 1;
     runningSet.add(issue.number);
+    if (retrying(issue)) probeBusy = true;
     decision(issue, 'start', 'all gates passed', {
       labels: moveTo(issue, 'building'),
       start: {
