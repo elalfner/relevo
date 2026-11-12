@@ -3,6 +3,10 @@
 ### Requirement: The recipe of a replicated build is declared in tasks.md
 A task of `tasks.md` marked `[replica]` SHALL be a replica of a template, and no agent SHALL decide that a task is a replica. The `## Replication recipe` section SHALL name the template as `group K`, `pattern` or backticked paths. Each replica task SHALL have a `Rename:` line (`old -> new` pairs) and a `Differences:` line (or `none`).
 
+#### Scenario: A marked task
+- **WHEN** a task line starts with `[replica]` after its number
+- **THEN** it is a replica task, and an unmarked task is built normally
+
 ### Requirement: A script checks the recipe before the build
 `scripts/replica-plan.mjs check` SHALL validate the recipe with no model, and the specification stage of the build preflight SHALL send the issue back with the reason `missing` when it fails. `group K` SHALL be a group that is not a replica and comes before the replicas; `pattern` SHALL need a `Pattern:` line in the issue.
 
