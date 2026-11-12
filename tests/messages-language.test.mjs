@@ -116,3 +116,9 @@ test('the kept rescue comment renders in every language with no placeholder left
     });
   });
 });
+
+test('the phrase that gives the reason of a replica is in English and Spanish, and the reason is quoted as written', () => {
+  assert.equal(usagePhrase('en', 'replica_why', { why: 'one name below sonnet' }), ', because one name below sonnet');
+  assert.equal(usagePhrase('es', 'replica_why', { why: 'one name below sonnet' }), ', porque one name below sonnet');
+  assert.ok(USAGE_TEXT.en.replica_why && USAGE_TEXT.es.replica_why);
+});

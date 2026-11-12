@@ -6,6 +6,8 @@
 //   node scripts/replica-plan.mjs model --dev-model <model> --failures <n> [--config relevo.yml]
 //       the model of one launch of a replica (one name below the developer's planned model, the planned model after two failures of
 //       the same target). Prints { model, escalate, why }. exit 0 always, even when it cannot decide (then it keeps --dev-model).
+//       With --task <id> (the task id of the replica, `2.1`) and $RELEVO_PROGRESS_DIR it also appends { task, model, failures, why } to
+//       replica-models.json there, outside the working tree, so that the usage comment can say why the replica ran on that model.
 //   node scripts/replica-plan.mjs template --section <K> --issue <n> [--base <branch>]
 //       the files that the checkpoints of section K changed (the specification folder left out): the template of `Template: section K`.
 //       A checkpoint is found by the tasks it names (its `Relevo-Tasks:` trailer, K.1, K.2...), never by the number of its group,
@@ -15,8 +17,8 @@
 //       exit 0; exit 1 when no such checkpoint exists (a checkpoint made before the trailer existed has no tasks to find it by); exit 2 bad arguments.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { parseIssueBody } from './lib/issue-parse.mjs';
 import { checkRecipe, replicaModel } from './lib/replica-plan.mjs';
@@ -42,17 +44,37 @@ if (mode === 'check') {
   process.exit(result.ok ? 0 : 1);
 } else if (mode === 'model') {
   const devModel = arg('dev-model');
-  if (!devModel) usage('usage: replica-plan.mjs model --dev-model <model> --failures <n> [--config relevo.yml]');
+  if (!devModel) usage('usage: replica-plan.mjs model --dev-model <model> --failures <n> [--config relevo.yml] [--task <id>]');
+  const failures = Number(arg('failures')) || 0;
+  // The answer is printed, and kept for the usage comment when the task is named: the reason is only useful to the report, so a folder
+  // that cannot be written leaves the run exactly as it was.
+  const answer = (result) => {
+    console.log(JSON.stringify(result));
+    const task = arg('task');
+    const folder = process.env.RELEVO_PROGRESS_DIR;
+    if (!task || !folder) return;
+    try {
+      mkdirSync(folder, { recursive: true });
+      const file = join(folder, 'replica-models.json');
+      let records = [];
+      try {
+        const kept = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
+        if (Array.isArray(kept)) records = kept;
+      } catch { /* an unreadable record is started again */ }
+      records.push({ task, model: result.model, failures, why: result.why });
+      writeFileSync(file, JSON.stringify(records));
+    } catch { /* the report simply has no reason */ }
+  };
   try {
     const configPath = resolve(arg('config') ?? 'relevo.yml');
     const loaded = existsSync(configPath) ? loadConfig(readFileSync(configPath, 'utf8')) : { ok: false, errors: [{ message: `relevo.yml not found at ${configPath}` }] };
     if (!loaded.ok) {
-      console.log(JSON.stringify({ model: devModel, escalate: false, why: `relevo.yml is not valid, so the replica keeps ${devModel}` }));
+      answer({ model: devModel, escalate: false, why: `relevo.yml is not valid, so the replica keeps ${devModel}` });
     } else {
-      console.log(JSON.stringify(replicaModel({ config: loaded.config, devModel, failures: Number(arg('failures')) || 0 })));
+      answer(replicaModel({ config: loaded.config, devModel, failures }));
     }
   } catch (error) {
-    console.log(JSON.stringify({ model: devModel, escalate: false, why: `the replica model failed (${String(error.message).slice(0, 120)}), so it keeps ${devModel}` }));
+    answer({ model: devModel, escalate: false, why: `the replica model failed (${String(error.message).slice(0, 120)}), so it keeps ${devModel}` });
   }
 } else if (mode === 'template') {
   const issue = Number(arg('issue'));

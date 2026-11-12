@@ -5,12 +5,12 @@
 // The sentence is written in --language, else in the `language` of --config (English when neither is given).
 // --receipt is the receipt of the validation gate (default .relevo-receipt/receipt.json): the seconds of each check go into the sentence and the marker.
 // --config gives the limits of the run: the sentence says when the turns (the subagents' included) or the cost went past them.
-// --progress-dir is where `go` kept the start of each phase and of each QA lens, the class of the outcome and the model plan: they go into the marker.
+// --progress-dir is where `go` kept the start of each phase and of each QA lens, the class of the outcome, the model plan and the reason of the model of each replica: they go into the marker.
 // With a model plan the sentence also says which model each role used and why.
 // --subscription says that the cost is notional. Prints nothing when the log is missing or has no usage.
 // It never fails: exit 0 always, so a step that posts the text cannot fail a run.
 
-import { checksFromReceipt, planFromJson, readUsage, usageLine, usageMarker } from './lib/run-usage.mjs';
+import { checksFromReceipt, planFromJson, readUsage, replicaReasonsFromJson, usageLine, usageMarker, withReplicaReasons } from './lib/run-usage.mjs';
 import { lensSeconds, phaseSeconds, readClass, readLensLog, readPhaseLog } from './lib/phase-log.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { loadConfig } from './lib/config.mjs';
@@ -47,6 +47,12 @@ try {
   if (dir) plan = planFromJson(readFileSync(`${dir}/model-plan.json`, 'utf8'));
 } catch {
   plan = null;
+}
+// Why each replica ran on its model, when `go` kept it (replica-plan.mjs model --task): a run without the file gives the comment it always gave.
+try {
+  if (dir) withReplicaReasons(usage, replicaReasonsFromJson(readFileSync(`${dir}/replica-models.json`, 'utf8')));
+} catch {
+  // no reason is kept for the replicas
 }
 // The receipt the gate wrote in this working folder, when there is one: its checks and seconds. It is read as data.
 let checks = null;
