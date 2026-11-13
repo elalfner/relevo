@@ -11,6 +11,16 @@
 export const SMALL_CHANGE = 3;
 export const REPLICA_MARK = /^\s*(?:[-*+]\s+)?\[[ xX]\]\s+\d+\.\d+\s+\[replica\]/i;
 
+/** The numbers of the tasks that are checked (`- [x] 2.1 ...`), in order and once each: the work that the boxes say is done. */
+export function doneTaskIds(tasksText) {
+  const ids = [];
+  String(tasksText ?? '').split('\n').forEach((line) => {
+    const task = /^\s*- \[[xX]\]\s+(\d{1,3}\.\d{1,3})\b/.exec(line);
+    if (task && !ids.includes(task[1])) ids.push(task[1]);
+  });
+  return ids;
+}
+
 /**
  * { groups: [{ section, title, tasks: ['1.1', '1.2'] }], pending }.
  * `section` is the number of the heading ('1', '2', ...) or null for a task outside any section; a replica group also has `replica: true`.

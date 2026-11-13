@@ -11,7 +11,8 @@
 //   node scripts/replica-plan.mjs template --section <K> --issue <n> [--base <branch>]
 //       the files that the checkpoints of section K changed (the specification folder left out): the template of `Template: section K`.
 //       A checkpoint is found by the tasks it names (its `Relevo-Tasks:` trailer, K.1, K.2...), never by the number of its group,
-//       because a resumed run numbers its groups again. Prints { files, commits }.
+//       because a resumed run numbers its groups again. The work kept when a run stopped at a limit (`wip: stopped by limit (#N)`) names the
+//       tasks it holds in the same trailer and is found the same way. Prints { files, commits }.
 //   node scripts/replica-plan.mjs template --k <n> --of <n> --issue <n> [--base <branch>]
 //       the same for the checkpoint `wip: checkpoint k/n (#issue)`, for a caller that has the numbers.
 //       exit 0; exit 1 when no such checkpoint exists (a checkpoint made before the trailer existed has no tasks to find it by); exit 2 bad arguments.
@@ -22,7 +23,7 @@ import { join, resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { parseIssueBody } from './lib/issue-parse.mjs';
 import { checkRecipe, replicaModel } from './lib/replica-plan.mjs';
-import { checkpointSubject, isCheckpoint, tasksOf } from './lib/wip-commit.mjs';
+import { checkpointSubject, isCheckpoint, tasksOf, wipSubject } from './lib/wip-commit.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const mode = process.argv[2];
@@ -88,11 +89,11 @@ if (mode === 'check') {
     return { sha: sha.trim(), subject: (subject ?? '').trim(), body: body ?? '' };
   });
   const wanted = section
-    ? (c) => isCheckpoint(c.subject, issue) && tasksOf(c.body).some((t) => t.startsWith(`${section}.`))
+    ? (c) => (isCheckpoint(c.subject, issue) || c.subject === wipSubject(issue, 'limit')) && tasksOf(c.body).some((t) => t.startsWith(`${section}.`))
     : (c) => c.subject === checkpointSubject(issue, k, n);
   const commits = log.filter(wanted).map((c) => c.sha);
   if (commits.length === 0) {
-    console.log(JSON.stringify({ files: [], commits: [], detail: section ? `no checkpoint of #${issue} names a task of section ${section} (one made before the tasks were recorded names none)` : `no commit "${checkpointSubject(issue, k, n)}" on the branch` }));
+    console.log(JSON.stringify({ files: [], commits: [], detail: section ? `no checkpoint or limit commit of #${issue} names a task of section ${section} (one made before the tasks were recorded names none)` : `no commit "${checkpointSubject(issue, k, n)}" on the branch` }));
     process.exit(1);
   }
   const files = [...new Set(commits.flatMap((sha) => git(['show', '--name-only', '--format=', sha]).split('\n').filter(Boolean)))].filter((f) => !f.startsWith('openspec/'));

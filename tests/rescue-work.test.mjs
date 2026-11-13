@@ -353,3 +353,75 @@ test('a result that is not kept carries no number of checkpoints', () => {
   assert.equal(out.state, 'unsafe');
   assert.ok(!('checkpoints' in out));
 });
+
+// ---- the work kept at a limit names the tasks it holds (rescue-commit-tasks)
+const TASKS_PATH = 'openspec/changes/7-x/tasks.md';
+const tasksFile = (checked) => `# Tasks\n\n## 1. One\n\n${['1.1', '1.2', '2.1', '2.2'].map((id) => `- [${checked.includes(id) ? 'x' : ' '}] ${id} a task`).join('\n')}\n`;
+const lastMessage = (f) => git(f.work, 'log', '-1', '--format=%B');
+// A checkpoint that names 1.1 and 1.2, as the skill makes it.
+function afterCheckpoint(f) {
+  put(f.work, TASKS_PATH, tasksFile(['1.1', '1.2']));
+  put(f.work, 'src/a.js', 'a\n');
+  git(f.work, 'add', '.');
+  git(f.work, 'commit', '-qm', 'wip: checkpoint 1/2 (#7)', '-m', 'Relevo-Tasks: 1.1, 1.2');
+}
+
+test('Scenario: A task finished after the last checkpoint - the limit commit names it and leaves out the ones a checkpoint already names', () => {
+  const f = fixture();
+  afterCheckpoint(f);
+  put(f.work, TASKS_PATH, tasksFile(['1.1', '1.2', '2.1']));
+  put(f.work, 'src/b.js', 'b\n');
+  const out = rescue(f);
+  assert.equal(out.state, 'kept');
+  const message = lastMessage(f);
+  assert.match(message, /^wip: stopped by limit \(#7\)/);
+  assert.match(message, /^Relevo-Tasks: 2\.1$/m);
+  assert.doesNotMatch(message, /1\.1|1\.2/);
+});
+
+test('Scenario: The run was cut before any checkpoint - every checked task is named', () => {
+  const f = fixture();
+  put(f.work, TASKS_PATH, tasksFile(['1.1', '1.2']));
+  put(f.work, 'src/a.js', 'a\n');
+  assert.equal(rescue(f).state, 'kept');
+  assert.match(lastMessage(f), /^Relevo-Tasks: 1\.1, 1\.2$/m);
+});
+
+test('Scenario: No task was finished - the commit is made as before, with no trailer', () => {
+  const f = fixture();
+  afterCheckpoint(f);
+  put(f.work, 'src/b.js', 'b\n');
+  assert.equal(rescue(f).state, 'kept');
+  assert.doesNotMatch(lastMessage(f), /Relevo-Tasks/);
+  assert.match(lastMessage(f), /^wip: stopped by limit \(#7\)/);
+});
+
+test('Scenario: The task list cannot be read - no trailer and the rescue does not fail', () => {
+  const missing = fixture();
+  put(missing.work, 'src/b.js', 'b\n');
+  assert.equal(rescue(missing).state, 'kept');
+  assert.doesNotMatch(lastMessage(missing), /Relevo-Tasks/);
+  const notAFile = fixture();
+  put(notAFile.work, `${TASKS_PATH}/inner.md`, '- [x] 1.1 a\n');
+  put(notAFile.work, 'src/b.js', 'b\n');
+  assert.equal(rescue(notAFile).state, 'kept');
+  assert.doesNotMatch(lastMessage(notAFile), /Relevo-Tasks/);
+  const noBase = fixture();
+  put(noBase.work, TASKS_PATH, tasksFile(['1.1']));
+  put(noBase.work, 'src/b.js', 'b\n');
+  assert.equal(rescue(noBase, { decision: { ...DECISION, base: null } }).state, 'kept');
+  assert.doesNotMatch(lastMessage(noBase), /Relevo-Tasks/, 'with no base there is no way to know which commits are the issue\'s');
+});
+
+test('Scenario: A checkpoint or a given subject does not derive tasks - an explicit list is the one used', () => {
+  const f = fixture();
+  put(f.work, TASKS_PATH, tasksFile(['1.1', '2.1']));
+  put(f.work, 'src/a.js', 'a\n');
+  const run = (extra) => rescueWork({ git: (args) => git(f.work, ...args), decision: readDecision(b64(DECISION)), ...extra });
+  assert.equal(run({ subject: 'wip: checkpoint 1/2 (#7)' }).state, 'kept');
+  assert.doesNotMatch(lastMessage(f), /Relevo-Tasks/, 'a given subject with no tasks is made as before');
+  put(f.work, 'src/b.js', 'b\n');
+  assert.equal(run({ subject: 'wip: checkpoint 2/2 (#7)', tasks: ['1.1'] }).state, 'kept');
+  assert.match(lastMessage(f), /^Relevo-Tasks: 1\.1$/m);
+  assert.doesNotMatch(lastMessage(f), /2\.1/);
+});
