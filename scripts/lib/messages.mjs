@@ -82,7 +82,7 @@ export const CATALOG = {
       '{{qa_notes_marker}}',
     ],
     qa_failed: [
-      '@{{assignee}} #{{issue}} "{{title}}" failed QA ❌',
+      '@{{assignee}} #{{issue}} "{{title}}" {{headline}}',
       '',
       'What happened: {{happened}}',
       'Finding: {{finding}}{{location_suffix}}',
@@ -271,7 +271,7 @@ export const CATALOG = {
       '{{qa_notes_marker}}',
     ],
     qa_failed: [
-      '@{{assignee}} #{{issue}} "{{title}}" no pasó QA ❌',
+      '@{{assignee}} #{{issue}} "{{title}}" {{headline}}',
       '',
       'Qué pasó: {{happened}}',
       'Hallazgo: {{finding}}{{location_suffix}}',
@@ -562,6 +562,12 @@ const POLICY_STOPS = {
 };
 const policyStop = (values) => POLICY_STOPS[values.reason] ?? null;
 
+// The reasons of the failure path that are a QA rejection. A comment with no reason is one too (the older callers never gave one).
+// Any other reason is a stop for that reason, including one the catalog does not know: a reason added to the skill later is never
+// described as a QA rejection. `fix` finds the comment by its title (scripts/lib/failure-comment.mjs), so a title changes there too.
+const QA_REJECTIONS = new Set(['QA rejected after the retries', 'QA rejected: nothing the developer agent can fix']);
+const stopsNotQa = (values) => present(values.reason) && !QA_REJECTIONS.has(values.reason);
+
 function present(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
@@ -776,6 +782,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
     if (state === 'existing' && !present(values.recovery)) throw new Error('message "qa_failed" needs "recovery" when the branch already existed');
     // A run that stopped at a limit was not judged by QA: the text says so instead of saying that QA rejected it.
     const stoppedAtLimit = values.reason === 'run limit reached';
+    values.headline = stopsNotQa(values) ? (es ? 'se detuvo ❌' : 'stopped ❌') : (es ? 'no pasó QA ❌' : 'failed QA ❌');
     const branchLines = {
       pushed: es
         ? `La rama ${values.branch} está subida; el estado no avanzó y no se abrió ningún pull request.`
@@ -804,6 +811,8 @@ export function renderMessage(kind, data = {}, language = 'en') {
       ? (es ? `La ejecución se detuvo en un límite antes de terminar${values.reason_suffix}.` : `The run stopped at a limit before it finished${values.reason_suffix}.`)
       : policyStop(values)
       ? `${es ? 'La ejecución se detuvo' : 'The run stopped'}${values.reason_suffix}: ${policyStop(values)[es ? 'es' : 'en']}.`
+      : stopsNotQa(values)
+      ? (es ? `La ejecución se detuvo${values.reason_suffix}. QA no rechazó el trabajo.` : `The run stopped${values.reason_suffix}. QA did not reject the work.`)
       : values.retries_skipped === true
       ? (es ? 'QA la rechazó y ningún hallazgo lo puede corregir el agente de desarrollo, así que no se hicieron reintentos.' : 'QA rejected it and no finding can be corrected by the developer agent, so there were no retries.')
       : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`);
