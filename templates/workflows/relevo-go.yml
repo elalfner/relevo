@@ -638,6 +638,7 @@ jobs:
           RESCUE_STATE: ${{ steps.rescue.outputs.state }}
           RESCUE_BRANCH: ${{ steps.rescue.outputs.branch }}
           RESCUE_DETAIL: ${{ steps.rescue.outputs.detail }}
+          RESCUE_CHECKPOINTS: ${{ steps.rescue.outputs.checkpoints }}
         run: |
           labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
           # A run the queue dispatched that fails before it claims the issue leaves it `queued`: report that
@@ -696,7 +697,7 @@ jobs:
           fi
           body=""
           if [ -n "$render" ]; then
-            body=$(ASSIGNEE="$assignee" SITUATION="$situation" CUT="$cut" LIMIT_REACHED="$limit_reached" node -e 'const e = process.env; console.log(JSON.stringify({situation: e.SITUATION, issue: e.ISSUE, run: e.RUN_URL, job_status: e.JOB_STATUS, assignee: e.ASSIGNEE, cut: e.CUT, usage_limit: e.LIMIT_REACHED === "true", max: 3, rescue_state: e.RESCUE_STATE, rescue_branch: e.RESCUE_BRANCH, rescue_detail: e.RESCUE_DETAIL}))' \
+            body=$(ASSIGNEE="$assignee" SITUATION="$situation" CUT="$cut" LIMIT_REACHED="$limit_reached" node -e 'const e = process.env; console.log(JSON.stringify({situation: e.SITUATION, issue: e.ISSUE, run: e.RUN_URL, job_status: e.JOB_STATUS, assignee: e.ASSIGNEE, cut: e.CUT, usage_limit: e.LIMIT_REACHED === "true", max: 3, rescue_state: e.RESCUE_STATE, rescue_branch: e.RESCUE_BRANCH, rescue_detail: e.RESCUE_DETAIL, checkpoints: /^[0-9]+$/.test(e.RESCUE_CHECKPOINTS ?? "") ? Number(e.RESCUE_CHECKPOINTS) : undefined}))' \
               | node "$render" run_no_outcome --config relevo.yml) || body=""
           fi
           # The one text that stays here: when the scripts cannot render the comment (a package without the script, a failure of node)

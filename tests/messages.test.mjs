@@ -479,19 +479,19 @@ const QUEUE_DATA = { issue: 9, title: 'Summary', active: 2, active_issues: '#3, 
 
 test('Scenario: Slots full, issues ahead - queued_agents says the active runs, the issues ahead and the typical build, mentioning nobody', () => {
   const en = renderMessage('queued_agents', QUEUE_DATA, 'en');
-  assert.match(en, /Running now: 2 \(#3, #4\)/);
+  assert.match(en, /Running or starting now: 2 \(#3, #4\)/);
   assert.match(en, /Ahead of it in the queue: 1$/m);
   assert.match(en, /Recent builds: about 38 min \(median of the last 6 builds\)/);
   assert.ok(!en.includes('@'));
   const es = renderMessage('queued_agents', QUEUE_DATA, 'es');
-  assert.match(es, /En ejecución ahora: 2 \(#3, #4\)/);
+  assert.match(es, /En ejecución o por arrancar ahora: 2 \(#3, #4\)/);
   assert.match(es, /Delante en la cola: 1$/m);
   assert.match(es, /mediana de las últimas 6 construcciones/);
 });
 
 test('Scenario: No recent runs - a figure that is not known is written unknown and no number is put in its place', () => {
   const none = renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'en');
-  assert.match(none, /Running now: unknown/);
+  assert.match(none, /Running or starting now: unknown/);
   assert.match(none, /Ahead of it in the queue: unknown/);
   assert.match(none, /Recent builds: unknown/);
   assert.doesNotMatch(none, /\d+ min/);
@@ -566,6 +566,37 @@ test('run_no_outcome situation kept: the next step is fix, or the branch of its 
   assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/x' }, 'es'), /una rama aparte/);
   assert.throws(() => renderMessage('run_no_outcome', { ...RUN, situation: 'kept' }, 'en'), /needs "rescue_branch"/);
   assert.throws(() => renderMessage('run_no_outcome', { ...RUN, situation: 'nothing' }, 'en'), /unknown situation/);
+});
+
+// ---------- Two texts that said something other than what happened (issue #167, real-run verification)
+
+test('Scenario: An issue about to start holds the slot - the queue line does not say that it is running', () => {
+  const data = { issue: 117, title: 'Summary', active: 1, active_issues: '#116', ahead: 0 };
+  assert.match(renderMessage('queued_agents', data, 'en'), /^Running or starting now: 1 \(#116\)$/m);
+  assert.match(renderMessage('queued_agents', data, 'es'), /^En ejecución o por arrancar ahora: 1 \(#116\)$/m);
+  assert.doesNotMatch(renderMessage('queued_agents', data, 'en'), /Running now/);
+  assert.doesNotMatch(renderMessage('queued_agents', data, 'es'), /En ejecución ahora/);
+});
+
+test('Scenario: The branch holds a checkpoint / no checkpoint - kept says that ready resumes, never "from the start"', () => {
+  const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
+  const fromStart = /from the start|desde el principio/;
+  const withCheckpoints = renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'en');
+  assert.match(withCheckpoints, /apply `relevo:ready` again to resume from the last checkpoint \(2 saved\) and build only the pending tasks/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /pon `relevo:ready` otra vez para reanudar desde el último checkpoint \(2 guardados\) y construir solo las tareas pendientes/);
+  const none = renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'en');
+  assert.match(none, /resume from the work kept on the branch \(no checkpoint was saved yet\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'es'), /reanudar desde el trabajo guardado en la rama \(todavía no hay ningún checkpoint\)/);
+  const unknown = renderMessage('run_no_outcome', kept, 'en');
+  assert.match(unknown, /resume from the last point saved on the branch/);
+  assert.match(renderMessage('run_no_outcome', kept, 'es'), /reanudar desde el último punto guardado en la rama/);
+  [withCheckpoints, none, unknown, renderMessage('run_no_outcome', kept, 'es'), renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es')]
+    .forEach((text) => {
+      assert.doesNotMatch(text, fromStart);
+      assert.match(text, /branch already exists/);
+    });
+  // The run that was not on the branch of the issue has nothing to resume from: there "from the start" is true.
+  assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/feature/12-x' }, 'en'), /build from the start/);
 });
 
 // #150: the comment of two lenses that contradict each other shows both lenses and both findings.

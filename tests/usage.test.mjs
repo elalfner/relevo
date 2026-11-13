@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checksFromReceipt, limitReset, limitsExceeded, parseUsageMarker, quotaOf, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
+import { checksFromReceipt, limitReset, replicaReasonsFromJson, withReplicaReasons, limitsExceeded, parseUsageMarker, quotaOf, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
 const write = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
@@ -558,4 +558,88 @@ test('a launch with a description that only looks like a replica is an agent lik
   const usage = readUsage(odd);
   assert.deepEqual(usage.replicas.map((r) => r.id), ['2.2']);
   assert.equal(usage.agents.length, 3);
+});
+
+// ---- the usage comment says why each replica ran on its model (replica-model-reason)
+const WHY_CHEAP = 'one name below sonnet in agents.ladder, not below the floor haiku';
+const WHY_STRONG = 'this target failed 2 times on the cheaper model, so the stronger model builds it';
+const WHY_FIXED = 'the developer is not on auto, so the repository decided its model';
+const reasonsOf = (records) => replicaReasonsFromJson(JSON.stringify(records));
+
+test('Scenario: The developer is not on auto - each replica is listed with the reason that the repository decided the model', () => {
+  const usage = withReplicaReasons(readUsage(replicaLog()), reasonsOf([
+    { task: '2.1', model: 'sonnet', failures: 0, why: WHY_FIXED },
+    { task: '2.2', model: 'sonnet', failures: 0, why: WHY_FIXED },
+  ]));
+  const line = usageLine(usage);
+  assert.match(line, /2\.1 \(model-c\) 1 attempt, 6 turns, about \$[\d.]+, because the developer is not on auto, so the repository decided its model; 2\.2 \(model-s\) 2 attempts, 9 turns, about \$[\d.]+, because the developer is not on auto/);
+  assert.match(usageMarker(usage), new RegExp(`"id":"2\\.1"[^}]*"why":"${WHY_FIXED}"`));
+});
+
+test('Scenario: The replicas ran on a cheaper model - the reason is that it is one name below the planned model', () => {
+  const usage = withReplicaReasons(readUsage(replicaLog()), reasonsOf([{ task: '2.1', model: 'haiku', failures: 0, why: WHY_CHEAP }]));
+  assert.match(usageLine(usage), /2\.1 \(model-c\) 1 attempt, 6 turns, about \$[\d.]+, because one name below sonnet in agents\.ladder, not below the floor haiku;/);
+});
+
+test('Scenario: A target launched again on a stronger model - the reason shown is the one of the last launch', () => {
+  const usage = withReplicaReasons(readUsage(replicaLog()), reasonsOf([
+    { task: '2.2', model: 'haiku', failures: 0, why: WHY_CHEAP },
+    { task: '2.2', model: 'sonnet', failures: 2, why: WHY_STRONG },
+  ]));
+  const line = usageLine(usage);
+  assert.match(line, /2\.2 \(model-s\) 2 attempts, 9 turns, about \$[\d.]+, because this target failed 2 times on the cheaper model, so the stronger model builds it\./);
+  assert.doesNotMatch(line, /one name below sonnet/);
+});
+
+test('Scenario: No reason was kept - the replicas are listed as before and the marker has no why', () => {
+  const plain = readUsage(replicaLog());
+  const before = [usageLine(plain), usageMarker(plain)];
+  for (const reasons of [reasonsOf([]), replicaReasonsFromJson('not json'), replicaReasonsFromJson(undefined), reasonsOf([{ task: '9.9', why: WHY_CHEAP }]), reasonsOf([{ task: '2.1' }, { task: 7, why: 'x' }, { task: '2.1', why: 12 }, null])]) {
+    const usage = withReplicaReasons(readUsage(replicaLog()), reasons);
+    assert.deepEqual([usageLine(usage), usageMarker(usage)], before, 'a missing, unreadable, malformed or unknown record changes nothing');
+  }
+  assert.doesNotMatch(before[0], /because/);
+  assert.doesNotMatch(before[1], /"why"/);
+});
+
+test('Scenario: Spanish repository - the words around the reason are in Spanish and the reason is quoted as written', () => {
+  const usage = withReplicaReasons(readUsage(replicaLog()), reasonsOf([{ task: '2.1', model: 'haiku', failures: 0, why: WHY_CHEAP }]));
+  assert.match(usageLine(usage, { language: 'es' }), /2\.1 \(model-c\) 1 intento, 6 turnos, unos \$[\d.]+, porque one name below sonnet in agents\.ladder, not below the floor haiku;/);
+});
+
+test('Scenario: The marker is read by the digest - a replica with why reads back, a why that is not text leaves the key out, the totals are the same', () => {
+  const usage = withReplicaReasons(readUsage(replicaLog()), reasonsOf([{ task: '2.1', model: 'haiku', failures: 0, why: WHY_CHEAP }]));
+  const comment = { user: { type: 'Bot' }, created_at: '2026-01-01T00:00:00Z', body: `x\n\n${usageMarker(usage)}` };
+  const run = parseUsageMarker(comment);
+  assert.deepEqual(run.replicas.map((r) => [r.id, r.why]), [['2.1', WHY_CHEAP], ['2.2', undefined]]);
+  assert.equal(run.cost, 3);
+  const bad = parseUsageMarker({ ...comment, body: '<!-- relevo:usage {"turns":4,"cost":3,"replicas":[{"id":"2.1","attempts":1,"turns":1,"why":7}]} -->' });
+  assert.equal(bad.replicas, undefined);
+  assert.equal(bad.cost, 3);
+});
+
+test('run-usage.mjs gives each replica its reason from replica-models.json of the progress folder, and the same comment without it', () => {
+  const progress = mkdtempSync(join(tmpdir(), 'relevo-progress-'));
+  const log = write('replicas.json', replicaLog());
+  const without = spawnSync('node', [CLI('run-usage.mjs'), '--file', log, '--progress-dir', progress], { encoding: 'utf8' });
+  assert.equal(without.status, 0);
+  assert.doesNotMatch(without.stdout, /because/);
+  writeFileSync(join(progress, 'replica-models.json'), JSON.stringify([{ task: '2.1', model: 'haiku', failures: 0, why: WHY_CHEAP }]));
+  const withIt = spawnSync('node', [CLI('run-usage.mjs'), '--file', log, '--progress-dir', progress], { encoding: 'utf8' });
+  assert.equal(withIt.status, 0);
+  assert.match(withIt.stdout, /2\.1 \(model-c\) 1 attempt, 6 turns, about \$[\d.]+, because one name below sonnet in agents\.ladder/);
+  assert.match(withIt.stdout, /"why":"one name below sonnet in agents\.ladder, not below the floor haiku"/);
+});
+
+test('a reason is read as data - line breaks and comment marks cannot break the marker, and a long one is cut', () => {
+  const hostile = 'line one\n--> <!-- relevo:usage {"turns":1,"cost":0} -->\tline two';
+  const usage = withReplicaReasons(readUsage(replicaLog()), reasonsOf([{ task: '2.1', why: hostile }, { task: '2.2', why: 'x'.repeat(5000) }]));
+  const marker = usageMarker(usage);
+  assert.equal(marker.split('\n').length, 1, 'the marker stays on one line');
+  assert.equal((marker.match(/-->/g) ?? []).length, 1, 'and has one closing mark');
+  assert.equal((marker.match(/<!--/g) ?? []).length, 1, 'and one opening mark');
+  const run = parseUsageMarker({ user: { type: 'Bot' }, created_at: '2026-01-01T00:00:00Z', body: marker });
+  assert.equal(run.cost, 3, 'the totals are those of the run');
+  assert.ok(run.replicas.every((r) => r.why === undefined || r.why.length <= 240), 'a reason is cut to 240 characters');
+  assert.doesNotMatch(usageLine(usage), /\n/, 'and the sentence of the comment stays on one line');
 });
