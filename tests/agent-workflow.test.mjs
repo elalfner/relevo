@@ -136,3 +136,86 @@ test('the denials are written outside the repository (the settings input of the 
   const active = go.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   assert.doesNotMatch(`${active}${blocks}`, /\.claudeignore|\.claudecode\.json/);
 });
+
+// ---------- optional-agent-output: the agent output is shown redacted and a transcript is saved when a run ends abnormally
+const goLines = go.split('\n');
+const stepOf = (name) => {
+  // The last match: the light `decide` job has a step with the same name as the one of `build`.
+  const start = goLines.map((l, i) => (new RegExp(`^ {6}- (?:name: ${name}|id: ${name})\\s*$`).test(l) ? i : -1)).filter((i) => i !== -1).pop() ?? -1;
+  assert.ok(start !== -1, `step "${name}" exists`);
+  const rest = goLines.slice(start + 1);
+  const end = rest.findIndex((l) => /^ {6}(?:- |#)/.test(l));
+  return goLines.slice(start, end === -1 ? undefined : start + 1 + end).join('\n');
+};
+
+test('Scenario: Output off - the template never sets the action\'s own show_full_output, which cannot be redacted', () => {
+  const active = goLines.filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.doesNotMatch(active, /show_full_output\s*:/);
+});
+
+test('Scenario: Output turned on for one run - a manual start has a full_output boolean that is off by default', () => {
+  assert.match(go, /full_output:\n\s+description: [^\n]+\n\s+required: false\n\s+default: false\n\s+type: boolean/);
+});
+
+test('the steps that print and prepare the transcript run whatever happened and never fail the job', () => {
+  ['Show the agent output', 'Prepare the transcript'].forEach((name) => {
+    const step = stepOf(name);
+    assert.match(step, /if: always\(\)/, name);
+    assert.match(step, /continue-on-error: true/, name);
+    assert.match(step, /exit 0\s*$/, name);
+  });
+});
+
+test('Scenario: The rendering is printed only when the decision says so, in a log group', () => {
+  const step = stepOf('Show the agent output');
+  assert.match(step, /run-output\.mjs --config relevo\.yml --input "\$INPUT_FULL_OUTPUT"/);
+  assert.match(step, /if \[ "\$\(field output\)" = "true" \] && \[ -n "\$EXECUTION_FILE" \]/);
+  assert.match(step, /::group::[^\n]*redacted/);
+  assert.match(step, /transcript\.mjs --file "\$EXECUTION_FILE" --results/);
+});
+
+test('the input of a manual start reaches the script through the environment, not through the shell text', () => {
+  const step = stepOf('Show the agent output');
+  assert.match(step, /INPUT_FULL_OUTPUT: \$\{\{ inputs\.full_output \}\}/);
+  assert.ok(!/run: \|[\s\S]*\$\{\{ inputs\./.test(step.slice(step.indexOf('run: |'))), 'no expression inside the script text');
+});
+
+test('the secrets of the job are given to the redactor, and results only when the full output is on', () => {
+  [stepOf('Show the agent output'), stepOf('Prepare the transcript')].forEach((step) => {
+    assert.match(step, /RELEVO_REDACT: \|/);
+    assert.match(step, /secrets\.ANTHROPIC_API_KEY/);
+    assert.match(step, /secrets\.CLAUDE_CODE_OAUTH_TOKEN/);
+    assert.match(step, /github\.token/);
+  });
+  const prepare = stepOf('Prepare the transcript');
+  assert.match(prepare, /\[ "\$RESULTS" = "true" \] && flag="--results"/);
+  assert.match(prepare, /\[ "\$ALLOWED" = "true" \]/, 'nothing is written for trust public');
+});
+
+test('Scenario: Run cancelled at the time limit - the transcript is uploaded for an abnormal end and for no other', () => {
+  const upload = stepOf('Save the transcript');
+  assert.match(upload, /if: always\(\) && steps\.transcript\.outputs\.saved == 'true' && \(steps\.no_outcome\.outputs\.reported == 'true' \|\| job\.status != 'success'\)/);
+  assert.match(upload, /uses: actions\/upload-artifact@v4/);
+  assert.match(upload, /retention-days: 7/);
+  assert.match(upload, /continue-on-error: true/);
+});
+
+test('the transcript is prepared before the comment that links it, and uploaded before the progress report closes', () => {
+  const at = (name) => goLines.map((l, i) => (l.includes(`name: ${name}`) ? i : -1)).filter((i) => i !== -1).pop();
+  assert.ok(at('Prepare the transcript') < at('Report a run that ended without an outcome'));
+  assert.ok(at('Report a run that ended without an outcome') < at('Save the transcript'));
+  assert.ok(at('Save the transcript') < at('Stop the progress report'));
+});
+
+test('the comment of a run without an outcome says whether a transcript exists and where', () => {
+  const step = stepOf('Report a run that ended without an outcome');
+  assert.match(step, /TRANSCRIPT_SAVED: \$\{\{ steps\.transcript\.outputs\.saved \}\}/);
+  assert.match(step, /artifact \\`relevo-transcript\\`/);
+  assert.match(step, /No transcript of the agent was saved/);
+});
+
+test('the new steps change no permission of the job and need no new script outside the package check', () => {
+  const build = go.slice(go.indexOf('  build:'));
+  assert.match(build, /permissions:\n {6}contents: write\n {6}issues: write\n {6}pull-requests: read/);
+  assert.match(go, /for f in scripts\/run-usage\.mjs scripts\/usage-limit\.mjs scripts\/transcript\.mjs scripts\/run-output\.mjs; do/);
+});

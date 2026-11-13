@@ -26,7 +26,7 @@ Verified on 2026-10-14 against the documentation and `action.yml` of `anthropics
 |---|---|
 | `plugins`, `plugin_marketplaces` | the plugin comes from the package pinned by `RELEVO_VERSION`; a marketplace without a version installs the latest plugin, and a private plugin repository would need a token. Workflows copied before this change still set them |
 | `allowed_non_write_users` | lets people without write access start a run; the action calls it risky |
-| `show_full_output` | prints tool results, which may contain secrets; use only while piloting and never leave it on |
+| `show_full_output` | prints tool results as they happen, which may contain secrets, and cannot be redacted. For the agent output use `run.full_output` instead: the template prints a redacted rendering after the agent step ([Seeing what the agent did](security.md#seeing-what-the-agent-did)) |
 | `trigger_phrase`, `label_trigger` | the run is started by Relevo's own label event, not by the action's triggers |
 
 ## Deprecated inputs (do not use)

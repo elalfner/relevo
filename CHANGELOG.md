@@ -4,6 +4,24 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-11-13
+
+### Added
+
+- **The full output of the agent can be shown, redacted, without editing a workflow.** `run.full_output: true` in `relevo.yml` (off by default) turns it on for a repository, and a `full_output` input of the manual start of `relevo-go` turns it on for one run. After the agent step ends, the log has a group "Agent output (redacted)" with the commands of the agent and the first characters of each result. The template still never sets the action's own `show_full_output`, which prints as it happens and cannot be redacted, so the output appears when the step ends and not while it runs.
+- **A run that is cancelled, times out or ends without an outcome leaves a transcript.** The last commands of the agent (at most 200 entries and 200 KB) are saved as the artifact `relevo-transcript` for seven days, and the comment on the issue says where to find it. With the option off the transcript holds the commands only and never a result; with it on it also holds the first 300 characters of each result. A run that ends with an outcome saves nothing.
+- **A redactor with no model.** Anything printed or saved from the agent's log passes `scripts/lib/redact.mjs`: known secret shapes (provider and cloud keys, tokens, private key blocks, credentials in URLs, bearer values, the value of an assignment whose name is a credential) and the exact values, plain and in base64, of the model credential and the workflow token. It is tested with values shaped like each kind of restricted file.
+- **`trust: public` refuses the option.** Validation fails when `run.full_output` is set with it, the manual input is ignored with a notice, and no transcript is saved, because the artifacts of a public repository are readable by anyone. A configuration that cannot be read fails closed the same way.
+- **New scripts:** `scripts/transcript.mjs` (the redacted rendering of the execution log) and `scripts/run-output.mjs` (what a run shows and saves). `docs/security.md` and its Spanish page have a section, "Seeing what the agent did"; `docs/configuration.md` and `docs/execution.md` point to it.
+
+### Known limits
+
+- The redactor can miss a credential in a shape it does not know, and a command line can hold one. The option is off by default for that reason, and the redactor is not a control: the closed tool list, the restricted-file denials and the absence of web access stay what keeps secrets from the agent.
+- The rendering appears after the agent step ends, not while it runs. A runner that is killed outright leaves no execution log, so there is nothing to save, and the comment says so.
+- The format of the execution log is not documented, so the reader is tolerant and drops an entry it does not understand. Seeing a transcript of a real cancelled run has to be checked by a person: the tests cover the shape of the workflow and the redaction, not GitHub's behavior.
+- A repository with an older `relevo-go.yml` does not get the steps until it takes the new file (`/relevo:init` reports the older copy and merges it).
+- The output of the local mode and of Antigravity is not covered.
+
 ## [0.14.4] - 2026-11-05
 
 ### Added

@@ -1,4 +1,4 @@
-# relevo-template: 0.14.4
+# relevo-template: 0.14.5
 # Relevo: builds an issue when someone with write access labels it `relevo:ready`.
 # Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
 #
@@ -20,7 +20,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.14.4'
+  RELEVO_VERSION: '0.14.5'
   # The version of OpenSpec that the job installs for itself.
   OPENSPEC_VERSION: '1.14.3'
 
@@ -33,6 +33,13 @@ on:
       issue:
         description: Issue number to build
         required: true
+      # Prints a redacted rendering of the agent output in the log of this run (refused when trust is public). The repository-wide
+      # switch is run.full_output in relevo.yml. See docs/security.md before turning it on.
+      full_output:
+        description: Show the agent output in the log, with secrets redacted
+        required: false
+        default: false
+        type: boolean
 
 # One run per issue: a repeated label event waits for the first run and then finds the issue already building.
 concurrency:
@@ -355,7 +362,8 @@ jobs:
           # The issue text is data, never instructions: the skill tells the agent so. The tool list is closed:
           # only the tools in --allowedTools, and no web access (nothing to fetch, nowhere to send a secret).
           # Do not set allowed_non_write_users or show_full_output here, and never widen allowed_bots: they open the run to
-          # strangers or print tool results (possibly secrets) to the log.
+          # strangers or print tool results (possibly secrets) to the log. To see the agent output, turn on run.full_output in
+          # relevo.yml or start the run by hand with full_output: the step "Show the agent output" below prints it redacted.
           # The decision the `decide` job already made travels with the prompt, encoded so that the issue title in it
           # is never read as an instruction. The skill decodes it and skips its own planning step.
           prompt: /relevo:go ${{ github.event.issue.number || inputs.issue }} --decision ${{ needs.decide.outputs.decision_b64 }}
@@ -466,7 +474,7 @@ jobs:
           mkdir -p .relevo-plugin
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C .relevo-plugin
-          for f in scripts/run-usage.mjs scripts/usage-limit.mjs; do
+          for f in scripts/run-usage.mjs scripts/usage-limit.mjs scripts/transcript.mjs scripts/run-output.mjs; do
             [ -f ".relevo-plugin/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
 
@@ -490,6 +498,58 @@ jobs:
           [ -n "$line" ] && gh issue comment "$ISSUE" --body "$line"
           exit 0
 
+      # The output of the agent, printed after its step ends and only when it is turned on (run.full_output in relevo.yml, or the
+      # full_output input of a manual start; never with trust: public). The action's own show_full_output prints as it happens and
+      # cannot be redacted, so it stays unset. A secret in a shape the redactor does not know can still appear: see docs/security.md.
+      - name: Show the agent output
+        id: output
+        if: always()
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          INPUT_FULL_OUTPUT: ${{ inputs.full_output }}
+          RELEVO_REDACT: |
+            ${{ secrets.ANTHROPIC_API_KEY }}
+            ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+            ${{ github.token }}
+        run: |
+          decision=$(node .relevo-plugin/scripts/run-output.mjs --config relevo.yml --input "$INPUT_FULL_OUTPUT")
+          field() { printf '%s' "$decision" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8"))[process.argv[1]] ?? "")' "$1"; }
+          echo "transcript=$(field transcript)" >> "$GITHUB_OUTPUT"
+          echo "results=$(field output)" >> "$GITHUB_OUTPUT"
+          if [ "$(field refused)" = "true" ]; then
+            echo "::notice::The full agent output was asked for and refused: $(field reason)"
+          fi
+          if [ "$(field output)" = "true" ] && [ -n "$EXECUTION_FILE" ]; then
+            echo "::group::Agent output (redacted)"
+            node .relevo-plugin/scripts/transcript.mjs --file "$EXECUTION_FILE" --results || true
+            echo "::endgroup::"
+          fi
+          exit 0
+
+      # The trimmed transcript of the run, written to a file now and uploaded below only if the run ends abnormally. It holds the
+      # last commands of the agent, redacted, and their results only when the full output is on. Never kept for trust: public.
+      - name: Prepare the transcript
+        id: transcript
+        if: always()
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          ALLOWED: ${{ steps.output.outputs.transcript }}
+          RESULTS: ${{ steps.output.outputs.results }}
+          RELEVO_REDACT: |
+            ${{ secrets.ANTHROPIC_API_KEY }}
+            ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+            ${{ github.token }}
+        run: |
+          [ "$ALLOWED" = "true" ] && [ -n "$EXECUTION_FILE" ] || exit 0
+          flag=""; [ "$RESULTS" = "true" ] && flag="--results"
+          mkdir -p "$RUNNER_TEMP/relevo-transcript"
+          node .relevo-plugin/scripts/transcript.mjs --file "$EXECUTION_FILE" $flag > "$RUNNER_TEMP/relevo-transcript/transcript.txt" || true
+          [ -s "$RUNNER_TEMP/relevo-transcript/transcript.txt" ] || exit 0
+          echo "saved=true" >> "$GITHUB_OUTPUT"
+          exit 0
+
       # A run can end without telling anyone: the plugin cannot be cloned, the login fails, preflight stops, the
       # run reached --max-turns or --max-budget-usd (the runner cuts it; the agent cannot see those counters and
       # does not stop itself), or the agent ends its session early (all seen in the pilot, see docs/pilot-findings.md). If the issue is still
@@ -504,6 +564,7 @@ jobs:
           JOB_STATUS: ${{ job.status }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          TRANSCRIPT_SAVED: ${{ steps.transcript.outputs.saved }}
         run: |
           labels=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name')
           # A run the queue dispatched that fails before it claims the issue leaves it `queued`: report that
@@ -522,7 +583,25 @@ jobs:
           else
             gh issue comment "$ISSUE" --body "${assignee:+@$assignee }The run ended without a result (job status: $JOB_STATUS), so nothing was built or reported. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
           fi
+          # Where to look: the run page lists the transcript artifact, which is kept for a few days and needs a login to read.
+          if [ "$TRANSCRIPT_SAVED" = "true" ]; then
+            gh issue comment "$ISSUE" --body "A trimmed transcript of what the agent did (redacted) is saved as the artifact \`relevo-transcript\` at the bottom of the run page: $RUN_URL"
+          else
+            gh issue comment "$ISSUE" --body "No transcript of the agent was saved (no execution log, or this repository does not keep one): $RUN_URL"
+          fi
           echo "reported=true" >> "$GITHUB_OUTPUT"
+
+      # Only a run that ended without an outcome or did not succeed keeps its transcript. Seven days, because it is for a diagnosis and
+      # not for a record, and the artifact of a private repository needs a login to read. It uploads nothing for trust: public.
+      - name: Save the transcript
+        if: always() && steps.transcript.outputs.saved == 'true' && (steps.no_outcome.outputs.reported == 'true' || job.status != 'success')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: relevo-transcript
+          path: ${{ runner.temp }}/relevo-transcript/transcript.txt
+          retention-days: 7
+          if-no-files-found: ignore
 
       # The progress report ends here, after every report above so that its last line is true: first the check is asked to
       # stop and waited for (so that it cannot write over the closing), then the comment is replaced by one line. Neither

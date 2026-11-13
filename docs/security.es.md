@@ -120,6 +120,17 @@ En la máquina de una persona Relevo propone y comprueba, y nunca hace cumplir: 
 
 **Ningún archivo de ignorar es un control.** Una entrada de `.gitignore` saca un archivo de git, no del alcance de un agente; `.claudeignore` no tiene efecto según la documentación de Claude Code, y `.claudecode.json` no está documentado como control. Relevo escribe solo ajustes que la documentación de la herramienta lista como denegación de lectura, y no ofrece ninguno de esos archivos como protección.
 
+## Ver lo que hizo el agente
+
+Para saber por qué se detuvo una ejecución larga hace falta la salida del agente, y el `show_full_output` de la propia acción imprime cada resultado de herramienta en el log según ocurre, sin forma de redactarlo, así que la plantilla del workflow nunca lo pone. Relevo tiene su propia opción.
+
+- **Activarla.** Para un repositorio, pon `run.full_output: true` en `relevo.yml`. Para una ejecución, lanza `relevo-go` a mano (la pestaña Actions, «Run workflow») y marca `full_output`; una ejecución iniciada por una etiqueta solo puede usar el ajuste del repositorio.
+- **Qué imprime.** Cuando termina el paso del agente, el log de la ejecución tiene un grupo «Agent output (redacted)» con los comandos del agente y los primeros caracteres de cada resultado. Aparece cuando termina el paso del agente, no mientras corre.
+- **Qué guarda.** Cuando una ejecución se cancela, agota el tiempo o termina sin resultado, los últimos comandos del agente (como máximo 200 entradas y 200 KB) se guardan como el artefacto `relevo-transcript` de la ejecución, durante siete días, y el comentario del issue dice dónde. Con la opción apagada la transcripción tiene solo los comandos, nunca un resultado; encendida, también los primeros 300 caracteres de cada resultado. Una ejecución que termina con un resultado no guarda nada.
+- **Redacción.** Antes de imprimir o guardar nada, el texto pasa por un redactor que reemplaza las formas conocidas de secretos (claves de proveedores y de la nube, tokens, bloques de claves privadas, credenciales en URLs, el valor de una asignación cuyo nombre dice que es una credencial) y los valores exactos de la credencial del modelo y del token del workflow. Trabaja sobre texto y no abre ningún archivo.
+- **Puede dejar pasar un secreto.** Una credencial con una forma que el redactor no conoce pasa, y una línea de comando puede llevar una. Por eso la opción está apagada por defecto y la transcripción no guarda resultados salvo que la enciendas. El redactor no es un control: la lista cerrada de herramientas, las denegaciones de archivos restringidos y la ausencia de acceso a la web son lo que mantiene los secretos lejos del agente, y siguen vigentes.
+- **`trust: public` la rechaza.** La validación falla cuando `run.full_output` está puesto con `trust: public`, el input `full_output` de un arranque manual se ignora con un aviso y no se guarda ninguna transcripción, porque los artefactos de un repositorio público los puede leer cualquiera.
+
 ## En un repositorio público
 
 - Pon `trust: public`. Solo el `ready` de un mantenedor inicia una ejecución, nada corre con contenido de forks, y `review.mode` no puede ser `none`.

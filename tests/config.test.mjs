@@ -468,3 +468,17 @@ test('a protected path is refused too, and an unknown key under design.system is
   assert.match(loadConfig(withSystem('    components: [.github/workflows]\n')).errors.map((e) => e.message).join(' '), /protected path/);
   assert.match(loadConfig(withSystem('    token: [lib]\n')).errors.map((e) => e.message).join(' '), /unknown setting "design\.system\.token"/);
 });
+
+test('Scenario: Full agent output setting - off by default, a boolean, and refused with trust public', () => {
+  const base = 'limits:\n  run_max_cost: 5\n';
+  assert.equal(loadConfig(base).config.run.full_output, false);
+  assert.equal(loadConfig(`${base}run:\n  full_output: true\n`).config.run.full_output, true);
+  const bad = loadConfig(`${base}run:\n  full_output: "yes"\n`);
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.some((e) => e.path === 'run.full_output'));
+  const pub = loadConfig(`trust: public\n${base}run:\n  full_output: true\n`);
+  assert.equal(pub.ok, false);
+  assert.ok(pub.errors.some((e) => e.path === 'run.full_output' && /public/.test(e.message)));
+  assert.equal(loadConfig(`trust: public\n${base}run:\n  full_output: false\n`).ok, true);
+  assert.equal(loadConfig(`trust: private-team\n${base}run:\n  full_output: true\n`).ok, true);
+});
