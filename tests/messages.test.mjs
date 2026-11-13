@@ -630,7 +630,7 @@ test('Scenario: Other reasons of the failure path that are not a QA rejection, a
 });
 
 test('Scenario: QA rejected the work, and a comment with no reason - the title and the line are as before', () => {
-  ['QA rejected after the retries', 'QA rejected: nothing the developer agent can fix', undefined].forEach((reason) => {
+  ['QA rejected after the retries', 'QA rejected: nothing the developer agent can fix', 'QA rejected: the lenses contradict each other', undefined].forEach((reason) => {
     const en = renderMessage('qa_failed', { ...STOP, reason }, 'en');
     assert.match(en, /^@persona-b #31 "Summary" failed QA ❌/, String(reason));
     assert.doesNotMatch(en, /QA did not reject/, String(reason));
@@ -650,4 +650,18 @@ test('the stops that already had their own wording keep it and take the title of
   assert.match(policy, /^@persona-b #31 "Summary" stopped ❌/);
   assert.match(policy, /QA did not reject the work/);
   assert.match(policy, /Your next step: \/relevo:issue 31/);
+});
+
+// #150: the comment of two lenses that contradict each other shows both lenses and both findings.
+const contradiction = { contradiction_first_lens: 'spec', contradiction_first_finding: 'read the dialog question from `DIALOG_QUESTION`', contradiction_then_lens: 'code', contradiction_then_finding: 'the assertions on `DIALOG_QUESTION` can no longer fail' };
+
+test('Scenario: Two lenses contradict each other - the comment names both lenses, quotes both findings and says no retry was made', () => {
+  const en = renderMessage('qa_failed', { ...classBase, reason: 'QA rejected: the lenses contradict each other', ...contradiction });
+  assert.match(en, /What happened: QA rejected it and the findings of two lenses contradict each other, so there were no more retries \(QA rejected: the lenses contradict each other\)\./);
+  assert.match(en, /the spec lens asked for “read the dialog question from `DIALOG_QUESTION`” and, once that was done, the code lens rejected it with “the assertions on `DIALOG_QUESTION` can no longer fail”/);
+  const es = renderMessage('qa_failed', { ...classBase, ...contradiction }, 'es');
+  assert.match(es, /el lente spec pidió “read the dialog question from `DIALOG_QUESTION`” y, hecho eso, el lente code lo rechazó con “the assertions/);
+  assert.match(es, /Un reintento no puede cumplir las dos cosas\./);
+  assert.doesNotMatch(renderMessage('qa_failed', classBase), /contradict/);
+  assert.throws(() => renderMessage('qa_failed', { ...classBase, contradiction_first_lens: 'spec' }), /needs all of/);
 });

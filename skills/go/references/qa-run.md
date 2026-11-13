@@ -51,8 +51,10 @@ The lenses are read-only and independent, so the lenses of a batch are launched 
 ## 4. Aggregate
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/qa-aggregate.mjs --plan <plan.json> --attempt <n> --retries <qa_retries> --report spec=<file> --report security=<file> --report code=<file> [--report interface=<file>] --rules-file <qa.rules_from, comma separated>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/qa-aggregate.mjs --plan <plan.json> --attempt <n> --retries <qa_retries> --report spec=<file> --report security=<file> --report code=<file> [--report interface=<file>] --rules-file <qa.rules_from, comma separated> [--previous spec=<file> --previous security=<file> --previous code=<file> [--previous interface=<file>]]
 ```
+
+Keep the reports of every attempt in files of their own (the report of a lens on attempt `<n>` is not overwritten by attempt `<n> + 1`). From the second attempt, pass the reports of attempt `<n> - 1` as `--previous`, one per lens that ran; on the first attempt pass none. With them the script can tell that a lens now rejects what another lens asked for in the attempt before.
 
 It prints JSON and decides: `spec`, `security` and `code` always block, and `interface` blocks on every attempt except the last, where its findings become advisory notes (and always when `qa_retries` is 0). Any blocking rejection makes the result `QA REJECTED`.
 
@@ -64,6 +66,8 @@ It prints JSON and decides: `spec`, `security` and `code` always block, and `int
 - **5**: a second invalid report. Take the failure path with the reason `lens report invalid`. Do not retry the developer agent.
 
 ## 5. A rejection
+
+If `contradiction` is not `null`, every blocking finding reverses what another lens asked for in the attempt before and no longer asks for (for example `spec` asked for the question to be read from a constant, the developer did it, and `code` now rejects the assertions on that constant), so another attempt cannot satisfy both: **do not retry**, whatever attempt this is. The script decided it from the reports alone; do not second-guess it, and do not look for a contradiction yourself when it printed `null`. It never lets a finding of `security` or a hard rule be one side, and the result stays `QA REJECTED`. Take the failure path with the reason `QA rejected: the lenses contradict each other`, with the first of `contradiction.pairs` as the finding: pass `contradiction_first_lens`, `contradiction_first_finding`, `contradiction_then_lens` and `contradiction_then_finding` (the `lens` and `text` of its `first` and `then`) to `render-message.mjs qa_failed`, so that the comment names both lenses and quotes both findings. The work is kept on the branch like any other QA rejection.
 
 If `all_non_fixable` is `true`, every blocking finding needs something that the developer agent cannot supply (an input the issue depends on, a decision of the specification, or something an unattended run may not do), so a retry cannot succeed: **do not retry**. Take the failure path with the reason `QA rejected: nothing the developer agent can fix`, with `finding_class` set to `first_non_fixable_class` and `retries_skipped` set to `true`. A finding with no class, or an unknown one, counts as `fixable`.
 

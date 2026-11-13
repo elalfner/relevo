@@ -147,7 +147,7 @@ test('Scenario: A mixed report - the retries run and the class of the first find
 });
 
 test('the work is kept when the retries were skipped, as it is after the retries', () => {
-  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `QA rejected: the lenses contradict each other`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
 });
 
 test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
@@ -601,4 +601,12 @@ test('Scenario: a replicated build - the recipe is checked by a script, the temp
 test('Scenario: The reason of a replica model is kept - step 3 of a replicated build passes the task id to replica-plan.mjs model (replica-model-reason)', () => {
   const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
   assert.match(step4, /replica-plan\.mjs model --dev-model <[^>]+> --failures <[^>]+> --task <task id>/);
+});
+
+test('Scenario: Two lenses contradict each other - qa-run.md does not retry and the failure path carries both findings', () => {
+  const qaRun = readFileSync(new URL('../skills/go/references/qa-run.md', import.meta.url), 'utf8');
+  assert.match(qaRun, /If `contradiction` is not `null`[\s\S]*\*\*do not retry\*\*/);
+  assert.match(qaRun, /`QA rejected: the lenses contradict each other`/);
+  assert.match(qaRun, /--previous spec=<file>/);
+  assert.match(body, /\*\*The lenses contradict each other\*\*/);
 });

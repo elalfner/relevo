@@ -181,6 +181,7 @@ test('every title that qa_failed can produce is found by the reader of fix, so a
     {},
     { reason: 'QA rejected after the retries' },
     { reason: 'QA rejected: nothing the developer agent can fix', retries_skipped: true, finding_class: 'input' },
+    { reason: 'QA rejected: the lenses contradict each other' },
     { reason: 'branch already exists', branch_state: 'existing', recovery: 'fix' },
     { reason: 'run limit reached', branch_state: 'kept' },
     { reason: 'protected path in the diff', branch_state: 'unsafe', file: 'CLAUDE.md' },

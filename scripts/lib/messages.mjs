@@ -87,6 +87,7 @@ export const CATALOG = {
       'What happened: {{happened}}',
       'Finding: {{finding}}{{location_suffix}}',
       '{{class_line}}',
+      '{{contradiction_line}}',
       '{{branch_line}}',
       'Full QA report: {{log_url}}',
       '{{next_line}}',
@@ -276,6 +277,7 @@ export const CATALOG = {
       'Qué pasó: {{happened}}',
       'Hallazgo: {{finding}}{{location_suffix}}',
       '{{class_line}}',
+      '{{contradiction_line}}',
       '{{branch_line}}',
       'Reporte completo de QA: {{log_url}}',
       '{{next_line}}',
@@ -565,7 +567,7 @@ const policyStop = (values) => POLICY_STOPS[values.reason] ?? null;
 // The reasons of the failure path that are a QA rejection. A comment with no reason is one too (the older callers never gave one).
 // Any other reason is a stop for that reason, including one the catalog does not know: a reason added to the skill later is never
 // described as a QA rejection. `fix` finds the comment by its title (scripts/lib/failure-comment.mjs), so a title changes there too.
-const QA_REJECTIONS = new Set(['QA rejected after the retries', 'QA rejected: nothing the developer agent can fix']);
+const QA_REJECTIONS = new Set(['QA rejected after the retries', 'QA rejected: nothing the developer agent can fix', 'QA rejected: the lenses contradict each other']);
 const stopsNotQa = (values) => present(values.reason) && !QA_REJECTIONS.has(values.reason);
 
 function present(value) {
@@ -598,6 +600,25 @@ function classLine(values, es) {
   }[values.finding_class];
   if (es) return `Qué tipo de hallazgo: necesita ${what}${skipped ? ', así que se omitieron los reintentos' : ''}.`;
   return `What kind of finding: it needs ${what}${skipped ? ', so the retries were skipped' : ''}.`;
+}
+
+// Two lenses asked for fixes that cannot both be met (see scripts/lib/qa-aggregate.mjs): both lenses and both findings, quoted.
+// The four values come together or not at all.
+const CONTRADICTION_KEYS = ['contradiction_first_lens', 'contradiction_first_finding', 'contradiction_then_lens', 'contradiction_then_finding'];
+function contradicted(values) {
+  const given = CONTRADICTION_KEYS.filter((k) => present(values[k]));
+  if (given.length === 0) return false;
+  if (given.length !== CONTRADICTION_KEYS.length) throw new Error(`message "qa_failed" needs all of ${CONTRADICTION_KEYS.join(', ')} or none`);
+  return true;
+}
+const quoteOf = (text) => `“${String(text).replace(/\s+/g, ' ').trim().slice(0, 300)}”`;
+function contradictionLine(values, es) {
+  if (!contradicted(values)) return '';
+  const a = values.contradiction_first_lens;
+  const b = values.contradiction_then_lens;
+  return es
+    ? `Los hallazgos se contradicen: el lente ${a} pidió ${quoteOf(values.contradiction_first_finding)} y, hecho eso, el lente ${b} lo rechazó con ${quoteOf(values.contradiction_then_finding)}. Un reintento no puede cumplir las dos cosas.`
+    : `The findings contradict each other: the ${a} lens asked for ${quoteOf(values.contradiction_first_finding)} and, once that was done, the ${b} lens rejected it with ${quoteOf(values.contradiction_then_finding)}. A retry cannot meet both.`;
 }
 
 // The comments of a run that ended without telling anyone. They were written inline in the go workflow, which is why a repository
@@ -774,6 +795,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
   }
   if (kind === 'qa_failed') {
     values.class_line = classLine(values, es);
+    values.contradiction_line = contradictionLine(values, es);
     const location = present(values.file) ? `${values.file}${present(values.line) ? `:${values.line}` : ''}` : '';
     values.location_suffix = location ? ` (${location})` : '';
     // `pushed: false` is the older way to say that the branch was not pushed because of a credential or a marker.
@@ -813,6 +835,8 @@ export function renderMessage(kind, data = {}, language = 'en') {
       ? `${es ? 'La ejecución se detuvo' : 'The run stopped'}${values.reason_suffix}: ${policyStop(values)[es ? 'es' : 'en']}.`
       : stopsNotQa(values)
       ? (es ? `La ejecución se detuvo${values.reason_suffix}. QA no rechazó el trabajo.` : `The run stopped${values.reason_suffix}. QA did not reject the work.`)
+      : contradicted(values)
+      ? (es ? `QA la rechazó y los hallazgos de dos lentes se contradicen, así que no se hicieron más reintentos${values.reason_suffix}.` : `QA rejected it and the findings of two lenses contradict each other, so there were no more retries${values.reason_suffix}.`)
       : values.retries_skipped === true
       ? (es ? 'QA la rechazó y ningún hallazgo lo puede corregir el agente de desarrollo, así que no se hicieron reintentos.' : 'QA rejected it and no finding can be corrected by the developer agent, so there were no retries.')
       : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`);

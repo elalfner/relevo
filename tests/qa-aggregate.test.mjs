@@ -246,3 +246,89 @@ test('the code lens always blocks: a real problem with advice on the side blocks
   const note = withAdvice({ ...ok, code: rejected(`1. "Prefer small functions" was not followed in list.js. ${ADVICE_CITE}`) });
   assert.equal(note.result, 'QA PASSED');
 });
+
+// #150: two lenses that ask for opposite fixes stop the retries (the check needs the reports of the previous attempt).
+const SPEC_ASKS = rejected('1. The tests repeat the dialog question as a literal: read it from `DIALOG_QUESTION`, decision D2 of the issue (dialog.test.js:12).');
+const CODE_REJECTS = rejected('1. The assertions on `DIALOG_QUESTION` can no longer fail if the wording changes; assert the text itself (dialog.test.js:12).');
+const again = (reports, previous, o = {}) => aggregate({ reports, previous, plan: o.plan ?? ALL, attempt: o.attempt ?? 2, retries: o.retries ?? 2, rules: o.rules ?? [] });
+
+test('Scenario: One lens rejects what another asked for - the issue #150 case is a contradiction naming both lenses and both findings', () => {
+  const r = again({ ...ok, code: CODE_REJECTS }, { ...ok, spec: SPEC_ASKS });
+  assert.equal(r.result, 'QA REJECTED', 'it never becomes a pass');
+  assert.ok(r.contradiction, 'the contradiction is reported');
+  const [pair] = r.contradiction.pairs;
+  assert.deepEqual([pair.first.lens, pair.then.lens], ['spec', 'code']);
+  assert.match(pair.first.text, /read it from `DIALOG_QUESTION`/);
+  assert.match(pair.then.text, /can no longer fail/);
+  assert.equal(pair.quoted, 'DIALOG_QUESTION');
+});
+
+test('Scenario: The findings do not contradict each other - the retry runs as today', () => {
+  // no quoted words in common
+  assert.equal(again({ ...ok, code: rejected('1. `parseDate` swallows the error.') }, { ...ok, spec: SPEC_ASKS }).contradiction, null);
+  // a second, unrelated blocking finding exists: it is still fixable, so the retry runs
+  assert.equal(again({ ...ok, code: [CODE_REJECTS, '2. `parseDate` swallows the error.'].join('\n') }, { ...ok, spec: SPEC_ASKS }).contradiction, null);
+  // nothing before
+  assert.equal(again({ ...ok, code: CODE_REJECTS }, {}).contradiction, null);
+  assert.equal(run({ ...ok, code: CODE_REJECTS }).contradiction, null, 'attempt 1 has no previous reports');
+});
+
+test('Scenario: The same lens repeats a finding - it is not a contradiction', () => {
+  assert.equal(again({ ...ok, spec: SPEC_ASKS }, { ...ok, spec: SPEC_ASKS }).contradiction, null, 'the same lens, the same finding');
+  // the other lens had said it before: B repeats itself
+  assert.equal(again({ ...ok, code: CODE_REJECTS, spec: SPEC_ASKS }, { ...ok, code: CODE_REJECTS, spec: SPEC_ASKS }).contradiction, null);
+  // A did not address it: it still asks for it
+  assert.equal(again({ ...ok, spec: SPEC_ASKS, code: CODE_REJECTS }, { ...ok, spec: SPEC_ASKS }).contradiction, null);
+  // B had already said it on the previous attempt, A asked later
+  assert.equal(again({ ...ok, code: CODE_REJECTS }, { ...ok, spec: SPEC_ASKS, code: CODE_REJECTS }).contradiction, null);
+});
+
+test('Scenario: A security finding is among the blocking findings - no contradiction, the retry runs', () => {
+  const sec = rejected('1. The `DIALOG_QUESTION` constant is built from user input (dialog.js:4).');
+  assert.equal(again({ ...ok, security: sec }, { ...ok, spec: SPEC_ASKS }).contradiction, null, 'security is never a side');
+  assert.equal(again({ ...ok, code: CODE_REJECTS, security: sec }, { ...ok, spec: SPEC_ASKS }).contradiction, null);
+  assert.equal(again({ ...ok, code: CODE_REJECTS }, { ...ok, security: rejected('1. Do not log `DIALOG_QUESTION`.') }).contradiction, null, 'a security finding of the past is never reversed away either');
+  const rules = parseRules('CLAUDE.md', 'Every list must offer export.\n');
+  const hard = rejected('1. `DIALOG_QUESTION` hides the export.', '   Rule: CLAUDE.md:1 "Every list must offer export"');
+  const r = again({ ...ok, code: hard }, { ...ok, spec: SPEC_ASKS }, { rules });
+  assert.equal(r.contradiction, null, 'a hard rule is not a side');
+  assert.equal(r.result, 'QA REJECTED');
+});
+
+test('only quoted words count, and a path or a Rule citation is not one', () => {
+  const before = { ...ok, spec: rejected('1. Edit `src/dialog.js` to export it.') };
+  assert.equal(again({ ...ok, code: rejected('1. `src/dialog.js` has a dead branch.') }, before).contradiction, null);
+  const curly = again({ ...ok, code: rejected('1. The “dialog question” assertions cannot fail.') }, { ...ok, spec: rejected('1. Read the "Dialog Question" from a constant.') });
+  assert.ok(curly.contradiction, 'curly and straight quotes, case and spaces are squashed');
+  assert.equal(again({ ...ok, code: rejected('1. The `ab` is short.') }, { ...ok, spec: rejected('1. Use `ab`.') }).contradiction, null, 'under 3 characters');
+});
+
+test('the previous reports missing, invalid or with no findings change nothing, and an interface lens that advises is no side', () => {
+  const code = { ...ok, code: CODE_REJECTS };
+  assert.equal(again(code, { spec: null }).contradiction, null);
+  assert.equal(again(code, { ...ok, spec: 'garbage' }).contradiction, null);
+  assert.equal(again(code, { ...ok, spec: passed() }).contradiction, null);
+  assert.equal(again(code, undefined).contradiction, null);
+  const adv = again({ ...ok, interface: CODE_REJECTS }, { ...ok, spec: SPEC_ASKS }, { attempt: 3, retries: 2 });
+  assert.equal(adv.result, 'QA PASSED');
+  assert.equal(adv.contradiction, null, 'no blocking finding, nothing to stop');
+});
+
+test('CLI: --previous reads the reports of the previous attempt and prints the contradiction, with exit 1', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-agg-'));
+  writeFileSync(join(dir, 'plan.json'), JSON.stringify(THREE));
+  writeFileSync(join(dir, 'spec1.md'), SPEC_ASKS);
+  const files = { spec: passed(), security: passed(), code: CODE_REJECTS };
+  Object.entries(files).forEach(([l, t]) => writeFileSync(join(dir, `${l}.md`), t));
+  ['security', 'code'].forEach((l) => writeFileSync(join(dir, `${l}1.md`), passed()));
+  const cli = new URL('../scripts/qa-aggregate.mjs', import.meta.url).pathname;
+  const reports = Object.keys(files).flatMap((l) => ['--report', `${l}=${join(dir, `${l}.md`)}`]);
+  const base = ['--plan', join(dir, 'plan.json'), '--attempt', '2', '--retries', '2', ...reports];
+  const prev = ['spec', 'security', 'code'].flatMap((l) => ['--previous', `${l}=${join(dir, `${l}1.md`)}`]);
+  const r = spawnSync('node', [cli, ...base, ...prev], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.equal(JSON.parse(r.stdout).contradiction.pairs[0].then.lens, 'code');
+  const none = spawnSync('node', [cli, ...base, '--previous', `spec=${join(dir, 'missing.md')}`], { encoding: 'utf8' });
+  assert.equal(none.status, 1);
+  assert.equal(JSON.parse(none.stdout).contradiction, null);
+});
