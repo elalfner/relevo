@@ -665,3 +665,19 @@ test('Scenario: Two lenses contradict each other - the comment names both lenses
   assert.doesNotMatch(renderMessage('qa_failed', classBase), /contradict/);
   assert.throws(() => renderMessage('qa_failed', { ...classBase, contradiction_first_lens: 'spec' }), /needs all of/);
 });
+
+// ---------- The count of checkpoints agrees in number (issue #167, seen in a real Spanish run)
+
+test('Scenario: One checkpoint is saved / Several checkpoints are saved - the Spanish count agrees in number and the English one is unchanged', () => {
+  const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
+  const es1 = renderMessage('run_no_outcome', { ...kept, checkpoints: 1 }, 'es');
+  assert.match(es1, /reanudar desde el último checkpoint \(1 guardado\) y construir solo las tareas pendientes/);
+  assert.doesNotMatch(es1, /1 guardados/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /último checkpoint \(2 guardados\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 12 }, 'es'), /último checkpoint \(12 guardados\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 1 }, 'en'), /last checkpoint \(1 saved\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'en'), /last checkpoint \(2 saved\)/);
+  // The other wordings do not change.
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'es'), /todavía no hay ningún checkpoint/);
+  assert.match(renderMessage('run_no_outcome', kept, 'es'), /reanudar desde el último punto guardado en la rama/);
+});
