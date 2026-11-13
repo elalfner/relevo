@@ -659,7 +659,7 @@ function runNoOutcome(values, es) {
     // `checkpoints` is optional: the report says what it knows and never "from the start" there.
     const saved = Number(values.checkpoints);
     const resume = present(values.checkpoints) && Number.isInteger(saved) && saved >= 1
-      ? { en: `resume from the last checkpoint (${saved} saved) and build only the pending tasks`, es: `reanudar desde el último checkpoint (${saved} guardados) y construir solo las tareas pendientes` }
+      ? { en: `resume from the last checkpoint (${saved} saved) and build only the pending tasks`, es: `reanudar desde el último checkpoint (${saved} ${saved === 1 ? 'guardado' : 'guardados'}) y construir solo las tareas pendientes` }
       : present(values.checkpoints) && saved === 0
         ? { en: 'resume from the work kept on the branch (no checkpoint was saved yet)', es: 'reanudar desde el trabajo guardado en la rama (todavía no hay ningún checkpoint)' }
         : { en: 'resume from the last point saved on the branch', es: 'reanudar desde el último punto guardado en la rama' };
