@@ -560,6 +560,36 @@ test('a launch with a description that only looks like a replica is an agent lik
   assert.equal(usage.agents.length, 3);
 });
 
+// ---- the cost of a replica when the log has the main agent only (#169)
+// What a real cloud run keeps: the messages of the main agent, the notification of each subagent with its tokens, and the real cost per model.
+function mainOnlyLog({ main = 'claude-sonnet-x', models = { 'claude-sonnet-x': { costUSD: 2 }, 'claude-haiku-y': { costUSD: 1 } }, extra = [] } = {}) {
+  const launch = (tool, tokens) => [
+    { type: 'system', subtype: 'task_started', tool_use_id: tool, subagent_type: 'relevo:dev' },
+    { type: 'system', subtype: 'task_notification', tool_use_id: tool, status: 'completed', usage: { total_tokens: tokens, tool_uses: 2, duration_ms: 30000 } },
+  ];
+  const call = (tool, description, model) => callOf(tool, { subagent_type: 'relevo:dev', description, model });
+  return JSON.stringify([
+    ...said('m1', main, null, usageOf(1000), [call('t1', 'replica 2.1', 'haiku'), call('t2', 'replica 2.2', 'haiku')]),
+    ...launch('t1', 30000), ...launch('t2', 10000),
+    ...extra,
+    { type: 'result', subtype: 'success', num_turns: 3, total_cost_usd: 3, usage: { input_tokens: 40, output_tokens: 12 }, modelUsage: models },
+  ]);
+}
+
+test('Scenario: The log has no messages of the subagents - the replicas share the cost of their model by their tokens, as an estimate', () => {
+  const usage = readUsage(mainOnlyLog());
+  assert.deepEqual(usage.replicas.map((r) => [r.id, Math.round(r.cost * 100) / 100]), [['2.1', 0.75], ['2.2', 0.25]]);
+  assert.match(usageLine(usage), /Replicas together about \$1\.00, the rest of the run about \$2\.00\./);
+});
+
+test('Scenario: The split would be a guess - no cost is written for the replicas', () => {
+  const sameModel = readUsage(mainOnlyLog({ main: 'claude-haiku-y' }));
+  assert.ok(sameModel.replicas.every((r) => r.cost === undefined), 'the main agent used the model of the replicas');
+  const unknown = readUsage(mainOnlyLog({ models: { 'claude-sonnet-x': { costUSD: 2 }, 'claude-haiku-y': { costUSD: 1 }, 'claude-haiku-z': { costUSD: 1 } } }));
+  assert.ok(unknown.replicas.every((r) => r.cost === undefined), 'two models match the name of the replicas');
+  assert.doesNotMatch(usageLine(sameModel), /Replicas together/);
+});
+
 // ---- the usage comment says why each replica ran on its model (replica-model-reason)
 const WHY_CHEAP = 'one name below sonnet in agents.ladder, not below the floor haiku';
 const WHY_STRONG = 'this target failed 2 times on the cheaper model, so the stronger model builds it';

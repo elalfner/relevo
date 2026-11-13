@@ -122,6 +122,35 @@ function breakdown(all, result) {
     });
     return any ? total : null;
   };
+  // The runner of a cloud run keeps the messages of the main agent only (#169): no message has the `parent_tool_use_id` of a
+  // subagent, and the `task_notification` has `total_tokens` but no cost. Then a subagent is priced from the real cost of its
+  // model in `modelUsage`, shared by the `total_tokens` of the subagents on that model. This is an estimate (the tokens are
+  // not weighted by the price of cache reads), and it is made only when the split is not a guess: no message of any subagent
+  // is in the log, the model is not one that the main agent used, every subagent is on a model that the log can name, and
+  // the subagents of that model are all replicas or none is.
+  const hasSubagentMessages = [...weights.keys()].some((agent) => agent !== '');
+  const isReplicaLaunch = (id) => REPLICA_LAUNCH.test(typeof calls.get(id)?.description === 'string' ? calls.get(id).description.trim() : '');
+  const modelKeyOf = (id) => {
+    const alias = calls.get(id)?.model;
+    if (typeof alias !== 'string' || !alias.trim()) return null;
+    const exact = models.find((m) => m.model === alias);
+    if (exact) return exact.model;
+    const named = models.filter((m) => m.model.toLowerCase().includes(alias.trim().toLowerCase()));
+    return named.length === 1 ? named[0].model : null;
+  };
+  const tokensOf = (id) => num(done.get(id)?.total_tokens);
+  const costByTokens = (id) => {
+    if (hasSubagentMessages || models.length === 0) return null;
+    const key = modelKeyOf(id);
+    if (key === null || weights.get('')?.has(key)) return null;
+    const ids = [...done.keys()];
+    if (ids.some((other) => modelKeyOf(other) === null)) return null;
+    const group = ids.filter((other) => modelKeyOf(other) === key);
+    if (group.some((other) => isReplicaLaunch(other) !== isReplicaLaunch(id) || !(tokensOf(other) > 0))) return null;
+    const total = group.reduce((sum, other) => sum + tokensOf(other), 0);
+    return models.find((m) => m.model === key).cost * (tokensOf(id) / total);
+  };
+  const subagentCost = (id) => costOf(id) ?? costByTokens(id);
   const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
 
   const agents = [clean({ name: 'main', model: modelOfAgent.get('')?.model ?? null, turns: num(result.num_turns), cost: costOf('') })];
@@ -135,7 +164,7 @@ function breakdown(all, result) {
       t.attempts += 1;
       t.turns += usage.tool_uses + 1;
       if (num(usage.duration_ms) !== null) t.seconds += Math.round(usage.duration_ms / 1000);
-      const cost = costOf(id);
+      const cost = subagentCost(id);
       if (cost === null) t.costKnown = false;
       else t.cost += cost;
       t.model = modelOfAgent.get(id)?.model ?? (typeof call.model === 'string' ? call.model : t.model);
@@ -149,7 +178,7 @@ function breakdown(all, result) {
       effort: typeof call.effort === 'string' ? call.effort : null,
       turns: usage.tool_uses + 1,
       seconds: num(usage.duration_ms) !== null ? Math.round(usage.duration_ms / 1000) : null,
-      cost: costOf(id),
+      cost: subagentCost(id),
     }));
   });
   const replicas = [...byTarget.values()].map(({ costKnown, cost, seconds, ...t }) => clean({ ...t, seconds: seconds || null, cost: costKnown ? cost : null }));
