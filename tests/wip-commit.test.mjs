@@ -165,3 +165,32 @@ test('Scenario: A checkpoint is work in progress of its issue, and an own commit
   assert.equal(issueHashOf('no trailer here'), null);
   assert.equal(issueHashOf('Issue-hash: nothex'), null);
 });
+
+// ---------- fix finds the failure comment whatever its title says (issue #181)
+
+test('Scenario: fix still finds the comment - a stop that is not a QA rejection is found by its title, in both languages, and the old titles still are', () => {
+  assert.equal(failureContext({ comments: [{ body: '@a #37 "T" stopped ❌\n\nWhat happened: x\nFinding: the branch exists\n' }], subject: '' }).finding, 'the branch exists');
+  assert.equal(failureContext({ comments: [{ body: '@a #37 "T" se detuvo ❌\n\nQué pasó: x\nHallazgo: la rama existe\n' }], subject: '' }).finding, 'la rama existe');
+  assert.equal(failureContext({ comments: [{ body: '@a #37 "T" failed QA ❌\n\nWhat happened: x\nFinding: old title\n' }], subject: '' }).finding, 'old title');
+  assert.equal(failureContext({ comments: [{ body: 'This run stopped ❌ for a person' }], subject: '' }).found, false, 'a line that only looks like it is not a failure comment');
+});
+
+test('every title that qa_failed can produce is found by the reader of fix, so a title cannot change without it', () => {
+  const base = { assignee: 'a', issue: 37, title: 'T', finding: 'the finding', branch: 'feature/37-t' };
+  const cases = [
+    {},
+    { reason: 'QA rejected after the retries' },
+    { reason: 'QA rejected: nothing the developer agent can fix', retries_skipped: true, finding_class: 'input' },
+    { reason: 'QA rejected: the lenses contradict each other' },
+    { reason: 'branch already exists', branch_state: 'existing', recovery: 'fix' },
+    { reason: 'run limit reached', branch_state: 'kept' },
+    { reason: 'protected path in the diff', branch_state: 'unsafe', file: 'CLAUDE.md' },
+    { reason: 'a reason added to the skill later' },
+  ];
+  ['en', 'es'].forEach((language) => cases.forEach((extra) => {
+    const body = renderMessage('qa_failed', { ...base, ...extra }, language);
+    const found = failureContext({ comments: [{ body }], subject: '' });
+    assert.equal(found.found, true, `${language} ${JSON.stringify(extra)}: ${body.split('\n')[0]}`);
+    assert.match(found.finding, /^the finding( \(CLAUDE\.md\))?$/, 'the finding is read, with its location when the comment has one');
+  }));
+});

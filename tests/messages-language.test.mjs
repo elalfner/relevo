@@ -122,3 +122,20 @@ test('the phrase that gives the reason of a replica is in English and Spanish, a
   assert.equal(usagePhrase('es', 'replica_why', { why: 'one name below sonnet' }), ', porque one name below sonnet');
   assert.ok(USAGE_TEXT.en.replica_why && USAGE_TEXT.es.replica_why);
 });
+
+test('the qa_failed comment renders in every language with no placeholder left, for a QA rejection and for each kind of stop', () => {
+  const base = { assignee: 'a', issue: 1, title: 't', finding: 'f', branch: 'b' };
+  [
+    {},
+    { reason: 'QA rejected after the retries' },
+    { reason: 'branch already exists', branch_state: 'existing', recovery: 'fix' },
+    { reason: 'run limit reached', branch_state: 'kept' },
+    { reason: 'protected path in the diff', branch_state: 'unsafe' },
+    { reason: 'a reason added to the skill later' },
+  ].forEach((extra) => SUPPORTED_LANGUAGES.forEach((language) => {
+    const text = renderMessage('qa_failed', { ...base, ...extra }, language);
+    assert.doesNotMatch(text, /\{\{|undefined/, `${language} ${JSON.stringify(extra)} left a placeholder`);
+    const stop = extra.reason && extra.reason !== 'QA rejected after the retries';
+    assert.equal(/QA still rejected|QA la rechazó/.test(text), !stop, `${language} ${JSON.stringify(extra)}`);
+  }));
+});

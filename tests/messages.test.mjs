@@ -112,7 +112,8 @@ test('budget failures carry their reason', () => {
   const text = renderMessage('qa_failed', {
     assignee: 'b', issue: 1, title: 't', finding: 'stopped', branch: 'f', reason: 'budget exceeded',
   });
-  assert.match(text, /after the retries \(budget exceeded\)\./);
+  // A reason that is not a QA rejection is named as the reason of a stop (issue #181), not as the end of the retries.
+  assert.match(text, /The run stopped \(budget exceeded\)\./);
 });
 
 test('a finding without a file is still reported', () => {
@@ -413,7 +414,7 @@ test('Scenario: A run that stopped at a limit says so - it does not say that QA 
   const base = { issue: 97, title: 'Screen', assignee: 'persona-a', branch: 'feature/97-x', reason: 'run limit reached', branch_state: 'kept', tasks_done: 6, tasks_total: 9,
     finding: 'the minutes limit (50) was reached after 51.2 minutes; qa-code and qa-interface did not run' };
   const en = renderMessage('qa_failed', base, 'en');
-  assert.match(en, /^@persona-a #97 "Screen" failed QA ❌/, 'the heading is the one that fix reads');
+  assert.match(en, /^@persona-a #97 "Screen" stopped ❌/, 'a stop that is not a QA rejection says so in the title, and fix reads that title too');
   assert.match(en, /What happened: The run stopped at a limit before it finished \(run limit reached\)\./);
   assert.match(en, /holds the work done before the stop \(6 of 9 tasks done\)/);
   assert.match(en, /qa-code and qa-interface did not run/);
@@ -597,6 +598,58 @@ test('Scenario: The branch holds a checkpoint / no checkpoint - kept says that r
     });
   // The run that was not on the branch of the issue has nothing to resume from: there "from the start" is true.
   assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/feature/12-x' }, 'en'), /build from the start/);
+});
+
+// ---------- A stop that is not a QA rejection is not reported as one (issue #181)
+
+const STOP = { assignee: 'persona-b', issue: 31, title: 'Summary', finding: 'the text of the issue changed since the last checkpoint', branch: 'feature/31-summary' };
+
+test('Scenario: The branch already exists - the title and the line say that the run stopped, not that QA rejected the work', () => {
+  const data = { ...STOP, reason: 'branch already exists', branch_state: 'existing', recovery: 'fix' };
+  const en = renderMessage('qa_failed', data, 'en');
+  assert.match(en, /^@persona-b #31 "Summary" stopped ❌/);
+  assert.match(en, /What happened: The run stopped \(branch already exists\)\. QA did not reject the work\./);
+  assert.doesNotMatch(en, /failed QA|QA still rejected/);
+  assert.match(en, /Your next step: \/relevo:fix 31/, 'the next step is the one of the state of the branch');
+  const es = renderMessage('qa_failed', data, 'es');
+  assert.match(es, /^@persona-b #31 "Summary" se detuvo ❌/);
+  assert.match(es, /Qué pasó: La ejecución se detuvo \(branch already exists\)\. QA no rechazó el trabajo\./);
+  assert.doesNotMatch(es, /no pasó QA|QA la rechazó/);
+});
+
+test('Scenario: Other reasons of the failure path that are not a QA rejection, and one the catalog does not know', () => {
+  ['issue changed after ready', 'specification invalid', 'tasks left unfinished', 'lens report invalid', 'automated validation could not run', 'a reason added to the skill later'].forEach((reason) => {
+    const en = renderMessage('qa_failed', { ...STOP, reason }, 'en');
+    assert.match(en, /^@persona-b #31 "Summary" stopped ❌/, reason);
+    assert.match(en, new RegExp(`What happened: The run stopped \\(${reason}\\)\\. QA did not reject the work\\.`), reason);
+    assert.doesNotMatch(en, /failed QA|QA still rejected/, reason);
+    const es = renderMessage('qa_failed', { ...STOP, reason }, 'es');
+    assert.match(es, /se detuvo ❌/, reason);
+    assert.doesNotMatch(es, /no pasó QA|QA la rechazó/, reason);
+  });
+});
+
+test('Scenario: QA rejected the work, and a comment with no reason - the title and the line are as before', () => {
+  ['QA rejected after the retries', 'QA rejected: nothing the developer agent can fix', 'QA rejected: the lenses contradict each other', undefined].forEach((reason) => {
+    const en = renderMessage('qa_failed', { ...STOP, reason }, 'en');
+    assert.match(en, /^@persona-b #31 "Summary" failed QA ❌/, String(reason));
+    assert.doesNotMatch(en, /QA did not reject/, String(reason));
+    const es = renderMessage('qa_failed', { ...STOP, reason }, 'es');
+    assert.match(es, /^@persona-b #31 "Summary" no pasó QA ❌/, String(reason));
+  });
+  assert.match(renderMessage('qa_failed', { ...STOP, reason: 'QA rejected after the retries' }, 'en'), /What happened: QA still rejected it after the retries \(QA rejected after the retries\)\./);
+  assert.match(renderMessage('qa_failed', { ...STOP }, 'en'), /What happened: QA still rejected it after the retries\./);
+  assert.match(renderMessage('qa_failed', { ...STOP, retries_skipped: true, finding_class: 'input', reason: 'QA rejected: nothing the developer agent can fix' }, 'en'), /QA rejected it and no finding can be corrected by the developer agent, so there were no retries\./);
+});
+
+test('the stops that already had their own wording keep it and take the title of a stop', () => {
+  const limit = renderMessage('qa_failed', { ...STOP, reason: 'run limit reached', branch_state: 'kept' }, 'en');
+  assert.match(limit, /^@persona-b #31 "Summary" stopped ❌/);
+  assert.match(limit, /What happened: The run stopped at a limit before it finished \(run limit reached\)\./);
+  const policy = renderMessage('qa_failed', { ...STOP, reason: 'protected path in the diff', branch_state: 'unsafe', file: 'CLAUDE.md' }, 'en');
+  assert.match(policy, /^@persona-b #31 "Summary" stopped ❌/);
+  assert.match(policy, /QA did not reject the work/);
+  assert.match(policy, /Your next step: \/relevo:issue 31/);
 });
 
 // #150: the comment of two lenses that contradict each other shows both lenses and both findings.
