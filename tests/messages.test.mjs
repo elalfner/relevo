@@ -598,3 +598,17 @@ test('Scenario: The branch holds a checkpoint / no checkpoint - kept says that r
   // The run that was not on the branch of the issue has nothing to resume from: there "from the start" is true.
   assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/feature/12-x' }, 'en'), /build from the start/);
 });
+
+// #150: the comment of two lenses that contradict each other shows both lenses and both findings.
+const contradiction = { contradiction_first_lens: 'spec', contradiction_first_finding: 'read the dialog question from `DIALOG_QUESTION`', contradiction_then_lens: 'code', contradiction_then_finding: 'the assertions on `DIALOG_QUESTION` can no longer fail' };
+
+test('Scenario: Two lenses contradict each other - the comment names both lenses, quotes both findings and says no retry was made', () => {
+  const en = renderMessage('qa_failed', { ...classBase, reason: 'QA rejected: the lenses contradict each other', ...contradiction });
+  assert.match(en, /What happened: QA rejected it and the findings of two lenses contradict each other, so there were no more retries \(QA rejected: the lenses contradict each other\)\./);
+  assert.match(en, /the spec lens asked for “read the dialog question from `DIALOG_QUESTION`” and, once that was done, the code lens rejected it with “the assertions on `DIALOG_QUESTION` can no longer fail”/);
+  const es = renderMessage('qa_failed', { ...classBase, ...contradiction }, 'es');
+  assert.match(es, /el lente spec pidió “read the dialog question from `DIALOG_QUESTION`” y, hecho eso, el lente code lo rechazó con “the assertions/);
+  assert.match(es, /Un reintento no puede cumplir las dos cosas\./);
+  assert.doesNotMatch(renderMessage('qa_failed', classBase), /contradict/);
+  assert.throws(() => renderMessage('qa_failed', { ...classBase, contradiction_first_lens: 'spec' }), /needs all of/);
+});
