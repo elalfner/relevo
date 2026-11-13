@@ -10,7 +10,8 @@ In `scripts/lib/messages.mjs` the `qa_failed` message has one title for every re
 
 - A `qa_failed` comment names QA only when QA rejected the work: the reasons `QA rejected after the retries` and `QA rejected: nothing the developer agent can fix`, and a comment with no reason, which keeps today's wording.
 - For any other reason the title and the "What happened" line say that the run stopped for that reason and that QA did not reject the work. A reason the catalog does not know falls here, so a new reason added to the skill is never described as a QA rejection.
-- The title changes with the reason: `failed QA ❌` / `no pasó QA ❌` stays for the QA rejections.
+- The title changes with the reason: `failed QA ❌` / `no pasó QA ❌` stays for the QA rejections, and a stop that is not one is titled `stopped ❌` / `se detuvo ❌`.
+- `/relevo:fix` finds the failure comment by its title (`scripts/lib/failure-comment.mjs`). It keeps finding the comments with the old titles and learns the new ones, so the stops that point to `fix` (for example `branch already exists`) still give it their finding.
 - The reasons that already have their own text (`run limit reached`, `protected path in the diff`) and the next-step line are unchanged.
 - Every text stays in the catalog, in English and Spanish, with the language test.
 
@@ -24,4 +25,4 @@ None.
 
 ## Impact
 
-`scripts/lib/messages.mjs` (the title and `happened` of `qa_failed`), `tests/messages.test.mjs`, `tests/messages-language.test.mjs`, `CHANGELOG.md` (unreleased). The version is not changed. Out of scope: which reasons exist, what the failure path does, the `Your next step` line, and any workflow template.
+`scripts/lib/messages.mjs` (the title and `happened` of `qa_failed`), `scripts/lib/failure-comment.mjs` (the title it looks for), `tests/messages.test.mjs`, `tests/wip-commit.test.mjs` (the reader), `tests/messages-language.test.mjs`, `CHANGELOG.md` (unreleased). The version is not changed. Out of scope: which reasons exist, what the failure path does, the `Your next step` line, and any workflow template.
