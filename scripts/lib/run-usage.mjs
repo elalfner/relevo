@@ -6,6 +6,7 @@
 // used, and anything missing is simply left out. Nothing found means nothing is said, never an error.
 
 import { OUTCOME_CLASSES } from './phase-log.mjs';
+import { formatUtc, pickLanguage, usagePhrase } from './messages.mjs';
 
 function entries(text) {
   const t = String(text ?? '').trim();
@@ -42,6 +43,119 @@ function subagentTurnsOf(all) {
   return total;
 }
 
+// The cost of an agent is a share of the real cost of its model, by the weighted input side of its messages. The output
+// tokens are not used: the `usage` of a streamed message is a snapshot taken before the answer is complete (a real log
+// had 2,466 output tokens in its messages and 66,240 in `modelUsage`), while the input side agrees with `modelUsage`.
+// The weights follow the structure of the published prices: a cache read costs a tenth of an input token and a cache
+// write a quarter more (twice for the one-hour cache).
+function inputSideWeight(u) {
+  const input = num(u.input_tokens) ?? 0;
+  const read = num(u.cache_read_input_tokens) ?? 0;
+  const five = num(u.cache_creation?.ephemeral_5m_input_tokens);
+  const hour = num(u.cache_creation?.ephemeral_1h_input_tokens);
+  const created = num(u.cache_creation_input_tokens) ?? 0;
+  const write = five !== null || hour !== null ? (five ?? 0) * 1.25 + (hour ?? 0) * 2 : created * 1.25;
+  return input + read * 0.1 + write;
+}
+
+/**
+ * The real cost of each model and an estimate of what each agent cost, from what the log has: `modelUsage` of the
+ * result, the `Agent` calls, `task_started` and `task_notification` of each subagent, and the model and usage of every
+ * message with the `parent_tool_use_id` of its agent. Messages repeat once per content block, so each id counts once.
+ * Returns { models, agents }, each null when the log does not have what it needs. The estimated costs of the agents of
+ * a model add up to its real cost.
+ */
+// The Agent `description` that `go` gives the launch of a replica (and of its fix): `replica 2.1`.
+const REPLICA_LAUNCH = /^replica (\d{1,3}\.\d{1,3})$/i;
+
+function breakdown(all, result) {
+  const models = Object.entries(result.modelUsage && typeof result.modelUsage === 'object' ? result.modelUsage : {})
+    .filter(([, m]) => m && num(m.costUSD) !== null)
+    .map(([model, m]) => ({ model, cost: m.costUSD }));
+
+  const done = new Map();
+  const started = new Map();
+  const calls = new Map();
+  all.forEach((e) => {
+    if (e.type === 'system' && e.subtype === 'task_started' && typeof e.tool_use_id === 'string') started.set(e.tool_use_id, e);
+    if (e.type === 'system' && e.subtype === 'task_notification' && typeof e.tool_use_id === 'string' && num(e.usage?.tool_uses) !== null) done.set(e.tool_use_id, e.usage);
+    if (e.type === 'assistant' && Array.isArray(e.message?.content)) {
+      e.message.content.forEach((c) => {
+        if (c?.type === 'tool_use' && (c.name === 'Agent' || c.name === 'Task') && typeof c.id === 'string') calls.set(c.id, c.input ?? {});
+      });
+    }
+  });
+  if (done.size === 0) return { models: models.length ? models : null, agents: null };
+
+  // One entry per message id and agent; the main agent is the key ''.
+  const seen = new Map();
+  all.forEach((e) => {
+    if (e.type !== 'assistant' || !e.message?.id || !e.message.usage) return;
+    seen.set(`${e.parent_tool_use_id ?? ''}|${e.message.id}`, { agent: e.parent_tool_use_id ?? '', model: e.message.model ?? null, weight: inputSideWeight(e.message.usage) });
+  });
+  const weights = new Map(); // agent, then model -> weight
+  const modelTotals = new Map();
+  const modelOfAgent = new Map(); // the model with the most weight, per agent
+  seen.forEach(({ agent, model, weight }) => {
+    if (!model) return;
+    if (!weights.has(agent)) weights.set(agent, new Map());
+    weights.get(agent).set(model, (weights.get(agent).get(model) ?? 0) + weight);
+    modelTotals.set(model, (modelTotals.get(model) ?? 0) + weight);
+  });
+  weights.forEach((byModel, agent) => {
+    byModel.forEach((w, model) => {
+      const best = modelOfAgent.get(agent);
+      if (!best || w > best.weight) modelOfAgent.set(agent, { model, weight: w });
+    });
+  });
+  const costOf = (agent) => {
+    if (models.length === 0) return null;
+    let total = 0;
+    let any = false;
+    models.forEach(({ model, cost }) => {
+      const w = weights.get(agent)?.get(model);
+      const sum = modelTotals.get(model);
+      if (w && sum > 0) {
+        total += cost * (w / sum);
+        any = true;
+      }
+    });
+    return any ? total : null;
+  };
+  const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
+
+  const agents = [clean({ name: 'main', model: modelOfAgent.get('')?.model ?? null, turns: num(result.num_turns), cost: costOf('') })];
+  // A launch that `go` named `replica <task id>` is shown apart: one entry per target, whatever the number of launches (attempts).
+  const byTarget = new Map();
+  done.forEach((usage, id) => {
+    const call = calls.get(id) ?? {};
+    const target = typeof call.description === 'string' ? REPLICA_LAUNCH.exec(call.description.trim()) : null;
+    if (target) {
+      const t = byTarget.get(target[1]) ?? { id: target[1], attempts: 0, turns: 0, seconds: 0, cost: 0, costKnown: true };
+      t.attempts += 1;
+      t.turns += usage.tool_uses + 1;
+      if (num(usage.duration_ms) !== null) t.seconds += Math.round(usage.duration_ms / 1000);
+      const cost = costOf(id);
+      if (cost === null) t.costKnown = false;
+      else t.cost += cost;
+      t.model = modelOfAgent.get(id)?.model ?? (typeof call.model === 'string' ? call.model : t.model);
+      byTarget.set(target[1], t);
+      return;
+    }
+    const name = started.get(id)?.subagent_type ?? call.subagent_type;
+    agents.push(clean({
+      name: typeof name === 'string' && name ? name : 'subagent',
+      model: modelOfAgent.get(id)?.model ?? (typeof call.model === 'string' ? call.model : null),
+      effort: typeof call.effort === 'string' ? call.effort : null,
+      turns: usage.tool_uses + 1,
+      seconds: num(usage.duration_ms) !== null ? Math.round(usage.duration_ms / 1000) : null,
+      cost: costOf(id),
+    }));
+  });
+  const replicas = [...byTarget.values()].map(({ costKnown, cost, seconds, ...t }) => clean({ ...t, seconds: seconds || null, cost: costKnown ? cost : null }));
+  return { models: models.length ? models : null, agents, replicas: replicas.length ? replicas : null };
+}
+
 /**
  * { turns, cost, tokens, cached } with null for what the log does not say, or null when it says none of them.
  * `turns` counts the main agent and its subagents; `subagentTurns` is the part of them that the runner does not count,
@@ -65,11 +179,128 @@ export function readUsage(text) {
   };
   if (usage.turns === null && usage.cost === null && usage.tokens === null) return null;
   const sub = subagentTurnsOf(all);
+  const detail = breakdown(all, result);
   if (sub > 0 && usage.turns !== null) {
     usage.turns += sub;
     usage.subagentTurns = sub;
   }
+  const quota = quotaOf(all);
+  if (quota.length) usage.quota = quota;
+  if (detail.models) usage.models = detail.models;
+  if (detail.agents) usage.agents = detail.agents;
+  if (detail.replicas) usage.replicas = detail.replicas;
   return usage;
+}
+
+/**
+ * The reason that the model of each replica was chosen with, from `replica-models.json` of the progress folder (`replica-plan.mjs
+ * model --task <id>` appends one record per launch): { <task id>: <reason> }, the last record of each task. It is read as data: a
+ * record that is not well formed is skipped, line breaks and comment marks are taken out (the reason goes inside the hidden marker
+ * of a comment) and a long one is cut. Text that is not JSON gives nothing.
+ */
+export function replicaReasonsFromJson(text) {
+  let records;
+  try {
+    records = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  if (!Array.isArray(records)) return {};
+  const reasons = {};
+  records.forEach((r) => {
+    if (!r || typeof r.task !== 'string' || typeof r.why !== 'string') return;
+    const why = r.why.replace(/<!--|-->/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240).trim();
+    if (why) reasons[r.task] = why;
+  });
+  return reasons;
+}
+
+/** The figures with `why` on each replica that has a reason (the targets without one stay as they were). */
+export function withReplicaReasons(usage, reasons) {
+  if (!usage?.replicas?.length || !reasons) return usage;
+  usage.replicas = usage.replicas.map((r) => (typeof reasons[r.id] === 'string' ? { ...r, why: reasons[r.id] } : r));
+  return usage;
+}
+
+const DAY_MS = 86400000;
+
+/**
+ * A time that a rate-limit event gives, in milliseconds since the epoch, or null. Accepted: seconds or milliseconds since the
+ * epoch (a number below 1e12 is seconds) and an ISO string. The unit is not documented, so anything else is null.
+ */
+function timeOf(v) {
+  let ms = null;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) ms = v < 1e12 ? v * 1000 : v;
+  else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) ms = Date.parse(v);
+  return Number.isFinite(ms) && ms !== null ? ms : null;
+}
+
+const infoOf = (e) => (e && e.type === 'rate_limit_event' && e.rate_limit_info && typeof e.rate_limit_info === 'object' ? e.rate_limit_info : null);
+const WINDOW_NAME = /^[a-z0-9_]{1,30}$/;
+
+/**
+ * The windows that one rate-limit event reports: [{ window, utilization, resetsAt, status }]. A real log (a subscription run seen in
+ * the sandbox) has `unifiedWindows` with every window the account has (`five_hour`, `seven_day`), each with its own utilisation,
+ * reset time and status, and the top-level fields of the window that is the closest to its limit (`rateLimitType`). The windows
+ * come first and the top level fills the one that `unifiedWindows` lacks. A window whose name is not a plain word is left out.
+ */
+function windowsOf(info) {
+  const out = new Map();
+  const add = (name, w) => {
+    if (typeof name !== 'string' || !WINDOW_NAME.test(name) || !w || typeof w !== 'object' || out.has(name)) return;
+    out.set(name, { window: name, utilization: num(w.utilization), resetsAt: timeOf(w.resetsAt), status: typeof w.status === 'string' ? w.status : null });
+  };
+  if (info.unifiedWindows && typeof info.unifiedWindows === 'object' && !Array.isArray(info.unifiedWindows)) {
+    Object.entries(info.unifiedWindows).forEach(([name, w]) => add(name, w));
+  }
+  add(info.rateLimitType, info);
+  return [...out.values()];
+}
+
+/**
+ * The quota windows that the log of the run reports: [{ window, before, after, resets? }], where `window` is the name of the window
+ * (`five_hour`, `seven_day`...), `before` and `after` are the utilisation (a percent) in the first and in the last rate-limit event
+ * that reports it, and `resets` is the last reset time the log gives for it (milliseconds since the epoch). A figure that is not a
+ * number from 0 to 1 is left out, and a window with no figure is not listed. Nothing is estimated: a log without these events
+ * (an API-key repository has no weekly window) gives an empty list. `entriesOrText` is the text of the log or its parsed entries.
+ */
+export function quotaOf(entriesOrText) {
+  const all = Array.isArray(entriesOrText) ? entriesOrText : entries(entriesOrText);
+  const windows = new Map();
+  all.forEach((e) => {
+    const info = infoOf(e);
+    if (!info) return;
+    windowsOf(info).forEach(({ window, utilization, resetsAt }) => {
+      const w = windows.get(window) ?? { window };
+      if (utilization !== null && utilization >= 0 && utilization <= 1) {
+        const pct = Math.round(utilization * 100);
+        if (w.before === undefined) w.before = pct;
+        w.after = pct;
+      }
+      if (resetsAt !== null) w.resets = resetsAt;
+      windows.set(window, w);
+    });
+  });
+  return [...windows.values()].filter((w) => w.before !== undefined);
+}
+
+/**
+ * When the usage limit that stopped the run resets, in milliseconds since the epoch, or null. It comes from the last rate-limit event
+ * that is not `allowed*`: the reset time of every window of it that is not allowed (the top-level window and each of `unifiedWindows`),
+ * the latest of them, because the account can run again only when all of them have reset. A time that is not later than `now` or is more
+ * than 8 days away is not credible and is left out; when none is credible the caller backs off and says so instead of using one.
+ */
+export function limitReset(text, now = Date.now()) {
+  const all = entries(text).filter((e) => e && typeof e === 'object');
+  const hit = [...all].reverse().find((e) => {
+    const info = infoOf(e);
+    return info && typeof info.status === 'string' && !info.status.startsWith('allowed');
+  });
+  if (!hit) return null;
+  const info = infoOf(hit);
+  const blocked = windowsOf(info).filter((w) => w.window === info.rateLimitType || (w.status !== null && !w.status.startsWith('allowed')));
+  const times = blocked.map((w) => w.resetsAt).filter((at) => at !== null && at > now && at - now <= 8 * DAY_MS);
+  return times.length ? Math.max(...times) : null;
 }
 
 /** The limits of relevo.yml that a run went past: [{ limit, used, max }], empty when it kept within them or the figure is unknown. */
@@ -81,17 +312,82 @@ export function limitsExceeded(usage, limits = {}) {
   return out;
 }
 
-/** One line for a comment, or an empty string when there is nothing to say. */
-export function usageLine(usage, { subscription = false, limits = null } = {}) {
+// The model plan of the run (scripts/model-plan.mjs), as `go` saved it. Only fixed words and short strings are kept: the plan
+// is read from a file and goes into a comment.
+const PLAN_SOURCES = ['config', 'auto', 'issue'];
+const ESCALATION_REASONS = ['qa-rejected', 'gate-red'];
+const PLAN_ROLES = ['dev', 'spec', 'security', 'code', 'interface'];
+const text200 = (v) => String(v ?? '').replace(/[^\x20-\x7e]/g, ' ').trim().slice(0, 200);
+
+/** The roles of a saved plan as [{ role, model, effort, source, why }], and its notes; null when there is no usable plan. */
+export function planFromJson(raw) {
+  let data = raw;
+  if (typeof raw === 'string') {
+    try { data = JSON.parse(raw); } catch { return null; }
+  }
+  if (!data || typeof data !== 'object' || data.failed) return null;
+  const entry = (role, r) => (r && typeof r.model === 'string' && r.model && PLAN_SOURCES.includes(r.source)
+    ? { role, model: text200(r.model), ...(typeof r.effort === 'string' ? { effort: text200(r.effort) } : {}), source: r.source, ...(typeof r.why === 'string' ? { why: text200(r.why) } : {}) }
+    : null);
+  const roles = [entry('dev', data.dev), ...PLAN_ROLES.slice(1).map((lens) => entry(lens, data.qa?.[lens]))].filter(Boolean);
+  if (roles.length === 0) return null;
+  const notes = Array.isArray(data.notes) ? data.notes.map(text200).filter(Boolean).slice(0, 5) : [];
+  // The retries that ran the developer one name up the ladder (`model-plan.mjs escalate`); a malformed entry is left out.
+  const escalations = (Array.isArray(data.escalations) ? data.escalations : [])
+    .filter((e) => e && typeof e.from === 'string' && typeof e.to === 'string' && Number.isInteger(e.attempt) && ESCALATION_REASONS.includes(e.reason))
+    .map((e) => ({ attempt: e.attempt, from: text200(e.from), to: text200(e.to), reason: e.reason })).slice(0, 5);
+  return { roles, notes, escalations };
+}
+
+/**
+ * The checks of the validation gate with their seconds, from the text of its receipt: [{ name, seconds, reused?, original? }].
+ * A reused check ran in no time in this gate, so it says how long it took when it ran. Null when the receipt is missing,
+ * is not JSON or has no usable command.
+ */
+export function checksFromReceipt(raw) {
+  let data = raw;
+  if (typeof raw === 'string') {
+    try { data = JSON.parse(raw); } catch { return null; }
+  }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.commands)) return null;
+  const checks = data.commands
+    .filter((c) => c && typeof c.name === 'string' && /^[a-z][a-z-]{0,29}$/.test(c.name) && num(c.duration_ms) !== null && c.duration_ms >= 0)
+    .map((c) => ({ name: c.name, seconds: Math.round(c.duration_ms / 1000), ...(c.reused === true ? { reused: true, original: num(c.original_duration_ms) !== null ? Math.round(c.original_duration_ms / 1000) : 0 } : {}) }));
+  return checks.length ? checks : null;
+}
+
+/** One line for a comment, or an empty string when there is nothing to say. The words come from the catalog of messages.mjs in `language`. */
+export function usageLine(usage, { subscription = false, limits = null, plan = null, checks = null, language = 'en' } = {}) {
   if (!usage) return '';
+  const t = (key, vars) => usagePhrase(language, key, vars);
+  const number = (n) => n.toLocaleString(pickLanguage(language) === 'es' ? 'es-ES' : 'en-US');
+  const turns = (n) => t(n === 1 ? 'turn_one' : 'turn_many', { n });
   const parts = [];
-  if (usage.turns !== null) parts.push(`${usage.turns} turn${usage.turns === 1 ? '' : 's'}${usage.subagentTurns ? ` (${usage.subagentTurns} by subagents)` : ''}`);
-  if (usage.cost !== null) parts.push(`about $${usage.cost.toFixed(2)}${subscription ? ' (notional: a subscription is not billed per run)' : ''}`);
-  if (usage.tokens !== null) parts.push(`${usage.tokens.toLocaleString('en-US')} tokens${usage.cached ? ` (plus ${usage.cached.toLocaleString('en-US')} from the cache)` : ''}`);
+  if (usage.turns !== null) parts.push(`${turns(usage.turns)}${usage.subagentTurns ? t('by_subagents', { n: usage.subagentTurns }) : ''}`);
+  if (usage.cost !== null) parts.push(`${t('cost', { cost: usage.cost.toFixed(2) })}${subscription ? t('notional') : ''}`);
+  if (usage.tokens !== null) parts.push(`${t('tokens', { n: number(usage.tokens) })}${usage.cached ? t('cached', { n: number(usage.cached) }) : ''}`);
   if (!parts.length) return '';
   const over = limitsExceeded(usage, limits ?? {});
-  const warn = over.map((o) => ` It went past ${o.limit} (${o.max}) with ${o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`}${o.limit.endsWith('turns') && usage.subagentTurns ? ': the runner counts only the turns of the main agent, so the turns of the subagents were not stopped' : ''}.`).join('');
-  return `This run used ${parts.join(', ')}.${warn}`;
+  const warn = over.map((o) => t('went_past', { limit: o.limit, max: o.max, used: o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`, why: o.limit.endsWith('turns') && usage.subagentTurns ? t('subagents_not_stopped') : '' })).join('');
+  const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
+  const byAgent = usage.agents?.length ? t('by_agent', { list: usage.agents.map(agent).join('; ') }) : '';
+  const attempts = (n) => t(n === 1 ? 'attempt_one' : 'attempt_many', { n });
+  const replica = (r) => t('replica_item', { id: r.id, model: r.model ? ` (${r.model})` : '', attempts: attempts(r.attempts), turns: turns(r.turns), cost: r.cost !== undefined ? t('agent_cost', { cost: r.cost.toFixed(2) }) : '', why: r.why ? t('replica_why', { why: r.why }) : '' });
+  // The total of the replicas and the rest of the run are said only when every figure is there; nothing is estimated.
+  const replicaCost = usage.replicas?.length && usage.replicas.every((r) => r.cost !== undefined) ? usage.replicas.reduce((total, r) => total + r.cost, 0) : null;
+  const byReplicas = usage.replicas?.length
+    ? `${t('by_replicas', { list: usage.replicas.map(replica).join('; ') })}${replicaCost !== null && usage.cost !== null ? t('replicas_total', { replicas: replicaCost.toFixed(2), rest: Math.max(usage.cost - replicaCost, 0).toFixed(2) }) : ''}`
+    : '';
+  const byModel = usage.models?.length ? t('by_model', { list: usage.models.map((m) => `${m.model} $${m.cost.toFixed(2)}`).join(', ') }) : '';
+  const role = (r) => `${r.role === 'dev' ? t('developer') : t('lens', { role: r.role })} ${r.model}${r.effort ? `, ${r.effort}` : ''} (${r.source}${r.why ? `: ${r.why}` : ''})`;
+  // The notes of the plan come from model-plan.mjs, which writes them in English: they are quoted as they are, like a finding.
+  const byPlan = plan?.roles?.length ? `${t('models_chosen', { list: plan.roles.map(role).join('; ') })}${plan.notes?.length ? t('plan_notes', { list: plan.notes.join('; ') }) : ''}` : '';
+  const raised = plan?.escalations?.length ? t('raised', { list: plan.escalations.map((e) => t('raised_item', { from: e.from, to: e.to, attempt: e.attempt, reason: t(e.reason === 'gate-red' ? 'gate_red' : 'qa_rejected') })).join('; ') }) : '';
+  const byCheck = checks?.length ? t('by_check', { list: checks.map((c) => (c.reused ? t('check_reused', { name: c.name, original: c.original }) : t('check_seconds', { name: c.name, seconds: c.seconds }))).join(', ') }) : '';
+  const windowName = (w) => (w === 'five_hour' ? t('window_five_hour') : w === 'seven_day' ? t('window_seven_day') : t('window_other', { type: w.replace(/_/g, ' ') }));
+  const quota = (q) => `${windowName(q.window)} ${q.before === q.after ? t('quota_at', { pct: q.before }) : t('quota_moved', { before: q.before, after: q.after })}${q.resets ? t('quota_resets', { at: formatUtc(q.resets) }) : ''}`;
+  const byQuota = usage.quota?.length ? t('by_quota', { list: usage.quota.map(quota).join('; ') }) : '';
+  return `${t('used', { parts: parts.join(', ') })}${warn}${byAgent}${byReplicas}${byModel}${byCheck}${byQuota}${byPlan}${raised}`;
 }
 
 // The hidden marker that goes with the sentence: the same figures, in a form the daily digest can add up without
@@ -102,7 +398,7 @@ const MARKER_RE = /<!-- relevo:usage (\{[^\n]*?\}) -->/g;
 const FIGURES = ['turns', 'cost', 'tokens'];
 
 /** The marker for a comment, from the same result as the sentence, or an empty string when there is nothing to say. */
-export function usageMarker(usage, { subscription = false, phases = null, lenses = null, outcomeClass = null } = {}) {
+export function usageMarker(usage, { subscription = false, phases = null, lenses = null, outcomeClass = null, plan = null, checks = null } = {}) {
   if (!usage) return '';
   const figures = {};
   FIGURES.forEach((k) => {
@@ -110,11 +406,23 @@ export function usageMarker(usage, { subscription = false, phases = null, lenses
   });
   if (usage.cached) figures.cached = usage.cached;
   if (Object.keys(figures).length === 0) return '';
+  // Which agent used what, and the real cost of each model; the digest adds up only the totals and ignores these keys.
+  if (Array.isArray(usage.agents) && usage.agents.length) figures.agents = usage.agents.map((a) => ({ ...a, ...(a.cost !== undefined ? { cost: Math.round(a.cost * 10000) / 10000 } : {}) }));
+  if (Array.isArray(usage.models) && usage.models.length) figures.models = usage.models;
+  // The replicas apart from the other agents (one entry per target); the digest ignores this key.
+  if (Array.isArray(usage.replicas) && usage.replicas.length) figures.replicas = usage.replicas.map((r) => ({ ...r, ...(r.cost !== undefined ? { cost: Math.round(r.cost * 10000) / 10000 } : {}) }));
   figures.notional = Boolean(subscription);
   // Where the time went and how the run ended. Readers that do not know these keys ignore them.
   if (Array.isArray(phases) && phases.length) figures.phases = phases;
   // The seconds of each QA lens, apart from the phases: the digest knows only the five phases.
   if (Array.isArray(lenses) && lenses.length) figures.lenses = lenses;
+  // The model and the effort each role was launched with, and where the choice came from; the digest ignores this key.
+  // The seconds of each check of the gate, and whether it was reused; the digest ignores this key.
+  if (Array.isArray(checks) && checks.length) figures.checks = checks;
+  // The quota windows the log reported, with the utilisation at the start and at the end; the digest ignores this key.
+  if (Array.isArray(usage.quota) && usage.quota.length) figures.quota = usage.quota;
+  if (plan?.roles?.length) figures.plan = plan.roles;
+  if (plan?.escalations?.length) figures.escalated = plan.escalations;
   if (OUTCOME_CLASSES.includes(outcomeClass)) figures.class = outcomeClass;
   return `<!-- relevo:usage ${JSON.stringify(figures)} -->`;
 }
@@ -149,6 +457,26 @@ export function parseUsageMarker(comment) {
   if (Array.isArray(data.lenses)) {
     const lenses = data.lenses.filter((l) => l && typeof l.name === 'string' && num(l.seconds) !== null && l.seconds >= 0);
     if (lenses.length === data.lenses.length && lenses.length) run.lenses = lenses.map((l) => ({ name: l.name, attempt: Number.isInteger(l.attempt) ? l.attempt : null, seconds: l.seconds }));
+  }
+  // Which agent used what: read only when every entry is well formed; a malformed one leaves the key out, not an error.
+  if (Array.isArray(data.agents) && data.agents.length) {
+    const good = data.agents.every((a) => a && typeof a.name === 'string' && num(a.turns) !== null && (a.model === undefined || typeof a.model === 'string')
+      && (a.effort === undefined || typeof a.effort === 'string') && (a.seconds === undefined || num(a.seconds) !== null) && (a.cost === undefined || num(a.cost) !== null));
+    if (good) run.agents = data.agents.map(({ name, model, effort, turns, seconds, cost }) => ({ name, turns, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
+  }
+  if (Array.isArray(data.replicas) && data.replicas.length && data.replicas.every((r) => r && typeof r.id === 'string' && Number.isInteger(r.attempts) && num(r.turns) !== null
+    && (r.model === undefined || typeof r.model === 'string') && (r.seconds === undefined || num(r.seconds) !== null) && (r.cost === undefined || num(r.cost) !== null) && (r.why === undefined || typeof r.why === 'string'))) {
+    run.replicas = data.replicas.map(({ id, model, attempts, turns, seconds, cost, why }) => ({ id, attempts, turns, ...(model !== undefined ? { model } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}), ...(why !== undefined ? { why } : {}) }));
+  }
+  if (Array.isArray(data.models) && data.models.length && data.models.every((m) => m && typeof m.model === 'string' && num(m.cost) !== null)) {
+    run.models = data.models.map((m) => ({ model: m.model, cost: m.cost }));
+  }
+  // The model plan: read only when every entry is well formed; a malformed one leaves the key out, not an error.
+  if (Array.isArray(data.plan) && data.plan.length && data.plan.every((r) => r && PLAN_ROLES.includes(r.role) && typeof r.model === 'string' && PLAN_SOURCES.includes(r.source))) {
+    run.plan = data.plan.map((r) => ({ role: r.role, model: r.model, source: r.source, ...(typeof r.effort === 'string' ? { effort: r.effort } : {}), ...(typeof r.why === 'string' ? { why: r.why } : {}) }));
+  }
+  if (Array.isArray(data.escalated) && data.escalated.length && data.escalated.every((e) => e && typeof e.from === 'string' && typeof e.to === 'string' && Number.isInteger(e.attempt) && ESCALATION_REASONS.includes(e.reason))) {
+    run.escalated = data.escalated.map((e) => ({ attempt: e.attempt, from: e.from, to: e.to, reason: e.reason }));
   }
   if (OUTCOME_CLASSES.includes(data.class)) run.class = data.class;
   return FIGURES.some((k) => run[k] !== undefined) ? run : null;
@@ -187,6 +515,18 @@ export function sumUsage(runs) {
     runs: runs.length, turns: sum('turns'), cost: sum('cost'), tokens: sum('tokens'),
     costRuns: costed.length, notionalRuns: costed.filter((r) => r.notional).length,
   };
+}
+
+/**
+ * Which limit of the runner cut the run, from the result of its log: `turns` (`error_max_turns`), `cost`
+ * (`error_max_budget_usd`), or null when the log says neither. The subtypes are the ones the Claude Code SDK documents
+ * for a result; a log without them gives null and the comment keeps its general wording.
+ */
+export function runnerCut(text) {
+  const result = [...entries(text).filter((e) => e && typeof e === 'object')].reverse().find((e) => e.type === 'result');
+  if (result?.subtype === 'error_max_turns') return 'turns';
+  if (result?.subtype === 'error_max_budget_usd') return 'cost';
+  return null;
 }
 
 // Messages the Claude CLI and the API document for a usage limit, a quota or an empty credit balance. These patterns

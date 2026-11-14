@@ -50,7 +50,7 @@ test('progress.mjs records the phase and the class, and does nothing without its
 
 test('only the classes of the specification are written', () => {
   const dir = fresh();
-  assert.deepEqual(OUTCOME_CLASSES, ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'other']);
+  assert.deepEqual(OUTCOME_CLASSES, ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'limit', 'other']);
   assert.equal(writeClass(dir, 'nonsense'), false);
   assert.equal(readClass(dir), null);
 });
@@ -114,18 +114,47 @@ test('Scenario: a window with several outcomes and runs from before the records'
   assert.deepEqual([summary.withRecord, summary.withoutRecord], [3, 1]);
 });
 
-test('Scenario: the seconds of each lens - each lasts until the next lens or the next phase, and a retry has its own attempt', () => {
+test('Scenario: the seconds of each lens - each lasts until its own end, and a retry has its own attempt', () => {
   const dir = fresh();
   recordPhase(dir, { phase: 'qa', attempt: 1, of: 2 }, 0);
   recordLens(dir, { lens: 'spec', attempt: 1 }, 5_000);
-  recordLens(dir, { lens: 'security', attempt: 1 }, 25_000);
-  recordLens(dir, { lens: 'code', attempt: 1 }, 40_000);
-  recordPhase(dir, { phase: 'development' }, 60_000);
+  recordLens(dir, { lens: 'security', attempt: 1 }, 5_000);
+  recordLens(dir, { lens: 'code', attempt: 1 }, 5_000);
+  recordLens(dir, { lens: 'security', attempt: 1, end: true }, 25_000);
+  recordLens(dir, { lens: 'code', attempt: 1, end: true }, 45_000);
+  recordLens(dir, { lens: 'spec', attempt: 1, end: true }, 65_000);
+  recordPhase(dir, { phase: 'development' }, 70_000);
   recordPhase(dir, { phase: 'qa', attempt: 2, of: 2 }, 90_000);
   recordLens(dir, { lens: 'spec', attempt: 2 }, 91_000);
-  assert.deepEqual(lensSeconds(readLensLog(dir), readPhaseLog(dir), 100_000), [
-    { name: 'spec', attempt: 1, seconds: 20 }, { name: 'security', attempt: 1, seconds: 15 },
-    { name: 'code', attempt: 1, seconds: 20 }, { name: 'spec', attempt: 2, seconds: 9 },
+  recordLens(dir, { lens: 'spec', attempt: 2, end: true }, 100_000);
+  assert.deepEqual(lensSeconds(readLensLog(dir), readPhaseLog(dir), 110_000), [
+    { name: 'spec', attempt: 1, seconds: 60 }, { name: 'security', attempt: 1, seconds: 20 },
+    { name: 'code', attempt: 1, seconds: 40 }, { name: 'spec', attempt: 2, seconds: 9 },
+  ]);
+});
+
+test('Scenario: Two lenses overlap - 200 seconds for the long one and 29 for the short one', () => {
+  const dir = fresh();
+  recordLens(dir, { lens: 'spec', attempt: 1 }, 0);
+  recordLens(dir, { lens: 'security', attempt: 1 }, 1_000);
+  recordLens(dir, { lens: 'security', attempt: 1, end: true }, 30_000);
+  recordLens(dir, { lens: 'spec', attempt: 1, end: true }, 200_000);
+  assert.deepEqual(lensSeconds(readLensLog(dir), [], 500_000), [
+    { name: 'spec', attempt: 1, seconds: 200 }, { name: 'security', attempt: 1, seconds: 29 },
+  ]);
+});
+
+test('Scenario: A lens has no end - it lasts until the next phase, or the end of the run, never until another lens begins', () => {
+  const dir = fresh();
+  recordPhase(dir, { phase: 'qa', attempt: 1 }, 0);
+  recordLens(dir, { lens: 'spec', attempt: 1 }, 10_000);
+  recordLens(dir, { lens: 'code', attempt: 1 }, 20_000);
+  recordPhase(dir, { phase: 'delivery' }, 90_000);
+  assert.deepEqual(lensSeconds(readLensLog(dir), readPhaseLog(dir), 200_000), [
+    { name: 'spec', attempt: 1, seconds: 80 }, { name: 'code', attempt: 1, seconds: 70 },
+  ]);
+  assert.deepEqual(lensSeconds(readLensLog(dir), [], 100_000), [
+    { name: 'spec', attempt: 1, seconds: 90 }, { name: 'code', attempt: 1, seconds: 80 },
   ]);
 });
 
@@ -145,9 +174,11 @@ test('progress.mjs lens records the lens without changing the phase, and reports
   const before = readFileSync(join(dir, 'phase.json'), 'utf8');
   assert.equal(run('lens', 'security', '--attempt', '1').status, 0);
   assert.equal(readFileSync(join(dir, 'phase.json'), 'utf8'), before);
-  assert.deepEqual(readLensLog(dir).map((l) => [l.lens, l.attempt]), [['security', 1]]);
+  assert.deepEqual(readLensLog(dir).map((l) => [l.lens, l.attempt, l.event]), [['security', 1, 'start']]);
+  assert.equal(run('lens', 'security', '--attempt', '1', '--end').status, 0);
+  assert.deepEqual(readLensLog(dir).map((l) => [l.lens, l.attempt, l.event]), [['security', 1, 'start'], ['security', 1, 'end']]);
   assert.match(run('lens', 'style').stderr, /unknown lens "style"/);
-  assert.equal(readLensLog(dir).length, 1);
+  assert.equal(readLensLog(dir).length, 2);
 });
 
 test('run-usage.mjs puts the seconds of each lens in the marker, apart from the phases', () => {
@@ -157,6 +188,7 @@ test('run-usage.mjs puts the seconds of each lens in the marker, apart from the 
   const now = Date.now();
   recordPhase(dir, { phase: 'qa', attempt: 1 }, now - 40_000);
   recordLens(dir, { lens: 'spec', attempt: 1 }, now - 30_000);
+  recordLens(dir, { lens: 'spec', attempt: 1, end: true }, now - 10_000);
   recordLens(dir, { lens: 'code', attempt: 1 }, now - 10_000);
   const out = spawnSync('node', [RUN_USAGE, '--file', log, '--progress-dir', dir], { encoding: 'utf8' }).stdout;
   const run = parseUsageMarker(bot(out.slice(out.indexOf('<!--'))));

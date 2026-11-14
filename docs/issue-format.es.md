@@ -179,6 +179,35 @@ Cuando el trabajo necesita algo que no está en el repositorio (una clave, un ar
 - Un insumo que falta devuelve el issue a `needs-spec` con el motivo `inputs`, antes de que empiece el agente y sin gastar un turno del modelo. El comentario nombra cada insumo que falta.
 - La sección es opcional. `/relevo:issue` pregunta por los insumos del trabajo y la escribe.
 
+### 10. Contradicciones con las reglas del proyecto (se comprueba, no hay nada que escribir)
+
+Antes de crear el issue, y otra vez antes de que un build gaste un turno de modelo, un script compara cada línea de `## Out of scope` con las reglas del proyecto (`qa.rules_from`) y con los escenarios del propio issue. Si una línea de `Out of scope` excluye algo que una regla exige, o limita algo que un escenario necesita, el issue vuelve a quien lo escribió con las dos líneas citadas (archivo y línea de la regla, el escenario y el límite). El script nunca decide cuál gana: lo decides tú.
+
+- Para cambiar el issue, edita la línea o el escenario.
+- Para saltarte la regla a propósito, déjalo escrito en una decisión: agrega la línea `Overrides: CLAUDE.md:12` (archivo y línea de la regla) dentro de un bloque `### D<n>.` de `## Decisions`. La comprobación salta esa regla y QA sigue la decisión.
+- Una regla es un requisito salvo que el archivo de reglas la marque como consejo: escribe `[advice]` en su línea, o en un encabezado para marcar todo lo que está debajo. Una regla marcada `[advice]` nunca bloquea, y un hallazgo que trata solo de ella (su texto repite las palabras de la línea) es una nota; un hallazgo del revisor `spec`, `security` o `code` que describe otro problema bloquea aunque cite una línea de consejo.
+
+Una regla que el issue no salta sigue bloqueando en QA: un revisor que encuentra un cambio que la rompe la cita como `Rule: <archivo>:<línea> "<sus palabras>"`, y el build falla aunque el hallazgo venga del revisor `interface` en el último intento.
+
+### 11. Rutas protegidas y nombres sin confirmar (se avisa, no hay nada que escribir)
+
+Mientras escribes el issue, un script avisa de dos cosas y nunca hace fallar la comprobación: una ruta que una corrida sin supervisión no cambia (el archivo de reglas, un workflow, `relevo.yml`, una carpeta de skills, o un manifiesto de dependencias que ninguna línea `Allow-paths:` cubre) que una línea pide cambiar o, las duras, solo nombra; y un supuesto de `## Assumptions` sobre algo fuera del repositorio (un permiso, endpoint, campo o claim, escrito entre comillas invertidas) que ningún archivo del repositorio contiene. No se leen las líneas de `Out of scope`, `Code pointers`, `Design reference`, `External inputs`, el código entre cercas ni las líneas que dicen "no cambiar".
+
+- Para una ruta protegida: una persona hace esa edición y el issue la deja fuera, o la tarea se reescribe para que nada la necesite; para un manifiesto de dependencias, también se lista en `Allow-paths:`. Una ruta dura no se puede listar ahí, y la comprobación dice por qué. Si el build llega hasta ahí, la comprobación de la especificación y la guarda del commit igual detienen el cambio, y el comentario nombra la política ("una corrida sin supervisión no puede editar este archivo").
+- Para un nombre sin confirmar: confírmalo y escríbelo en `Data contract`, `Decisions` o `Constraints`; o déjalo como insumo `manual` en `External inputs`, y el build sigue y el traspaso lo lista en "Supuesto, sin confirmar"; o escríbelo en `## Open questions`, y el build espera hasta que una persona responda.
+
+El traspaso también lista, en "Código compartido tocado", los archivos del build que más de un archivo importa o que viven en una carpeta compartida (`components/`, `shared/`, `common/`...). Es información para quien revisa; no se bloquea nada.
+
+### 12. Un patrón a seguir (opcional)
+
+```markdown
+Pattern: #12
+```
+
+Nombra un issue de este repositorio cuyo cambio ya está fusionado y que resolvió el mismo tipo de trabajo (una pantalla, un endpoint, un formulario). `go` busca el pull request que lo cerró en la rama base y le da al desarrollador su diff como plantilla. Solo se lee un `#N` de este repositorio; otro repositorio, varios números o una segunda línea se informan y se ignoran. Un patrón que no existe o cuyo cambio aún no está fusionado detiene la construcción antes de empezar, con la razón `inputs`; una consulta que falla (sin red) nunca bloquea y se lista como no verificada. El cambio se encuentra por el pull request que menciona `#N` (en su título o cuerpo, como los pull requests de Relevo) y se fusionó en la rama base cuando se cerró el issue; un cambio hecho a mano que nunca nombra el issue se informa como no fusionado.
+
+La línea sola no cambia cómo se construyen las tareas. Lo que vuelve *replicada* a una construcción es la receta que la especificación escribe en `tasks.md` (su formato está en [Dónde corre `go`](execution.es.md#construcciones-replicadas)) y que un script verifica. Cada réplica necesita un mapa de renombres y las diferencias de su objetivo, así que el issue debe listar las diferencias de cada objetivo, o vuelve a quien escribe la spec (razón `missing`). El primer objetivo se construye normal y debe pasar el gate y los lentes de QA antes de que empiece cualquier réplica; cada réplica es luego un lanzamiento del desarrollador, con un modelo más barato cuando el desarrollador está en `auto` (un nombre por debajo del modelo planeado de `agents.ladder`, nunca bajo el piso del desarrollador; con un modelo escrito en `relevo.yml`, que es lo que hay por defecto, cada réplica usa ese modelo: ver [Dónde corre `go`](execution.es.md#construcciones-replicadas)), comprobada por el gate antes de la siguiente, y construida por el modelo planeado si falla dos veces. Las réplicas pasan por las mismas rutas protegidas, escaneos, QA y `limits.run_max_cost` que cualquier otro trabajo.
+
 ## Qué más necesita `go` del issue
 
 - **Un hito.** El hito es el lote al que pertenece el issue.
@@ -192,3 +221,14 @@ Si falta alguno de estos, no se construye nada y un comentario dice cuál.
 Nunca inventa escenarios ni casos borde. Si faltan, el issue vuelve a quien escribe la spec con la lista de lo que falta.
 
 Todo lo que en el issue sea ambiguo de un modo que cambie el comportamiento visible se trata como un defecto de la spec, no se adivina. Las ambigüedades pequeñas se resuelven con una suposición razonable que queda escrita en el `design.md` del cambio.
+
+### 9. El modelo de este issue (opcional)
+
+Cuando un rol de `agents` en `relevo.yml` es `auto`, el issue puede pedir un modelo con una línea cada uno, fuera de cualquier bloque de código:
+
+```markdown
+Model: haiku
+QA-model: sonnet
+```
+
+`Model:` es para el desarrollador y `QA-model:` para todas las lentes de QA. El valor es un solo nombre de modelo de `agents.ladder`. Puede elegir cualquier modelo entre el piso (`floor`) y el techo (`ceiling`) del rol: un valor por encima del techo se baja hasta él y uno por debajo del piso se sube hasta él, y el plan lo dice (cada lente de QA con su propio rango); un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Un rol que no es `auto` conserva el modelo escrito en `relevo.yml`. La comprobación del issue acepta las líneas y solo avisa de una que no se puede leer. Son parte del texto, así que editar una después de `ready` cambia el hash del issue. Mira [Elegir el modelo de cada issue](configuration.es.md#elegir-el-modelo-de-cada-issue-auto).

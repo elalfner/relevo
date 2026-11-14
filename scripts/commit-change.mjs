@@ -5,6 +5,8 @@
 // --within is the folder of the platform of the issue: files outside it are refused, except the specification of --change, GLOSSARY.md and docs/adr/.
 // It stages the paths, refuses protected paths and restricted files ("restricted file in the diff"), scans the staged diff for temporary markers and credentials, and
 // commits only when nothing was found. With no --rules-file it reads qa.rules_from from relevo.yml, if there is one; it also reads the platform folders there, because the skill folders of a platform are protected too.
+// A credential finding that .relevo/scan-exceptions.json (read from HEAD) lists by path and pattern, with a reason, is let through and reported on stderr.
+// --allow-empty makes an empty commit with the message when the named paths have no change (the checkpoints of a build already hold them) and nothing else is staged.
 //   exit 0: committed (prints the short hash)   exit 1: refused, nothing committed (prints what and where)
 //   exit 2: bad arguments, "." or "-A" as a path, or git failed
 
@@ -12,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { loadConfig } from './lib/config.mjs';
 import { commitChange, refusalText } from './lib/commit-change.mjs';
+import { formatExceptionReport } from './lib/scan-exceptions.mjs';
 import { platformFolders } from './lib/protected-paths.mjs';
 import { restrictedListFromText } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
@@ -46,8 +49,11 @@ const allow = (opt('allow') ?? '').split(',').map((p) => p.trim()).filter(Boolea
 const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 try {
-  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile, platformPaths, within: opt('within') ?? null, change: opt('change') ?? null, restricted });
+  const result = commitChange({ git, message: opt('message'), paths, allow, rulesFile, platformPaths, within: opt('within') ?? null, change: opt('change') ?? null, restricted, allowEmpty: options.includes('--allow-empty') });
   if (result.ok) {
+    // The hash stays alone on stdout; what the scan let through is reported on stderr for the run comment.
+    const report = formatExceptionReport(result.exceptions);
+    if (report) console.error(report);
     console.log(result.commit);
     process.exit(0);
   }

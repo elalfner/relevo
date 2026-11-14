@@ -28,6 +28,8 @@ export const SETTINGS = [
   { path: 'limits.concurrent_agents', type: 'int', min: 1, default: 3 },
   { path: 'limits.review_sla_hours', type: 'int', min: 1, default: 8 },
   { path: 'limits.run_max_turns', type: 'int', min: 1, default: 100 },
+  // After these minutes an unattended run starts no further agent (the job timeout of the go workflow comes after).
+  { path: 'limits.run_max_minutes', type: 'int', min: 5, default: 50 },
   { path: 'limits.building_alert_hours', type: 'int', min: 1, default: 3 },
   // How long an issue waits for a file that another issue also names before it starts anyway.
   { path: 'limits.shared_file_wait_hours', type: 'int', min: 1, default: 24 },
@@ -58,6 +60,8 @@ export const SETTINGS = [
   { path: 'design.system.components', type: 'repo-path-list', default: [] },
   { path: 'design.system.references', type: 'repo-path-list', default: [] },
   { path: 'trust', type: 'enum', allowed: ['private-team', 'public'], default: 'private-team' },
+  // Prints a redacted rendering of the agent output and keeps the results in the transcript of a run that ends abnormally. Off by default; refused with trust public.
+  { path: 'run.full_output', type: 'bool', default: false },
 ];
 
 const GROUPS = new Set(SETTINGS.filter((s) => s.path.includes('.')).map((s) => s.path.split('.')[0]));
@@ -68,7 +72,14 @@ const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels', 'platform', 'pla
 // defaults are set in the design of specialist-review-lenses and change only on the evidence of its evaluation.
 export const QA_LENSES = ['spec', 'security', 'code', 'interface'];
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+// The order of the models, from the lowest to the highest. Relevo reads only the order, never checks the names against a list of
+// models (the list changes): a new model needs a line in relevo.yml and no release.
+export const DEFAULT_LADDER = ['haiku', 'sonnet', 'opus'];
+export const AUTO = 'auto';
+// The lowest model a QA lens takes by default on `auto`.
+export const QA_MIN_MODEL = 'sonnet';
 export const AGENT_DEFAULTS = {
+  ladder: [...DEFAULT_LADDER],
   dev: { model: 'sonnet', effort: 'high' },
   qa: {
     spec: { model: 'opus', effort: 'high' },
@@ -86,24 +97,61 @@ function agentSettings(user) {
   const value = structuredClone(AGENT_DEFAULTS);
   const raw = user.agents;
   if (raw === undefined || raw === null) return { value, errors, given };
-  if (!isMapValue(raw)) return { value, errors: [{ path: 'agents', message: 'agents must be a map with dev and qa' }], given };
+  if (!isMapValue(raw)) return { value, errors: [{ path: 'agents', message: 'agents must be a map with dev, qa and ladder' }], given };
+  // The ladder first: the floor and the ceiling of every role are names in it.
+  if (raw.ladder !== undefined) {
+    const l = raw.ladder;
+    const names = Array.isArray(l) ? l : null;
+    if (!names || names.length === 0 || names.some((n) => typeof n !== 'string' || n.trim() === '')) {
+      errors.push({ path: 'agents.ladder', message: `agents.ladder must be a list of model names from the lowest to the highest (got ${JSON.stringify(l)})` });
+    } else if (new Set(names.map((n) => n.trim())).size !== names.length) {
+      errors.push({ path: 'agents.ladder', message: `agents.ladder repeats a name (got ${JSON.stringify(l)})` });
+    } else {
+      value.ladder = names.map((n) => n.trim());
+      given.push('agents.ladder');
+    }
+  }
+  const ladder = value.ladder;
   const role = (path, entry, target) => {
     if (!isMapValue(entry)) { errors.push({ path, message: `${path} must be a map with model and/or effort` }); return; }
+    const defaultModel = target.model;
+    const range = {};
     Object.keys(entry).forEach((k) => {
-      if (!['model', 'effort'].includes(k)) { errors.push({ path: `${path}.${k}`, message: `unknown setting "${path}.${k}"; a role has model and effort` }); return; }
+      if (!['model', 'effort', 'floor', 'ceiling'].includes(k)) { errors.push({ path: `${path}.${k}`, message: `unknown setting "${path}.${k}"; a role has model, effort, floor and ceiling` }); return; }
       const v = entry[k];
       if (k === 'model') {
         if (typeof v !== 'string' || v.trim() === '') { errors.push({ path: `${path}.model`, message: `${path}.model must be a non-empty model name or alias (got ${JSON.stringify(v)})` }); return; }
         target.model = v.trim();
-      } else {
+      } else if (k === 'effort') {
         if (!EFFORTS.includes(v)) { errors.push({ path: `${path}.effort`, message: `${path}.effort has invalid value ${JSON.stringify(v)}; allowed values: ${describeAllowed(EFFORTS)}` }); return; }
         target.effort = v;
+      } else {
+        if (typeof v !== 'string' || !ladder.includes(v.trim())) { errors.push({ path: `${path}.${k}`, message: `${path}.${k} must be a name in agents.ladder (${ladder.join(', ')}) (got ${JSON.stringify(v)})` }); return; }
+        range[k] = v.trim();
       }
       given.push(`${path}.${k}`);
     });
+    // On auto the range is the floor and the ceiling; by default the ceiling is the default model of the role and the floor the
+    // name one step below it, so auto costs no more than the defaults unless the repository raises the ceiling.
+    if (target.model === AUTO) {
+      const ceiling = range.ceiling ?? defaultModel;
+      if (!ladder.includes(ceiling)) { errors.push({ path: `${path}.ceiling`, message: `${path} is auto and the default model "${defaultModel}" of the role is not in agents.ladder (${ladder.join(', ')}): set ${path}.ceiling` }); return; }
+      const below = ladder.indexOf(ceiling) > 0 ? ladder[ladder.indexOf(ceiling) - 1] : ceiling;
+      // A QA lens is not taken below `sonnet` by default: haiku did not pass the lens evaluation (docs/lens-evaluation.md).
+      const lensFloor = path.startsWith('agents.qa.') && ladder.includes(QA_MIN_MODEL)
+        ? ladder[Math.min(Math.max(ladder.indexOf(below), ladder.indexOf(QA_MIN_MODEL)), ladder.indexOf(ceiling))]
+        : below;
+      const floor = range.floor ?? lensFloor;
+      if (ladder.indexOf(floor) > ladder.indexOf(ceiling)) { errors.push({ path: `${path}.floor`, message: `${path}.floor "${floor}" is above ${path}.ceiling "${ceiling}" in agents.ladder (${ladder.join(', ')})` }); return; }
+      target.floor = floor;
+      target.ceiling = ceiling;
+    } else {
+      if (range.floor && range.ceiling && ladder.indexOf(range.floor) > ladder.indexOf(range.ceiling)) { errors.push({ path: `${path}.floor`, message: `${path}.floor "${range.floor}" is above ${path}.ceiling "${range.ceiling}" in agents.ladder (${ladder.join(', ')})` }); return; }
+      Object.assign(target, range);
+    }
   };
   Object.keys(raw).forEach((k) => {
-    if (!['dev', 'qa'].includes(k)) errors.push({ path: `agents.${k}`, message: `unknown setting "agents.${k}"; the roles are dev and qa` });
+    if (!['dev', 'qa', 'ladder'].includes(k)) errors.push({ path: `agents.${k}`, message: `unknown setting "agents.${k}"; the roles are dev and qa, and agents.ladder is the order of the models` });
   });
   if (raw.dev !== undefined) role('agents.dev', raw.dev, value.dev);
   if (raw.qa !== undefined) {
@@ -390,6 +438,9 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
   }
   if (config.trust === 'public' && config.agent.build === 'antigravity') {
     errors.push({ path: 'trust', message: 'trust "public" cannot be used with agent.build "antigravity" yet: its allow list is a prefix list and its run has no tool-level limits (docs/security.md)' });
+  }
+  if (config.trust === 'public' && config.run.full_output) {
+    errors.push({ path: 'run.full_output', message: 'run.full_output cannot be used with trust "public": the output of the agent may hold secrets that the redactor does not know, and the artifacts of a public repository are readable by anyone (docs/security.md)' });
   }
   if (config.trust === 'public' && config.review.mode === 'none') {
     errors.push({ path: 'review.mode', message: 'trust "public" needs a human review of generated code: review.mode cannot be "none"' });

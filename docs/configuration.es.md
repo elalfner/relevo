@@ -34,7 +34,8 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `limits.built_unreviewed_per_person` | issues construidos que una persona puede tener esperando; un issue con una etiqueta `relevo:urgent` válida empieza igualmente | 2 |
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |
-| `limits.run_max_turns` | turnos por ejecución sin supervisión | 100 |
+| `limits.run_max_turns` | turnos por ejecución sin supervisión: el runner limita al agente principal y Relevo limita a los subagentes juntos al mismo número | 100 |
+| `limits.run_max_minutes` | minutos tras los cuales una ejecución sin supervisión no inicia más agentes (mínimo 5). Mantenla al menos 5 por debajo del `timeout-minutes` del job de build del workflow go, que es 60 | 50 |
 | `limits.building_alert_hours` | horas sin actividad antes de reportar como atascado un issue en `building` ([Dónde corre `go`](execution.es.md)) | 3 |
 | `limits.shared_file_wait_hours` | horas que un issue espera por un archivo que otro issue activo o anterior también nombra antes de empezar de todos modos (un entero de al menos 1; [Dónde corre `go`](execution.es.md)) | 24 |
 | `limits.run_max_cost` | **obligatorio** con `agent.build: claude` (el valor por defecto), y se rechaza con `antigravity`: dólares por ejecución sin supervisión; elige el tuyo | 5 |
@@ -47,12 +48,13 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, o `local_only` para datos sensibles | `attach_to_pr` |
 | `digest.issue` | número del issue donde se publica el resumen diario como comentario | ninguno |
-| `language` | idioma de los mensajes de traspaso (`en`, `es`) | `en` |
+| `language` | idioma de todo comentario que publica el bot (`en`, `es`): traspasos, cola, consumo y los comentarios sobre una ejecución que falló o fue cortada | `en` |
 | `design.images` | `true` descarga una imagen pegada en un issue y se la muestra al modelo (una captura puede mostrar datos de clientes); los archivos que ya están en el repositorio no dependen de esto | `false` |
 | `design.system.tokens` | Archivos o carpetas dentro del repositorio con los colores, espacios y estilos de texto (un archivo de tema, un CSS de variables). El paso de interfaz de `think` lee solo estas rutas, o las que confirmes. Cada una debe existir y no ser restringida ni protegida | `[]` |
 | `design.system.components` | Carpetas con los componentes reutilizables que una pantalla nueva debe usar | `[]` |
 | `design.system.references` | Carpetas dentro del repositorio con capturas o bocetos para mirar | `[]` |
 | `trust` | `private-team` o `public` | `private-team` |
+| `run.full_output` | `true` imprime en el log de cada ejecución en la nube una versión redactada de la salida del agente y guarda el principio de cada resultado en la transcripción de una ejecución que termina de forma anormal. Puede exponer un secreto que el redactor no conoce, y se rechaza con `trust: public` ([Ver lo que hizo el agente](security.es.md#ver-lo-que-hizo-el-agente)) | `false` |
 | `labels` | renombra cualquier etiqueta; las claves son fijas, los nombres son tuyos | `relevo:ready`, `relevo:built`, … |
 
 ## Plataformas, perfiles y comprobaciones
@@ -81,13 +83,39 @@ agents:
   ```
   Los valores por defecto cambian solo con la evidencia de una evaluación de los revisores sobre defectos sembrados.
 - **Un modelo es un nombre, no una lista.** Escribe un alias o un identificador completo; Relevo no lo comprueba contra una lista porque la lista cambia, y el entorno de ejecución rechaza el que no conoce.
-- **Ningún ajuste apaga un revisor ni baja lo que bloquea.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee.
+- **Ningún ajuste apaga un revisor ni baja lo que bloquea.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee. Toda regla de ese archivo es un requisito salvo que su línea (o el encabezado que la contiene) esté marcada `[advice]`; un hallazgo que cita un requisito como `Rule: <archivo>:<línea> "<sus palabras>"` bloquea, sin importar qué revisor lo escribió. Un hallazgo que cita una línea `[advice]` es solo una nota cuando su texto nombra ese consejo; un problema real encontrado por `spec`, `security` o `code` que lleva una línea de consejo al lado sigue bloqueando.
 - **Con Antigravity** los ajustes se aceptan y no se aplican: no se escriben en los agentes que renderiza. `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada uno y siguen.
+
+### Elegir el modelo de cada issue: `auto`
+
+Un rol puede ser `auto` en lugar de un nombre de modelo. Entonces un script (`scripts/model-plan.mjs`, que `go` ejecuta una vez antes del primer lanzamiento) escoge su modelo según el issue, entre un piso y un techo; el agente principal no decide nada.
+
+```yaml
+agents:
+  ladder: [haiku, sonnet, opus]     # el orden de los modelos, de menor a mayor (es el valor por defecto)
+  dev:
+    model: auto
+    ceiling: sonnet                  # opcional: el modelo más alto que auto puede usar para este rol
+    floor: haiku                     # opcional: el más bajo que puede escoger por tamaño
+  qa:
+    spec:
+      model: auto
+```
+
+- **La escalera** es solo un orden. Relevo no comprueba los nombres contra una lista de modelos; un modelo nuevo es una línea más en `agents.ladder`.
+- **El rango.** Sin `ceiling` es el modelo por defecto del rol (desarrollador `sonnet`, spec y security `opus`, code e interface `sonnet`), y sin `floor` es un escalón más abajo. Una lente de QA nunca queda por debajo de `sonnet` por defecto (la evaluación de lentes no aprobó `haiku` para `code` e `interface`, `docs/lens-evaluation.md`); escribe un `floor` para bajar más. Así `auto` no puede costar más que los valores por defecto salvo que subas un techo.
+- **La puntuación.** El tamaño del cambio (tareas pendientes más escenarios del issue: hasta 6 toma el piso, hasta 14 el punto medio, más el techo), subido un escalón cuando el issue permite un archivo de dependencias en `Allow-paths:` o nombra un área sensible para la seguridad (autenticación, credencial, token, contraseña, pago, permiso, secreto, cifrado). La lente de seguridad va a su techo en ambos casos. Si no hay tareas ni escenarios que puntuar, se usa el modelo por defecto del rol. El esfuerzo no se puntúa: sigue siendo el configurado.
+- **El issue puede pedir.** Una línea `Model: <nombre>` (desarrollador) o `QA-model: <nombre>` (todas las lentes) se lee solo para un rol en `auto`. Puede elegir cualquier modelo dentro del rango del rol, entre su `floor` y su `ceiling`: un nombre por encima del techo se baja hasta él y uno por debajo del piso se sube hasta él, y el plan lo dice (cada lente de QA con su propio rango); un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Las líneas son parte del texto del issue, así que el hash del issue las cubre. `/relevo:issue` puede proponer una, con su motivo, y la escribe solo si lo confirmas.
+- **Un rol que no es `auto`** conserva el modelo escrito, diga lo que diga el issue. `limits.run_max_cost` sigue siendo el tope duro en todos los casos.
+- **Las réplicas de una construcción replicada siguen al desarrollador.** Una réplica corre un nombre por debajo del modelo planeado del desarrollador, sin bajar de su `floor`, y solo cuando el desarrollador está en `auto` (ver [Construcciones replicadas](execution.es.md#construcciones-replicadas)). Por defecto el desarrollador está escrito, `sonnet`, así que cada réplica corre entonces en `sonnet` y replicar no ahorra nada: pon `agents.dev.model: auto` para tener réplicas más baratas. Un cambio pequeño ya se planea en el piso, y entonces una réplica tampoco tiene nada más barato.
+- **El comentario dice qué se usó.** El comentario de uso de una corrida lista, para cada rol, el modelo, el esfuerzo, si vino de la configuración, de `auto` o del issue, y por qué. Si el plan no se puede hacer, `go` usa la configuración y lo dice.
+- **Un reintento sube un escalón.** Cuando la puerta está en rojo o QA rechaza el trabajo y el desarrollador corre otra vez en modo fix, un desarrollador en `auto` sube un nombre en `agents.ladder` (`haiku` a `sonnet`, luego `opus`) y nunca pasa de su `ceiling`. Un desarrollador cuyo modelo está escrito en `relevo.yml` se queda en él, y las lentes no suben. Con el techo por defecto (`sonnet`) un reintento nunca cuesta más que los valores por defecto; sube `agents.dev.ceiling` para permitir un reintento en `opus`. El comentario dice cada paso.
 
 ## Qué significan los límites
 
 - `limits.run_max_cost` es obligatorio y lo eliges tú. Con una clave de API es un tope real de gasto por ejecución. Con un token de suscripción el costo que reporta el log es nocional, así que es solo una red de seguridad contra una ejecución descontrolada.
 - Con `agent.build: antigravity` no hay un límite de costo que fijar, porque el agente no lo tiene: el límite es `limits.run_max_tokens`, y la cuota y el presupuesto del proyecto de Google Cloud dueño de la clave son el tope que de verdad se cumple. `trust: public` todavía no se acepta con él.
 - `limits.run_max_turns` es el control principal con una suscripción, junto con un `limits.concurrent_agents` bajo: la cuota la comparten todas las ejecuciones y el uso interactivo de la cuenta.
-- El runner cuenta contra `limits.run_max_turns` solo los turnos del agente principal; el límite no detiene los turnos de las lentes de QA (el costo que usan sí se cuenta). Relevo suma los turnos de los subagentes desde el log de la ejecución, estimados como uno más que las llamadas a herramientas de cada uno, y el comentario sobre la ejecución dice cuándo el total pasó el límite. Lo informa después de la ejecución; no la detiene.
-- Una ejecución que alcanza un límite de turnos o de costo se detiene y el issue pasa a `qa-failed` con el motivo. [Dónde corre `go`](execution.es.md) tiene el resto.
+- **Dos topes de turnos, no una suma.** El runner cuenta contra `--max-turns` solo los turnos del agente principal. Relevo cuenta a los subagentes: cuando cada uno termina, `go` registra sus llamadas a herramientas desde el bloque de uso que cierra su reporte (sus turnos son las llamadas más uno), y antes de lanzar el siguiente agente (el desarrollador otra vez, o la siguiente lente de QA) consulta a `run-budget.mjs`. Cuando los turnos de los subagentes juntos llegan a `limits.run_max_turns`, o la ejecución lleva `limits.run_max_minutes`, no empieza otro agente y la ejecución toma la ruta de fallo con la razón `run limit reached`, con el nombre de los agentes que no corrieron. El guardia detiene una ejecución solo con una cifra que puede leer; un agente que ya está corriendo no se detiene a la mitad. El comentario sobre la ejecución sigue diciendo cuándo el total de turnos pasó el límite.
+- **El trabajo no se pierde en un límite.** Cuando `go` se detiene en un límite, hace commit del trabajo como `wip: stopped by limit (#N)` y lo sube a la rama del issue, y `/relevo:fix` continúa desde ahí. Cuando el runner corta al agente (el límite de turnos o de costo del runner) o el job se cancela o vence, un paso del workflow go que siempre corre hace lo mismo con el árbol de trabajo que queda, con los mismos escaneos de cualquier commit (rutas protegidas, archivos restringidos, marcadores, credenciales); nunca fuerza un push y no sobrescribe nada: solo empuja un fast-forward de lo que hay en el remoto, y deja intacta una rama remota con commits que esta ejecución no tiene.
+- Una ejecución que alcanza un límite de turnos, de minutos o de costo se detiene y el issue pasa a `qa-failed` con el motivo, y el comentario dice si el trabajo se guardó. [Dónde corre `go`](execution.es.md) tiene el resto.

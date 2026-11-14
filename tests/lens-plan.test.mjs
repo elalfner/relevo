@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planLenses, skippedLines } from '../scripts/lib/lens-plan.mjs';
+import { batchLenses, planLenses, skippedLines } from '../scripts/lib/lens-plan.mjs';
 
 const active = (plan) => plan.filter((p) => p.active).map((p) => p.lens);
 
@@ -46,4 +46,30 @@ test('the command prints the plan as JSON, and skips the interface lens when the
   assert.deepEqual(out.lenses.filter((l) => l.active).map((l) => l.lens), ['spec', 'security', 'code']);
   assert.match(out.skipped[0], /^SKIPPED interface: /);
   assert.equal(spawnSync('node', [new URL('../scripts/lens-plan.mjs', import.meta.url).pathname, '--config', join(dir, 'nope.yml')], { encoding: 'utf8' }).status, 2);
+});
+
+test('Scenario: Several active lenses - they are one batch, launched together', () => {
+  assert.deepEqual(batchLenses(planLenses({ interfaceKind: 'web', extraRules: 2 })), [['spec', 'security', 'code', 'interface']]);
+});
+
+test('Scenario: A concurrency limit - batches of at most that many, in order', () => {
+  const plan = planLenses({ interfaceKind: 'web', extraRules: 2 });
+  assert.deepEqual(batchLenses(plan, 2), [['spec', 'security'], ['code', 'interface']]);
+  assert.deepEqual(batchLenses(plan, 3), [['spec', 'security', 'code'], ['interface']]);
+  assert.deepEqual(batchLenses(plan, 1).length, 4);
+});
+
+test('Scenario: An inactive lens - it is in no batch', () => {
+  assert.deepEqual(batchLenses(planLenses({ interfaceKind: 'none' })), [['spec', 'security', 'code']]);
+});
+
+test('the command prints the batches and rejects a bad --max-parallel', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-lens-'));
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nplatforms:\n  app:\n    path: .\n    stack: vue\n    targets: [web]\n');
+  const script = new URL('../scripts/lens-plan.mjs', import.meta.url).pathname;
+  const run = (...a) => spawnSync('node', [script, '--config', join(dir, 'relevo.yml'), ...a], { encoding: 'utf8' });
+  assert.deepEqual(JSON.parse(run().stdout).batches, [['spec', 'security', 'code']]);
+  assert.deepEqual(JSON.parse(run('--max-parallel', '2').stdout).batches, [['spec', 'security'], ['code']]);
+  assert.equal(run('--max-parallel', '0').status, 2);
+  assert.equal(run('--max-parallel', 'x').status, 2);
 });

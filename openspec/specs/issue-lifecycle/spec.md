@@ -184,3 +184,135 @@ The next-step table SHALL give `qa-failed` a variant for an issue whose build le
 #### Scenario: Spanish repository
 - **WHEN** `language` is `es` and the reason is `rebuild`
 - **THEN** the hint is written in Spanish and the label names stay unchanged
+
+### Requirement: `needs-spec` has the reasons `inputs` and `policy`
+A build that cannot succeed because of what the issue depends on SHALL send the issue to `needs-spec` with the reason `inputs` (an input cannot be read or is not available) or `policy` (a task needs a protected path, or a dependency the issue did not allow). Each reason SHALL have an entry in the table of next steps and a message, in both languages, that names what is missing and the command to run. The next step of `policy` SHALL be true for both causes: a person makes the edit that an unattended run cannot make, or the issue changes so that no task needs it, and only a dependency manifest can be allowed, with an `Allow-paths:` line.
+
+#### Scenario: The next step for `inputs`
+- **WHEN** the next step is asked for `needs-spec` with the reason `inputs`
+- **THEN** it says that an input of the issue is not available, names the writer as the owner and gives the command that completes the issue
+
+#### Scenario: The next step for `policy`
+- **WHEN** the next step is asked for `needs-spec` with the reason `policy`
+- **THEN** it says which task needs something an unattended run may not do, names the writer as the owner and gives the command that rewrites the issue
+
+#### Scenario: A protected path that is not a dependency manifest
+- **WHEN** the `policy` comment is for a task that changes the project rules file
+- **THEN** the next step says that a person makes that edit or the issue changes, and does not offer `Allow-paths:` for it
+
+#### Scenario: Both languages
+- **WHEN** the repository language is Spanish and a message for either reason is rendered
+- **THEN** it is in Spanish and has the same content as the English one
+
+### Requirement: Missing installed dependencies end in `qa-failed` before the agent
+A build that stops before the agent because the dependencies of the platform are not installed SHALL leave the issue `qa-failed`, as a build that stops for a missing tool does, and SHALL NOT use `needs-spec`, because the cause is the configuration of the runner and not the issue.
+
+#### Scenario: The install step is missing
+- **WHEN** the paths that the profile requires do not exist after the install step
+- **THEN** the issue is `qa-failed` and the comment names the path and the step to enable
+
+### Requirement: The hand-off can carry advisory notes
+When a build passes with advisory notes, the hand-off message SHALL say how many there are and name the lens that produced each of the first few, and SHALL carry all of them in a hidden marker. It SHALL NOT notify anyone beyond the person who must act and SHALL add no lifecycle state.
+
+#### Scenario: A passed build with notes
+- **WHEN** a build passes and the `interface` lens left two notes
+- **THEN** the message says that there are two notes and names the lens, and the marker holds both
+
+#### Scenario: A passed build without notes
+- **WHEN** a build passes with no advisory content
+- **THEN** the message is as it was and carries no marker
+
+#### Scenario: Many notes
+- **WHEN** there are more notes than the message shows
+- **THEN** it says how many more there are and the marker still holds all of them
+
+### Requirement: A contradiction sends the issue back with the reason `conflict`
+When the check before the build finds that the issue contradicts the project rules or itself, the issue SHALL go back to `needs-spec` with the reason `conflict`, assigned to the spec writer, with a comment that quotes both lines of each pair. Its next step SHALL be to settle which one wins (change the issue, or record an override decision) and label it ready again.
+
+#### Scenario: The comment of the conflict
+- **WHEN** the build preflight finds an `Out of scope` line that a rule contradicts
+- **THEN** the issue is `needs-spec`, the comment quotes the rule line with its file and line and the `Out of scope` line, and the next step says a person settles which wins
+
+#### Scenario: Next step
+- **WHEN** `next-step.mjs --state needs-spec --reason conflict` runs
+- **THEN** it prints the command `/relevo:issue {n}` for the spec writer and a hint that names the override decision
+
+### Requirement: A protected path that the commit guard refused is reported as a policy
+When a run ends because the safe commit refused a protected path (`protected path in the diff`), the `qa-failed` comment SHALL say that an unattended run cannot edit that path, that QA did not reject the work, and that nothing was pushed, and SHALL NOT say that QA rejected it after the retries. Its next step SHALL be the command that rewrites the issue, with a hint that a person makes the edit or the issue changes. A run that QA rejected keeps its wording.
+
+#### Scenario: The commit guard refuses the rules file
+- **WHEN** a `qa_failed` message has the reason `protected path in the diff`
+- **THEN** it says that an unattended run cannot edit that path and that QA did not reject it, names the file, and the next step is `/relevo:issue <n>`
+
+#### Scenario: QA rejected the work
+- **WHEN** a `qa_failed` message has the reason `QA rejected after the retries`
+- **THEN** it says that QA still rejected it after the retries, as before
+
+#### Scenario: Both languages
+- **WHEN** the language is Spanish
+- **THEN** the same content is written in Spanish
+
+### Requirement: The hand-off lists the assumptions and the shared code
+The hand-off message SHALL show, when there are any, a line `Assumed, not confirmed` near the top, with the assumptions about names outside the repository that nothing in the repository settled, and a line `Shared code touched` with the files of the build that more than one file uses or that live in a shared folder. Both lines SHALL be left out when empty. Neither SHALL notify anyone beyond the person who must act or add a lifecycle state.
+
+#### Scenario: Assumptions in the hand-off
+- **WHEN** the build passes with an unsettled assumption about a permission name
+- **THEN** the message has the line `Assumed, not confirmed` before the branch line, naming the permission
+
+#### Scenario: Shared code in the hand-off
+- **WHEN** the build changed a component that two screens import
+- **THEN** the message has the line `Shared code touched` naming that file
+
+#### Scenario: Neither
+- **WHEN** nothing is assumed and no shared file changed
+- **THEN** the message is as it was
+
+### Requirement: A queued issue says its position and what it waits for
+The comment posted when an issue becomes `queued` for a free agent SHALL state how many runs are active or about to start and which issues they are, how many issues are ahead of it, and the typical duration of the recent builds with how many builds it is taken from. The line SHALL NOT say that an issue is running when it is only about to start. The figures SHALL be read from the repository (the issues and the recent runs of the go workflow) and SHALL NOT be estimated. A figure that cannot be read SHALL be written as `unknown`. The comment for the capacity of the assignee SHALL list the built issues that are waiting for review. Nobody is mentioned, and a later evaluation that leaves the issue queued posts nothing.
+
+#### Scenario: Slots full, issues ahead
+- **WHEN** an issue is queued because 2 of 2 agents are running and 1 issue is queued before it
+- **THEN** the comment says 2 runs active or starting and their issue numbers, 1 ahead, and the typical build duration with its sample size
+
+#### Scenario: An issue about to start holds the slot
+- **WHEN** an issue is started by the same evaluation that queues another one for lack of a slot
+- **THEN** the comment of the queued issue lists the started issue under "Running or starting now", not "Running now"
+
+#### Scenario: No recent runs
+- **WHEN** the repository has fewer than three completed builds, or their durations cannot be read
+- **THEN** the typical duration is `unknown` and no number is written in its place
+
+#### Scenario: Capacity of the assignee
+- **WHEN** an issue is queued because its assignee has too many built issues waiting
+- **THEN** the comment lists those issues by number, and says the limit
+
+#### Scenario: Two languages
+- **WHEN** `language` is `es`
+- **THEN** the same comment is written in Spanish with `desconocido` where `unknown` would be written
+
+### Requirement: A stop that is not a QA rejection is not reported as one
+The `qa-failed` comment SHALL say that QA rejected the work only for a QA rejection (the reasons `QA rejected after the retries` and `QA rejected: nothing the developer agent can fix`) and for a comment with no reason. For any other reason, including one the catalog does not know, the title and the line that says what happened SHALL say that the run stopped for that reason and that QA did not reject the work, and SHALL NOT say that QA rejected it or that QA did so after the retries. The line that says what happened for the reasons that have wording of their own (a run limit, a protected path in the diff) and the next step of the comment SHALL be as before; their title follows the same rule as any other stop that is not a QA rejection.
+
+#### Scenario: The branch already exists
+- **WHEN** a `qa_failed` message has the reason `branch already exists`
+- **THEN** its title does not say `failed QA`, it says that the run stopped for that reason and that QA did not reject the work, and the next step is the one of the state of the branch
+
+#### Scenario: `fix` still finds the comment
+- **WHEN** a `qa-failed` comment was written for a stop that is not a QA rejection, or for a QA rejection, in either language
+- **THEN** the reader that `fix` uses finds it by its title and reads its finding, and it still finds the comments written with the earlier titles
+
+#### Scenario: A reason the catalog does not know
+- **WHEN** a `qa_failed` message has a reason that no text of the catalog names
+- **THEN** it says that the run stopped for that reason and does not say that QA rejected anything
+
+#### Scenario: QA rejected the work
+- **WHEN** a `qa_failed` message has the reason `QA rejected after the retries` or `QA rejected: nothing the developer agent can fix`
+- **THEN** the comment is as before
+
+#### Scenario: No reason
+- **WHEN** a `qa_failed` message has no reason
+- **THEN** the comment is as before
+
+#### Scenario: Both languages
+- **WHEN** the language is Spanish
+- **THEN** the same comments are written in Spanish, with the reason as the skill names it

@@ -79,7 +79,7 @@ When `language` is set, hand-off messages, digests and prompts SHALL be produced
 - **THEN** it fails and tells the user to move the value to the secret store
 
 ### Requirement: Project rules are referenced, not copied
-When `qa.rules_from` names a file, or a list of files, the QA agent SHALL read each of them at each run and treat their rules as binding. Every listed file SHALL be a protected path.
+When `qa.rules_from` names a file, or a list of files, the `spec` lens SHALL read each of them at each run and treat their rules as binding. Every listed file SHALL be a protected path.
 
 #### Scenario: Rules change
 - **WHEN** the referenced rules file changes between two runs
@@ -87,7 +87,7 @@ When `qa.rules_from` names a file, or a list of files, the QA agent SHALL read e
 
 #### Scenario: Several rules files
 - **WHEN** `qa.rules_from` is `[CLAUDE.md, .ai/rules/backend.md]`
-- **THEN** QA reads both, and a diff that touches either is refused as a protected path
+- **THEN** the `spec` lens reads both, and a diff that touches either is refused as a protected path
 
 #### Scenario: Missing file in the list
 - **WHEN** a listed file does not exist
@@ -204,3 +204,175 @@ When `qa.rules_from` names a file, or a list of files, the QA agent SHALL read e
 #### Scenario: Invalid value
 - **WHEN** an entry is `/etc/passwd` or `../outside`
 - **THEN** validation fails and names the setting and the entry
+
+### Requirement: Run time limit setting
+`relevo.yml` SHALL support `limits.run_max_minutes`, a whole number of at least 5 and by default 50: the minutes after which an unattended run starts no further agent. The decision that starts a run SHALL carry it. `/relevo:doctor` SHALL warn when the `timeout-minutes` of the build job of the installed go workflow is not at least five minutes above it.
+
+#### Scenario: The default
+- **WHEN** `limits.run_max_minutes` is absent
+- **THEN** 50 is used
+
+#### Scenario: An invalid value
+- **WHEN** `limits.run_max_minutes` is not a whole number of at least 5
+- **THEN** validation fails with a message that names the key and the minimum
+
+#### Scenario: The setting is too close to the job timeout
+- **WHEN** the build job has `timeout-minutes: 60` and `limits.run_max_minutes` is 58
+- **THEN** `doctor` warns that the job would be cut before the guard acts and says how to fix it
+
+#### Scenario: The setting leaves room
+- **WHEN** the build job has `timeout-minutes: 60` and `limits.run_max_minutes` is 50
+- **THEN** `doctor` reports nothing about it
+
+### Requirement: The order of the models is declared in relevo.yml
+`agents.ladder` SHALL be a list of model names from the lowest to the highest, without repeats, with the default `[haiku, sonnet, opus]`. Relevo SHALL NOT check the names against a list of models, because that list changes; the order is the only thing the ladder says. A ladder that is not a list of distinct non-empty names SHALL be reported by name.
+
+#### Scenario: The default ladder
+- **WHEN** `relevo.yml` has no `agents.ladder`
+- **THEN** the effective configuration has `[haiku, sonnet, opus]`
+
+#### Scenario: A ladder of the repository
+- **WHEN** `agents.ladder` is `[sonnet, opus]`
+- **THEN** that order is the one the floor and the ceiling of every role are read against
+
+#### Scenario: An invalid ladder
+- **WHEN** `agents.ladder` repeats a name, is empty or holds something that is not a name
+- **THEN** the configuration is invalid and the message names `agents.ladder`
+
+### Requirement: A role can be set to auto within a floor and a ceiling
+`model` of `agents.dev` and of each lens of `agents.qa` MAY be `auto`, and a role MAY set `floor` and `ceiling`, names of the ladder. A role whose `model` is not `auto` keeps the model written and ignores `floor` and `ceiling`. A floor above the ceiling, or a name that is not in the ladder, SHALL be reported by name.
+
+#### Scenario: A role that is not on auto keeps its model
+- **WHEN** `agents.qa.code` is `{ model: sonnet, floor: haiku }`
+- **THEN** the effective model of the code lens is `sonnet` and the floor is ignored
+
+#### Scenario: A floor above the ceiling
+- **WHEN** a role sets `floor: opus` and `ceiling: sonnet`
+- **THEN** the configuration is invalid and the message names the role
+
+#### Scenario: A name outside the ladder
+- **WHEN** a role sets `ceiling: gpt-5` and the ladder does not have that name
+- **THEN** the configuration is invalid and the message names the role and the ladder
+
+### Requirement: The default range of a role never costs more than the defaults
+When a role is on `auto` and sets no `ceiling`, its ceiling SHALL be the default model of the role; when it sets no `floor`, its floor SHALL be the name one step below the ceiling in the ladder, or the ceiling itself when there is none. For a QA lens the default floor SHALL NOT be below `sonnet` when `sonnet` is in the ladder: it is the higher of the name one step below the ceiling and `sonnet`, and never above the ceiling. So `auto` never costs more than the defaults unless the repository raises the ceiling, and a QA lens is never taken to a model that the lens evaluation did not pass.
+
+#### Scenario: Auto with the defaults
+- **WHEN** `agents.dev.model` is `auto` and nothing else is set for the role
+- **THEN** its ceiling is `sonnet`, its floor is `haiku`, and the effort is the one configured
+
+#### Scenario: A lens that defaults to the stronger model
+- **WHEN** `agents.qa.security.model` is `auto`
+- **THEN** its ceiling is `opus` and its floor is `sonnet`: auto never takes the security lens below one step of its default
+
+#### Scenario: A lens that defaults to sonnet
+- **WHEN** `agents.qa.code.model` or `agents.qa.interface.model` is `auto` and nothing else is set for the lens
+- **THEN** its ceiling and its floor are `sonnet`: the lens evaluation did not pass haiku for these lenses
+
+#### Scenario: A floor written for a lens
+- **WHEN** `agents.qa.code` is `{ model: auto, floor: haiku }`
+- **THEN** its floor is `haiku`: only the default is raised
+
+#### Scenario: The ceiling is raised
+- **WHEN** `agents.dev` is `{ model: auto, ceiling: opus }`
+- **THEN** the range of the developer is `sonnet` to `opus`
+
+### Requirement: Antigravity accepts auto and does not apply it
+With `agent.build: antigravity` the value `auto` and the ladder SHALL be accepted and not applied, like the other settings of the agents.
+
+#### Scenario: With Antigravity
+- **WHEN** `agent.build` is `antigravity` and a role is `auto`
+- **THEN** the setting is accepted and not applied, with the warning that the other settings of the agents already give
+
+### Requirement: The design system can be declared
+`relevo.yml` MAY declare `design.system.tokens`, `design.system.components` and `design.system.references`, each a list of paths inside the repository. The configuration SHALL fail a path that does not exist, leaves the repository, or is restricted or protected, and SHALL accept a file without these keys.
+
+#### Scenario: Declared paths
+- **WHEN** the keys list folders that exist in the repository
+- **THEN** the configuration is valid and the interface step reads those paths
+
+#### Scenario: A path outside the repository
+- **WHEN** a path leaves the repository
+- **THEN** validation fails and names the key and the path
+
+#### Scenario: A restricted path
+- **WHEN** a path is on the restricted list
+- **THEN** validation fails and says why
+
+#### Scenario: Nothing declared
+- **WHEN** the file has none of the keys
+- **THEN** it is valid and the interface step detects and asks
+
+### Requirement: The shipped configuration documents the keys
+The configuration that `init` offers SHALL show the three keys, commented out, with one line that says what each holds.
+
+#### Scenario: A new configuration file
+- **WHEN** `init` writes `relevo.yml`
+- **THEN** the three keys appear commented out with their explanation
+
+### Requirement: The settings of the agents are configuration keys
+`relevo.yml` MAY set `agents.dev.model`, `agents.dev.effort` and, for each lens, `agents.qa.<lens>.model` and `agents.qa.<lens>.effort`, with `<lens>` one of `spec`, `security`, `code` and `interface`. A model SHALL be a non-empty string. An effort SHALL be one of `low`, `medium`, `high`, `xhigh` and `max`. An unknown lens name or effort SHALL fail validation, and a file without the keys SHALL be valid.
+
+#### Scenario: Valid settings
+- **WHEN** the file sets a model and an effort for `agents.qa.security`
+- **THEN** validation passes
+
+#### Scenario: An unknown lens
+- **WHEN** the file sets `agents.qa.style.model`
+- **THEN** validation fails and names the lenses that exist
+
+#### Scenario: An unknown effort
+- **WHEN** an effort is `extreme`
+- **THEN** validation fails and lists the efforts that exist
+
+#### Scenario: No settings
+- **WHEN** the file has none of the keys
+- **THEN** it is valid and the defaults apply
+
+### Requirement: Validation can warn without blocking
+Validation SHALL have a level that reports a message without failing. A setting that is valid but that the agent in use does not apply SHALL produce a warning of that level and SHALL NOT be an error, so that a file can be shared between tools.
+
+#### Scenario: A setting that Antigravity does not apply
+- **WHEN** `agent.build` is `antigravity` and the file sets a model for a lens
+- **THEN** validation passes and reports a warning that the setting is not applied with this agent
+
+#### Scenario: A key that does not apply and is rejected
+- **WHEN** a key is marked as rejected for the agent in use
+- **THEN** validation still fails as it did before
+
+### Requirement: Every comment of the bot follows the language
+Every comment that a Relevo workflow or script posts on an issue or a pull request SHALL be produced in the language of `language`, including the usage comment and the comments about a run that failed before it decided, that ended without a result, that stopped at a usage limit or that was cut and kept its work. The words SHALL come from the message catalog and be produced by `scripts/render-message.mjs` or, for the usage sentence, by a script that takes its phrases from that catalog, so tests cover them. Data that comes from elsewhere (a finding, a branch name, a detail line of a refused commit) is quoted as it is.
+
+#### Scenario: A run ends without a result in Spanish
+- **WHEN** `language` is `es` and a run ends without an outcome
+- **THEN** the comment on the issue is in Spanish, with the same commands and the same labels as in English
+
+#### Scenario: The scripts cannot be run
+- **WHEN** the scripts of the package are not available at all (the install step failed) so the message cannot be rendered
+- **THEN** the workflow posts the English sentence it carries as a last resort and the step still succeeds
+
+### Requirement: A missing language key fails the build of Relevo
+The renderer SHALL use the English text when a supported language lacks a message or a phrase, and a test SHALL fail when any supported language lacks a key of the English catalog, has a key English does not have, or uses different placeholders in a line.
+
+#### Scenario: A key is added only in English
+- **WHEN** a message kind is added to the English catalog and not to Spanish
+- **THEN** the test fails and names the kind and the language, and a message of that kind in Spanish still renders in English
+
+#### Scenario: A placeholder differs
+- **WHEN** the Spanish text of a line uses a placeholder the English line does not have
+- **THEN** the test fails and names the kind
+
+### Requirement: Full agent output setting
+`relevo.yml` SHALL support `run.full_output`, a boolean whose default is `false`, which turns on the redacted rendering of the agent output and the results in the transcript of a run that ends abnormally. It SHALL be refused with `trust: public`.
+
+#### Scenario: Default
+- **WHEN** `run.full_output` is not set
+- **THEN** the full output is off and validation passes
+
+#### Scenario: Not a boolean
+- **WHEN** `run.full_output` is `"yes"`
+- **THEN** validation fails and names the setting
+
+#### Scenario: Public repository
+- **WHEN** `run.full_output` is `true` and `trust` is `public`
+- **THEN** validation fails

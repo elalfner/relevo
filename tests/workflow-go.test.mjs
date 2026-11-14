@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { resolveLabelNames } from '../scripts/lib/labels.mjs';
 
@@ -173,7 +176,7 @@ test('Scenario: Output for a start - the decide job exposes platform, stack and 
 test('Scenario: Issue for a Supabase platform - the Supabase CLI step is active, guarded by the stack, and comes before the agent', () => {
   const build = jobText('build');
   const active = build.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  assert.match(active, /- if: needs\.decide\.outputs\.stack == 'supabase'\n\s+uses: supabase\/setup-cli@v1/);
+  assert.match(active, /- if: needs\.decide\.outputs\.stack == 'supabase'\n\s+uses: supabase\/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3\.2\.0/);
   assert.ok(active.indexOf('supabase/setup-cli') < active.indexOf('name: Check the toolchain'), 'the CLI is installed before the toolchain check');
   assert.ok(active.indexOf('supabase/setup-cli') < active.indexOf('anthropics/claude-code-action'));
 });
@@ -235,8 +238,11 @@ test('Scenario: Limit reached / Another failure - the final step tells a usage l
   assert.match(finalStep, /if: always\(\)/);
   assert.match(finalStep, /EXECUTION_FILE: \$\{\{ steps\.agent\.outputs\.execution_file \}\}/);
   assert.match(finalStep, /usage-limit\.mjs --file "\$EXECUTION_FILE"/);
-  assert.match(finalStep, /usage limit \(or the credit\) of the model account was reached/);
-  assert.match(finalStep, /The run ended without a result \(job status: \$JOB_STATUS\)/, 'the generic text stays for any other failure');
+  // The words are in the message catalog (issue #127); the step only decides which situation it is.
+  assert.match(finalStep, /elif \[ "\$limit_reached" = "true" \]; then\n\s+situation=usage_limit/);
+  assert.match(finalStep, /situation=no_result/, 'the generic situation stays for any other failure');
+  assert.match(finalStep, /for candidate in "\$RUNNER_TEMP\/relevo\/scripts\/render-message\.mjs"/);
+  assert.match(finalStep, /node "\$render" run_no_outcome --config relevo\.yml/);
   assert.match(build, /- id: agent\n\s+uses: anthropics\/claude-code-action@v1/);
 });
 
@@ -361,6 +367,17 @@ test('the inputs that a person has to confirm are passed on to the hand-off and 
   assert.match(step, /RELEVO_INPUTS_TO_CONFIRM=/);
 });
 
+test('the notes of the preflight (#121) go to the same line of the hand-off, one line each, and never stop the build', () => {
+  const { step } = preflightStep();
+  assert.match(step, /r\.notes \?\? \[\]/);
+  assert.match(step, /"check: "/);
+  // The command of the step, run on a result with a note, prints it in the line that is exported.
+  const cmd = /unverified=\$\(printf '%s' "\$result" \| node -e '([^\n]*)'\)/.exec(step)?.[1];
+  assert.ok(cmd, 'the command is found');
+  const out = spawnSync('node', ['-e', cmd], { input: JSON.stringify({ unverified: [{ name: 'KEY', purpose: 'the key' }], notes: ['a\nb "c"'] }), encoding: 'utf8' });
+  assert.equal(out.stdout.trim(), 'KEY (the key); check: a b "c"');
+});
+
 test('the Antigravity workflow has the same step, because it is outside the blocks of the agent', async () => {
   const { agentWorkflow } = await import('../scripts/lib/agent-workflow.mjs');
   const blocks = readFileSync(`${root}templates/agents/antigravity-step.yml`, 'utf8');
@@ -388,13 +405,113 @@ test('Scenario: A finished build starts the queue - a job of its own, after the 
 
 test('Scenario: Permissions of the jobs - only the job that starts the queue can write actions, never the one that runs the agent', () => {
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf('\njobs:')), /^\s*actions:/m);
-  assert.doesNotMatch(jobText('decide'), /^\s*actions:/m);
+  assert.doesNotMatch(jobText('decide'), /^\s*actions: write/m, 'the light job only reads the runs, for the queue comment');
+  assert.match(jobText('decide'), /^\s+actions: read$/m);
   assert.doesNotMatch(jobText('build'), /^\s*actions:/m);
   assert.equal([...workflow.matchAll(/^\s+actions: write$/gm)].length, 1);
+  assert.equal([...workflow.matchAll(/^\s+actions: read$/gm)].length, 1, 'read in the decide job only');
 });
 
 test('Scenario: No build ran - a decision that builds nothing does not start the queue', () => {
   const cond = /if: (always\(\) && .*)$/m.exec(jobText('requeue'))[1];
   assert.match(cond, /needs\.build\.result != 'skipped'/);
   assert.doesNotMatch(cond, /needs\.decide\.result != 'skipped'|success\(\)/);
+});
+
+// ---------- the work of a run that was cut
+
+// Two jobs have a step called "Report a run that ended without an outcome": the one of the build job is the last.
+const stepOf = (name, text = workflow) => {
+  const start = text.lastIndexOf(`- name: ${name}`);
+  assert.ok(start > 0, `the step "${name}" exists`);
+  const next = text.indexOf('\n      - name: ', start + 1);
+  const nextComment = text.indexOf('\n      # ', start + 1);
+  const ends = [next, nextComment].filter((i) => i > 0);
+  return text.slice(start, ends.length ? Math.min(...ends) : undefined);
+};
+
+test('Scenario: The job is cut and the run recorded no outcome - a step that always runs keeps the work, before the reports and the cleanup', () => {
+  const rescue = stepOf('Keep the work of a run that was cut');
+  assert.match(rescue, /id: rescue/);
+  assert.match(rescue, /if: always\(\)/);
+  assert.match(rescue, /continue-on-error: true/, 'it can never fail the job');
+  assert.match(rescue, /DECISION: \$\{\{ needs\.decide\.outputs\.decision_b64 \}\}/);
+  assert.match(rescue, /grep -qxE 'relevo:\(ready\|building\)' \|\| exit 0/, 'it acts only when no outcome was recorded');
+  assert.match(rescue, /node \.relevo-plugin\/scripts\/rescue-work\.mjs --decision "\$DECISION" --github-output "\$GITHUB_OUTPUT"/);
+  assert.match(rescue, /progress\.mjs class "\$class"/, 'the usage record gets the class that was decided');
+  const at = (name) => workflow.lastIndexOf(`- name: ${name}`);
+  assert.ok(at('Install the Relevo scripts for the reports') < at('Keep the work of a run that was cut'), 'the scripts are installed first');
+  assert.ok(at('Keep the work of a run that was cut') < at('Report what the run used'), 'the class is known when the usage is reported');
+  assert.ok(at('Keep the work of a run that was cut') < at('Report a run that ended without an outcome'), 'the report can say what was kept');
+  assert.ok(at('Keep the work of a run that was cut') < at('Remove what this job added'), 'the working tree is still there');
+});
+
+test('The report says when the work is on a rescue branch, which is not the branch that fix reads', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /rescue_branch: e\.RESCUE_BRANCH/, 'the catalog decides the text from the name of the branch (rescue/...)');
+  assert.doesNotMatch(report, /not on the branch of the issue/, 'no inline English: it lives in the catalog');
+});
+
+// The lines of the rescue step that decide the class, run in bash with the stubs of the real inputs.
+function rescueClass({ cut = '', agentOutcome = 'success', withExecution = true }) {
+  const step = stepOf('Keep the work of a run that was cut');
+  const from = step.indexOf('class=other');
+  const to = step.indexOf('[ -n "$RELEVO_PROGRESS_DIR" ] && node .relevo-plugin/scripts/progress.mjs class "$class"');
+  assert.ok(from > 0 && to > from, 'the decision is in the step');
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-class-'));
+  mkdirSync(join(dir, '.relevo-plugin/scripts'), { recursive: true });
+  writeFileSync(join(dir, '.relevo-plugin/scripts/run-cut.mjs'), `if (process.argv.includes('--file')) process.stdout.write(${JSON.stringify(cut)});\n`);
+  const script = `set -e\n${step.slice(from, to)}echo "$class"\n`;
+  const r = spawnSync('bash', ['-c', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, EXECUTION_FILE: withExecution ? join(dir, 'log.json') : '', AGENT_OUTCOME: agentOutcome } });
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout.trim();
+}
+
+test('Scenario: the class of a run with no outcome - limit only when it was cut, other when the agent ended by itself', () => {
+  assert.equal(rescueClass({ cut: 'turns' }), 'limit', 'the runner cut it at its turn limit');
+  assert.equal(rescueClass({ cut: 'cost' }), 'limit', 'the runner cut it at its cost limit');
+  assert.equal(rescueClass({ agentOutcome: 'cancelled' }), 'limit', 'the job was cancelled or timed out');
+  assert.equal(rescueClass({ agentOutcome: 'failure', withExecution: false }), 'limit', 'the agent step failed and left no log');
+  assert.equal(rescueClass({}), 'other', 'the agent ended with a result of its own and no outcome was recorded');
+});
+
+test('The state of the working tree is recorded before the agent, so the install step is not taken for its work', () => {
+  const step = stepOf('Record the state of the working tree before the agent');
+  assert.match(step, /continue-on-error: true/);
+  assert.match(step, /scripts\/tree-baseline\.mjs/);
+  assert.match(step, /\$RELEVO_PROGRESS_DIR/);
+  assert.match(step, /record/);
+  const at = (name) => workflow.indexOf(`- name: ${name}`);
+  assert.ok(at('Record the state of the working tree before the agent') > at('Check the toolchain'), 'after the install and the toolchain check');
+  assert.ok(at('Record the state of the working tree before the agent') > at('Start the progress report'), 'the progress folder exists');
+  assert.ok(at('Record the state of the working tree before the agent') < at('Check the issue before the agent'), 'before the last step ahead of the agent');
+  assert.ok(at('Record the state of the working tree before the agent') < workflow.indexOf("relevo:agent-step begin"), 'before the agent');
+  assert.match(workflow, /scripts\/rescue-work\.mjs scripts\/progress\.mjs scripts\/tree-baseline\.mjs/, 'the install check of the reports knows the script');
+});
+
+test('The report of a run with no outcome says what the rescue did, and the package install checks for the rescue script', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /RESCUE_STATE: \$\{\{ steps\.rescue\.outputs\.state \}\}/);
+  assert.match(report, /RESCUE_BRANCH: \$\{\{ steps\.rescue\.outputs\.branch \}\}/);
+  assert.match(report, /RESCUE_DETAIL: \$\{\{ steps\.rescue\.outputs\.detail \}\}/);
+  assert.match(report, /rescue_state: e\.RESCUE_STATE, rescue_branch: e\.RESCUE_BRANCH, rescue_detail: e\.RESCUE_DETAIL/);
+  assert.match(report, /if \[ "\$RESCUE_STATE" = "kept" \]; then\n\s+situation=kept/);
+  const install = stepOf('Install the Relevo scripts for the reports');
+  assert.match(install, /scripts\/rescue-work\.mjs/);
+  assert.match(install, /scripts\/progress\.mjs/);
+  assert.match(install, /scripts\/render-message\.mjs/, 'the comment is rendered by the catalog');
+});
+
+test('the step that keeps the work holds no token the build job did not have, and the requeue job still has the only actions: write', () => {
+  const rescue = stepOf('Keep the work of a run that was cut');
+  assert.doesNotMatch(rescue, /actions: write|--force|push -f/);
+  assert.equal((workflow.match(/^\s+actions: write$/gm) ?? []).length, 1, 'one permission line, in the requeue job');
+});
+
+test('Scenario: A limit of the runner - the report names the turn limit or the cost limit when the log says, and the package install checks for the script', () => {
+  const report = stepOf('Report a run that ended without an outcome');
+  assert.match(report, /cut=\$\(node \.relevo-plugin\/scripts\/run-cut\.mjs --file "\$EXECUTION_FILE"\)/);
+  assert.match(report, /CUT="\$cut"/, 'the limit that cut the run goes to the catalog, which names it in both situations');
+  assert.match(report, /cut: e\.CUT/);
+  assert.match(stepOf('Install the Relevo scripts for the reports'), /scripts\/run-cut\.mjs/);
 });

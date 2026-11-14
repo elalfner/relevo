@@ -287,3 +287,36 @@ test('Scenario: The work needs a key - issue asks for the external inputs, write
 test('Scenario: Nothing is needed - issue writes no section', () => {
   assert.match(body, /needs nothing outside the repository, write no section/);
 });
+
+test('Scenario: A line in a draft - the skill may propose a model with its reason and writes it only when the person confirms', () => {
+  assert.match(text, /\*\*Model \(optional\)\.\*\*/);
+  assert.match(text, /`Model: <name>` for the developer, or `QA-model: <name>` for the QA lenses, with the reason in a sentence/);
+  assert.match(text, /write the line only if the person confirms it/);
+  assert.match(text, /the ceiling of the role still applies/);
+  assert.match(text, /Do not propose a line when no role is `auto`/);
+});
+
+test('Scenario: the check of a draft and of an update read the project rules, and the skill says who decides (#121)', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  const update = readFileSync(new URL('../skills/issue/references/update.md', import.meta.url), 'utf8');
+  assert.match(body, /check-issue\.mjs[^\n]*--rules-file <qa\.rules_from of relevo\.yml, comma separated>/);
+  assert.match(update, /check-issue\.mjs[^\n]*--rules-file <qa\.rules_from>/);
+  assert.match(body, /which one wins/);
+  assert.match(body, /Overrides: <file>:<line>/);
+  assert.match(body, /only a warning/);
+});
+
+test('Scenario: A task edits the rules file - the skill shows the warning and asks how to proceed, with the two ways out', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  const update = readFileSync(new URL('../skills/issue/references/update.md', import.meta.url), 'utf8');
+  assert.match(body, /\*\*Protected paths and unconfirmed names \(warnings\)\.\*\*/);
+  assert.match(body, /a person makes that edit and the issue leaves it out[^\n]*or the task is rewritten so that nothing needs it/);
+  assert.match(body, /a warning never fails the check/);
+  assert.ok(body.indexOf('Protected paths and unconfirmed names') < body.indexOf('## 5. Approval'));
+  assert.match(update, /warnings about protected paths and unconfirmed names and ask how to proceed/);
+});
+
+test('Scenario: A permission name nobody confirmed - the skill offers to confirm, keep as manual or ask', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  assert.match(body, /the person confirms it[^\n]*`manual` input to `External inputs`[^\n]*`Open questions`, so the build waits/);
+});
