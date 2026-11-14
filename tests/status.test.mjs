@@ -453,3 +453,14 @@ test('Scenario: the digest and status print the outcomes and the seconds per pha
   assert.match(renderStatus(report, 'en'), /Outcomes, last 7 days: 1 built/);
   assert.doesNotMatch(renderStatus(buildStatus({ config, me: 'ana', now: NOW, issues: [], prs: [] }), 'en'), /Outcomes/);
 });
+
+test('the outcome class `limit` has a name in both languages in the usage line of the digest', async () => {
+  const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
+  const src = (await import('node:fs')).readFileSync(new URL('../scripts/lib/status.mjs', import.meta.url), 'utf8');
+  OUTCOME_CLASSES.forEach((c) => {
+    const key = /^[a-z]+$/.test(c) ? c : `'${c}'`;
+    assert.ok(src.includes(`${key}: '`), `status.mjs names the class ${c}`);
+  });
+  assert.match(src, /limit: 'stopped at a limit'/);
+  assert.match(src, /limit: 'detenidas en un límite'/);
+});

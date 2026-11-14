@@ -1089,3 +1089,148 @@ Where `init` and the guide tell the person to store `CLAUDE_CODE_OAUTH_TOKEN`, t
 #### Scenario: The guide in both languages
 - **WHEN** `docs/get-started.md` and `docs/get-started.es.md` describe the subscription token
 - **THEN** both contain that command
+
+### Requirement: Doctor explains an unreadable linked repository
+For each repository in `links` that cannot be read, `doctor` SHALL name the repository and say what to grant: read access to issues, pull requests and contents through the secret `RELEVO_LINKS_TOKEN`, or copying the file it needs into this repository. For a private linked repository whose secret exists, `doctor` SHALL say that it cannot verify what the token covers, and SHALL NOT read the value of the secret.
+
+#### Scenario: Linked repository not readable
+- **WHEN** `relevo.yml` links `acme/design` and it cannot be read
+- **THEN** `doctor` reports a failed check naming `acme/design`
+- **AND** its fix names `RELEVO_LINKS_TOKEN` and copying the file as the two ways out
+
+#### Scenario: Private linked repository with the secret present
+- **WHEN** a linked repository is private and `RELEVO_LINKS_TOKEN` exists
+- **THEN** `doctor` notes that the token's access to that repository was not verified
+
+### Requirement: Doctor reports the effective runner
+When a Relevo workflow takes `runs-on` from a repository variable, `doctor` SHALL read the variable (read-only) and compare the resulting runner with `runner.labels`. When they differ it SHALL print both and say that the variable wins. When the variable is unset the fallback written in the workflow SHALL be used. A value that cannot be parsed SHALL be reported as not judged.
+
+#### Scenario: Variable overrides the file
+- **WHEN** `runner.labels` is `[self-hosted, linux]` and the workflow's `runs-on` resolves through a variable set to `ubuntu-latest`
+- **THEN** `doctor` warns, printing `[self-hosted, linux]` and `[ubuntu-latest]` and saying the variable wins
+
+#### Scenario: Variable matches
+- **WHEN** the effective runner equals `runner.labels`
+- **THEN** `doctor` reports a passed check
+
+#### Scenario: Variable cannot be read
+- **WHEN** the repository variables cannot be read
+- **THEN** `doctor` says the effective runner was not checked and does not report it as correct
+
+### Requirement: Doctor warns about a stale pinned version
+`doctor` SHALL compare each workflow's `RELEVO_VERSION` with the latest published version of the package and, when the pin is older, SHALL warn and name what the newer versions fix, taken from the changelog. When the published version cannot be determined (offline, private package, registry error) `doctor` SHALL skip the comparison and add a note saying so.
+
+#### Scenario: Pin older than published
+- **WHEN** the workflows pin 0.14.2 and 0.14.4 is published
+- **THEN** `doctor` warns and lists the changelog entries of the versions after 0.14.2
+
+#### Scenario: Pin is current
+- **WHEN** the pin equals the published version
+- **THEN** `doctor` reports a passed check
+
+#### Scenario: Registry unreachable
+- **WHEN** the published version cannot be read
+- **THEN** `doctor` reports a note that the version comparison was skipped and why, and no warning
+
+### Requirement: Doctor warns when the base branch requires no status checks
+When branch protection can be read and the base branch does not require status checks, `doctor` SHALL warn, because `ship` relies on them. When branch protection cannot be read for lack of permission, `doctor` SHALL say it could not be checked and SHALL NOT report it as satisfied.
+
+#### Scenario: No required checks
+- **WHEN** the base branch has a ruleset with no required status checks
+- **THEN** `doctor` warns that `ship` relies on required checks
+
+#### Scenario: Checks required
+- **WHEN** the base branch requires status checks
+- **THEN** `doctor` reports a passed check
+
+#### Scenario: No permission to read protection
+- **WHEN** the branch rules cannot be read
+- **THEN** `doctor` reports that they could not be checked, not that they are fine
+
+### Requirement: Init proposes the fix for each environment finding
+`init` SHALL include in its plan a step for each finding above: a manual step for the token, the runner variable and the branch protection, and the existing merge update for a workflow whose pin is stale. `init` SHALL NOT change branch protection or secrets for these findings, and `doctor` SHALL remain read-only.
+
+#### Scenario: Stale pin
+- **WHEN** `init` runs and a workflow pins an older version than the published one
+- **THEN** the plan includes the workflow update, applied only after confirmation
+
+#### Scenario: Missing required checks
+- **WHEN** the base branch requires no status checks
+- **THEN** the plan lists a manual step to require them and `init` changes nothing in the protection
+
+### Requirement: `doctor` warns when the dependencies are never installed
+When the profile of a platform lists installed paths and the `go` workflow has no active step that installs the dependencies of that platform, `doctor` SHALL warn and name the platform and the missing step. It SHALL say nothing for a platform whose profile lists no paths.
+
+#### Scenario: A workflow without an install step
+- **WHEN** a platform of the `vue` stack has a `go` workflow with no step that installs its dependencies
+- **THEN** `doctor` warns, names the platform and says which step to enable
+
+#### Scenario: A workflow with the step
+- **WHEN** the workflow has an active install step for the platform
+- **THEN** `doctor` says nothing about it
+
+#### Scenario: A stack that lists no paths
+- **WHEN** the profile of the platform lists no installed paths
+- **THEN** `doctor` makes no check
+
+### Requirement: `doctor` notes when previews cannot be checked
+For a platform whose stack has an interface, `doctor` SHALL note that the automatic check of previews will be skipped when no browser automation library is available to the platform or to the machine, and SHALL say how to enable it. It SHALL NOT fail for it.
+
+#### Scenario: No browser automation
+- **WHEN** a platform of the `vue` stack has no browser automation library and the machine has none
+- **THEN** `doctor` notes that previews will not be checked and says how to enable the check
+
+#### Scenario: A stack with no interface
+- **WHEN** the stack of the platform has no interface
+- **THEN** `doctor` says nothing about it
+
+### Requirement: `doctor` validates the files of the interface knowledge
+`doctor` SHALL validate `.relevo/interface.json` when it exists, reporting a rule with a missing field, a repeated identifier, or an attempt to lower the weight of a rule of the plugin, and SHALL check that the paths of `design.system` exist.
+
+#### Scenario: A rule with a missing field
+- **WHEN** a rule of `.relevo/interface.json` has no weight
+- **THEN** `doctor` reports the rule and the field
+
+#### Scenario: A declared path that does not exist
+- **WHEN** `design.system.tokens` lists a folder that is not in the repository
+- **THEN** `doctor` reports the path
+
+### Requirement: `doctor` and `init` warn about settings that the agent does not apply
+When the agent in use does not apply a setting of `agents`, `doctor` and `init` SHALL print a warning that names each setting and says it is not applied, and SHALL NOT fail for it.
+
+#### Scenario: Antigravity
+- **WHEN** `agent.build` is `antigravity` and the file sets an agent setting
+- **THEN** `doctor` and `init` warn that it is not applied and go on
+
+#### Scenario: Claude with every setting applied
+- **WHEN** the agent applies every setting of the file
+- **THEN** no warning is printed
+
+### Requirement: `doctor` checks that the lens agents are in place
+`doctor` SHALL check that the plugin has the four lens agents and that the profile of each platform can be resolved for each lens, and SHALL report a missing agent or a profile that cannot be resolved.
+
+#### Scenario: A plugin without a lens agent
+- **WHEN** an installed plugin lacks `qa-security`
+- **THEN** `doctor` names it and says to update the plugin
+
+### Requirement: `doctor` reports a leftover reference to the former QA agent
+`doctor` SHALL report a profile, a workflow or a rules file of the repository that still names the agent `relevo:qa`, and SHALL say to use the lens agents.
+
+#### Scenario: A stale reference
+- **WHEN** a file of the repository names `relevo:qa`
+- **THEN** `doctor` reports the file and says what replaced it
+
+### Requirement: Doctor reports an old pin of an action in a workflow
+`doctor` SHALL warn for each installed Relevo workflow that uses `actions/checkout`, `actions/setup-node` or `actions/create-github-app-token` at a release older than the ones the current templates pin, or `supabase/setup-cli` at v1 or v2, naming the file, the action, the line and the reason (it runs on Node.js 20). It SHALL NOT change any file, and SHALL say that `/relevo:init` merges the new templates and keeps the repository's own changes. A pin that the templates do not use (another action) SHALL NOT be reported.
+
+#### Scenario: An older workflow
+- **WHEN** `relevo-go.yml` uses `actions/checkout@v4`
+- **THEN** `doctor` warns with the file, the action and the reason, and the file is unchanged
+
+#### Scenario: Current pins
+- **WHEN** every pin is the one of the current templates, or newer
+- **THEN** `doctor` reports a passed check
+
+#### Scenario: A pin chosen on purpose
+- **WHEN** a repository pins an older action deliberately
+- **THEN** `doctor` warns once per run and never edits it

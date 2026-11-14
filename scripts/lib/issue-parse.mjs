@@ -14,10 +14,11 @@ const THEN_RE = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?THEN(?:\*\*|__)?(?:\s|:)/i;
 const EDGE_RE = /\b(edge[ -]?cases?|casos?\s+(?:borde|l[ií]mite|extremos?))\b/i;
 const DEPENDS_RE = /^\s*(?:[-*+]\s+)?Depend(?:s[- ]on|e(?:\s+de)?):\s*(.+)$/i;
 const ALLOW_RE = /^\s*(?:[-*+]\s+)?Allow-paths:\s*(.+)$/i;
+const PATTERN_RE = /^\s*(?:[-*+]\s+)?Pattern:\s*(.+)$/i;
 const PLATFORM_RE = /^\s*(?:[-*+]\s+)?Platform:\s*(.+)$/i;
 
 /** Remove fenced code blocks so examples inside them are not counted. */
-function withoutCode(body) {
+export function withoutCode(body) {
   const out = [];
   let inFence = false;
   String(body ?? '').split('\n').forEach((line) => {
@@ -211,6 +212,8 @@ export function parseExternalInputs(body) {
  *   dependsOnExternal: { repo, number }[],   // issues of other repositories from "Depends-on: owner/repo#N"
  *   dependsOnInvalid: string[], // tokens of a Depends-on line that look like a repository but are not owner/repo#N
  *   allowPaths: string[],       // paths and globs from "Allow-paths:" lines (dependency files the change may touch)
+ *   pattern: number|null,       // the issue of this repository named by a "Pattern: #N" line (the change to copy), or null
+ *   patternProblems: string[],  // a Pattern line that is not exactly one "#N" of this repository, or a second one
  *   platform: string[],         // every name written on a "Platform:" line, in order (the platform the issue is for)
  *   openQuestions: string[],    // the lines written under an "Open questions" heading (the template's comment and "none" excluded)
  *   needsClarification: boolean,// the literal text NEEDS CLARIFICATION outside code blocks
@@ -276,6 +279,24 @@ export function parseIssueBody(body) {
     m[1].split(',').map((p) => p.trim().replace(/^`+|`+$/g, '').trim()).filter(Boolean).forEach((p) => platform.push(p));
   });
 
+  // `Pattern: #N`: one issue of this repository whose merged change is the template. Anything else is a problem and is not used.
+  let pattern = null;
+  const patternProblems = [];
+  lines.forEach((line) => {
+    const m = line.match(PATTERN_RE);
+    if (!m) return;
+    const value = m[1].trim().replace(/^`+|`+$/g, '').trim();
+    const ref = value.match(/^#(\d+)$/);
+    if (!ref) {
+      patternProblems.push(`"Pattern: ${value.slice(0, 40)}" is not one issue of this repository: write "Pattern: #N"`);
+    } else if (pattern !== null) {
+      patternProblems.push('the issue has more than one Pattern: line: name one');
+    } else {
+      pattern = Number.parseInt(ref[1], 10);
+    }
+  });
+  if (patternProblems.length > 0) pattern = null;
+
   const none = /^(?:none|nothing|n\/a|ninguna?|nada|-)\.?$/i;
   const openQuestions = String(section(body, 'Open questions')?.text ?? '')
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -311,5 +332,5 @@ export function parseIssueBody(body) {
   const design = parseDesign(body);
   const codePointers = parseCodePointers(body);
   const externalInputs = parseExternalInputs(body);
-  return { design, codePointers, externalInputs, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
+  return { design, codePointers, externalInputs, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, pattern, patternProblems, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
 }

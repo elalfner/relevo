@@ -147,7 +147,7 @@ test('Scenario: A mixed report - the retries run and the class of the first find
 });
 
 test('the work is kept when the retries were skipped, as it is after the retries', () => {
-  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
+  assert.match(body, /\*\*Keep the work\.\*\* When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `QA rejected: the lenses contradict each other`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`/);
 });
 
 test('Scenario: A task edits a protected file - the specification is checked before the developer agent and the issue goes back with the reason policy', () => {
@@ -257,7 +257,7 @@ test('QA receives the saved body of the issue to compare the copied sections', (
 test('Scenario: Reference in the repository / Attachment - go fetches what the issue points to before it writes the specification', () => {
   const fetchAt = body.indexOf('design-fetch.mjs --issue <issue> --repo <owner/name>');
   assert.ok(fetchAt > body.indexOf('### 3. Specification'));
-  assert.ok(fetchAt < body.indexOf('Write the change specification from the issue'), 'the fetch comes before the specification');
+  assert.ok(fetchAt < body.indexOf('write the change specification from the issue'), 'the fetch comes before the specification');
   assert.match(body, /reads the references from the issue itself, downloads pasted attachments only when `design\.images` is on/);
   assert.match(body, /\.relevo-design\/manifest\.json/);
   assert.ok(existsSync(root('scripts/design-fetch.mjs')));
@@ -341,7 +341,7 @@ test('Scenario: the interface rules are selected after the specification and giv
 
 test('Scenario: every exit records one class of the outcome, the seven classes of the specification', async () => {
   const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
-  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|other>/);
+  assert.match(body, /progress\.mjs class <built\|inputs\|policy\|qa-non-fixable\|qa-fixable-after-retries\|conflict\|limit\|other>/);
   OUTCOME_CLASSES.forEach((c) => assert.ok(body.includes(`\`${c}\``), `the skill names the class ${c}`));
   assert.match(body, /best-effort command/);
 });
@@ -352,7 +352,7 @@ test('Scenario: every exit of the skill names the class it records', () => {
   at(/reason` `missing` and the class `inputs`/);
   at(/`ambiguous`, record the class `other`/);
   at(/reason` `policy`, the class `policy`/);
-  at(/Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, and `other` for every other reason/);
+  at(/Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, `limit` for `run limit reached`, and `other` for every other reason/);
   at(/Record the class `built`, then move the issue to `built`/);
 });
 
@@ -360,8 +360,8 @@ test('Scenario: the reference of QA exists and names each step, and go, fix and 
   assert.ok(existsSync(root('skills/go/references/qa-run.md')));
   [
     ['the gate', /validation-gate\.mjs --base origin\/<base>/], ['a red gate uses an attempt', /A red gate uses an attempt/], ['could not run', /`automated validation could not run`/],
-    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['each lens is recorded when it starts', /progress\.mjs lens <lens> --attempt <n>/], ['one at a time, in the foreground', /one at a time, in the foreground/],
-    ['the model of the lens', /agents\.qa\.<lens>\.model/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
+    ['the plan of lenses', /lens-plan\.mjs --platform <platform>/], ['the receipt before each lens', /receipt-check\.mjs/], ['each lens is recorded when it starts', /progress\.mjs lens <lens> --attempt <n>/], ['together, in the foreground', /Launch the active lenses together, in the foreground/],
+    ['the model of the lens', /model plan gives it/], ['the previous report on a retry', /the previous report of that lens/], ['the aggregation', /qa-aggregate\.mjs --plan/],
     ['an invalid report is asked again once', /Ask that lens again, once/], ['a second invalid report', /`lens report invalid`/], ['the advisory notes', /`qa_notes`/], ['the receipt is not a boundary', /not a defence against an agent that writes a false file/],
   ].forEach(([what, re]) => assert.match(ref, re, what));
   assert.match(body, /skills\/go\/references\/qa-run\.md/);
@@ -381,4 +381,232 @@ test('Scenario: Model and effort of a role - go, fix, review and the shared QA p
     assert.match(text, /Agent tool/, `${p} says where they go`);
   }
   assert.doesNotMatch(read('skills/go/references/qa-run.md'), /unless the runtime lets you set it at launch/, 'the effort is no longer left to the agent file');
+});
+
+// ---------- the budget of the run
+
+test('Scenario: No agent starts after a limit of the run - the skill records each agent and checks before the next one', () => {
+  assert.match(body, /## The budget of the run/);
+  assert.match(body, /run-budget\.mjs record --agent <relevo:dev\|relevo:qa-spec\|relevo:qa-security\|relevo:qa-code\|relevo:qa-interface> --tool-uses <n> --duration-ms <n> --tokens <n>/);
+  assert.match(body, /run-budget\.mjs check --max-turns <run_max_turns> --max-minutes <run_max_minutes>/);
+  assert.match(body, /\*\*Exit 1:\*\* a limit was reached[^]*take the failure path with the reason `run limit reached`/);
+  assert.match(body, /names the agents that did not run/);
+  assert.match(body, /`run_max_minutes`, `run_max_cost`/, 'the start decision names the minutes limit');
+  const dev = body.indexOf('launch the `relevo:dev` agent in **build** mode');
+  assert.ok(body.indexOf('record what the agent used', dev) > dev, 'the developer is recorded after each group');
+});
+
+test('Scenario: The budget guard stops a run only on what it can read - the skill says to carry on when it does not know, and to trust no text of a report', () => {
+  assert.match(body, /`"known":false` and exits 0: carry on/);
+  assert.match(body, /record those three numbers and nothing else of its report/);
+});
+
+test('the QA reference checks the budget before each lens and before a retry, and records each lens', () => {
+  const qa = readFileSync(new URL('../skills/go/references/qa-run.md', import.meta.url), 'utf8');
+  assert.match(qa, /\*\*Check the budget of the run\*\*[^\n]*once per batch|applied once per batch[\s\S]*Check the budget of the run/);
+  assert.match(qa, /run-budget\.mjs record --agent relevo:qa-<lens>/);
+  assert.match(qa, /check the budget \(`run-budget\.mjs check`[^)]*\) and, if it exits 1, take the failure path with the reason `run limit reached` instead of retrying/);
+});
+
+// ---------- checkpoints and resume
+
+test('Scenario: The developer builds one section of tasks at a time - the skill splits the tasks, launches per group and checkpoints after each', () => {
+  const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
+  assert.match(step4, /task-groups\.mjs openspec\/changes\/<change_id>\/tasks\.md/);
+  assert.match(step4, /one group when three tasks or fewer are pending/);
+  assert.match(step4, /\*\*only the tasks of that group\*\*/);
+  const group = step4.indexOf('only the tasks of that group');
+  const checkpoint = step4.indexOf('checkpoint.mjs --decision <base64> --k <number of the group> --of <number of groups>');
+  assert.ok(group > 0 && checkpoint > group, 'the checkpoint comes after the group is built');
+  assert.match(step4, /wip: checkpoint <k>\/<n> \(#<issue>\)/);
+  assert.match(step4, /Exit 1:\*\* a commit was refused[^]*branch_state` `unsafe`/);
+  assert.match(step4, /After the last group run the instructions command again[^]*`tasks left unfinished`/);
+  assert.match(step4, /Check the budget before each launch/);
+});
+
+test('Scenario: A resumed replicated build - the checkpoint names its tasks and the template is asked for by section (#167)', () => {
+  const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
+  assert.match(step4, /checkpoint\.mjs --decision <base64> --k <number of the group> --of <number of groups> --tasks </);
+  assert.match(step4, /replica-plan\.mjs template --section K --issue <issue> --base <base>/);
+  assert.doesNotMatch(step4, /replica-plan\.mjs template --k/);
+  assert.match(step4, /`description` `replica <task id>`[^]*\*\*fix\*\* mode, with the same `description` `replica <task id>`/);
+});
+
+test('Scenario: A later run resumes from the checkpoints - step 2 asks the script, resumes or stops, and step 3 writes nothing when resumed', () => {
+  const step2 = body.slice(body.indexOf('### 2. Branch'), body.indexOf('### 3. Specification'));
+  assert.match(step2, /resume-check\.mjs <base> <branch> <issue> <issue_hash>/);
+  assert.match(step2, /`absent`[^]*git switch -c <branch> origin\/<base>/);
+  assert.match(step2, /`resume`[^]*git switch -c <branch> origin\/<branch>/);
+  assert.match(step2, /`existing`[^]*Do not touch the branch/);
+  assert.match(step2, /reason `branch already exists`/, 'a branch that cannot be resumed stops as before');
+  assert.doesNotMatch(step2.slice(0, step2.indexOf('resume-check.mjs')), /git switch -c <branch> origin\/<base>/, 'the branch is no longer created before the check');
+  const step3 = body.slice(body.indexOf('### 3. Specification'), body.indexOf('### 4. Build'));
+  assert.match(step3, /\*\*When the run is resumed\*\*, the specification is already on the branch: do not run `openspec new change`, write no artifact and do not commit the specification/);
+});
+
+test('the feature commit may be empty because the checkpoints hold the files, and the failure path pushes its own checkpoints but nothing else', () => {
+  const commit = body.slice(body.indexOf('### 6. Commit'), body.indexOf('### 7. Push and hand off'));
+  assert.match(commit, /commit-change\.mjs --message "feat: <title> \(#<issue>\)" --allow-empty/);
+  assert.match(commit, /checkpoints stay in the history/);
+  const failure = body.slice(body.indexOf('## Failure path'), body.indexOf('## Steps'));
+  assert.match(failure, /Issue-hash: <issue_hash>/, 'the limit commit carries the hash so that a run can resume');
+  assert.match(failure, /existed before this run[^]*fast-forward/);
+});
+
+test('Scenario: the lenses leave out what the install step left - the list is made once per round and given to every lens', () => {
+  assert.match(ref, /tree-baseline\.mjs list/);
+  assert.match(ref, /`not_the_change`/);
+  assert.ok(ref.indexOf('tree-baseline.mjs list') < ref.indexOf('record that it starts'), 'the list is made before the first batch');
+  for (const lens of ['spec', 'security', 'code', 'interface']) {
+    const agent = readFileSync(root(`agents/qa-${lens}.md`), 'utf8');
+    assert.match(agent, /not_the_change/, `qa-${lens} knows the list`);
+    assert.match(agent, /install step/, `qa-${lens} knows where the files come from`);
+  }
+});
+
+test('Scenario: every group goes to the developer and every checkpoint is made in order with its own number', () => {
+  assert.match(text, /Every group goes to the developer, the documentation group and the group that only runs the checks included/);
+  assert.match(text, /never run two groups in one launch/);
+  assert.match(text, /Make the checkpoint of every group, in order, with its own number, even when its tasks changed no file/);
+  assert.match(text, /never skip a number/);
+});
+
+test('Scenario: the model plan is made once, before the first launch, and every launch uses it', () => {
+  const plan = text.indexOf('scripts/model-plan.mjs');
+  assert.ok(plan > 0, 'go runs the model plan');
+  assert.ok(plan < text.indexOf('launch the `relevo:dev` agent in **build** mode'), 'the plan is made before the first launch of the developer');
+  assert.ok(plan > text.indexOf('task-groups.mjs') - 1500 && plan < text.indexOf('task-groups.mjs'), 'in step 4, before the groups');
+  assert.match(text, /make the plan only once per run/);
+  assert.match(text, /with the `model` and `effort` of `dev` in the model plan/, 'the developer is launched with the plan');
+  assert.match(text, /that the model plan gives that role \(`dev` or `qa\.<lens>`/, 'the rule of every launch names the plan');
+  assert.match(text, /never choose or change a model yourself/);
+  assert.doesNotMatch(text, /configured for that role \(`agents\.dev`/, 'the launch no longer reads agents directly');
+  assert.match(ref, /`qa\.<lens>` in the output of `model-plan\.mjs`/, 'the lenses are launched with the plan');
+  assert.match(ref, /## The model of a retry/, 'a retry of the developer asks for its model');
+  assert.match(ref, /model-plan\.mjs escalate --from/);
+  assert.equal((ref.match(/The model of a retry/g) ?? []).length, 3, 'both fix launches point to the section');
+  assert.match(text, /model-plan\.mjs escalate/, 'the skill points to the retry command');
+});
+
+test('Scenario: the plan cannot be made - go launches with the configuration and says so', () => {
+  assert.match(text, /When it prints `failed`, or anything that is not that JSON, launch every agent with the model and the effort of the configuration/);
+  assert.match(text, /say in your final report that the plan could not be made/);
+  assert.match(ref, /when there is no plan, `agents\.qa\.<lens>`/);
+});
+
+// ---------- the lenses run together (#125)
+
+test('Scenario: Several active lenses - they are launched together, in one turn, and the build waits for all the reports', () => {
+  assert.match(ref, /launched \*\*in the same turn\*\*/);
+  assert.match(ref, /Then wait for all the reports/);
+  assert.match(ref, /lens-plan\.mjs[^\n]*\n```[\s\S]*`batches`/);
+  assert.match(ref, /--max-parallel <the limit>/, 'a concurrency limit falls back to batches');
+  assert.match(body, /together in one turn as `qa-run\.md` says/);
+  assert.doesNotMatch(body + ref, /one at a time, in the foreground|Never start two together/);
+});
+
+test('Scenario: No lens starts without a valid receipt - checked right before every batch, and before the lens asked again', () => {
+  const step = ref.slice(ref.indexOf('## 3. Launch'), ref.indexOf('## 4. Aggregate'));
+  assert.ok(step.indexOf('receipt-check.mjs') !== -1 && step.indexOf('receipt-check.mjs') < step.indexOf('progress.mjs lens <lens> --attempt <n>`'), 'the receipt is checked before any lens is recorded or launched');
+  assert.match(step, /A lens never starts on a diff whose checks did not run/);
+  assert.match(step, /Check again before each later batch/);
+  assert.match(step, /after the budget check and the receipt check/);
+});
+
+test('Scenario: One lens ends with no report - the others are kept, it is asked once, and the comment names it', () => {
+  assert.match(ref, /A lens that gives no report/);
+  assert.match(ref, /the other lenses finish and their reports are kept/);
+  assert.match(ref, /reason `lens report invalid`, naming that lens; do not retry the developer agent/);
+});
+
+test('Scenario: Two lenses overlap - each has its own start and end record', () => {
+  assert.match(ref, /progress\.mjs lens <lens> --attempt <n> --end/);
+});
+
+test('Scenario: The spec lens checks the decisions of the issue - it is given the resolved path of the script, never a search', () => {
+  assert.match(ref, /`\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/issue-sections\.mjs`, written out in full/);
+  assert.match(ref, /never search the filesystem for a script/);
+});
+
+test('the model of a retry stays as the previous change left it: lenses keep the model of the plan, the retry is escalated by the script', () => {
+  assert.match(ref, /## The model of a retry/);
+  assert.match(ref, /The lenses keep the model of the plan/);
+  assert.match(ref, /model-plan\.mjs escalate --from/);
+});
+
+test('Scenario: a hard rule blocks - qa-run.md passes the rules files, explains the citation and keeps the parallel launch and the retry model (#121)', () => {
+  assert.match(ref, /--rules-file <qa\.rules_from, comma separated>/);
+  assert.match(ref, /Rule: <file>:<line> "<the words of that line>"/);
+  assert.match(ref, /the `interface` lens on the last attempt cannot leave it as a note/);
+  assert.match(ref, /`QA PASSED` but cites one becomes `QA REJECTED`/);
+  assert.match(ref, /\[advice\]/);
+  assert.match(ref, /`unverified`/);
+  assert.match(ref, /the rules files \(`qa\.rules_from`\), so that a lens that finds a broken rule can cite it/);
+  assert.match(ref, /## 3\. Launch the active lenses together, in the foreground/, 'the parallel launch stays');
+  assert.match(ref, /## The model of a retry/, 'the retry model stays');
+});
+
+test('Scenario: long test runs - the gate runs through long-run.mjs, every lens reads the receipt, and the developer runs the suite as a check (#124)', () => {
+  assert.match(ref, /long-run\.mjs start --id gate -- node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/validation-gate\.mjs --base origin\/<base>/);
+  assert.match(ref, /long-run\.mjs wait --id gate/);
+  assert.match(ref, /While it says `running`, run the same `wait` again/);
+  assert.match(ref, /`interrupted` means the job was killed/);
+  assert.match(ref, /Give every lens the receipt \(`\.relevo-receipt\/receipt\.json`\).*\*\*no lens runs the analysis or the tests\*\*/);
+  assert.match(ref, /reuse never hides a red result/);
+  assert.match(ref, /start --id test --check test --base origin\/<base> --platform <platform>/);
+  // The parallel lenses and the model of a retry keep their sections.
+  assert.match(ref, /Launch the active lenses together, in the foreground/);
+  assert.match(ref, /## The model of a retry/);
+  const dev = readFileSync(root('agents/dev.md'), 'utf8');
+  assert.match(dev, /long-run\.mjs/);
+  assert.match(dev, /never `&` or `sleep`/);
+  assert.match(readFileSync(root('skills/go/SKILL.md'), 'utf8'), /resolved path of `\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/long-run\.mjs` written out in full/);
+});
+
+test('Scenario: no argument of the scripts marks a check green without a run (C2, #124)', () => {
+  const gate = readFileSync(root('scripts/validation-gate.mjs'), 'utf8');
+  const longRun = readFileSync(root('scripts/long-run.mjs'), 'utf8');
+  // The only callers of recordResult are the gate after spawnSync and the supervisor after its command exited.
+  assert.equal((gate.match(/recordResult\(/g) ?? []).length, 1);
+  assert.match(gate, /spawnSync[\s\S]*recordResult\(/);
+  assert.equal((longRun.match(/recordResult\(/g) ?? []).length, 1);
+  assert.doesNotMatch(longRun, /'record'|"record"/);
+});
+
+test('Scenario: The hand-off lists the assumptions and the shared code - both come from scripts, not from the model', () => {
+  const body = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
+  assert.match(body, /`assumed` \(the `assumed` of `build-preflight\.mjs --stage spec`, run again here/);
+  assert.match(body, /`shared_code` \(the `line` of `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/shared-code\.mjs --base <base>`/);
+  assert.match(body, /Write neither of them yourself: they come from the scripts/);
+});
+
+test('Scenario: a replicated build - the recipe is checked by a script, the template is checked first and each replica has its own launch, model and gate', () => {
+  const dev = readFileSync(root('agents/dev.md'), 'utf8');
+  assert.match(body, /A replicated build\./);
+  assert.match(body, /scripts\/replica-plan\.mjs check --tasks/);
+  assert.match(body, /You never decide that a task is a replica/);
+  assert.match(body, /Check the template before replicating it/);
+  assert.match(body, /a replica is never launched from a template that did not pass/);
+  assert.match(body, /replica-plan\.mjs model --dev-model/);
+  assert.match(body, /scripts\/pattern-check\.mjs/);
+  assert.match(body, /never two in one launch/);
+  assert.match(body, /After the second failure the model it prints is the stronger one/);
+  assert.match(body, /Check the budget first/);
+  assert.match(body, /its checkpoint goes through the safe commit/);
+  assert.match(dev, /## Replica mode/);
+  assert.match(dev, /Mode: build \| fix \| integrate \| replica/);
+  assert.match(dev, /do not correct the template and do not guess/);
+});
+
+test('Scenario: The reason of a replica model is kept - step 3 of a replicated build passes the task id to replica-plan.mjs model (replica-model-reason)', () => {
+  const step4 = body.slice(body.indexOf('### 4. Build'), body.indexOf('### 5. QA'));
+  assert.match(step4, /replica-plan\.mjs model --dev-model <[^>]+> --failures <[^>]+> --task <task id>/);
+});
+
+test('Scenario: Two lenses contradict each other - qa-run.md does not retry and the failure path carries both findings', () => {
+  const qaRun = readFileSync(new URL('../skills/go/references/qa-run.md', import.meta.url), 'utf8');
+  assert.match(qaRun, /If `contradiction` is not `null`[\s\S]*\*\*do not retry\*\*/);
+  assert.match(qaRun, /`QA rejected: the lenses contradict each other`/);
+  assert.match(qaRun, /--previous spec=<file>/);
+  assert.match(body, /\*\*The lenses contradict each other\*\*/);
 });

@@ -236,3 +236,149 @@ test('the command: bad arguments exit 2 and an unreadable file is reported', () 
   assert.equal(run(['--stage', 'spec', '--issue-file', 'x']).status, 2);
   assert.equal(run(['--stage', 'issue', '--issue-file', '/nonexistent/issue.md']).status, 2);
 });
+
+// ---------------------------------------------------------------- a contradiction is found before any agent turn (#121)
+import { parseRules } from '../scripts/lib/rules-file.mjs';
+
+const RULES121 = parseRules('CLAUDE.md', '- Every list must offer export and the enable/disable actions.\n');
+const OUT121 = `${GOOD}\n## Out of scope\n- export and the enable/disable actions\n`;
+
+test('Scenario: Conflict found at the preflight - needs-spec with the reason conflict, both lines quoted', () => {
+  const r = checkIssueStage({ body: OUT121, rules: RULES121 });
+  assert.equal(r.decision, 'needs-spec');
+  assert.equal(r.reason, 'conflict');
+  assert.deepEqual(r.findings.map((f) => f.kind), ['conflict']);
+  assert.match(missingText(r), /"export and the enable\/disable actions".*CLAUDE\.md:1/);
+});
+
+test('Scenario: Override recorded - the preflight does not report it', () => {
+  const body = `${OUT121}\n## Decisions\n\n### D1. Export waits\nDecided: later\nOverrides: CLAUDE.md:1\n`;
+  assert.equal(checkIssueStage({ body, rules: RULES121 }).decision, 'ok');
+});
+
+test('a missing input keeps its reason when there is also a conflict', () => {
+  const r = checkIssueStage({ body: `${OUT121}\n## External inputs\n\n- file: \`a.svg\`: the logo\n`, rules: RULES121, exists: () => false });
+  assert.equal(r.reason, 'inputs');
+});
+
+test('CLI: the rules files of relevo.yml are read, exit 1 with the reason conflict, and no relevo.yml still runs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-pre-'));
+  writeFileSync(join(dir, 'CLAUDE.md'), '- Every list must offer export and the enable/disable actions.\n');
+  writeFileSync(join(dir, 'issue.md'), OUT121);
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nqa:\n  rules_from: CLAUDE.md\n');
+  const run = (config) => spawnSync('node', [CLI, '--stage', 'issue', '--issue-file', join(dir, 'issue.md'), '--repo-root', dir, '--config', config], { encoding: 'utf8' });
+  const withConfig = run(join(dir, 'relevo.yml'));
+  assert.equal(withConfig.status, 1, withConfig.stderr + withConfig.stdout);
+  assert.equal(JSON.parse(withConfig.stdout).reason, 'conflict');
+  assert.equal(run(join(dir, 'none.yml')).status, 0);
+});
+
+test('a scenario that needs an excluded line is a note and never stops the build', () => {
+  const body = `${GOOD}\n## Out of scope\n- the total shown on the screen\n`;
+  const r = checkIssueStage({ body });
+  assert.equal(r.decision, 'ok');
+  assert.match(r.notes.join('\n'), /scenario 1/);
+});
+
+test('CLI: a rules file that cannot be read is a note, and the decision is not affected', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-pre2-'));
+  writeFileSync(join(dir, 'issue.md'), GOOD);
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nqa:\n  rules_from: missing-rules.md\n');
+  const r = spawnSync('node', [CLI, '--stage', 'issue', '--issue-file', join(dir, 'issue.md'), '--repo-root', dir, '--config', join(dir, 'relevo.yml')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).notes.join(' '), /missing-rules\.md could not be read/);
+});
+
+// ---------------------------------------------------------------- assumptions about names outside the repository (#122)
+const DESIGN122 = '# Design\n\n## Assumptions\n\n- the permission `orders.export` exists in the backend, not confirmed against the dev environment\n- the field `total` is a number\n- the list sorts by date\n';
+
+test('Scenario: A permission name is not in the repository - listed, in the line for the hand-off, and the decision is still ok', () => {
+  const r = checkSpecStage({ tasksText: tasks('1.1 Add the list'), designText: DESIGN122, search: (n) => (n === 'total' ? 'src/types.ts' : null) });
+  assert.equal(r.decision, 'ok');
+  assert.deepEqual(r.assumptions.map((a) => a.missing), [['orders.export']]);
+  assert.match(r.assumed, /^"the permission `orders.export` exists in the backend[^"]*" \(not in the repository: `orders.export`\)$/);
+});
+
+test('Scenario: The repository settles it, and no assumptions - nothing is listed', () => {
+  assert.deepEqual(checkSpecStage({ tasksText: tasks('1.1 x'), designText: DESIGN122, search: () => 'src/p.ts' }).assumptions, []);
+  const none = checkSpecStage({ tasksText: tasks('1.1 x'), designText: '# Design\n', search: () => null });
+  assert.deepEqual([none.assumptions, none.assumed], [[], '']);
+  assert.deepEqual(checkSpecStage({ tasksText: tasks('1.1 x'), designText: DESIGN122 }).assumptions, [], 'no search, nothing read');
+});
+
+test('the assumptions copied from the issue are read too, and a refused task still wins over them', () => {
+  const r = checkSpecStage({ tasksText: tasks('1.1 Update CLAUDE.md'), rulesFile: 'CLAUDE.md', designText: '## From the issue: Assumptions\n\n- the claim `role` is set by the server\n', search: () => null });
+  assert.equal(r.decision, 'needs-spec');
+  assert.equal(r.assumptions.length, 1);
+});
+
+test('the command: stage spec prints the assumptions of design.md and exits 0', () => {
+  const change = 'openspec/changes/x';
+  const { dir, git } = repoWith({ [`${change}/tasks.md`]: tasks('1.1 Add the list'), [`${change}/design.md`]: DESIGN122, 'src/types.ts': 'export type T = { total: number };\n', 'issue.md': GOOD });
+  git('add', '-A');
+  const r = run(['--stage', 'spec', '--issue-file', join(dir, 'issue.md'), '--change-dir', join(dir, change), '--config', join(dir, 'none.yml'), '--repo-root', dir], { cwd: dir });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.json.assumptions.map((a) => a.missing), [['orders.export']], '`total` is in src/types.ts; openspec/ is not searched');
+  assert.match(r.json.assumed, /orders\.export/);
+});
+
+// ---------------------------------------------------------------- pattern
+
+const withPattern = (line) => `${GOOD}\n${line}\n`;
+const found = (state) => ({ number: 12, result: { state, detail: `d ${state}` } });
+
+test('Scenario: The pattern is not merged - needs-spec with the reason inputs, naming #12', () => {
+  const r = checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('not-merged') });
+  assert.deepEqual([r.decision, r.reason], ['needs-spec', 'inputs']);
+  assert.match(missingText(r), /#12.*not merged/);
+  assert.equal(checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('missing') }).reason, 'inputs');
+});
+
+test('Scenario: The pattern is merged - the preflight passes', () => {
+  assert.equal(checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('merged') }).decision, 'ok');
+});
+
+test('Scenario: The lookup fails - the build goes on and the pattern is listed as unverified', () => {
+  const r = checkIssueStage({ body: withPattern('Pattern: #12'), pattern: found('unknown') });
+  assert.equal(r.decision, 'ok');
+  assert.deepEqual(r.unverified.map((u) => [u.kind, u.name]), [['pattern', '#12']]);
+});
+
+test('a Pattern: line that cannot be used is an input finding', () => {
+  const r = checkIssueStage({ body: withPattern('Pattern: acme/api#12') });
+  assert.deepEqual([r.decision, r.reason], ['needs-spec', 'inputs']);
+});
+
+test('the command line gives up on the lookup when it has no repository, and never blocks', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pf-pat-'));
+  const file = join(dir, 'issue.md');
+  writeFileSync(file, withPattern('Pattern: #12'));
+  const env = { ...process.env };
+  delete env.GITHUB_REPOSITORY;
+  const run = spawnSync('node', [CLI, '--stage', 'issue', '--issue-file', file, '--config', join(dir, 'none.yml')], { encoding: 'utf8', env });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(run.stdout).unverified[0].kind, 'pattern');
+});
+
+// ---------------------------------------------------------------- recipe
+
+const REPLICATED = (body) => `## 1. Template\n\n- [ ] 1.1 build the orders screen\n\n## Replication recipe\n\n- Template: \`section 1\`\n\n## 2. Replicas\n\n- [ ] 2.1 [replica] Invoices screen\n${body}`;
+
+test('Scenario: The differences are not listed - the specification stage sends the issue back with the reason missing', () => {
+  const r = checkSpecStage({ tasksText: REPLICATED('  - Rename: Orders -> Invoices\n') });
+  assert.deepEqual([r.decision, r.reason], ['needs-spec', 'missing']);
+  assert.match(missingText(r), /replication recipe: task 2\.1 has no Differences:/);
+});
+
+test('a complete recipe passes the specification stage, and a path finding keeps the reason policy', () => {
+  const ok = REPLICATED('  - Rename: Orders -> Invoices\n  - Differences: none\n');
+  assert.equal(checkSpecStage({ tasksText: ok }).decision, 'ok');
+  const both = checkSpecStage({ tasksText: `${REPLICATED('  - Rename: A -> B\n')}\n- [ ] 2.2 edit .github/workflows/ci.yml\n` });
+  assert.equal(both.reason, 'policy');
+});
+
+test('the pattern as template needs the Pattern: line of the issue', () => {
+  const tasks = REPLICATED('  - Rename: A -> B\n  - Differences: none\n').replace('`section 1`', '`pattern`');
+  assert.equal(checkSpecStage({ tasksText: tasks }).decision, 'needs-spec');
+  assert.equal(checkSpecStage({ tasksText: tasks, hasPattern: true }).decision, 'ok');
+});

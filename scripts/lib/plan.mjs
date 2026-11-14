@@ -11,6 +11,8 @@
 //   completed  issue numbers closed as completed (their pull request merged)
 //   running    issue numbers with an agent run in progress
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
+//   now        ms since the epoch (the clock of the plan; the tests give it)
+//   (an issue may carry `limit_retry: { at, attempt, reason }`: the retry time that the comment of a usage limit gave, `at` in ms; see limit-retry.mjs)
 //   retry      { issue, by } | null  the person `by` retries the `qa-failed` issue `issue`: it is planned as if `by` had made it `ready`
 //
 // Output: { decisions: [...], summary }, in the order the issues were processed.
@@ -20,6 +22,7 @@ import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
 import { issueHash } from './issue-hash.mjs';
 import { resolvePlatform } from './platform-of.mjs';
+import { EPISODE_MS } from './limit-retry.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
 // In a public repository only maintainers may start work: anyone with write access could otherwise start a
@@ -53,7 +56,7 @@ export function withoutCredential(decisions, issues = []) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now() }) {
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);
   const open = issues.filter((i) => i.state === 'open');
@@ -74,16 +77,49 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   let freeSlots = Math.max(0, config.limits.concurrent_agents - runningSet.size);
 
   const builtBy = new Map();
+  const builtIssues = new Map();
   open.filter((i) => has(i, 'built')).forEach((i) => {
     const owner = i.assignees[0];
-    if (owner) builtBy.set(owner, (builtBy.get(owner) ?? 0) + 1);
+    if (owner) {
+      builtBy.set(owner, (builtBy.get(owner) ?? 0) + 1);
+      builtIssues.set(owner, [...(builtIssues.get(owner) ?? []), i.number]);
+    }
   });
+
+  // What a person who waits for a free agent is told: how many runs are active and which, how many issues wait before this one,
+  // and how long the recent builds took. Only what was read: the durations come from the caller (null when they could not be read;
+  // fewer than three are too few to call typical) and nothing is estimated.
+  const MIN_BUILDS = 3;
+  // `recentBuilds` is a list of minutes or a function that reads it (called at most once, and only when an issue is queued for an agent).
+  let typicalOnce;
+  const typicalBuild = () => {
+    if (typicalOnce !== undefined) return typicalOnce;
+    let list = null;
+    try {
+      list = typeof recentBuilds === 'function' ? recentBuilds() : recentBuilds;
+    } catch {
+      list = null;
+    }
+    const sorted = Array.isArray(list) ? list.filter((m) => Number.isFinite(m) && m >= 0).sort((a, b) => a - b) : [];
+    const mid = sorted.length / 2;
+    typicalOnce = sorted.length >= MIN_BUILDS
+      ? { minutes: Math.round(sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2), samples: sorted.length }
+      : null;
+    return typicalOnce;
+  };
+  let waitingForAgent = 0;
 
   // Valid urgent issues are considered first, so they take the free agent slots before the others; inside each group
   // the order is the time `ready` was applied.
   // A retry stands in for `ready`: the issue is `qa-failed`, the person who runs it takes the place of who applied the label.
   const isRetry = (issue) => Boolean(retry) && retry.issue === issue.number && has(issue, 'qa-failed');
   const startedBy = (issue) => (isRetry(issue) ? retry.by : issue.ready_by);
+
+  // An issue that waits for a usage limit to reset: `queued` with a retry time that has not come. It is held: it takes no slot and says nothing.
+  const holdsForLimit = (issue) => has(issue, 'queued') && Boolean(issue.limit_retry) && issue.limit_retry.at > now;
+  // An issue that is retrying after a usage limit and is due. Only one such issue runs at a time: the first shows whether the quota is back.
+  const retrying = (issue) => has(issue, 'queued') && Boolean(issue.limit_retry);
+  let probeBusy = open.some((i) => has(i, 'building') && i.limit_retry && now - i.limit_retry.at <= EPISODE_MS);
 
   const candidates = open
     .filter((i) => has(i, 'ready') || has(i, 'queued') || has(i, 'blocked') || isRetry(i))
@@ -121,6 +157,11 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   candidates.forEach((issue) => {
     if (runningSet.has(issue.number)) {
       decision(issue, 'skip', 'an agent is already running for this issue');
+      return;
+    }
+
+    if (holdsForLimit(issue)) {
+      decision(issue, 'skip', `the usage limit of the model account has not reset: it retries after ${new Date(issue.limit_retry.at).toISOString()}`);
       return;
     }
 
@@ -229,17 +270,38 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         labels: moveTo(issue, 'queued'),
         comment: has(issue, 'queued')
           ? null
-          : { kind: 'queued_capacity', data: { issue: issue.number, title: issue.title, assignee, built, limit: config.limits.built_unreviewed_per_person } },
+          : { kind: 'queued_capacity', data: { issue: issue.number, title: issue.title, assignee, built, limit: config.limits.built_unreviewed_per_person, built_issues: builtIssues.get(assignee).map((n) => `#${n}`).join(', ') } },
       });
+      return;
+    }
+
+    // A retry after a usage limit starts alone: the others wait until it ends (the queue is evaluated when it does).
+    if (retrying(issue) && probeBusy) {
+      decision(issue, 'skip', 'another issue that retries after a usage limit is running or starting');
       return;
     }
 
     // Global limit on concurrent agents.
     if (freeSlots <= 0) {
+      const active = [...runningSet].sort((a, b) => a - b);
+      const typical = has(issue, 'queued') ? null : typicalBuild();
       decision(issue, 'queue', 'the limit of concurrent agents is reached', {
         labels: moveTo(issue, 'queued'),
-        comment: has(issue, 'queued') ? null : { kind: 'queued_agents', data: { issue: issue.number, title: issue.title } },
+        comment: has(issue, 'queued')
+          ? null
+          : {
+              kind: 'queued_agents',
+              data: {
+                issue: issue.number,
+                title: issue.title,
+                active: active.length,
+                ...(active.length > 0 ? { active_issues: active.map((n) => `#${n}`).join(', ') } : {}),
+                ahead: waitingForAgent,
+                ...(typical ? { typical_minutes: typical.minutes, typical_samples: typical.samples } : {}),
+              },
+            },
       });
+      waitingForAgent += 1;
       return;
     }
 
@@ -251,6 +313,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
     freeSlots -= 1;
     runningSet.add(issue.number);
+    if (retrying(issue)) probeBusy = true;
     decision(issue, 'start', 'all gates passed', {
       labels: moveTo(issue, 'building'),
       start: {
@@ -263,6 +326,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         title: issue.title,
         qa_retries: config.qa.retries,
         run_max_turns: config.limits.run_max_turns,
+        run_max_minutes: config.limits.run_max_minutes,
         run_max_cost: config.limits.run_max_cost,
         // The text the issue had when it was claimed: `go` checks it before it writes the specification.
         issue_hash: issueHash({ title: issue.title, body: issue.body }),

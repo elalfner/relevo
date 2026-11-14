@@ -11,7 +11,7 @@ const OUTPUT_TOKENS = 1500; // assumed size of one lens report, for the estimate
 const tokensOf = (text) => Math.ceil(text.length / 4);
 
 export function parseArgs(argv) {
-  const o = { lenses: LENSES, cases: null, dryRun: false, yes: false, withoutRule: null, withSkill: null, out: null, priceIn: null, priceOut: null, maxBudgetUsd: 1 };
+  const o = { lenses: LENSES, cases: null, dryRun: false, yes: false, withoutRule: null, withSkill: null, out: null, model: null, priceIn: null, priceOut: null, maxBudgetUsd: 1 };
   const val = (i, name) => { if (i + 1 >= argv.length) throw new Error(`${name} needs a value`); return argv[i + 1]; };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -21,6 +21,7 @@ export function parseArgs(argv) {
     else if (a === '--cases') { o.cases = val(i, a); i++; }
     else if (a === '--without-rule') { o.withoutRule = val(i, a); i++; }
     else if (a === '--with-skill') { o.withSkill = val(i, a); i++; }
+    else if (a === '--model') { o.model = val(i, a); i++; }
     else if (a === '--out') { o.out = val(i, a); i++; }
     else if (a === '--price-in') { o.priceIn = Number(val(i, a)); i++; }
     else if (a === '--price-out') { o.priceOut = Number(val(i, a)); i++; }
@@ -154,7 +155,7 @@ export async function evaluate(cases, opts, runner, root = process.cwd(), now = 
     const row = { id: c.id, lens };
     for (const variant of ['bad', 'good']) {
       const started = now();
-      const r = await runner({ lens, model: lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]), lensText: lensInfo[lens].text, stack: c.meta.stack, files: c[variant] });
+      const r = await runner({ lens, model: opts.model ?? lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]), lensText: lensInfo[lens].text, stack: c.meta.stack, files: c[variant] });
       const seconds = Math.max(0, (now() - started) / 1000);
       row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0, seconds, report: r.report };
     }
@@ -198,7 +199,7 @@ export function claudeRunner(spawn, { maxTurns = 12, maxBudgetUsd = 1, make = ma
 }
 
 export function renderReport(result, opts, est, date) {
-  const lines = [`# Lens evaluation ${date}`, '', `- Mode: ${opts.dryRun ? 'dry run (stub, no model)' : 'real'}`,
+  const lines = [`# Lens evaluation ${date}`, '', `- Mode: ${opts.dryRun ? 'dry run (stub, no model)' : 'real'}`, `- Model: ${opts.model ?? 'the one of each lens file'}`,
     `- Rule removed: ${opts.withoutRule ?? 'none'}`, `- Skill added: ${opts.withSkill ?? 'none'}`,
     `- Estimated cost: ${est.usd == null ? `${est.inTok} input tokens, ${est.outTok} output tokens (no prices given)` : `${est.usd.toFixed(2)} USD`}`, '',
     '| Lens | Defects found | Good variants flagged | Cost (USD) | Time (s) | Time per run (s) |', '| --- | --- | --- | --- | --- | --- |'];

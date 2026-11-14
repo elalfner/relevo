@@ -192,12 +192,12 @@ test('the secrets of the job are given to the redactor, and results only when th
   assert.match(prepare, /\[ "\$ALLOWED" = "true" \]/, 'nothing is written for trust public');
 });
 
-test('Scenario: Run cancelled at the time limit - the transcript is uploaded for an abnormal end and for no other', () => {
-  const upload = stepOf('Save the transcript');
-  assert.match(upload, /if: always\(\) && steps\.transcript\.outputs\.saved == 'true' && \(steps\.no_outcome\.outputs\.reported == 'true' \|\| job\.status != 'success'\)/);
-  assert.match(upload, /uses: actions\/upload-artifact@v4/);
-  assert.match(upload, /retention-days: 7/);
-  assert.match(upload, /continue-on-error: true/);
+test('Scenario: Run cancelled at the time limit - the transcript goes to the summary of the run for an abnormal end and for no other', () => {
+  const save = stepOf('Save the transcript');
+  assert.match(save, /if: always\(\) && steps\.transcript\.outputs\.saved == 'true' && \(steps\.no_outcome\.outputs\.reported == 'true' \|\| job\.status != 'success'\)/);
+  assert.match(save, />> "\$GITHUB_STEP_SUMMARY"/);
+  assert.match(save, /continue-on-error: true/);
+  assert.doesNotMatch(save, /uses:/, 'no action follows the agent: it would run with what the agent left behind');
 });
 
 test('the transcript is prepared before the comment that links it, and uploaded before the progress report closes', () => {
@@ -207,15 +207,16 @@ test('the transcript is prepared before the comment that links it, and uploaded 
   assert.ok(at('Save the transcript') < at('Stop the progress report'));
 });
 
-test('the comment of a run without an outcome says whether a transcript exists and where', () => {
+test('the comment of a run without an outcome says where the transcript is, inside the one comment of the run', () => {
   const step = stepOf('Report a run that ended without an outcome');
   assert.match(step, /TRANSCRIPT_SAVED: \$\{\{ steps\.transcript\.outputs\.saved \}\}/);
-  assert.match(step, /artifact \\`relevo-transcript\\`/);
-  assert.match(step, /No transcript of the agent was saved/);
+  assert.match(step, /\[ "\$TRANSCRIPT_SAVED" = "true" \][\s\S]*is in the summary of the run/);
+  const note = step.slice(step.indexOf('[ "$TRANSCRIPT_SAVED" = "true" ]'));
+  assert.doesNotMatch(note.slice(0, note.indexOf('\n          fi')), /gh issue comment/, 'the note adds no comment of its own');
 });
 
 test('the new steps change no permission of the job and need no new script outside the package check', () => {
   const build = go.slice(go.indexOf('  build:'));
   assert.match(build, /permissions:\n {6}contents: write\n {6}issues: write\n {6}pull-requests: read/);
-  assert.match(go, /for f in scripts\/run-usage\.mjs scripts\/usage-limit\.mjs scripts\/transcript\.mjs scripts\/run-output\.mjs; do/);
+  assert.match(go, /for f in [^\n]*scripts\/transcript\.mjs scripts\/run-output\.mjs; do/);
 });

@@ -38,6 +38,7 @@ test('Scenario: Authorised label - the issue passes the gates and starts', () =>
   assert.equal(d.assignee, 'persona-b');
   assert.equal(d.qa_retries, 1);
   assert.equal(d.run_max_cost, 5);
+  assert.equal(d.run_max_minutes, 50, 'the soft time limit travels with the decision');
   assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:ready'] });
 });
 
@@ -115,7 +116,7 @@ test('Scenario: Assignee at capacity - queued with a comment that says why, and 
   assert.equal(full.action, 'queue');
   assert.deepEqual(full.labels, { add: ['relevo:queued'], remove: ['relevo:ready'] });
   assert.equal(full.comment.kind, 'queued_capacity');
-  assert.deepEqual(full.comment.data, { issue: 9, title: full.comment.data.title, assignee: 'persona-b', built: 2, limit: 2 });
+  assert.deepEqual(full.comment.data, { issue: 9, title: full.comment.data.title, assignee: 'persona-b', built: 2, limit: 2, built_issues: '#1, #2' });
 
   const queued = issue({ number: 9, labels: ['relevo:queued'] });
   const freed = one([built(1), queued]);
@@ -530,4 +531,51 @@ test('a retry plans only the retried issue as qa-failed; another qa-failed issue
   const b = failed();
   const decisions = plan([a, b], retryOf(a)).decisions;
   assert.deepEqual(decisions.map((d) => d.issue), [a.number]);
+});
+
+// ---------- A queued issue says its position and what it waits for (issue #127)
+
+test('Scenario: Slots full, issues ahead - the comment counts the active runs, which they are and the issues queued before it', () => {
+  const running = [50, 51].map((n) => issue({ number: n, labels: ['relevo:building'], assignees: [`p${n}`] }));
+  const ahead = issue({ number: 7, assignees: ['p7'], labels: ['relevo:queued'], ready_at: '2026-10-14T09:00:00Z' });
+  const first = issue({ number: 8, assignees: ['p8'], ready_at: '2026-10-14T09:30:00Z' });
+  const mine = issue({ number: 9, assignees: ['p9'], ready_at: '2026-10-14T10:00:00Z' });
+  const { decisions } = plan([...running, ahead, first, mine], { config: 'limits:\n  concurrent_agents: 2\n', input: { recentBuilds: [30, 40, 20, 50, 10] } });
+  const byIssue = Object.fromEntries(decisions.map((d) => [d.issue, d]));
+  // #7 was queued before: it posts nothing but it is ahead of the others.
+  assert.equal(byIssue[7].comment, null);
+  assert.deepEqual(byIssue[8].comment.data, { issue: 8, title: byIssue[8].comment.data.title, active: 2, active_issues: '#50, #51', ahead: 1, typical_minutes: 30, typical_samples: 5 });
+  assert.equal(byIssue[9].comment.data.ahead, 2);
+});
+
+test('the first issue of the queue has nobody ahead, and zero is a figure', () => {
+  const building = issue({ number: 50, labels: ['relevo:building'] });
+  const d = one([building, issue({ number: 9 })], { config: 'limits:\n  concurrent_agents: 1\n' });
+  assert.equal(d.comment.data.ahead, 0);
+  assert.equal(d.comment.data.active, 1);
+});
+
+test('Scenario: No recent runs - fewer than three builds, or a failed read, leave the typical duration out', () => {
+  const building = issue({ number: 50, labels: ['relevo:building'] });
+  const cfg = { config: 'limits:\n  concurrent_agents: 1\n' };
+  [[], [10, 20], null, undefined, 'x', [Number.NaN, -5, 10]].forEach((recentBuilds) => {
+    const data = one([building, issue({ number: 9 })], { ...cfg, input: { recentBuilds } }).comment.data;
+    assert.ok(!('typical_minutes' in data) && !('typical_samples' in data), JSON.stringify(recentBuilds));
+  });
+  // The reader of the repository may fail: the plan goes on.
+  const data = one([building, issue({ number: 9 })], { ...cfg, input: { recentBuilds: () => { throw new Error('403'); } } }).comment.data;
+  assert.ok(!('typical_minutes' in data));
+});
+
+test('the median is of the minutes given, and the reader is called once and only when a queue comment needs it', () => {
+  let calls = 0;
+  const reader = () => { calls += 1; return [10, 20, 30, 40]; };
+  const none = plan([issue({ number: 9 })], { input: { recentBuilds: reader } });
+  assert.equal(none.decisions[0].action, 'start');
+  assert.equal(calls, 0, 'a plan that queues nothing reads nothing');
+  const building = issue({ number: 50, labels: ['relevo:building'] });
+  const { decisions } = plan([building, issue({ number: 8, ready_at: '2026-10-14T10:00:00Z' }), issue({ number: 9, ready_at: '2026-10-14T10:05:00Z' })], { config: 'limits:\n  concurrent_agents: 1\n', input: { recentBuilds: reader } });
+  assert.equal(calls, 1);
+  assert.equal(decisions[0].comment.data.typical_minutes, 25, 'the median of an even list is the mean of the middle two');
+  assert.equal(decisions[1].comment.data.typical_samples, 4);
 });

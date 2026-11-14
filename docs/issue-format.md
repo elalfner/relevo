@@ -179,6 +179,35 @@ When the work needs something that is not in the repository (a key, a file, an e
 - A missing input sends the issue back to `needs-spec` with the reason `inputs`, before the agent starts and without spending a model turn. The comment names each missing input.
 - The section is optional. `/relevo:issue` asks for the inputs of the work and writes it.
 
+### 10. Contradictions with the project rules (checked, nothing to write)
+
+Before the issue is created, and again before a build spends a model turn, a script compares each line of `## Out of scope` with the project rules (`qa.rules_from`) and with the issue's own scenarios. When an `Out of scope` line excludes something that a rule requires, or limits something that a scenario needs, the issue goes back to its writer with both lines quoted (the file and line of the rule, the scenario and the limit). The script never decides which one wins: you do.
+
+- To change the issue, edit the line or the scenario.
+- To override the rule on purpose, record it in a decision: add the line `Overrides: CLAUDE.md:12` (the file and line of the rule) inside a `### D<n>.` block under `## Decisions`. The check then skips that rule, and QA follows the decision.
+- A rule is a requirement unless the rules file marks it as advice: write `[advice]` on its line, or on a heading to mark everything under it. A rule marked `[advice]` never blocks, and a finding that is only about it (its text repeats the words of the line) is a note; a finding of the `spec`, `security` or `code` reviewer that describes another problem still blocks even when it cites an advice line.
+
+A rule that the issue does not override still blocks in QA: a lens that finds a change breaking one cites it as `Rule: <file>:<line> "<its words>"`, and the build fails even when the finding comes from the `interface` lens on the last attempt.
+
+### 11. Protected paths and unconfirmed names (warned, nothing to write)
+
+While you write the issue, a script warns about two things and never fails the check: a path that an unattended run does not change (the rules file, a workflow, `relevo.yml`, a skill folder, or a dependency manifest that no `Allow-paths:` line covers) that a line asks to change or, for the hard ones, only names; and an assumption under `## Assumptions` about something outside the repository (a permission, endpoint, field or claim, written in backticks) that no file of the repository holds. The lines of `Out of scope`, `Code pointers`, `Design reference`, `External inputs`, fenced code and lines that say "do not change" are not read.
+
+- For a protected path: a person makes that edit and the issue leaves it out, or the task is rewritten so that nothing needs it; for a dependency manifest, also list it in `Allow-paths:`. A hard path cannot be listed there, and the check says why. If the build gets that far, the specification check and the commit guard still stop the change, and the comment names the policy ("an unattended run cannot edit this file").
+- For an unconfirmed name: confirm it and write it in `Data contract`, `Decisions` or `Constraints`; or keep it as a `manual` input in `External inputs`, so the build goes on and the hand-off lists it under "Assumed, not confirmed"; or write it under `## Open questions`, so the build waits until a person answers.
+
+The hand-off also lists, under "Shared code touched", the files of the build that more than one file imports or that live in a shared folder (`components/`, `shared/`, `common/`...). It is information for the reviewer; nothing is blocked.
+
+### 12. A pattern to follow (optional)
+
+```markdown
+Pattern: #12
+```
+
+Names an issue of this repository whose change is already merged and that solved the same kind of work (a screen, an endpoint, a form). `go` finds the pull request that closed it into the base branch and gives the developer its diff as the template. Only one `#N` of this repository is read; another repository, several numbers or a second line are reported and ignored. A pattern that does not exist or whose change is not merged yet stops the build before it starts, with the reason `inputs`; a lookup that fails (no network) never blocks and is listed as not verified. The change is found through the pull request that mentions `#N` (in its title or body, as the pull requests of Relevo do) and was merged into the base branch when the issue was closed; a change made by hand that never names the issue is reported as not merged.
+
+The line alone changes nothing about how tasks are built. What makes a build a *replicated* one is the recipe that the specification writes into `tasks.md` (its format is in [Where `go` runs](execution.md#replicated-builds)) and a script checks. Every replica needs a rename map and the differences of its target, so the issue must list the differences of each target, or it goes back to the spec writer (reason `missing`). The first target is built normally and must pass the gate and the QA lenses before any replica starts; each replica is then one launch of the developer, on a cheaper model when the developer is on `auto` (one name below the planned model of `agents.ladder`, never below the floor of the developer; with a model written in `relevo.yml`, which is the default, every replica uses that model: see [Where `go` runs](execution.md#replicated-builds)), checked by the gate before the next one, and built by the planned model after it fails twice. Replicas go through the same protected paths, scans, QA and `limits.run_max_cost` as any other work.
+
 ## What `go` also needs from the issue
 
 - **A milestone.** The milestone is the batch the issue belongs to.
@@ -192,3 +221,14 @@ If any of these is missing, nothing is built and a comment says which one.
 It never invents scenarios or edge cases. If they are missing, the issue goes back to the spec writer with a list of what is missing.
 
 Anything in the issue that is ambiguous in a way that changes the visible behaviour is treated as a spec defect, not guessed. Small ambiguities are resolved with a reasonable assumption that is written down in the change's `design.md`.
+
+### 9. The model for this issue (optional)
+
+When a role of `agents` in `relevo.yml` is `auto`, the issue may ask for a model with one line each, outside any fenced block:
+
+```markdown
+Model: haiku
+QA-model: sonnet
+```
+
+`Model:` is for the developer and `QA-model:` for every QA lens. The value is a single model name of `agents.ladder`. It can choose any model between the `floor` and the `ceiling` of the role: a value above the ceiling is lowered to it and one below the floor is raised to it, and the plan says so (each QA lens by its own range); a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. A role that is not `auto` keeps the model written in `relevo.yml`. The check of the issue accepts the lines and only warns about one that cannot be read. They are part of the text, so editing one after `ready` changes the hash of the issue. See [Choosing the model for each issue](configuration.md#choosing-the-model-for-each-issue-auto).

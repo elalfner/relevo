@@ -42,11 +42,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          package-manager-cache: false
 
       - name: Install the Relevo scripts
         # The published package at the version pinned above; no repository is cloned for them. A package without the
@@ -74,7 +75,13 @@ jobs:
         run: |
           result=$(node .relevo-plugin/scripts/requeue.mjs --repo "$GITHUB_REPOSITORY" --credential "$HAS_CREDENTIAL")
           echo "$result"
+          # The builds start apart, not all at once: when several issues were waiting for a slot or for a usage limit to reset, starting
+          # them together would spend the same quota at the same time. The script says how long to wait (at most 5 minutes in all).
+          stagger=$(echo "$result" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).stagger_seconds || 0)')
+          first=true
           for issue in $(echo "$result" | node -e 'JSON.parse(require("fs").readFileSync(0,"utf8")).start.forEach(n=>console.log(n))'); do
+            if [ "$first" = "false" ] && [ "$stagger" -gt 0 ]; then sleep "$stagger"; fi
+            first=false
             gh workflow run relevo-go.yml --repo "$GITHUB_REPOSITORY" -f issue="$issue"
           done
 
