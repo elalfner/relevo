@@ -126,6 +126,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 - **A cloud build that ends now starts the queue, so waiting issues no longer stay `relevo:queued`.** The labels a run sets at its end (`built`, `qa-failed`, `needs-spec`) use the workflow token, and GitHub starts no workflow from an event made with it, so `relevo-queue` never heard that the slot was free and issues waited for its scheduled run, which can be hours apart. `relevo-go.yml` has a last job, `requeue`, that dispatches `relevo-queue.yml` when the build ran (whatever its result) or when the light job failed after claiming the issue. It is a job of its own so that `actions: write` is held only by it and never by the job that runs the agent. A repository gets the fix by taking the new `relevo-go.yml` (`/relevo:init` reports the older copy); until then, run `relevo-queue` by hand.
 - **`/relevo:init` can now switch the credential line of a workflow that is already installed.** The merge rendered the current template and the published bases with the same line, so a change of credential was invisible to it and the plan said "up to date". The bases now carry the line the file has and the current template the credential in force, so the switch is a change the merge applies and shows as a diff, and a line the person switched by hand is kept.
+- **A cloud run that ends with no recorded class is now counted as `other`, and `go` records the class at every exit.** The usage comment of a run that never announced a phase used to carry no class.
 
 ### Known limits
 
