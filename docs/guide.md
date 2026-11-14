@@ -11,7 +11,7 @@ An issue is always in one state, shown by a label, and each state has one next s
 | State | Next command | Who |
 |---|---|---|
 | `ready` | none: the agent starts by itself; to build on your machine, `/relevo:go <n> --local` | nobody |
-| `queued` | none: it starts when the assignee has capacity | nobody |
+| `queued` | none: it starts when the assignee has capacity, an agent is free, or the issue that shares a file with it is merged | nobody |
 | `building` | none: the agent is building it | nobody |
 | `blocked` | none: it starts when the issues it depends on are merged | nobody |
 | `built` | `/relevo:review <n>` | the assignee |
@@ -82,9 +82,17 @@ The comment names why, and the build stopped before the agent started, so no mod
 - **`inputs`** the issue declares something in its `External inputs` section that is not there: a file that is not on the base branch, or a variable that is not set. Add it, or write what the issue should do without it. A secret or a manual input that the job cannot check is not a reason to stop: it is listed in the hand-off as `Inputs to confirm before you test`.
 - **`policy`** a task of the specification changes a protected path or a restricted file, or adds a dependency that the issue does not allow. Add the manifest to `Allow-paths:` if the dependency is intended, or change the task. A protected file is never edited by an unattended run.
 
+### Two issues name the same file
+
+Screens built in parallel from the same pattern tend to edit the same registry files: a navigation list, a router, a translation file, generated types. The queue reads the files each issue names (the local paths of its Code pointers and Design reference, its `file:` inputs and its `Allow-paths:`). An issue that names a file that another issue also names waits, `relevo:queued`, until that other issue is merged: the other issue is either already being built, reviewed or in a pull request, or ahead of it in the queue. One comment says which file and which issue, and mentions nobody.
+
+The wait is bounded by `limits.shared_file_wait_hours` (24 by default). After that the issue starts anyway and its hand-off message lists the files it shares, so you know to expect a conflict when merging. An issue that names no file is never held, and the queue never reads the tasks: only what the issue says. To let issues share a file, list it under `queue.append_only` when they only add lines to it, or under `integration.generated` when it is generated. See [Configuration](configuration.md).
+
 ### A branch that conflicts with the base
 
 `/relevo:review <n>` first merges the base branch into the branch. When files conflict, the conflicts inside the paths the change may touch are handed to the developer agent in its integrate mode; QA then checks the result, and only after that is the merge committed. A conflict in any other file, or one that QA does not accept, ends with the merge aborted and nothing changed, and the review tells you which files to resolve yourself. `/relevo:status` shows, for a branch that has fallen behind the base, whether the merge would conflict and in which files.
+
+When the build ends, `go` also merges the base branch into the branch before it hands off, if the base moved, and runs the validation gate again. A conflict in a generated file (`integration.generated`) is resolved by running `integration.regenerate`; a conflict in any other file ends in `relevo:qa-failed` with the files named and the branch pushed without the merge, and `/relevo:fix <n>` is the way forward.
 
 ## How to read the check of a preview
 

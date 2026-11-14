@@ -62,6 +62,12 @@ El job de construcción lee el issue antes de que empiece el agente y se detiene
 - **Las dependencias necesitan un paso de instalación.** Donde el perfil lista rutas en `installed:`, activa en el workflow el paso de instalación de tu stack (la plantilla trae ejemplos comentados para Flutter y Laravel). Sin él, una ejecución ahora se detiene pronto en lugar de dejar que QA falle tarde.
 - **Solo ahorra trabajo.** Las comprobaciones nunca reemplazan las barreras que ya existen; ver [Seguridad](security.es.md).
 
+## Archivos que dos issues comparten
+
+El planificador que usan la cola y `go` retiene un issue que nombra un archivo que otro issue también nombra, hasta que ese otro issue se fusione. Lee solo los cuerpos de los issues, así que no necesita ningún permiso adicional, pero sí lee los issues en `relevo:in-review`, `relevo:pr-open` y `relevo:changes-requested`, además de los que ya leía. El comentario que explica el motivo lleva un marcador oculto con el archivo y el issue: su hora es cuándo empezó la espera, y así se cuenta `limits.shared_file_wait_hours` sin ningún estado fuera del issue.
+
+Antes del traspaso `go` ejecuta `scripts/integrate-base.mjs`: sondea el merge en memoria, mezcla la rama base cuando es seguro y vuelve a ejecutar la puerta. `integration.regenerate` es un comando de shell que se ejecuta desde la carpeta de la plataforma cuando un archivo generado entra en conflicto; viene de tu `relevo.yml`, que revisa una persona, nunca de un issue.
+
 ## Runners self-hosted
 
 Los workflows de Relevo corren en `ubuntu-latest` salvo que `relevo.yml` nombre otro runner. Para usar el tuyo, lista sus etiquetas:

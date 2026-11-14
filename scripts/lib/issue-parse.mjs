@@ -2,6 +2,7 @@
 // The expected shape is documented in docs/issue-format.md.
 
 import { section } from './issue-sections.mjs';
+import { matchesGlob } from './protected-paths.mjs';
 
 export const ATTACHMENT_HOSTS = ['github.com', 'user-images.githubusercontent.com', 'private-user-images.githubusercontent.com'];
 export const MAX_REFERENCES = 5;
@@ -312,4 +313,64 @@ export function parseIssueBody(body) {
   const codePointers = parseCodePointers(body);
   const externalInputs = parseExternalInputs(body);
   return { design, codePointers, externalInputs, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
+}
+
+const GLOB_CHARS_RE = /[*?]/;
+// A backticked token that is a path of this repository: no scheme, no colon, and a slash or a file extension.
+const LOCAL_PATH_RE = /^[A-Za-z0-9_@.*?\-]+(?:\/[A-Za-z0-9_@.*?\- ]+)*$/;
+
+function localPathsOfBullets(text) {
+  const paths = [];
+  let inFence = false;
+  String(text ?? '').split('\n').forEach((line) => {
+    if (FENCE_RE.test(line)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence || !/^\s*[-*+]\s+/.test(line)) return;
+    [...line.matchAll(/`([^`]+)`/g)].forEach((m) => {
+      const token = m[1].trim().replace(/^\.\//, '');
+      if (!LOCAL_PATH_RE.test(token) || !(token.includes('/') || /\.[A-Za-z0-9]+$/.test(token))) return;
+      if (leavesRepository(token)) return;
+      paths.push(token);
+    });
+  });
+  return paths;
+}
+
+/**
+ * The files of this repository that an issue names, for the queue: the local paths of "Code pointers" and "Design
+ * reference", the `file:` inputs of "External inputs" and the entries of `Allow-paths:`. A file of another repository
+ * (`owner/repo:path`) and a link are not named files. Returns a list without repeats, in the order found.
+ */
+export function namedFiles(body) {
+  const found = [
+    ...localPathsOfBullets(section(body, 'Code pointers')?.text),
+    ...parseDesign(body).references.filter((r) => r.kind === 'path').map((r) => r.path.replace(/^\.\//, '')),
+    ...parseExternalInputs(body).inputs.filter((i) => i.kind === 'file').map((i) => i.name.replace(/^\.\//, '')),
+    ...parseIssueBody(body).allowPaths.map((p) => p.replace(/^\.\//, '')),
+  ];
+  return [...new Set(found.filter(Boolean))];
+}
+
+/**
+ * The files that two lists of named files share. Two entries collide when they are equal or when one is a glob that
+ * matches the other; two different globs do not collide. A file that matches a glob of `exclude` (the append-only and
+ * the generated files of relevo.yml) is not compared. Returns the colliding files, the literal one when only one is a glob.
+ */
+export function sharedFiles(a, b, { exclude = [] } = {}) {
+  const kept = (list) => list.filter((f) => !exclude.some((g) => g === f || (!GLOB_CHARS_RE.test(f) && matchesGlob(f, g))));
+  const out = [];
+  kept(a).forEach((x) => {
+    kept(b).forEach((y) => {
+      const xGlob = GLOB_CHARS_RE.test(x);
+      const yGlob = GLOB_CHARS_RE.test(y);
+      let hit = null;
+      if (x === y) hit = x;
+      else if (xGlob && !yGlob && matchesGlob(y, x)) hit = y;
+      else if (yGlob && !xGlob && matchesGlob(x, y)) hit = x;
+      if (hit && !out.includes(hit)) out.push(hit);
+    });
+  });
+  return out;
 }

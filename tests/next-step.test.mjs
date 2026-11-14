@@ -141,3 +141,8 @@ test('the classes of a QA finding that the developer agent cannot fix each have 
   assert.equal(nextStep({ state: 'qa-failed', reason: 'spec', issue: 9 }).command, '/relevo:issue 9');
   assert.equal(nextStep({ state: 'qa-failed', reason: 'policy', issue: 9 }).command, '/relevo:issue 9');
 });
+
+test('Scenario: A queued issue can wait for a shared file - the single hint says so, in both languages', () => {
+  assert.match(nextStep({ state: 'queued', issue: 4 }).hint, /issue that shares a file with it is merged/);
+  assert.match(nextStep({ state: 'queued', issue: 4, language: 'es' }).hint, /se fusione el issue que comparte un archivo con él/);
+});

@@ -468,3 +468,45 @@ test('a protected path is refused too, and an unknown key under design.system is
   assert.match(loadConfig(withSystem('    components: [.github/workflows]\n')).errors.map((e) => e.message).join(' '), /protected path/);
   assert.match(loadConfig(withSystem('    token: [lib]\n')).errors.map((e) => e.message).join(' '), /unknown setting "design\.system\.token"/);
 });
+
+test('Scenario: Shared-file defaults - nothing excluded, nothing regenerated, a wait of 24 hours', () => {
+  const { ok, config } = loadConfig(MINIMAL);
+  assert.equal(ok, true);
+  assert.deepEqual(config.queue.append_only, []);
+  assert.deepEqual(config.integration.generated, []);
+  assert.equal(config.integration.regenerate, null);
+  assert.equal(config.limits.shared_file_wait_hours, 24);
+});
+
+test('Scenario: Shared-file settings given - the values are kept', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}queue:\n  append_only:\n    - src/nav/items.ts\nintegration:\n  generated:\n    - "src/gql/**"\n  regenerate: npm run codegen\n`.replace('run_max_cost: 5', 'run_max_cost: 5\n  shared_file_wait_hours: 8'));
+  assert.equal(ok, true);
+  assert.deepEqual(config.queue.append_only, ['src/nav/items.ts']);
+  assert.deepEqual(config.integration.generated, ['src/gql/**']);
+  assert.equal(config.integration.regenerate, 'npm run codegen');
+  assert.equal(config.limits.shared_file_wait_hours, 8);
+});
+
+test('Scenario: Generated files without a command - integration.regenerate is required', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}integration:\n  generated:\n    - "src/gql/**"\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'integration.regenerate'));
+});
+
+test('Scenario: A glob that leaves the repository - both list settings refuse it', () => {
+  ['/etc/x', '../x', 'a/../../x', '~/x'].forEach((bad) => {
+    const a = loadConfig(`${MINIMAL}queue:\n  append_only:\n    - "${bad}"\n`);
+    assert.equal(a.ok, false, bad);
+    assert.ok(a.errors.some((e) => e.path === 'queue.append_only' && /leaves the repository/.test(e.message)));
+    const g = loadConfig(`${MINIMAL}integration:\n  generated:\n    - "${bad}"\n  regenerate: make gen\n`);
+    assert.equal(g.ok, false, bad);
+  });
+});
+
+test('Scenario: A wait of zero or a fraction - limits.shared_file_wait_hours is a whole number of at least 1', () => {
+  ['0', '1.5', 'soon'].forEach((v) => {
+    const { ok, errors } = loadConfig(`${MINIMAL}  shared_file_wait_hours: ${v}\n`);
+    assert.equal(ok, false, v);
+    assert.ok(errors.some((e) => e.path === 'limits.shared_file_wait_hours'));
+  });
+});

@@ -354,3 +354,38 @@ test('Scenario: gather reads a qa-failed issue only for a retry, only the retrie
   assert.equal(decision.action, 'start');
   assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:qa-failed'] });
 });
+
+test('gather reads the states after built as issues that are not candidates, and the marker of the wait for a shared file', () => {
+  const marker = (file, other) => `<!-- relevo:shared-wait file=${encodeURIComponent(file)} issue=${other} -->`;
+  const world = {
+    issuesByLabel: {
+      'relevo:queued': [rawIssue(15, ['relevo:queued'])],
+      'relevo:in-review': [rawIssue(12, ['relevo:in-review'])],
+      'relevo:pr-open': [rawIssue(13, ['relevo:pr-open'])],
+      'relevo:changes-requested': [rawIssue(14, ['relevo:changes-requested'])],
+    },
+    timeline: {
+      15: [
+        labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z'),
+        { event: 'commented', body: marker('router.ts', 11), created_at: '2026-10-14T09:00:00Z' },
+        { event: 'commented', body: 'a person writes', created_at: '2026-10-14T09:30:00Z' },
+        { event: 'commented', body: `later\n${marker('src/nav/items.ts', 12)}`, created_at: '2026-10-14T10:00:00Z' },
+      ],
+    },
+    permissions: { 'persona-a': 'write' },
+    issueDetails: {},
+  };
+  const state = gather({ gh: fakeGh(world), repo: REPO, config });
+  assert.deepEqual(state.issues.map((i) => i.number).sort((a, b) => a - b), [12, 13, 14, 15]);
+  assert.deepEqual(state.issues.find((i) => i.number === 15).shared_wait, { file: 'src/nav/items.ts', other: 12, at: '2026-10-14T10:00:00Z' });
+  assert.equal(state.issues.find((i) => i.number === 12).shared_wait, null);
+  assert.equal(state.issues.find((i) => i.number === 12).ready_at, null, 'an issue in review is not a candidate: its timeline is not read');
+});
+
+test('the marker of a wait round-trips, and a comment without one gives nothing', async () => {
+  const { sharedWaitMarker, readSharedWaitMarker, lastSharedWait } = await import('../scripts/lib/shared-wait.mjs');
+  assert.deepEqual(readSharedWaitMarker(sharedWaitMarker('src/a b/router.ts', 7)), { file: 'src/a b/router.ts', other: 7 });
+  assert.equal(readSharedWaitMarker('no marker here'), null);
+  assert.equal(lastSharedWait([{ event: 'commented', body: 'x' }, { event: 'labeled' }]), null);
+  assert.equal(lastSharedWait(undefined), null);
+});

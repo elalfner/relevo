@@ -29,6 +29,8 @@ export const SETTINGS = [
   { path: 'limits.review_sla_hours', type: 'int', min: 1, default: 8 },
   { path: 'limits.run_max_turns', type: 'int', min: 1, default: 100 },
   { path: 'limits.building_alert_hours', type: 'int', min: 1, default: 3 },
+  // How long an issue waits for a file that another issue also names before it starts anyway.
+  { path: 'limits.shared_file_wait_hours', type: 'int', min: 1, default: 24 },
   // The cost limit is the one a Claude run can enforce; an Antigravity run has none, so it takes a token limit instead.
   { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true, default: null, requiredFor: 'claude', missing: 'unattended runs must always have a cost limit (amount in US dollars per run)', rejectedFor: 'antigravity', rejection: 'the agent has no cost limit; set limits.run_max_tokens instead, and note that the quota of the Google Cloud project that owns the key is the ceiling that really holds' },
   { path: 'limits.run_max_tokens', type: 'int', min: 1000, default: null, required: true, requiredFor: 'antigravity', missing: 'unattended runs must always have a limit, and for this agent it is a number of tokens per run', rejectedFor: 'claude', rejection: 'the run is limited by limits.run_max_cost' },
@@ -39,6 +41,11 @@ export const SETTINGS = [
   { path: 'qa.rules_from', type: 'path-list', default: [] },
   // Files no agent or script reads, added to the base list of restricted-paths.mjs; it can never take an entry away.
   { path: 'restricted_paths', type: 'restricted-list', default: [] },
+  // Files that issues only add lines to (a merge is trivial), so naming one does not make two issues wait for each other.
+  { path: 'queue.append_only', type: 'glob-list', default: [] },
+  // Generated files and the one command that regenerates them when the base branch is merged into a build.
+  { path: 'integration.generated', type: 'glob-list', default: [] },
+  { path: 'integration.regenerate', type: 'string', default: null },
   { path: 'skills.allow_scripts', type: 'string[]', default: [] },
   { path: 'links', type: 'repo-list', default: [] },
   { path: 'evidence.policy', type: 'enum', allowed: ['attach_to_pr', 'local_only'], default: 'attach_to_pr' },
@@ -176,6 +183,18 @@ function checkType(setting, value, errors) {
       });
       break;
     }
+    case 'glob-list': {
+      if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
+        errors.push({ path, message: `${path} must be a list of paths or globs relative to the repository (got ${JSON.stringify(value)})` });
+        break;
+      }
+      value.forEach((entry) => {
+        if (entry.startsWith('/') || /^[A-Za-z]:[\\/]/.test(entry) || entry.startsWith('~') || entry.replace(/^\.\//, '').split('/').includes('..')) {
+          errors.push({ path, message: `${path}: "${entry}" leaves the repository; write a path or glob inside it` });
+        }
+      });
+      break;
+    }
     case 'restricted-list':
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.trim() === '')) {
         errors.push({ path, message: `${path} must be a list of paths or globs relative to the repository (got ${JSON.stringify(value)})` });
@@ -299,6 +318,11 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
     checkType(setting, given, errors);
     setPath(config, setting.path, given);
   });
+
+  // Generated files need the command that regenerates them.
+  if (config.integration.generated.length > 0 && !config.integration.regenerate) {
+    errors.push({ path: 'integration.regenerate', message: 'integration.regenerate is required when integration.generated lists files: it is the command that regenerates them' });
+  }
 
   // The model and the effort of each agent, with defaults. With Antigravity they are accepted and not applied: a warning, not an error.
   const agents = agentSettings(user);

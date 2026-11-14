@@ -24,7 +24,7 @@
 - **THEN** the newer one starts, because the older one is not active and will pass the gate again when it can start
 
 ### Requirement: Append-only files do not count as shared
-A file that matches an entry of `queue.append_only` SHALL NOT make two issues wait for each other, because a merge of added lines is trivial. A generated file named in `integration.generated` SHALL NOT either, because the integration step regenerates it.
+A file that matches an entry of `queue.append_only` SHALL NOT make two issues wait for each other, because a merge of added lines is trivial. A file that matches `integration.generated` SHALL NOT either, because the integration step regenerates it.
 
 #### Scenario: A shared append-only list
 - **WHEN** two issues name only `src/nav/items.ts`, and `queue.append_only` lists it
@@ -54,7 +54,7 @@ An issue SHALL wait for a shared file for at most `limits.shared_file_wait_hours
 - **THEN** the bound is counted again from the first evaluation of that new wait
 
 ### Requirement: The base branch is integrated before the hand-off
-After QA passes and before it pushes the branch, `go` SHALL check whether the base branch moved. When it did and the merge has no conflict, `go` SHALL merge the base branch, run the gate again and hand off only if it passes. A conflict in a generated file SHALL be resolved by regenerating it with the command in `integration.generated`; a conflict in any other file ends in the `conflict` outcome with the files named.
+After QA passes and before it pushes the branch, `go` SHALL check whether the base branch moved. When it did and the merge has no conflict, `go` SHALL merge the base branch, run the gate again and hand off only if it passes. A conflict in a generated file SHALL be resolved by running the command in `integration.regenerate`; a conflict in any other file ends in the `conflict` outcome with the files named.
 
 #### Scenario: The base moved without a conflict
 - **WHEN** QA passes and the base branch has new commits that merge cleanly
@@ -66,7 +66,7 @@ After QA passes and before it pushes the branch, `go` SHALL check whether the ba
 
 #### Scenario: A generated file conflicts
 - **WHEN** the merge conflicts only in files that `integration.generated` lists
-- **THEN** each one is regenerated with its command, the merge is completed and the gate runs again
+- **THEN** `integration.regenerate` runs, the regenerated files are added, the merge is completed and the gate runs again
 
 #### Scenario: Another file conflicts
 - **WHEN** the merge conflicts in a file that is not generated

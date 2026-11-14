@@ -62,6 +62,12 @@ The build job reads the issue before the agent starts and stops, without a model
 - **Dependencies need an install step.** Where the profile lists `installed:` paths, enable the install step for your stack in the workflow (the template has commented examples for Flutter and Laravel). Without it a run now stops early instead of letting QA fail late.
 - **It only saves work.** The checks never replace the guards that already exist; see [Security](security.md).
 
+## Files that two issues share
+
+The planner that the queue and `go` both use holds an issue that names a file another issue also names, until that other issue is merged. It reads the issue bodies only, so it needs no extra permission, but it does read the issues in `relevo:in-review`, `relevo:pr-open` and `relevo:changes-requested`, besides the ones it already read. The comment that says why carries a hidden marker with the file and the issue: its time is when the wait began, which is how `limits.shared_file_wait_hours` is counted without any state outside the issue.
+
+Before the hand-off `go` runs `scripts/integrate-base.mjs`: it probes the merge in memory, merges the base branch when it is safe and runs the gate again. `integration.regenerate` is a shell command that runs from the folder of the platform when a generated file conflicts; it comes from your `relevo.yml`, which a person reviews, never from an issue.
+
 ## Self-hosted runners
 
 The Relevo workflows run on `ubuntu-latest` unless `relevo.yml` names another runner. To use your own, list its labels:

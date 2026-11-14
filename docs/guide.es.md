@@ -11,7 +11,7 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | Estado | Siguiente comando | Quién |
 |---|---|---|
 | `ready` | ninguno: el agente empieza solo; para construir en tu máquina, `/relevo:go <n> --local` | nadie |
-| `queued` | ninguno: empieza cuando la persona asignada tiene capacidad | nadie |
+| `queued` | ninguno: empieza cuando la persona asignada tiene capacidad, hay un agente libre o se fusiona el issue que comparte un archivo con él | nadie |
 | `building` | ninguno: el agente lo está construyendo | nadie |
 | `blocked` | ninguno: empieza cuando se fusionan los issues de los que depende | nadie |
 | `built` | `/relevo:review <n>` | la persona asignada |
@@ -82,9 +82,17 @@ El comentario dice por qué, y el build se detuvo antes de que empezara el agent
 - **`inputs`**: el issue declara en su sección `External inputs` algo que no está: un archivo que no existe en la rama base o una variable que no está definida. Agrégalo, o escribe qué debe hacer el issue sin eso. Un secreto o una entrada manual que el job no puede comprobar no es motivo para detenerse: aparece en el aviso de entrega como `Inputs to confirm before you test`.
 - **`policy`**: una tarea de la especificación cambia una ruta protegida o un archivo restringido, o agrega una dependencia que el issue no permite. Agrega el manifiesto a `Allow-paths:` si la dependencia es intencional, o cambia la tarea. Una ejecución sin supervisión nunca edita un archivo protegido.
 
+### Dos issues nombran el mismo archivo
+
+Las pantallas que se construyen en paralelo a partir del mismo patrón suelen editar los mismos archivos de registro: una lista de navegación, un router, un archivo de traducciones, tipos generados. La cola lee los archivos que nombra cada issue (las rutas locales de sus Code pointers y su Design reference, sus entradas `file:` y su `Allow-paths:`). Un issue que nombra un archivo que otro issue también nombra espera, en `relevo:queued`, hasta que ese otro issue se fusione: el otro issue ya se está construyendo, revisando o está en un pull request, o va antes que él en la cola. Un comentario dice qué archivo y qué issue, y no menciona a nadie.
+
+La espera tiene un tope, `limits.shared_file_wait_hours` (24 por defecto). Pasado ese tiempo el issue empieza de todos modos y su mensaje de traspaso lista los archivos que comparte, para que esperes un conflicto al fusionar. Un issue que no nombra ningún archivo nunca se retiene, y la cola nunca lee las tareas: solo lo que dice el issue. Para que los issues compartan un archivo, ponlo en `queue.append_only` cuando solo le añaden líneas, o en `integration.generated` cuando es generado. Ver [Configuración](configuration.es.md).
+
 ### Una rama que tiene conflictos con la base
 
 `/relevo:review <n>` primero mezcla la rama base en la rama. Cuando hay archivos en conflicto, los conflictos dentro de las rutas que el cambio puede tocar se entregan al agente de desarrollo en su modo de integración; luego QA revisa el resultado y solo después se hace el commit del merge. Un conflicto en cualquier otro archivo, o uno que QA no acepta, termina con el merge abortado y sin cambios, y la revisión te dice qué archivos resolver tú. `/relevo:status` muestra, para una rama atrasada respecto a la base, si el merge tendría conflictos y en qué archivos.
+
+Cuando termina la construcción, `go` también mezcla la rama base en la rama antes del traspaso, si la base se movió, y vuelve a ejecutar la puerta de validación. Un conflicto en un archivo generado (`integration.generated`) se resuelve ejecutando `integration.regenerate`; un conflicto en cualquier otro archivo termina en `relevo:qa-failed` con los archivos nombrados y la rama subida sin la mezcla, y `/relevo:fix <n>` es el camino a seguir.
 
 ## Cómo leer la revisión de una vista previa
 

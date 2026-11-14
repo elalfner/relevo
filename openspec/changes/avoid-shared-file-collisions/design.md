@@ -36,11 +36,12 @@ The comment of the wait carries a hidden marker with the file and the issue (`<!
 *Alternative:* the time of the `queued` label. Rejected: the issue may have been queued for capacity first, and the bound would be counted from the wrong moment.
 
 ### D5. The integration step is a script that `go` calls before the push
-A script takes the base and the branch, runs `probeMerge`, and prints `{ moved, result, files }`. When the base did not move, `go` does nothing. When the merge is clean, `go` merges it, runs the QA commands again (not the whole adversarial QA: only the gate the repository defines) and takes the failure path with the reason "failed after merging the base" if they fail. When it conflicts, the script splits the files with the entries of `integration.generated`: if all are generated, `go` regenerates them and finishes the merge; otherwise `go` pushes the branch without the merge and ends in `qa-failed` with the outcome `conflict` and the files in the message.
+A script takes the base and the branch, runs `probeMerge`, and prints `{ moved, result, files }`. When the base did not move, `go` does nothing. When the merge is clean, `go` merges it, runs the QA commands again (not the whole adversarial QA: only the gate the repository defines) and takes the failure path with the reason "failed after merging the base" if they fail. When it conflicts, the script splits the files with the globs of `integration.generated`: if all are generated, `go` runs `integration.regenerate` and finishes the merge; otherwise `go` pushes the branch without the merge and ends in `qa-failed` with the outcome `conflict` and the files in the message.
 *Alternative:* hand the conflict to the developer agent, as `review` does. Rejected for the unattended run: a conflict in a file that is not generated usually means two issues changed the same logic, and a person should look at it.
 
 ### D6. Generated files are configuration, not detection
-`integration.generated` is a list of `{ paths, command }` in `relevo.yml`, validated like `restricted_paths` (no absolute paths, no `..`). Relevo does not guess which files are generated. The command runs from the folder of the platform, like every other command of a run.
+`integration.generated` is a list of globs and `integration.regenerate` the one command that regenerates them, both in `relevo.yml`; the globs are validated like `restricted_paths` (no absolute paths, no `..`) and a list of generated files needs the command. Relevo does not guess which files are generated. The command runs from the folder of the platform, like every other command of a run.
+*Alternative:* a list of `{ paths, command }` entries, one command per group. Rejected: the configuration parser reads no lists of maps, and a project rarely has more than one code generator step.
 
 ## Risks / Trade-offs
 
