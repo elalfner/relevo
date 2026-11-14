@@ -191,6 +191,10 @@ agents:
 
 En `auto` el modelo planeado sigue el tamaño del cambio (tareas pendientes más escenarios: hasta 6 toma el piso, `haiku` con el rango por defecto; más toma `sonnet`). Un cambio pequeño ya se planea en `haiku` y sus réplicas no tienen nada más barato que usar (`replica-plan.mjs model` dice que el desarrollador ya está en el piso), mientras que uno mediano se planea en `sonnet` y sus réplicas corren en `haiku`. El comentario de consumo muestra el modelo en que corrió cada réplica y por qué (el motivo que dio `replica-plan.mjs model`, guardado para el informe con `--task` y citado en inglés), que es la forma de comprobarlo.
 
+## Cuando una ejecución se detiene sin resultado
+
+Una ejecución que se cancela (por ejemplo en `timeout-minutes: 60`), agota el tiempo o termina sin resultado no dejaba nada de lo que aprender. Ahora los últimos comandos del agente se escriben, redactados, en el resumen de la página de la ejecución, y el comentario del issue lo dice. Para ver la salida de una ejecución que sí terminó, activa `run.full_output` o lanza `relevo-go` a mano con `full_output` marcado: el log tiene entonces un grupo «Agent output (redacted)». Ambas aparecen cuando termina el paso del agente, no mientras corre, y ninguna existe con `trust: public`. Lo que se imprime y se guarda, y lo que el redactor no puede prometer, está en [Ver lo que hizo el agente](security.es.md#ver-lo-que-hizo-el-agente).
+
 ## Cuánto tarda cada etapa
 
 El resumen termina con una línea que dice adónde se va el tiempo de un issue: la mediana de cada etapa que terminó en los últimos siete días y, entre paréntesis, cuántas fueron. Las cinco etapas siguen las etiquetas del ciclo de vida:

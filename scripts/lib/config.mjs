@@ -53,6 +53,8 @@ export const SETTINGS = [
   { path: 'design.system.components', type: 'repo-path-list', default: [] },
   { path: 'design.system.references', type: 'repo-path-list', default: [] },
   { path: 'trust', type: 'enum', allowed: ['private-team', 'public'], default: 'private-team' },
+  // Prints a redacted rendering of the agent output and keeps the results in the transcript of a run that ends abnormally. Off by default; refused with trust public.
+  { path: 'run.full_output', type: 'bool', default: false },
 ];
 
 const GROUPS = new Set(SETTINGS.filter((s) => s.path.includes('.')).map((s) => s.path.split('.')[0]));
@@ -412,6 +414,9 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
   }
   if (config.trust === 'public' && config.agent.build === 'antigravity') {
     errors.push({ path: 'trust', message: 'trust "public" cannot be used with agent.build "antigravity" yet: its allow list is a prefix list and its run has no tool-level limits (docs/security.md)' });
+  }
+  if (config.trust === 'public' && config.run.full_output) {
+    errors.push({ path: 'run.full_output', message: 'run.full_output cannot be used with trust "public": the output of the agent may hold secrets that the redactor does not know, and the artifacts of a public repository are readable by anyone (docs/security.md)' });
   }
   if (config.trust === 'public' && config.review.mode === 'none') {
     errors.push({ path: 'review.mode', message: 'trust "public" needs a human review of generated code: review.mode cannot be "none"' });

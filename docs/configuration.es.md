@@ -50,6 +50,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `design.system.components` | Carpetas con los componentes reutilizables que una pantalla nueva debe usar | `[]` |
 | `design.system.references` | Carpetas dentro del repositorio con capturas o bocetos para mirar | `[]` |
 | `trust` | `private-team` o `public` | `private-team` |
+| `run.full_output` | `true` imprime en el log de cada ejecución en la nube una versión redactada de la salida del agente y guarda el principio de cada resultado en la transcripción de una ejecución que termina de forma anormal. Puede exponer un secreto que el redactor no conoce, y se rechaza con `trust: public` ([Ver lo que hizo el agente](security.es.md#ver-lo-que-hizo-el-agente)) | `false` |
 | `labels` | renombra cualquier etiqueta; las claves son fijas, los nombres son tuyos | `relevo:ready`, `relevo:built`, … |
 
 ## Plataformas, perfiles y comprobaciones

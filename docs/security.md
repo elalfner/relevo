@@ -136,6 +136,17 @@ On a person's machine Relevo proposes and checks, and never enforces: `/relevo:i
 
 **No ignore file is a control.** A `.gitignore` entry keeps a file out of git, not out of an agent's reach; `.claudeignore` has no effect according to the documentation of Claude Code, and `.claudecode.json` is not documented as a control. Relevo writes only settings that the documentation of the tool lists as denying a read, and offers none of these files as protection.
 
+## Seeing what the agent did
+
+To find out why a long run stopped you need the output of the agent, and the action's own `show_full_output` prints every tool result to the log as it happens, with no way to redact it, so the workflow template never sets it. Relevo has its own option instead.
+
+- **Turn it on.** For a repository, set `run.full_output: true` in `relevo.yml`. For one run, start `relevo-go` by hand (the Actions tab, "Run workflow") and tick `full_output`; a run started by a label can only use the setting of the repository.
+- **What it prints.** After the agent step ends, the log of the run has a group "Agent output (redacted)" with the commands of the agent and the first characters of each result. It appears when the agent step ends, not while it runs.
+- **What it saves.** When a run is cancelled, times out or ends without an outcome, the last commands of the agent (at most 200 entries and 200 KB) are written to the summary of the run page (readable by anyone with read access to the repository, and kept as long as the log of the run), and the comment on the issue says where. The workflow uses no action after the agent, so it is the summary and not an artifact upload that holds it. With the option off the transcript holds the commands only, never a result; with it on it also holds the first 300 characters of each result. A run that ends with an outcome saves nothing.
+- **Redaction.** Before anything is printed or saved, the text passes a redactor that replaces known secret shapes (provider and cloud keys, tokens, private key blocks, credentials in URLs, the value of an assignment whose name says it is a credential) and the exact values of the model credential and of the workflow token. It works on text and opens no file.
+- **It can miss a secret.** A credential in a shape the redactor does not know passes, and a command line can hold one. That is why the option is off by default and why the transcript keeps no results unless you turn it on. The redactor is not a control: the closed tool list, the restricted-file denials and the absence of web access are what keep secrets from the agent, and they stay in force.
+- **`trust: public` refuses it.** Validation fails when `run.full_output` is set with `trust: public`, the `full_output` input of a manual start is ignored with a notice, and no transcript is saved, because the run page of a public repository is readable by anyone.
+
 ## On a public repository
 
 - Set `trust: public`. Only a maintainer's `ready` starts a run, nothing runs on content from forks, and `review.mode` cannot be `none`.

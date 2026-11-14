@@ -191,6 +191,10 @@ agents:
 
 On `auto` the planned model follows the size of the change (pending tasks plus scenarios: up to 6 takes the floor, `haiku` with the default range; more takes `sonnet`). A small change is therefore planned on `haiku` already and its replicas have nothing cheaper to use (`replica-plan.mjs model` says that the developer is already at the floor), while a medium one is planned on `sonnet` and its replicas run on `haiku`. The usage comment shows the model that each replica ran on and why (the reason that `replica-plan.mjs model` gave, kept for the report through `--task`, and quoted in English), which is how to check it.
 
+## When a run stops without a result
+
+A run that is cancelled (for example at `timeout-minutes: 60`), times out or ends without an outcome used to leave nothing to learn from. Now the last commands of the agent are written, redacted, to the summary of the run page, and the comment on the issue says so. To see the output of a run that did finish, turn on `run.full_output` or start `relevo-go` by hand with `full_output` ticked: the log then has a group "Agent output (redacted)". Both appear after the agent step ends, not while it runs, and neither exists for `trust: public`. What is printed and saved, and what the redactor cannot promise, is in [Seeing what the agent did](security.md#seeing-what-the-agent-did).
+
 ## How long each stage takes
 
 The digest ends with one line that tells where the time of an issue goes: the median of each stage that finished in the last seven days, and in brackets how many finished. The five stages follow the labels of the lifecycle:

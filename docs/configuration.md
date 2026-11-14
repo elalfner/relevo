@@ -50,6 +50,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `design.system.components` | Folders with the reusable components that a new screen should use | `[]` |
 | `design.system.references` | Folders inside the repository with screenshots or sketches to look at | `[]` |
 | `trust` | `private-team` or `public` | `private-team` |
+| `run.full_output` | `true` prints a redacted rendering of the agent output in the log of every cloud run and keeps the first part of each result in the transcript of a run that ends abnormally. It may expose a secret the redactor does not know, and it is refused with `trust: public` ([Seeing what the agent did](security.md#seeing-what-the-agent-did)) | `false` |
 | `labels` | rename any label; the keys are fixed, the names are yours | `relevo:ready`, `relevo:built`, … |
 
 ## Platforms, profiles and checks
