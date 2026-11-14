@@ -29,7 +29,7 @@
 ## 6. Documentation and final checks
 
 - [x] 6.1 `docs/guide.md`, `docs/guide.es.md`, `docs/execution.md` and `docs/execution.es.md`: how the queue holds issues that name the same file, what counts as naming one, the bound, `queue.append_only`, `integration.generated`, and the integration of the base before the hand-off. Verify with `node --test tests/docs-claims.test.mjs` and by checking that the Spanish pages use the same setting names.
-- [ ] 6.2 Run `npm test` and `openspec validate avoid-shared-file-collisions --strict`. Verify that both pass.
+- [x] 6.2 Run `npm test` and `openspec validate avoid-shared-file-collisions --strict`. Verify that both pass.
 
 ## Workflow follow-up
 
