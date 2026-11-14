@@ -518,6 +518,31 @@ export function sumUsage(runs) {
 }
 
 /**
+ * What share of the cost and of the turns the main agent (the orchestrator of `go`) used, over parsed runs: { runs, of,
+ * cost, total, turns, allTurns } or null. Only a run counts whose marker has the agents with a cost for `main` and that has a
+ * cost of its own greater than 0 (a run without the detail is left out, never guessed); `runs` of the `of` runs given are counted,
+ * `cost` of the main agent out of `total` is the share, and `turns` out of `allTurns` is the same for the turns, added over the
+ * counted runs that report theirs. `sumUsage` is not changed: this is a separate figure.
+ */
+export function mainAgentShare(runs) {
+  const mainOf = (r) => (Array.isArray(r?.agents) ? r.agents.find((a) => a?.name === 'main') : undefined);
+  const counted = (runs ?? []).filter((r) => {
+    const m = mainOf(r);
+    return m && num(m.cost) !== null && num(r.cost) !== null && r.cost > 0;
+  });
+  if (counted.length === 0) return null;
+  const withTurns = counted.filter((r) => num(r.turns) !== null && num(mainOf(r).turns) !== null);
+  return {
+    runs: counted.length,
+    of: runs.length,
+    cost: counted.reduce((t, r) => t + mainOf(r).cost, 0),
+    total: counted.reduce((t, r) => t + r.cost, 0),
+    turns: withTurns.reduce((t, r) => t + mainOf(r).turns, 0),
+    allTurns: withTurns.reduce((t, r) => t + r.turns, 0),
+  };
+}
+
+/**
  * Which limit of the runner cut the run, from the result of its log: `turns` (`error_max_turns`), `cost`
  * (`error_max_budget_usd`), or null when the log says neither. The subtypes are the ones the Claude Code SDK documents
  * for a result; a log without them gives null and the comment keeps its general wording.

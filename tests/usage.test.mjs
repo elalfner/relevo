@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checksFromReceipt, limitReset, replicaReasonsFromJson, withReplicaReasons, limitsExceeded, parseUsageMarker, quotaOf, reachedUsageLimit, readUsage, runnerCut, sumUsage, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
+import { checksFromReceipt, limitReset, replicaReasonsFromJson, withReplicaReasons, limitsExceeded, parseUsageMarker, quotaOf, reachedUsageLimit, readUsage, runnerCut, sumUsage, mainAgentShare, usageLine, usageMarker } from '../scripts/lib/run-usage.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'relevo-usage-'));
 const write = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
@@ -642,4 +642,48 @@ test('a reason is read as data - line breaks and comment marks cannot break the 
   assert.equal(run.cost, 3, 'the totals are those of the run');
   assert.ok(run.replicas.every((r) => r.why === undefined || r.why.length <= 240), 'a reason is cut to 240 characters');
   assert.doesNotMatch(usageLine(usage), /\n/, 'and the sentence of the comment stays on one line');
+});
+
+const withAgents = (cost, mainCost, turns, mainTurns, extra = {}) => ({
+  cost, turns, notional: false,
+  agents: [{ name: 'main', turns: mainTurns, cost: mainCost }, { name: 'dev', turns: turns - mainTurns, cost: cost - mainCost }],
+  ...extra,
+});
+
+test('Scenario: Runs with the detail - mainAgentShare adds the cost and the turns of the main agent over the same runs', () => {
+  const runs = [withAgents(4, 2, 140, 100), withAgents(3, 1.5, 120, 100), withAgents(3, 1.5, 160, 100)];
+  const share = mainAgentShare(runs);
+  assert.deepEqual(share, { runs: 3, of: 3, cost: 5, total: 10, turns: 300, allTurns: 420 });
+  assert.equal(share.cost / share.total, 0.5);
+});
+
+test('Scenario: Some runs without the detail - they are left out of the share and counted in `of`', () => {
+  const runs = [withAgents(4, 2, 140, 100), { cost: 9, turns: 50, notional: false }, withAgents(2, 1, 60, 40), { cost: 1, turns: 5, notional: false, agents: [{ name: 'dev', turns: 5, cost: 1 }] }];
+  assert.deepEqual(mainAgentShare(runs), { runs: 2, of: 4, cost: 3, total: 6, turns: 140, allTurns: 200 });
+});
+
+test('Scenario: No run with the detail - mainAgentShare is null', () => {
+  assert.equal(mainAgentShare([]), null);
+  assert.equal(mainAgentShare(undefined), null);
+  assert.equal(mainAgentShare([{ cost: 3, turns: 4, notional: true }]), null, 'a run with no agents');
+  assert.equal(mainAgentShare([{ cost: 3, agents: [{ name: 'main', turns: 4 }] }]), null, 'a main agent without a cost');
+  assert.equal(mainAgentShare([{ turns: 3, agents: [{ name: 'main', turns: 3, cost: 1 }] }]), null, 'a run without a cost of its own');
+  assert.equal(mainAgentShare([withAgents(0, 0, 10, 10)]), null, 'a run whose cost is zero has no share');
+});
+
+test('mainAgentShare keeps the cost of a run that reports no turns, and adds turns only over the runs that report them', () => {
+  const runs = [withAgents(4, 2, 100, 60), { cost: 2, notional: false, agents: [{ name: 'main', turns: 3, cost: 1 }] }];
+  assert.deepEqual(mainAgentShare(runs), { runs: 2, of: 2, cost: 3, total: 6, turns: 60, allTurns: 100 });
+});
+
+test('the share works with a notional cost, and sumUsage keeps exactly its old shape', () => {
+  const run = withAgents(4, 3, 100, 90, { notional: true });
+  assert.deepEqual(mainAgentShare([run]), { runs: 1, of: 1, cost: 3, total: 4, turns: 90, allTurns: 100 });
+  assert.deepEqual(Object.keys(sumUsage([run])).sort(), ['cost', 'costRuns', 'notionalRuns', 'runs', 'tokens', 'turns']);
+});
+
+test('a marker that carries the agents gives the runs that mainAgentShare reads', () => {
+  const marker = usageMarker({ turns: 100, cost: 4, tokens: 10, agents: [{ name: 'main', turns: 90, cost: 3 }, { name: 'dev', turns: 10, cost: 1 }] }, { subscription: false });
+  const run = parseUsageMarker({ user: { type: 'Bot' }, created_at: '2026-11-10T00:00:00Z', body: `x\n${marker}` });
+  assert.deepEqual(mainAgentShare([run]), { runs: 1, of: 1, cost: 3, total: 4, turns: 90, allTurns: 100 });
 });

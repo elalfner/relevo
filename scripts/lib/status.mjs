@@ -6,7 +6,7 @@
 // me      login of the person asking (null for the team-level view)
 
 import { resolveLabelNames } from './labels.mjs';
-import { sumUsage, summarizeOutcomes, USAGE_DAYS } from './run-usage.mjs';
+import { mainAgentShare, sumUsage, summarizeOutcomes, USAGE_DAYS } from './run-usage.mjs';
 import { STAGE_DAYS, formatDuration, summarizeStages } from './stages.mjs';
 
 /** Reviews one person can complete per working day; used only for the capacity warning. */
@@ -132,6 +132,8 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     milestones: summaries, alerts, waiting, unread,
     // The runs of the last seven days added up, or null when none left a usage marker. Only the digest shows it.
     usage: usage.length ? sumUsage(usage) : null,
+    // The share of the cost and of the turns that the main agent used, over the runs of those that have the detail of their agents.
+    mainAgent: usage.length ? mainAgentShare(usage) : null,
     // How those runs ended and where their time went; nothing is stored, it is read from the markers each time.
     outcomes: usage.length ? summarizeOutcomes(usage) : null,
     // The median time of each stage that finished in the last seven days, or null when none did. Only the digest shows it.
@@ -230,6 +232,18 @@ function digestUsageLine(usage, es) {
   return `${es ? `Uso, últimos ${USAGE_DAYS} días` : `Usage, last ${USAGE_DAYS} days`}: ${parts.join(', ')}.`;
 }
 
+// One line for the digest, after the usage: how much of the cost and of the turns the main agent (the orchestrator of `go`)
+// used, over the runs whose marker has the detail of their agents. It says when the share is above half and decides nothing.
+function digestMainAgentLine(share, es) {
+  const n = (v) => v.toLocaleString(es ? 'es' : 'en-US');
+  const percent = Math.round((share.cost / share.total) * 100);
+  const turns = share.allTurns > 0 ? (es ? ` y ${n(share.turns)} de ${n(share.allTurns)} turnos` : ` and ${n(share.turns)} of ${n(share.allTurns)} turns`) : '';
+  const covers = es ? `${share.runs} de ${share.of} ejecuciones` : `${share.runs} of ${share.of} runs`;
+  const head = es ? `Agente principal: unos ${percent} % del costo${turns} (${covers}).` : `Main agent: about ${percent} % of the cost${turns} (${covers}).`;
+  if (share.cost * 2 <= share.total) return head;
+  return `${head} ${es ? 'Es más de la mitad del costo: ver "Qué reporta una ejecución en la nube" en docs/execution.es.md.' : 'That is more than half of the cost: see "What a cloud run reports" in docs/execution.md.'}`;
+}
+
 const CLASS_NAMES = {
   en: { built: 'built', inputs: 'stopped for missing inputs', policy: 'stopped by policy', 'qa-non-fixable': 'rejected by QA, nothing to fix', 'qa-fixable-after-retries': 'rejected by QA after the retries', conflict: 'conflict', limit: 'stopped at a limit', other: 'other' },
   es: { built: 'construidas', inputs: 'detenidas por entradas faltantes', policy: 'detenidas por política', 'qa-non-fixable': 'rechazadas por QA, nada que corregir', 'qa-fixable-after-retries': 'rechazadas por QA tras los reintentos', conflict: 'conflicto', limit: 'detenidas en un límite', other: 'otras' },
@@ -285,6 +299,7 @@ export function renderDigest(report, language = 'en') {
     });
   }
   if (report.usage) lines.push('', digestUsageLine(report.usage, es));
+  if (report.usage && report.mainAgent) lines.push(digestMainAgentLine(report.mainAgent, es));
   if (report.outcomes && outcomesLine(report.outcomes, es ? 'es' : 'en')) lines.push(...(report.usage ? [] : ['']), outcomesLine(report.outcomes, es ? 'es' : 'en'));
   // After the usage when there is one, so that the two lines read as one block.
   if (report.stages?.length) lines.push(...(report.usage ? [] : ['']), digestStagesLine(report.stages, es));
