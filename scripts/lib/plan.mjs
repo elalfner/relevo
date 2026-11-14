@@ -17,7 +17,7 @@
 //
 // Output: { decisions: [...], summary }, in the order the issues were processed.
 
-import { parseIssueBody } from './issue-parse.mjs';
+import { namedFiles, parseIssueBody, sharedFiles } from './issue-parse.mjs';
 import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
 import { issueHash } from './issue-hash.mjs';
@@ -126,6 +126,20 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
     .sort((a, b) => Number(isUrgent(b)) - Number(isUrgent(a)) || byReadyAt(a, b));
 
   const decisions = [];
+
+  // Files that issues name (see "Gate 4, files shared with another issue"): an issue that is active holds them until it is
+  // merged, and so does a candidate ahead of the issue that is waiting or about to start.
+  const ACTIVE_KEYS = ['building', 'built', 'in-review', 'pr-open', 'changes-requested'];
+  const activeIssues = open.filter((i) => ACTIVE_KEYS.some((k) => has(i, k))).sort((a, b) => a.number - b.number);
+  const byNumber = new Map(open.map((i) => [i.number, i]));
+  const named = new Map();
+  const filesOf = (i) => {
+    if (!named.has(i.number)) named.set(i.number, namedFiles(i.body));
+    return named.get(i.number);
+  };
+  const exclude = [...(config.queue?.append_only ?? []), ...(config.integration?.generated ?? [])];
+  const waitMs = (config.limits.shared_file_wait_hours ?? 24) * 3600 * 1000;
+  const nowMs = new Date(now).getTime();
 
   function decision(issue, action, reason, extra = {}) {
     let labels = extra.labels ?? { add: [], remove: [] };
@@ -261,6 +275,32 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       return;
     }
 
+    // Gate 4: a file that another issue names. The issues that hold files are the active ones and the candidates ahead
+    // of this one that are waiting or about to start; an issue that names no file is never held. The wait is bounded.
+    let sharedPassed = [];
+    const mine = filesOf(issue);
+    if (mine.length > 0) {
+      const holders = [...activeIssues, ...decisions.filter((d) => d.action === 'start' || d.action === 'queue').map((d) => byNumber.get(d.issue)).filter(Boolean)]
+        .filter((h, i, all) => h.number !== issue.number && all.findIndex((x) => x.number === h.number) === i);
+      const collisions = holders.map((h) => ({ other: h.number, files: sharedFiles(mine, filesOf(h), { exclude }) })).filter((c) => c.files.length > 0);
+      if (collisions.length > 0) {
+        const first = { file: collisions[0].files[0], other: collisions[0].other };
+        const prior = issue.shared_wait;
+        const same = Boolean(prior) && prior.file === first.file && prior.other === first.other;
+        const expired = same && Boolean(prior.at) && nowMs - new Date(prior.at).getTime() >= waitMs;
+        if (!expired) {
+          decision(issue, 'queue', `#${first.other} names ${first.file} too and is not merged`, {
+            labels: moveTo(issue, 'queued'),
+            comment: same
+              ? null
+              : { kind: 'queued_shared_files', data: { issue: issue.number, title: issue.title, file: first.file, other: first.other, hours: config.limits.shared_file_wait_hours ?? 24 } },
+          });
+          return;
+        }
+        sharedPassed = collisions.flatMap((c) => c.files.map((file) => ({ file, issue: c.other })));
+      }
+    }
+
     // Gate 3: capacity of the assignee. A valid urgent label skips this gate and no other.
     const built = assignee ? builtBy.get(assignee) ?? 0 : 0;
     const overCapacity = Boolean(assignee) && built >= config.limits.built_unreviewed_per_person;
@@ -339,6 +379,8 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         targets: platform.entry.targets,
         // Only when the urgent label let the issue start over the assignee's capacity: the hand-off message says so.
         ...(overCapacity && urgent ? { urgent: true, built_waiting: built + 1 } : {}),
+        // Only when the wait for a shared file ended by its bound: the hand-off message lists the files.
+        ...(sharedPassed.length > 0 ? { shared_files: sharedPassed } : {}),
       },
     });
   });

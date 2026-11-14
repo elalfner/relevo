@@ -17,7 +17,7 @@ const TABLE = {
   queued: {
     command: null,
     who: 'nobody',
-    hint: { en: 'it starts when the assignee has capacity', es: 'empieza cuando la persona asignada tenga capacidad' },
+    hint: { en: 'it starts when the assignee has capacity, an agent is free, or the issue that shares a file with it is merged', es: 'empieza cuando la persona asignada tenga capacidad, haya un agente libre o se fusione el issue que comparte un archivo con él' },
   },
   building: {
     command: null,

@@ -27,6 +27,9 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `review.ship_without_ci` | `true` lets the `relevo:ship` label merge a pull request on which no check ran; `/relevo:ship` asks the person instead | `false` |
 | `review.allowed_origins` | web origins a driven review may visit besides `localhost`, for example `https://staging.example.com` | `[]` |
 | `restricted_paths` | paths or globs, relative to the repository, that no agent or script of Relevo reads, added to the built-in list (`.env` and `.env.*` except the example files (`.env.example`, `.env.sample`, `.env.template`, `.env.dist`), private keys and certificates, credential files such as `.npmrc` and `.netrc`, mobile service configuration, `secrets/`). It only adds: it cannot remove a built-in entry, a profile cannot weaken it, and an absolute path or one that leaves the repository is rejected ([Security](security.md)) | `[]` |
+| `queue.append_only` | paths or globs, relative to the repository, of files that issues only add lines to (a navigation list, a translation file): naming one does not make two issues wait for each other | `[]` |
+| `integration.generated` | paths or globs of generated files (GraphQL types, a lockfile of a code generator): they never make issues wait, and a conflict in one is resolved by running `integration.regenerate` when the base branch is merged into a build | `[]` |
+| `integration.regenerate` | the command that regenerates the files of `integration.generated`, run from the folder of the platform; required when that list is not empty | none |
 | `skills.allow_scripts` | names of the extra skills that have scripts and may be used; a skill with scripts that is not listed is left out, and `/relevo:doctor` says so | empty |
 | `limits.built_unreviewed_per_person` | built issues one person may have waiting; an issue with a valid `relevo:urgent` label starts anyway | 2 |
 | `limits.concurrent_agents` | unattended runs at the same time | 3 |
@@ -34,6 +37,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `limits.run_max_turns` | turns per unattended run: the runner limits the main agent, and Relevo limits the subagents together to the same number | 100 |
 | `limits.run_max_minutes` | minutes after which an unattended run starts no further agent (at least 5). Keep it at least 5 below the `timeout-minutes` of the build job of the go workflow, which is 60 | 50 |
 | `limits.building_alert_hours` | hours without activity before an issue on `building` is reported as stuck ([Where `go` runs](execution.md)) | 3 |
+| `limits.shared_file_wait_hours` | hours an issue waits for a file that an active or earlier issue also names before it starts anyway (a whole number of at least 1; [Where `go` runs](execution.md)) | 24 |
 | `limits.run_max_cost` | **required** with `agent.build: claude` (the default), and refused with `antigravity`: US dollars per unattended run; choose your own | 5 |
 | `limits.run_max_tokens` | **required** with `agent.build: antigravity`, and refused with `claude`: tokens per unattended run, which Relevo's run guard enforces because Antigravity has no limit of its own | none |
 | `runner.labels` | runner of every Relevo workflow, as a list of labels (`[self-hosted, linux-build]`); `/relevo:init` writes it into the workflow files and `/relevo:doctor` checks that they agree. Relevo assumes any runner persists between jobs, so there is no setting for that ([Self-hosted runners](execution.md#self-hosted-runners)) | `[ubuntu-latest]` |

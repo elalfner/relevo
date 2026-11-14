@@ -383,6 +383,23 @@ test('Scenario: Model and effort of a role - go, fix, review and the shared QA p
   assert.doesNotMatch(read('skills/go/references/qa-run.md'), /unless the runtime lets you set it at launch/, 'the effort is no longer left to the agent file');
 });
 
+test('Scenario: The base branch is integrated before the hand-off - go runs the script and handles each outcome', () => {
+  assert.match(body, /### 6b\. Bring in the base branch/);
+  assert.match(body, /scripts\/integrate-base\.mjs --base <base> --within/);
+  ['unchanged', 'merged', 'regenerated', 'conflict', 'failed'].forEach((outcome) => assert.match(body, new RegExp(`\`${outcome}\``), outcome));
+  assert.match(body, /run the gate again/i);
+  assert.match(body, /reason `conflict with the base branch`/);
+  assert.match(body, /reason `automated validation failed after merging the base branch`/);
+  assert.match(body, /the reasons `conflict with the base branch` and `automated validation failed after merging the base branch` record `conflict` and `other` respectively/);
+  assert.ok(body.indexOf('### 6b.') > body.indexOf('### 6. Commit') && body.indexOf('### 6b.') < body.indexOf('### 7. Push and hand off'), 'between the commit and the push');
+  assert.match(body, /If the script is not in this version of the plugin, go on to step 7/);
+});
+
+test('The decision of a start after the bound carries the shared files into the hand-off', () => {
+  assert.match(body, /`shared_files` \(a list of `\{ file, issue \}`\)/);
+  assert.match(body, /`shared_files` copied from the decision/);
+});
+
 // ---------- the budget of the run
 
 test('Scenario: No agent starts after a limit of the run - the skill records each agent and checks before the next one', () => {

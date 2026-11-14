@@ -64,6 +64,12 @@ The build job reads the issue before the agent starts and stops, without a model
 - **Dependencies need an install step.** Where the profile lists `installed:` paths, enable the install step for your stack in the workflow (the template has commented examples for Flutter and Laravel). Without it a run now stops early instead of letting QA fail late.
 - **It only saves work.** The checks never replace the guards that already exist; see [Security](security.md).
 
+## Files that two issues share
+
+The planner that the queue and `go` both use holds an issue that names a file another issue also names, until that other issue is merged. It reads the issue bodies only, so it needs no extra permission, but it does read the issues in `relevo:in-review`, `relevo:pr-open` and `relevo:changes-requested`, besides the ones it already read. The comment that says why carries a hidden marker with the file and the issue: its time is when the wait began, which is how `limits.shared_file_wait_hours` is counted without any state outside the issue.
+
+Before the hand-off `go` runs `scripts/integrate-base.mjs`: it probes the merge in memory, merges the base branch when it is safe and runs the gate again. `integration.regenerate` is a shell command that runs from the folder of the platform when a generated file conflicts; it comes from your `relevo.yml`, which a person reviews, never from an issue.
+
 ## Pinned actions and cached downloads
 
 The workflows pin the actions they use for the checkout, Node, the cache, Bun and the App token to a full commit and write the release in a comment (`uses: actions/checkout@3d3c42e5… # v7.0.1`), so a moved tag cannot change what a run executes. These releases run on Node.js 24; the earlier ones printed a deprecation warning on every run. A self-hosted runner has to be recent enough for them (Actions Runner v2.329.0 or later). To raise a pin, read the commit of the release in the repository of the action, replace both the commit and the comment, and run the workflow once. `/relevo:doctor` warns when a workflow still uses an action that runs on Node.js 20 and never edits it; `/relevo:init` merges the new text and keeps a pin that you chose.

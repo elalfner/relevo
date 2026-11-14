@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { resolveLabelNames } from './labels.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
 import { renderMessage } from './messages.mjs';
+import { lastSharedWait } from './shared-wait.mjs';
 import { retryState } from './limit-retry.mjs';
 
 /** The real client: runs the GitHub CLI and returns its output. */
@@ -47,6 +48,7 @@ function normalizeIssue(raw) {
     ready_at: null,
     ready_by: null,
     urgent_by: null,
+    shared_wait: null,
   };
 }
 
@@ -102,7 +104,8 @@ export function readRecentBuilds({ gh, repo, workflow = 'relevo-go.yml', limit =
 export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = null }) {
   const names = resolveLabelNames(config.labels);
   // `qa-failed` issues are read only for a retry, and then only the retried one is kept.
-  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built', ...(retry ? ['qa-failed'] : [])];
+  // The states after `built` are read too: an issue in one of them still holds the files it names until it is merged.
+  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built', 'in-review', 'pr-open', 'changes-requested', ...(retry ? ['qa-failed'] : [])];
 
   const byNumber = new Map();
   stateKeys.forEach((key) => {
@@ -118,6 +121,8 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
     const { at, by } = labelEvent(timeline, names.ready);
     issue.ready_at = at;
     issue.ready_by = by;
+    // The wait for a shared file that began last, from the hidden marker of its comment.
+    issue.shared_wait = lastSharedWait(timeline);
     // The same timeline answers for the urgent label: who asked for the early start.
     if (issue.labels.includes(names.urgent)) issue.urgent_by = labelEvent(timeline, names.urgent).by;
   });

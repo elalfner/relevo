@@ -166,6 +166,58 @@ test('External inputs: a link gives its repository and its path', () => {
   assert.deepEqual([inputs[0].repo, inputs[0].path], ['acme/api', 'lib/schema.graphqls']);
 });
 
+import { namedFiles, sharedFiles } from '../scripts/lib/issue-parse.mjs';
+
+const NAMING = [
+  '## Code pointers',
+  '',
+  '- `templates/workflows/relevo-queue.yml` (the queue decision) and `Depends-on:` handling in `scripts/lib/issue-parse.mjs`.',
+  '- `acme/api:src/server.ts`: a file of another repository',
+  '- https://example.com/x.png',
+  '',
+  '## Design reference',
+  '',
+  '- `src/ui/Button.vue`: spacing and colour',
+  '',
+  '## External inputs',
+  '',
+  '- file: `assets/logo.svg`: the logo',
+  '- secret: `API_KEY`: the key',
+  '',
+  'Allow-paths: package.json, `src/gen/**`',
+].join('\n');
+
+test('Scenario: Files named by an issue - each of the four places counts, other repositories and links do not', () => {
+  assert.deepEqual(namedFiles(NAMING), [
+    'templates/workflows/relevo-queue.yml',
+    'scripts/lib/issue-parse.mjs',
+    'src/ui/Button.vue',
+    'assets/logo.svg',
+    'package.json',
+    'src/gen/**',
+  ]);
+});
+
+test('Scenario: An issue that names no file - the list is empty', () => {
+  assert.deepEqual(namedFiles('## Summary\n\nDo a thing in `prose`.\n'), []);
+  assert.deepEqual(namedFiles(''), []);
+});
+
+test('Scenario: Shared files - equal paths and a glob against a path collide, two different globs do not', () => {
+  assert.deepEqual(sharedFiles(['a/router.ts', 'b.ts'], ['router.ts', 'a/router.ts']), ['a/router.ts']);
+  assert.deepEqual(sharedFiles(['src/**'], ['src/app/router.ts']), ['src/app/router.ts']);
+  assert.deepEqual(sharedFiles(['src/app/router.ts'], ['src/**']), ['src/app/router.ts']);
+  assert.deepEqual(sharedFiles(['src/**'], ['src/app/**']), []);
+  assert.deepEqual(sharedFiles(['src/**'], ['src/**']), ['src/**']);
+});
+
+test('Scenario: Append-only and generated files - they are not compared, the others are', () => {
+  const exclude = ['src/nav/items.ts', 'src/gql/**'];
+  assert.deepEqual(sharedFiles(['src/nav/items.ts', 'router.ts'], ['src/nav/items.ts', 'router.ts'], { exclude }), ['router.ts']);
+  assert.deepEqual(sharedFiles(['src/gql/types.ts'], ['src/gql/types.ts'], { exclude }), []);
+  assert.deepEqual(sharedFiles(['src/gql/types.ts'], ['src/gql/types.ts']), ['src/gql/types.ts']);
+});
+
 test('Scenario: A valid pattern - the Pattern: line names an issue of this repository', () => {
   const r = parseIssueBody('## Summary\n\nPattern: #12\n');
   assert.equal(r.pattern, 12);

@@ -410,6 +410,47 @@ test('Scenario: An input that a person confirms - the hand-off lists it, and a b
   assert.doesNotMatch(renderMessage('built', base), /Inputs to confirm/);
 });
 
+test('Scenario: Entering the wait for a shared file - the comment names the file and the issue, mentions nobody and carries the marker', () => {
+  const data = { issue: 15, title: 'Settings', file: 'src/router.ts', other: 12, hours: 24 };
+  const en = renderMessage('queued_shared_files', data, 'en');
+  assert.match(en, /#15 "Settings" is queued/);
+  assert.match(en, /`src\/router\.ts`, which #12 also names/);
+  assert.match(en, /after 24 hours at the latest/);
+  assert.ok(!en.includes('@'));
+  assert.match(en, /<!-- relevo:shared-wait file=src%2Frouter\.ts issue=12 -->/);
+  const es = renderMessage('queued_shared_files', data, 'es');
+  assert.match(es, /está en cola/);
+  assert.match(es, /que #12 también nombra/);
+  assert.ok(!es.includes('@'));
+  assert.match(es, /relevo:shared-wait/);
+  assert.throws(() => renderMessage('queued_shared_files', { issue: 1, title: 'T', file: 'a' }, 'en'), /needs "other"/);
+});
+
+test('Scenario: The first issue takes too long - the hand-off lists the files it shares with issues that were not merged', () => {
+  const base = { assignee: 'persona-b', issue: 15, title: 'Settings', tasks_done: 2, tasks_total: 2, branch: 'feature/15-settings', scenarios: 3, command: '/relevo:review 15', due: 'tomorrow', checklist: '- [ ] a' };
+  const en = renderMessage('built', { ...base, shared_files: [{ file: 'src/router.ts', issue: 12 }, { file: 'src/nav.ts', issue: 13 }] }, 'en');
+  assert.match(en, /It shares files with issues that were not merged when it started: src\/router\.ts \(#12\), src\/nav\.ts \(#13\)\./);
+  assert.match(renderMessage('built', { ...base, shared_files: [{ file: 'src/router.ts', issue: 12 }] }, 'es'), /Comparte archivos con issues que aún no se fusionaban cuando empezó: src\/router\.ts \(#12\)/);
+  assert.doesNotMatch(renderMessage('built', base, 'en'), /shares files/);
+});
+
+test('Scenario: Another file conflicts - the failure comment says QA passed, lists the files and that the branch was pushed without the merge', () => {
+  const data = { assignee: 'persona-b', issue: 15, title: 'Settings', finding: 'Conflict with the base branch in: src/router.ts, src/nav.ts', branch: 'feature/15-settings', reason: 'conflict with the base branch', branch_state: 'pushed' };
+  const en = renderMessage('qa_failed', data, 'en');
+  assert.match(en, /QA passed, but the base branch could not be merged into this branch cleanly/);
+  assert.match(en, /src\/router\.ts, src\/nav\.ts/);
+  assert.match(en, /pushed without the merge/);
+  assert.match(en, /\/relevo:fix 15/);
+  assert.doesNotMatch(en, /rejected it after the retries/);
+  assert.match(renderMessage('qa_failed', data, 'es'), /QA aprobó, pero no se pudo fusionar la rama base/);
+});
+
+test('Scenario: The merged branch fails the gate - the failure comment says the failure came after merging the base', () => {
+  const data = { assignee: 'persona-b', issue: 15, title: 'Settings', finding: 'analyze: 2 errors', branch: 'feature/15-settings', reason: 'automated validation failed after merging the base branch', branch_state: 'pushed' };
+  assert.match(renderMessage('qa_failed', data, 'en'), /the automated checks failed after the base branch was merged/);
+  assert.match(renderMessage('qa_failed', data, 'es'), /tras fusionar la rama base las comprobaciones automáticas fallaron/);
+});
+
 test('Scenario: A run that stopped at a limit says so - it does not say that QA rejected it, and the work kept is the work done before the stop', () => {
   const base = { issue: 97, title: 'Screen', assignee: 'persona-a', branch: 'feature/97-x', reason: 'run limit reached', branch_state: 'kept', tasks_done: 6, tasks_total: 9,
     finding: 'the minutes limit (50) was reached after 51.2 minutes; qa-code and qa-interface did not run' };

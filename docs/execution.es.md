@@ -64,6 +64,12 @@ El job de construcción lee el issue antes de que empiece el agente y se detiene
 - **Las dependencias necesitan un paso de instalación.** Donde el perfil lista rutas en `installed:`, activa en el workflow el paso de instalación de tu stack (la plantilla trae ejemplos comentados para Flutter y Laravel). Sin él, una ejecución ahora se detiene pronto en lugar de dejar que QA falle tarde.
 - **Solo ahorra trabajo.** Las comprobaciones nunca reemplazan las barreras que ya existen; ver [Seguridad](security.es.md).
 
+## Archivos que dos issues comparten
+
+El planificador que usan la cola y `go` retiene un issue que nombra un archivo que otro issue también nombra, hasta que ese otro issue se fusione. Lee solo los cuerpos de los issues, así que no necesita ningún permiso adicional, pero sí lee los issues en `relevo:in-review`, `relevo:pr-open` y `relevo:changes-requested`, además de los que ya leía. El comentario que explica el motivo lleva un marcador oculto con el archivo y el issue: su hora es cuándo empezó la espera, y así se cuenta `limits.shared_file_wait_hours` sin ningún estado fuera del issue.
+
+Antes del traspaso `go` ejecuta `scripts/integrate-base.mjs`: sondea el merge en memoria, mezcla la rama base cuando es seguro y vuelve a ejecutar la puerta. `integration.regenerate` es un comando de shell que se ejecuta desde la carpeta de la plataforma cuando un archivo generado entra en conflicto; viene de tu `relevo.yml`, que revisa una persona, nunca de un issue.
+
 ## Acciones fijadas y descargas en caché
 
 Los workflows fijan las acciones que usan para el checkout, Node, la caché, Bun y el token de la App a un commit completo y escriben la versión en un comentario (`uses: actions/checkout@3d3c42e5… # v7.0.1`), de modo que un tag que se mueva no pueda cambiar lo que ejecuta una corrida. Esas versiones corren en Node.js 24; las anteriores imprimían una advertencia de obsolescencia en cada corrida. Un runner self-hosted debe ser lo bastante reciente para ellas (Actions Runner v2.329.0 o posterior). Para subir una versión fijada, lee el commit del release en el repositorio de la acción, reemplaza el commit y el comentario, y ejecuta el workflow una vez. `/relevo:doctor` avisa cuando un workflow todavía usa una acción que corre en Node.js 20 y nunca la edita; `/relevo:init` mezcla el texto nuevo y conserva una versión que elegiste tú.

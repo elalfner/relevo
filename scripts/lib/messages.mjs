@@ -8,6 +8,7 @@
 import { shortHash } from './issue-hash.mjs';
 import { pickLanguage, SUPPORTED_LANGUAGES } from './language.mjs';
 import { nextStep, nextStepPrefix } from './next-step.mjs';
+import { sharedWaitMarker } from './shared-wait.mjs';
 
 // Kept here as well so that existing imports keep working.
 export { pickLanguage, SUPPORTED_LANGUAGES };
@@ -35,6 +36,7 @@ const REQUIRED = {
   blocked_notice: ['issue', 'title', 'blockers'],
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
   queued_agents: ['issue', 'title'],
+  queued_shared_files: ['issue', 'title', 'file', 'other', 'hours'],
   fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
   ship_stopped: ['actor', 'issue', 'reasons'],
   ship_not_approver: ['actor', 'issue'],
@@ -69,6 +71,7 @@ export const CATALOG = {
       'Assumed, not confirmed: {{assumed}}',
       'Branch: {{branch}}',
       'Started ahead of the queue (urgent): you now have {{built_waiting}} built issues waiting for your review.',
+      '{{shared_files_line}}',
       'Built from the issue text: {{issue_hash_short}}',
       'What to test: {{scenarios}} scenarios (checklist below)',
       'Riskiest area, check it first: {{risk}}',
@@ -193,6 +196,12 @@ export const CATALOG = {
       'Recent builds: {{typical_text}}',
       'These figures are read when the issue is queued; they are not updated while it waits.',
     ],
+    queued_shared_files: [
+      '#{{issue}} "{{title}}" is queued',
+      '',
+      'It names `{{file}}`, which #{{other}} also names and has not been merged yet, so building both at once would conflict. It starts automatically when #{{other}} is merged, or after {{hours}} hours at the latest.',
+      '{{wait_marker}}',
+    ],
     fix_done: [
       '#{{issue}} "{{title}}" fixed (iteration {{iteration}})',
       '',
@@ -259,6 +268,7 @@ export const CATALOG = {
       'Supuesto, sin confirmar: {{assumed}}',
       'Rama: {{branch}}',
       'Empezó antes que la cola (urgente): ahora tienes {{built_waiting}} issues construidos esperando tu revisión.',
+      '{{shared_files_line}}',
       'Construida con el texto del issue: {{issue_hash_short}}',
       'Qué probar: {{scenarios}} escenarios (checklist abajo)',
       'Zona más riesgosa, revísala primero: {{risk}}',
@@ -382,6 +392,12 @@ export const CATALOG = {
       'Delante en la cola: {{ahead_text}}',
       'Construcciones recientes: {{typical_text}}',
       'Estas cifras se leen cuando el issue entra en la cola; no se actualizan mientras espera.',
+    ],
+    queued_shared_files: [
+      '#{{issue}} "{{title}}" está en cola',
+      '',
+      'Nombra `{{file}}`, que #{{other}} también nombra y aún no se fusionó, así que construir los dos a la vez generaría un conflicto. Empieza solo cuando se fusione #{{other}}, o como máximo pasadas {{hours}} horas.',
+      '{{wait_marker}}',
     ],
     fix_done: [
       '#{{issue}} "{{title}}" corregido (iteración {{iteration}})',
@@ -762,6 +778,17 @@ export function renderMessage(kind, data = {}, language = 'en') {
       values.qa_notes_marker = `<!-- relevo:qa-notes ${JSON.stringify(notes).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')} -->`;
     }
   }
+  // A wait for a file shared with another issue carries the hidden marker that dates the wait.
+  if (kind === 'queued_shared_files') values.wait_marker = sharedWaitMarker(values.file, values.other);
+  // An issue that started after the bound, sharing files with issues that were not merged yet, says which.
+  if (kind === 'built' && Array.isArray(values.shared_files) && values.shared_files.length > 0) {
+    const shared = values.shared_files.filter((s) => s && present(s.file) && present(s.issue)).map((s) => `${String(s.file).replace(/[`<>]/g, '')} (#${s.issue})`);
+    if (shared.length > 0) {
+      values.shared_files_line = es
+        ? `Comparte archivos con issues que aún no se fusionaban cuando empezó: ${shared.join(', ')}. Puede haber conflictos al fusionar.`
+        : `It shares files with issues that were not merged when it started: ${shared.join(', ')}. Expect conflicts when merging.`;
+    }
+  }
   // Urgent does not skip dependencies: an urgent issue that is blocked says so.
   if (kind === 'blocked_notice' && values.urgent === true) {
     values.urgent_note = es ? 'La etiqueta de urgente no salta las dependencias: empieza primero en la cola cuando se fusionen.' : 'The urgent label does not skip dependencies: it goes first in the queue once they are merged.';
@@ -829,7 +856,16 @@ export function renderMessage(kind, data = {}, language = 'en') {
     values.branch_line = branchLines[state];
     values.reason_suffix = present(values.reason) ? ` (${values.reason})` : '';
     // When no finding could be corrected by the developer agent the retries were never run, so the line says that.
-    values.happened = stoppedAtLimit
+    // QA passed, but the base branch could not be integrated before the hand-off, or the checks failed once it was.
+    const integration = {
+      'conflict with the base branch': es
+        ? 'QA aprobó, pero no se pudo fusionar la rama base en esta rama sin conflictos (el detalle está en el hallazgo). La rama se subió sin la fusión.'
+        : 'QA passed, but the base branch could not be merged into this branch cleanly (the details are in the finding). The branch was pushed without the merge.',
+      'automated validation failed after merging the base branch': es
+        ? 'QA aprobó, pero tras fusionar la rama base las comprobaciones automáticas fallaron. La rama se subió con la fusión hecha.'
+        : 'QA passed, but the automated checks failed after the base branch was merged. The branch was pushed with the merge done.',
+    }[values.reason];
+    values.happened = integration ?? (stoppedAtLimit
       ? (es ? `La ejecución se detuvo en un límite antes de terminar${values.reason_suffix}.` : `The run stopped at a limit before it finished${values.reason_suffix}.`)
       : policyStop(values)
       ? `${es ? 'La ejecución se detuvo' : 'The run stopped'}${values.reason_suffix}: ${policyStop(values)[es ? 'es' : 'en']}.`
@@ -839,7 +875,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
       ? (es ? `QA la rechazó y los hallazgos de dos lentes se contradicen, así que no se hicieron más reintentos${values.reason_suffix}.` : `QA rejected it and the findings of two lenses contradict each other, so there were no more retries${values.reason_suffix}.`)
       : values.retries_skipped === true
       ? (es ? 'QA la rechazó y ningún hallazgo lo puede corregir el agente de desarrollo, así que no se hicieron reintentos.' : 'QA rejected it and no finding can be corrected by the developer agent, so there were no retries.')
-      : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`);
+      : (es ? `QA la rechazó otra vez tras los reintentos${values.reason_suffix}.` : `QA still rejected it after the retries${values.reason_suffix}.`));
   }
 
   // A language that lacks a kind uses the English text; tests/messages-language.test.mjs fails the build of Relevo before that happens.
@@ -849,7 +885,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
     const names = [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
     const optionalEmpty = names.some((n) => !present(values[n]) && !n.endsWith('_suffix'));
     if (names.length > 0 && optionalEmpty) return;
-    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' || n === 'body' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
+    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' || n === 'body' || n === 'wait_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
   });
 
   // Collapse repeated blank lines and trim the ends.
