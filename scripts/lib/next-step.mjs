@@ -17,7 +17,7 @@ const TABLE = {
   queued: {
     command: null,
     who: 'nobody',
-    hint: { en: 'it starts when the assignee has capacity', es: 'empieza cuando la persona asignada tenga capacidad' },
+    hint: { en: 'it starts when the assignee has capacity, an agent is free, or the issue that shares a file with it is merged', es: 'empieza cuando la persona asignada tenga capacidad, haya un agente libre o se fusione el issue que comparte un archivo con él' },
   },
   building: {
     command: null,
@@ -73,8 +73,17 @@ const TABLE = {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
       hint: {
-        en: 'a task needs something an unattended run may not do: list the dependency manifest in Allow-paths:, or change the issue so that it does not need the protected path, then label it ready again',
-        es: 'una tarea necesita algo que una corrida sin supervisión no puede hacer: lista el manifiesto de dependencias en Allow-paths: o cambia el issue para que no necesite la ruta protegida, y vuelve a ponerle ready',
+        en: 'a task needs something an unattended run may not do: a person makes that edit (workflows, relevo.yml, skills and the project rules are never changed by a run) or the issue changes so that no task needs it; only a dependency manifest can be allowed, with an Allow-paths: line. Then label it ready again',
+        es: 'una tarea necesita algo que una corrida sin supervisión no puede hacer: una persona hace esa edición (los workflows, relevo.yml, las skills y las reglas del proyecto no los cambia ninguna corrida) o el issue cambia para que ninguna tarea la necesite; solo un manifiesto de dependencias se puede permitir, con una línea Allow-paths:. Luego vuelve a ponerle ready',
+      },
+    },
+    // The check before the build found that the issue contradicts the project rules or its own scenarios.
+    conflict: {
+      command: '/relevo:issue {n}',
+      who: 'spec_writer',
+      hint: {
+        en: 'the issue contradicts a project rule or its own scenarios: decide which one wins, change the issue or record a decision with an "Overrides: <file>:<line>" line, then label it ready again',
+        es: 'el issue contradice una regla del proyecto o sus propios escenarios: decide cuál gana, cambia el issue o registra una decisión con una línea "Overrides: <archivo>:<línea>" y vuelve a ponerle ready',
       },
     },
   },
@@ -125,8 +134,17 @@ const TABLE = {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
       hint: {
-        en: 'the work needs something an unattended run may not do: list the dependency manifest in Allow-paths:, or change the issue so that it does not need the protected path; the work that was kept stays on the branch, and /relevo:fix {n} then corrects it',
-        es: 'el trabajo necesita algo que una corrida sin supervisión no puede hacer: lista el manifiesto de dependencias en Allow-paths: o cambia el issue para que no necesite la ruta protegida; el trabajo que se guardó sigue en la rama y /relevo:fix {n} lo corrige después',
+        en: 'the work needs something an unattended run may not do: a person makes that edit or the issue changes so that no task needs it, and only a dependency manifest can be allowed, with an Allow-paths: line; the work that was kept stays on the branch, and /relevo:fix {n} then corrects it',
+        es: 'el trabajo necesita algo que una corrida sin supervisión no puede hacer: una persona hace esa edición o el issue cambia para que ninguna tarea la necesite, y solo un manifiesto de dependencias se puede permitir, con una línea Allow-paths:; el trabajo que se guardó sigue en la rama y /relevo:fix {n} lo corrige después',
+      },
+    },
+    // The commit guard refused a protected path: QA never judged the work and nothing was pushed, so the issue has to change.
+    protected: {
+      command: '/relevo:issue {n}',
+      who: 'spec_writer',
+      hint: {
+        en: 'an unattended run cannot edit that protected path and QA did not judge the work: a person makes the edit, or the issue changes so that no task needs it, then label it ready again',
+        es: 'una corrida sin supervisión no puede editar esa ruta protegida y QA no juzgó el trabajo: una persona hace la edición, o el issue cambia para que ninguna tarea la necesite, y vuelve a ponerle ready',
       },
     },
     // Nothing was built: the dependencies of the platform were never installed, and the fix is in the workflow.
@@ -204,16 +222,16 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
-  'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy'],
-  'qa-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'delete-branch', 'restricted', 'rebuild'],
+  'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
+  'qa-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild'],
 };
 
 const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
 
 /**
  * The next step for an issue in `state`.
- * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs` or `policy`) and of `qa-failed`
- * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
+ * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `qa-failed`
+ * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
 export function nextStep({ state, reason = null, issue = null, language = 'en' } = {}) {

@@ -21,3 +21,9 @@ export function toDispatch(decisions, { alreadyRunning = 0, limit }) {
   const free = Math.max(0, limit - alreadyRunning);
   return startable(decisions).slice(0, free);
 }
+
+/** The seconds to wait between two dispatches, so that the builds that start together do not reach the quota at once: 60, less when the whole dispatch would last over 5 minutes, and none for one build. */
+export function staggerSeconds(count) {
+  if (!Number.isInteger(count) || count <= 1) return 0;
+  return Math.min(60, Math.floor(300 / (count - 1)));
+}

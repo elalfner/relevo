@@ -171,3 +171,74 @@ The times of the stages SHALL be read from the events that GitHub keeps for the 
 #### Scenario: The events cannot be read
 - **WHEN** the read of the events fails
 - **THEN** the digest is posted without the line of stage times, with the rest unchanged
+
+### Requirement: The alert on a branch behind the base branch says whether the merge would conflict
+For each feature branch that has fallen behind the base branch, `status` SHALL say whether merging the base branch into it would conflict. It SHALL find out without changing any branch or file, and SHALL say that it does not know when the installed tools cannot tell.
+
+#### Scenario: A branch that would conflict
+- **WHEN** a feature branch is behind the base branch and the merge would conflict
+- **THEN** the alert says so and names the files in conflict
+
+#### Scenario: A branch that merges cleanly
+- **WHEN** a feature branch is behind the base branch and the merge would be clean
+- **THEN** the alert says so
+
+#### Scenario: The tools cannot tell
+- **WHEN** the installed version of git cannot probe a merge without changing the tree
+- **THEN** the alert says that it does not know, and nothing is changed
+
+### Requirement: `status` summarises how runs ended and where their time went
+In addition to the stage times it already shows, `status` and the daily digest SHALL print, for the runs of a window of days, how many ended in each outcome class and the total seconds of each phase of a build, read from the usage records. They SHALL say how many runs have no record.
+
+#### Scenario: A window with several outcomes
+- **WHEN** the window holds runs that were built, stopped for missing inputs and rejected by QA
+- **THEN** the summary counts each class and gives the seconds per phase
+
+#### Scenario: Runs from before the records
+- **WHEN** some runs of the window have no phases or class
+- **THEN** they are counted as without a record, and the rest of the summary is not affected
+
+#### Scenario: Nothing is stored
+- **WHEN** the summary is printed
+- **THEN** it has been computed from the comments on GitHub and written nowhere else
+
+### Requirement: The digest shows the share of the main agent
+The daily digest SHALL add one line after the line of usage with the share of the cost that the main agent used and the turns it used out of all the turns, over the runs of the last seven days whose usage marker has the detail of the agents. The line SHALL give the number of runs it covers out of the runs of the usage line.
+
+#### Scenario: Runs with the detail
+- **WHEN** three runs of the last seven days have agent detail and the main agent used 5 of the 10 dollars they cost, in 300 of their 420 turns
+- **THEN** the digest has a line that says the main agent used 50 % of the cost and 300 of 420 turns, over 3 of 3 runs
+
+#### Scenario: A notional cost
+- **WHEN** the cost of the runs is notional because the credential is a subscription
+- **THEN** the share is still shown, because it is a ratio over the same runs
+
+#### Scenario: Language of the line
+- **WHEN** `language` in `relevo.yml` is Spanish
+- **THEN** the line is in Spanish, with the same figures
+
+### Requirement: Only the runs that have the detail are counted
+A run whose usage marker has no agent detail, or no cost for the main agent, SHALL NOT be counted in the share of the main agent, and its figures SHALL NOT be inferred from the text of its comment. Without any such run the digest SHALL have no line about the main agent.
+
+#### Scenario: Some runs without the detail
+- **WHEN** four runs left a usage marker and only two of them have the agents of the run
+- **THEN** the share is computed over those two, and the line says it covers 2 of 4 runs
+
+#### Scenario: No run with the detail
+- **WHEN** runs left a usage marker but none has agent detail, or none has a cost for the main agent
+- **THEN** the digest has no line about the main agent, and the line of usage is as it was
+
+### Requirement: The line about the main agent informs and decides nothing
+The digest SHALL say in words, on the line about the main agent, when the share of the cost is above half. It SHALL NOT change the model or the turns of any agent, `limits.run_max_turns`, or `limits.run_max_cost`, and SHALL NOT post anything of its own when nothing is waiting.
+
+#### Scenario: Share above half
+- **WHEN** the main agent used more than half of the cost of the runs it covers
+- **THEN** the line says that it is above half, and no setting or limit is changed
+
+#### Scenario: Share at or below half
+- **WHEN** the main agent used half of the cost or less
+- **THEN** the line gives the figures without that remark
+
+#### Scenario: Nothing waiting
+- **WHEN** nothing is waiting and no alert applies, whatever the share
+- **THEN** no digest is posted, as for the line of usage

@@ -11,15 +11,18 @@
 //   completed  issue numbers closed as completed (their pull request merged)
 //   running    issue numbers with an agent run in progress
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
+//   now        ms since the epoch (the clock of the plan; the tests give it)
+//   (an issue may carry `limit_retry: { at, attempt, reason }`: the retry time that the comment of a usage limit gave, `at` in ms; see limit-retry.mjs)
 //   retry      { issue, by } | null  the person `by` retries the `qa-failed` issue `issue`: it is planned as if `by` had made it `ready`
 //
 // Output: { decisions: [...], summary }, in the order the issues were processed.
 
-import { parseIssueBody } from './issue-parse.mjs';
+import { namedFiles, parseIssueBody, sharedFiles } from './issue-parse.mjs';
 import { resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
 import { issueHash } from './issue-hash.mjs';
 import { resolvePlatform } from './platform-of.mjs';
+import { EPISODE_MS } from './limit-retry.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
 // In a public repository only maintainers may start work: anyone with write access could otherwise start a
@@ -53,7 +56,7 @@ export function withoutCredential(decisions, issues = []) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now() }) {
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);
   const open = issues.filter((i) => i.state === 'open');
@@ -74,10 +77,37 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   let freeSlots = Math.max(0, config.limits.concurrent_agents - runningSet.size);
 
   const builtBy = new Map();
+  const builtIssues = new Map();
   open.filter((i) => has(i, 'built')).forEach((i) => {
     const owner = i.assignees[0];
-    if (owner) builtBy.set(owner, (builtBy.get(owner) ?? 0) + 1);
+    if (owner) {
+      builtBy.set(owner, (builtBy.get(owner) ?? 0) + 1);
+      builtIssues.set(owner, [...(builtIssues.get(owner) ?? []), i.number]);
+    }
   });
+
+  // What a person who waits for a free agent is told: how many runs are active and which, how many issues wait before this one,
+  // and how long the recent builds took. Only what was read: the durations come from the caller (null when they could not be read;
+  // fewer than three are too few to call typical) and nothing is estimated.
+  const MIN_BUILDS = 3;
+  // `recentBuilds` is a list of minutes or a function that reads it (called at most once, and only when an issue is queued for an agent).
+  let typicalOnce;
+  const typicalBuild = () => {
+    if (typicalOnce !== undefined) return typicalOnce;
+    let list = null;
+    try {
+      list = typeof recentBuilds === 'function' ? recentBuilds() : recentBuilds;
+    } catch {
+      list = null;
+    }
+    const sorted = Array.isArray(list) ? list.filter((m) => Number.isFinite(m) && m >= 0).sort((a, b) => a - b) : [];
+    const mid = sorted.length / 2;
+    typicalOnce = sorted.length >= MIN_BUILDS
+      ? { minutes: Math.round(sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2), samples: sorted.length }
+      : null;
+    return typicalOnce;
+  };
+  let waitingForAgent = 0;
 
   // Valid urgent issues are considered first, so they take the free agent slots before the others; inside each group
   // the order is the time `ready` was applied.
@@ -85,11 +115,31 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   const isRetry = (issue) => Boolean(retry) && retry.issue === issue.number && has(issue, 'qa-failed');
   const startedBy = (issue) => (isRetry(issue) ? retry.by : issue.ready_by);
 
+  // An issue that waits for a usage limit to reset: `queued` with a retry time that has not come. It is held: it takes no slot and says nothing.
+  const holdsForLimit = (issue) => has(issue, 'queued') && Boolean(issue.limit_retry) && issue.limit_retry.at > now;
+  // An issue that is retrying after a usage limit and is due. Only one such issue runs at a time: the first shows whether the quota is back.
+  const retrying = (issue) => has(issue, 'queued') && Boolean(issue.limit_retry);
+  let probeBusy = open.some((i) => has(i, 'building') && i.limit_retry && now - i.limit_retry.at <= EPISODE_MS);
+
   const candidates = open
     .filter((i) => has(i, 'ready') || has(i, 'queued') || has(i, 'blocked') || isRetry(i))
     .sort((a, b) => Number(isUrgent(b)) - Number(isUrgent(a)) || byReadyAt(a, b));
 
   const decisions = [];
+
+  // Files that issues name (see "Gate 4, files shared with another issue"): an issue that is active holds them until it is
+  // merged, and so does a candidate ahead of the issue that is waiting or about to start.
+  const ACTIVE_KEYS = ['building', 'built', 'in-review', 'pr-open', 'changes-requested'];
+  const activeIssues = open.filter((i) => ACTIVE_KEYS.some((k) => has(i, k))).sort((a, b) => a.number - b.number);
+  const byNumber = new Map(open.map((i) => [i.number, i]));
+  const named = new Map();
+  const filesOf = (i) => {
+    if (!named.has(i.number)) named.set(i.number, namedFiles(i.body));
+    return named.get(i.number);
+  };
+  const exclude = [...(config.queue?.append_only ?? []), ...(config.integration?.generated ?? [])];
+  const waitMs = (config.limits.shared_file_wait_hours ?? 24) * 3600 * 1000;
+  const nowMs = new Date(now).getTime();
 
   function decision(issue, action, reason, extra = {}) {
     let labels = extra.labels ?? { add: [], remove: [] };
@@ -121,6 +171,11 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   candidates.forEach((issue) => {
     if (runningSet.has(issue.number)) {
       decision(issue, 'skip', 'an agent is already running for this issue');
+      return;
+    }
+
+    if (holdsForLimit(issue)) {
+      decision(issue, 'skip', `the usage limit of the model account has not reset: it retries after ${new Date(issue.limit_retry.at).toISOString()}`);
       return;
     }
 
@@ -220,6 +275,32 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       return;
     }
 
+    // Gate 4: a file that another issue names. The issues that hold files are the active ones and the candidates ahead
+    // of this one that are waiting or about to start; an issue that names no file is never held. The wait is bounded.
+    let sharedPassed = [];
+    const mine = filesOf(issue);
+    if (mine.length > 0) {
+      const holders = [...activeIssues, ...decisions.filter((d) => d.action === 'start' || d.action === 'queue').map((d) => byNumber.get(d.issue)).filter(Boolean)]
+        .filter((h, i, all) => h.number !== issue.number && all.findIndex((x) => x.number === h.number) === i);
+      const collisions = holders.map((h) => ({ other: h.number, files: sharedFiles(mine, filesOf(h), { exclude }) })).filter((c) => c.files.length > 0);
+      if (collisions.length > 0) {
+        const first = { file: collisions[0].files[0], other: collisions[0].other };
+        const prior = issue.shared_wait;
+        const same = Boolean(prior) && prior.file === first.file && prior.other === first.other;
+        const expired = same && Boolean(prior.at) && nowMs - new Date(prior.at).getTime() >= waitMs;
+        if (!expired) {
+          decision(issue, 'queue', `#${first.other} names ${first.file} too and is not merged`, {
+            labels: moveTo(issue, 'queued'),
+            comment: same
+              ? null
+              : { kind: 'queued_shared_files', data: { issue: issue.number, title: issue.title, file: first.file, other: first.other, hours: config.limits.shared_file_wait_hours ?? 24 } },
+          });
+          return;
+        }
+        sharedPassed = collisions.flatMap((c) => c.files.map((file) => ({ file, issue: c.other })));
+      }
+    }
+
     // Gate 3: capacity of the assignee. A valid urgent label skips this gate and no other.
     const built = assignee ? builtBy.get(assignee) ?? 0 : 0;
     const overCapacity = Boolean(assignee) && built >= config.limits.built_unreviewed_per_person;
@@ -229,17 +310,38 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         labels: moveTo(issue, 'queued'),
         comment: has(issue, 'queued')
           ? null
-          : { kind: 'queued_capacity', data: { issue: issue.number, title: issue.title, assignee, built, limit: config.limits.built_unreviewed_per_person } },
+          : { kind: 'queued_capacity', data: { issue: issue.number, title: issue.title, assignee, built, limit: config.limits.built_unreviewed_per_person, built_issues: builtIssues.get(assignee).map((n) => `#${n}`).join(', ') } },
       });
+      return;
+    }
+
+    // A retry after a usage limit starts alone: the others wait until it ends (the queue is evaluated when it does).
+    if (retrying(issue) && probeBusy) {
+      decision(issue, 'skip', 'another issue that retries after a usage limit is running or starting');
       return;
     }
 
     // Global limit on concurrent agents.
     if (freeSlots <= 0) {
+      const active = [...runningSet].sort((a, b) => a - b);
+      const typical = has(issue, 'queued') ? null : typicalBuild();
       decision(issue, 'queue', 'the limit of concurrent agents is reached', {
         labels: moveTo(issue, 'queued'),
-        comment: has(issue, 'queued') ? null : { kind: 'queued_agents', data: { issue: issue.number, title: issue.title } },
+        comment: has(issue, 'queued')
+          ? null
+          : {
+              kind: 'queued_agents',
+              data: {
+                issue: issue.number,
+                title: issue.title,
+                active: active.length,
+                ...(active.length > 0 ? { active_issues: active.map((n) => `#${n}`).join(', ') } : {}),
+                ahead: waitingForAgent,
+                ...(typical ? { typical_minutes: typical.minutes, typical_samples: typical.samples } : {}),
+              },
+            },
       });
+      waitingForAgent += 1;
       return;
     }
 
@@ -251,6 +353,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
     freeSlots -= 1;
     runningSet.add(issue.number);
+    if (retrying(issue)) probeBusy = true;
     decision(issue, 'start', 'all gates passed', {
       labels: moveTo(issue, 'building'),
       start: {
@@ -263,6 +366,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         title: issue.title,
         qa_retries: config.qa.retries,
         run_max_turns: config.limits.run_max_turns,
+        run_max_minutes: config.limits.run_max_minutes,
         run_max_cost: config.limits.run_max_cost,
         // The text the issue had when it was claimed: `go` checks it before it writes the specification.
         issue_hash: issueHash({ title: issue.title, body: issue.body }),
@@ -275,6 +379,8 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         targets: platform.entry.targets,
         // Only when the urgent label let the issue start over the assignee's capacity: the hand-off message says so.
         ...(overCapacity && urgent ? { urgent: true, built_waiting: built + 1 } : {}),
+        // Only when the wait for a shared file ended by its bound: the hand-off message lists the files.
+        ...(sharedPassed.length > 0 ? { shared_files: sharedPassed } : {}),
       },
     });
   });

@@ -141,3 +141,27 @@ test('the classes of a QA finding that the developer agent cannot fix each have 
   assert.equal(nextStep({ state: 'qa-failed', reason: 'spec', issue: 9 }).command, '/relevo:issue 9');
   assert.equal(nextStep({ state: 'qa-failed', reason: 'policy', issue: 9 }).command, '/relevo:issue 9');
 });
+
+test('Scenario: A queued issue can wait for a shared file - the single hint says so, in both languages', () => {
+  assert.match(nextStep({ state: 'queued', issue: 4 }).hint, /issue that shares a file with it is merged/);
+  assert.match(nextStep({ state: 'queued', issue: 4, language: 'es' }).hint, /se fusione el issue que comparte un archivo con él/);
+});
+
+test('Scenario: Next step for the reason conflict - the writer settles which one wins', () => {
+  const step = nextStep({ state: 'needs-spec', reason: 'conflict', issue: 121 });
+  assert.equal(step.command, '/relevo:issue 121');
+  assert.equal(step.who, 'spec_writer');
+  assert.match(nextStep({ state: 'needs-spec', reason: 'conflict', issue: 121 }).hint, /Overrides: <file>:<line>/);
+  assert.match(nextStep({ state: 'needs-spec', reason: 'conflict', issue: 121, language: 'es' }).hint, /Overrides:/);
+});
+
+test('Scenario: The next step for a protected path refused by the commit guard - the writer changes the issue, in both languages', () => {
+  const step = nextStep({ state: 'qa-failed', reason: 'protected', issue: 12 });
+  assert.deepEqual([step.command, step.who], ['/relevo:issue 12', 'spec_writer']);
+  assert.match(step.hint, /a person makes the edit, or the issue changes/);
+  assert.match(nextStep({ state: 'qa-failed', reason: 'protected', issue: 12, language: 'es' }).hint, /una persona hace la edición/);
+});
+
+test('the policy hint does not offer Allow-paths for a protected path that is not a manifest', () => {
+  assert.match(nextStep({ state: 'needs-spec', reason: 'policy', issue: 47 }).hint, /only a dependency manifest can be allowed/);
+});

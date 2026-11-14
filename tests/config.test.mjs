@@ -217,6 +217,16 @@ test('Scenario: Alert for a build that stopped reporting - default 3, and 0 or 2
   });
 });
 
+test('Scenario: Run time limit setting - default 50, a valid value is kept, and below 5 or not a whole number is rejected naming the setting', () => {
+  assert.equal(loadConfig(MINIMAL).config.limits.run_max_minutes, 50);
+  assert.equal(loadConfig('limits:\n  run_max_cost: 5\n  run_max_minutes: 30\n').config.limits.run_max_minutes, 30);
+  ['4', '0', '12.5', 'soon'].forEach((v) => {
+    const r = loadConfig(`limits:\n  run_max_cost: 5\n  run_max_minutes: ${v}\n`);
+    assert.equal(r.ok, false, v);
+    assert.equal(r.errors[0].path, 'limits.run_max_minutes');
+  });
+});
+
 // ---------- review autopilot
 
 test('Scenario: Invalid autopilot value - validation names review.autopilot and the allowed values', () => {
@@ -467,4 +477,149 @@ test('Scenario: A restricted path - validation says why', () => {
 test('a protected path is refused too, and an unknown key under design.system is a typo', () => {
   assert.match(loadConfig(withSystem('    components: [.github/workflows]\n')).errors.map((e) => e.message).join(' '), /protected path/);
   assert.match(loadConfig(withSystem('    token: [lib]\n')).errors.map((e) => e.message).join(' '), /unknown setting "design\.system\.token"/);
+});
+
+test('Scenario: Shared-file defaults - nothing excluded, nothing regenerated, a wait of 24 hours', () => {
+  const { ok, config } = loadConfig(MINIMAL);
+  assert.equal(ok, true);
+  assert.deepEqual(config.queue.append_only, []);
+  assert.deepEqual(config.integration.generated, []);
+  assert.equal(config.integration.regenerate, null);
+  assert.equal(config.limits.shared_file_wait_hours, 24);
+});
+
+test('Scenario: Shared-file settings given - the values are kept', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}queue:\n  append_only:\n    - src/nav/items.ts\nintegration:\n  generated:\n    - "src/gql/**"\n  regenerate: npm run codegen\n`.replace('run_max_cost: 5', 'run_max_cost: 5\n  shared_file_wait_hours: 8'));
+  assert.equal(ok, true);
+  assert.deepEqual(config.queue.append_only, ['src/nav/items.ts']);
+  assert.deepEqual(config.integration.generated, ['src/gql/**']);
+  assert.equal(config.integration.regenerate, 'npm run codegen');
+  assert.equal(config.limits.shared_file_wait_hours, 8);
+});
+
+test('Scenario: Generated files without a command - integration.regenerate is required', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}integration:\n  generated:\n    - "src/gql/**"\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'integration.regenerate'));
+});
+
+test('Scenario: A glob that leaves the repository - both list settings refuse it', () => {
+  ['/etc/x', '../x', 'a/../../x', '~/x'].forEach((bad) => {
+    const a = loadConfig(`${MINIMAL}queue:\n  append_only:\n    - "${bad}"\n`);
+    assert.equal(a.ok, false, bad);
+    assert.ok(a.errors.some((e) => e.path === 'queue.append_only' && /leaves the repository/.test(e.message)));
+    const g = loadConfig(`${MINIMAL}integration:\n  generated:\n    - "${bad}"\n  regenerate: make gen\n`);
+    assert.equal(g.ok, false, bad);
+  });
+});
+
+test('Scenario: A wait of zero or a fraction - limits.shared_file_wait_hours is a whole number of at least 1', () => {
+  ['0', '1.5', 'soon'].forEach((v) => {
+    const { ok, errors } = loadConfig(`${MINIMAL}  shared_file_wait_hours: ${v}\n`);
+    assert.equal(ok, false, v);
+    assert.ok(errors.some((e) => e.path === 'limits.shared_file_wait_hours'));
+  });
+});
+
+// ---------- The ladder, auto and the range of a role (model-per-issue)
+
+test('Scenario: The default ladder - low to high, without a line in relevo.yml', () => {
+  const { ok, config } = loadConfig(MINIMAL);
+  assert.equal(ok, true);
+  assert.deepEqual(config.agents.ladder, ['haiku', 'sonnet', 'opus']);
+});
+
+test('Scenario: A ladder of the repository - its order is the one the ranges are read against', () => {
+  const { ok, config, errors } = loadConfig(agents('  ladder: [sonnet, opus]\n  dev:\n    model: auto\n    ceiling: opus\n'));
+  assert.equal(ok, true, JSON.stringify(errors));
+  assert.deepEqual(config.agents.ladder, ['sonnet', 'opus']);
+  assert.deepEqual(config.agents.dev, { model: 'auto', effort: 'high', floor: 'sonnet', ceiling: 'opus' });
+  assert.ok(config.agents_given.includes('agents.ladder'));
+});
+
+test('Scenario: An invalid ladder - an empty list, a repeat or something that is not a name is reported by name', () => {
+  for (const yaml of ['  ladder: []\n', '  ladder: [a, a]\n', '  ladder: [a, ""]\n', '  ladder: sonnet\n']) {
+    const r = loadConfig(agents(yaml));
+    assert.equal(r.ok, false, yaml);
+    assert.ok(r.errors.some((e) => e.path === 'agents.ladder'), yaml);
+  }
+});
+
+test('Scenario: Auto with the defaults - the ceiling is the default model and the floor one step below', () => {
+  const { ok, config } = loadConfig(agents('  dev:\n    model: auto\n  qa:\n    security:\n      model: auto\n    interface:\n      model: auto\n    code:\n      model: auto\n'));
+  assert.equal(ok, true);
+  assert.deepEqual(config.agents.dev, { model: 'auto', effort: 'high', floor: 'haiku', ceiling: 'sonnet' });
+  assert.deepEqual(config.agents.qa.security, { model: 'auto', effort: 'high', floor: 'sonnet', ceiling: 'opus' }, 'a lens that defaults to the stronger model is never below one step of it');
+  assert.deepEqual(config.agents.qa.interface, { model: 'auto', effort: 'medium', floor: 'sonnet', ceiling: 'sonnet' }, 'haiku did not pass the lens evaluation');
+  assert.deepEqual(config.agents.qa.code, { model: 'auto', effort: 'high', floor: 'sonnet', ceiling: 'sonnet' });
+});
+
+test('Scenario: The ceiling is raised - the floor follows it by default', () => {
+  const { config } = loadConfig(agents('  dev:\n    model: auto\n    ceiling: opus\n'));
+  assert.deepEqual([config.agents.dev.floor, config.agents.dev.ceiling], ['sonnet', 'opus']);
+});
+
+test('Scenario: The lowest name of the ladder as ceiling - the floor is the ceiling itself', () => {
+  const { config } = loadConfig(agents('  dev:\n    model: auto\n    ceiling: haiku\n'));
+  assert.deepEqual([config.agents.dev.floor, config.agents.dev.ceiling], ['haiku', 'haiku']);
+});
+
+test('Scenario: A floor above the ceiling - reported with the role', () => {
+  const r = loadConfig(agents('  dev:\n    model: auto\n    floor: opus\n    ceiling: sonnet\n'));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.map((e) => e.message).join(' | '), /agents\.dev\.floor "opus" is above agents\.dev\.ceiling "sonnet"/);
+});
+
+test('Scenario: A name outside the ladder - reported with the role and the ladder', () => {
+  const r = loadConfig(agents('  dev:\n    model: auto\n    ceiling: gpt\n'));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.map((e) => e.message).join(' | '), /agents\.dev\.ceiling must be a name in agents\.ladder \(haiku, sonnet, opus\)/);
+});
+
+test('Scenario: A role that is not on auto keeps its model - floor and ceiling are kept as written and do not decide anything', () => {
+  const { ok, config } = loadConfig(agents('  qa:\n    code:\n      model: sonnet\n      floor: haiku\n'));
+  assert.equal(ok, true);
+  assert.equal(config.agents.qa.code.model, 'sonnet');
+});
+
+test('Scenario: The default model of a role is not in the ladder - auto asks for a ceiling', () => {
+  const r = loadConfig(agents('  ladder: [haiku, opus]\n  dev:\n    model: auto\n'));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.map((e) => e.message).join(' | '), /agents\.dev is auto and the default model "sonnet" of the role is not in agents\.ladder.*set agents\.dev\.ceiling/);
+  assert.equal(loadConfig(agents('  ladder: [haiku, opus]\n  dev:\n    model: auto\n    ceiling: opus\n')).ok, true);
+});
+
+test('Scenario: With Antigravity - auto, the ladder, floor and ceiling are accepted and reported as not applied', () => {
+  const base = 'agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 200000\n';
+  const r = loadConfig(`${base}agents:\n  ladder: [sonnet, opus]\n  dev:\n    model: auto\n    ceiling: opus\n`);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  const w = r.warnings.find((x) => x.path === 'agents');
+  assert.ok(w);
+  assert.match(w.message, /agents\.ladder/);
+  assert.match(w.message, /agents\.dev\.model/);
+  assert.match(w.message, /agents\.dev\.ceiling/);
+});
+
+test('Scenario: A floor written for a lens - only the default is raised', () => {
+  const { config } = loadConfig(agents('  qa:\n    code:\n      model: auto\n      floor: haiku\n'));
+  assert.deepEqual([config.agents.qa.code.floor, config.agents.qa.code.ceiling], ['haiku', 'sonnet']);
+});
+
+test('Scenario: A lens with a ceiling below sonnet - the floor is the ceiling', () => {
+  const { config } = loadConfig(agents('  qa:\n    code:\n      model: auto\n      ceiling: haiku\n'));
+  assert.deepEqual([config.agents.qa.code.floor, config.agents.qa.code.ceiling], ['haiku', 'haiku']);
+});
+
+test('Scenario: Full agent output setting - off by default, a boolean, and refused with trust public', () => {
+  const base = 'limits:\n  run_max_cost: 5\n';
+  assert.equal(loadConfig(base).config.run.full_output, false);
+  assert.equal(loadConfig(`${base}run:\n  full_output: true\n`).config.run.full_output, true);
+  const bad = loadConfig(`${base}run:\n  full_output: "yes"\n`);
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.some((e) => e.path === 'run.full_output'));
+  const pub = loadConfig(`trust: public\n${base}run:\n  full_output: true\n`);
+  assert.equal(pub.ok, false);
+  assert.ok(pub.errors.some((e) => e.path === 'run.full_output' && /public/.test(e.message)));
+  assert.equal(loadConfig(`trust: public\n${base}run:\n  full_output: false\n`).ok, true);
+  assert.equal(loadConfig(`trust: private-team\n${base}run:\n  full_output: true\n`).ok, true);
 });

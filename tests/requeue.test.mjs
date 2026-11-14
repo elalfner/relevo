@@ -38,6 +38,18 @@ test('the script prints the issues to start from a state file and writes nothing
   const r = spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout).start, [1]);
+  assert.equal(JSON.parse(r.stdout).stagger_seconds, 0, 'one build needs no wait');
+});
+
+test('the script prints the wait between dispatches when several builds start', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'requeue-'));
+  writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub').replace(/concurrent_agents: \d+/, 'concurrent_agents: 3'));
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [issue(1, ['relevo:queued']), issue(2, ['relevo:queued']), issue(3, ['relevo:queued'])], completed: [], running: [], permissions: {} }));
+  const r = spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.start.length, 3, r.stdout);
+  assert.equal(out.stagger_seconds, 60);
 });
 
 test('the queue workflow runs on events and on a schedule, one evaluation at a time, and dispatches go', () => {
@@ -140,4 +152,26 @@ test('Scenario: No credential - the queue dispatches nothing', () => {
   assert.deepEqual(run().start, [1]);
   assert.deepEqual(run('--credential', 'false').start, []);
   assert.deepEqual(run('--credential', 'true').start, [1]);
+});
+
+// ---------- files shared with another issue
+
+const NAMES_ROUTER = `${BODY}\n## Code pointers\n\n- \`src/router.ts\`\n`;
+
+function requeueFrom(issues) {
+  const dir = mkdtempSync(join(tmpdir(), 'requeue-shared-'));
+  writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub'));
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues, completed: [], running: [], permissions: { luz: 'write' } }));
+  const r = spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+test('Scenario: The first issue merges - the queue starts the issue that waited for the shared file', () => {
+  const waiting = issue(2, ['relevo:queued'], { body: NAMES_ROUTER });
+  const held = requeueFrom([issue(1, ['relevo:in-review'], { body: NAMES_ROUTER, assignees: ['bo'] }), waiting]);
+  assert.deepEqual(held.start, []);
+  assert.equal(held.summary.queue, 1);
+  const released = requeueFrom([waiting]);
+  assert.deepEqual(released.start, [2]);
 });

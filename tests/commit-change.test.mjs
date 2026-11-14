@@ -265,3 +265,102 @@ test('Scenario: Clean diff - with no restricted file the commit goes through', (
   put(dir, 'lib/a.dart', 'void a() {}\n');
   assert.equal(run(dir, '--message', 'feat: a', '--', 'lib/a.dart').status, 0);
 });
+
+test('Scenario: The checkpoints already hold everything - --allow-empty makes the feature commit with no change, and only then', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  git(dir, 'add', '.');
+  git(dir, 'commit', '-qm', 'wip: checkpoint 1/1 (#7)');
+  // Without the flag the command still fails: there is nothing to commit.
+  assert.notEqual(run(dir, '--message', 'feat: add a (#7)', '--', 'lib/a.dart').status, 0);
+  const r = run(dir, '--message', 'feat: add a (#7)', '--allow-empty', '--', 'lib/a.dart');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout.trim(), /^[0-9a-f]{7,}$/);
+  assert.equal(git(dir, 'log', '-1', '--format=%s').trim(), 'feat: add a (#7)');
+  assert.equal(git(dir, 'show', '--name-only', '--format=', 'HEAD').trim(), '', 'the commit has no file');
+});
+
+test('--allow-empty does not take other staged files into the empty commit', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  put(dir, 'lib/other.dart', 'void other() {}\n');
+  git(dir, 'add', 'lib/a.dart');
+  git(dir, 'commit', '-qm', 'wip: checkpoint 1/1 (#7)');
+  git(dir, 'add', 'lib/other.dart');
+  const r = run(dir, '--message', 'feat: add a (#7)', '--allow-empty', '--', 'lib/a.dart');
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /other files are staged/);
+  assert.equal(git(dir, 'log', '-1', '--format=%s').trim(), 'wip: checkpoint 1/1 (#7)', 'no commit was made');
+});
+
+test('--allow-empty still commits normally when the paths have changes', () => {
+  const dir = repo();
+  put(dir, 'lib/a.dart', 'void a() {}\n');
+  const r = run(dir, '--message', 'feat: add a (#7)', '--allow-empty', '--', 'lib/a.dart');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(git(dir, 'show', '--name-only', '--format=', 'HEAD').trim(), 'lib/a.dart');
+});
+
+const EXCEPTION = { path: 'lib/form.dart', pattern: "password = 'hunter2", reason: 'form field, not a secret' };
+const LITERAL = "final password = 'hunter2hunter2hunter2';\n";
+const withList = (...entries) => repo({ '.relevo/scan-exceptions.json': JSON.stringify({ exceptions: entries }) });
+
+test('Scenario: A reviewed line is committed and the report says one exception was applied', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `// header\n${LITERAL}`);
+  const r = run(dir, '--message', 'feat: form (#9)', '--', 'lib/form.dart');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout.trim(), /^[0-9a-f]{7,}$/, 'stdout keeps only the hash');
+  assert.match(r.stderr, /scan exceptions applied: 1\n {2}lib\/form\.dart {2}reviewed: form field, not a secret/);
+  assert.ok(!r.stdout.includes('hunter2') && !r.stderr.includes('hunter2'));
+});
+
+test('Scenario: The listed line moved - still committed', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `${'// pad\n'.repeat(30)}${LITERAL}`);
+  assert.equal(run(dir, '--message', 'feat: form', '--', 'lib/form.dart').status, 0);
+});
+
+test('Scenario: A line that is not listed is refused as before, in the same file', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `${LITERAL}final token = 'abcdefghijklmnop1234';\n`);
+  const before = head(dir);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /lib\/form\.dart:2 {2}possible credential \(assigned-secret\)/);
+  assert.equal(head(dir), before);
+  assert.deepEqual(staged(dir), []);
+});
+
+test('Scenario: Too broad an entry is refused and named', () => {
+  const dir = withList({ ...EXCEPTION, path: 'lib/' });
+  put(dir, 'lib/form.dart', LITERAL);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /scan exception refused: lib\/ \(entry 1\) {2}the path is a folder/);
+});
+
+test('Scenario: A list edited in the working tree but not committed is not applied', () => {
+  const dir = repo();
+  put(dir, '.relevo/scan-exceptions.json', JSON.stringify({ exceptions: [EXCEPTION] }));
+  put(dir, 'lib/form.dart', LITERAL);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /possible credential \(assigned-secret\)/);
+});
+
+test('the list itself is a protected path and cannot be committed by a run', () => {
+  const dir = repo();
+  put(dir, '.relevo/scan-exceptions.json', JSON.stringify({ exceptions: [EXCEPTION] }));
+  const r = run(dir, '--message', 'chore: exceptions', '--', '.relevo/scan-exceptions.json');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /protected path/);
+});
+
+test('a temporary marker on a listed line is still refused', () => {
+  const dir = withList(EXCEPTION);
+  put(dir, 'lib/form.dart', `final password = 'hunter2hunter2hunter2'; // ${MARKER}\n`);
+  const r = run(dir, '--message', 'feat: form', '--', 'lib/form.dart');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /temporary marker/);
+});

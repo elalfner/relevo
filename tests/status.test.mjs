@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildStatus, renderDigest, renderStatus } from '../scripts/lib/status.mjs';
@@ -452,4 +452,89 @@ test('Scenario: the digest and status print the outcomes and the seconds per pha
   assert.match(digestWith(usage, 'es'), /Resultados, últimos 7 días: 1 construidas, 1 detenidas por entradas faltantes; segundos por fase: planificación 8s, desarrollo 120s, QA 40s; 1 sin registro de fases\./);
   assert.match(renderStatus(report, 'en'), /Outcomes, last 7 days: 1 built/);
   assert.doesNotMatch(renderStatus(buildStatus({ config, me: 'ana', now: NOW, issues: [], prs: [] }), 'en'), /Outcomes/);
+});
+
+test('the outcome class `limit` has a name in both languages in the usage line of the digest', async () => {
+  const { OUTCOME_CLASSES } = await import('../scripts/lib/phase-log.mjs');
+  const src = (await import('node:fs')).readFileSync(new URL('../scripts/lib/status.mjs', import.meta.url), 'utf8');
+  OUTCOME_CLASSES.forEach((c) => {
+    const key = /^[a-z]+$/.test(c) ? c : `'${c}'`;
+    assert.ok(src.includes(`${key}: '`), `status.mjs names the class ${c}`);
+  });
+  assert.match(src, /limit: 'stopped at a limit'/);
+  assert.match(src, /limit: 'detenidas en un límite'/);
+});
+
+// ---------- the share of the main agent in the digest
+
+const detailed = (cost, mainCost, turns, mainTurns, extra = {}) => ({
+  cost, turns, tokens: 100, notional: false,
+  agents: [{ name: 'main', turns: mainTurns, cost: mainCost }, { name: 'dev', turns: turns - mainTurns, cost: cost - mainCost }],
+  ...extra,
+});
+
+test('Scenario: Runs with the detail - the digest has a line with the share of the cost, the turns and the runs it covers, after the usage', () => {
+  const text = digestWith([detailed(4, 2, 140, 100), detailed(3, 1.5, 120, 100), detailed(3, 1.5, 160, 100)]);
+  const lines = text.split('\n');
+  const usage = lines.findIndex((l) => l.startsWith('Usage, last 7 days:'));
+  assert.ok(usage >= 0);
+  assert.equal(lines[usage + 1], 'Main agent: about 50 % of the cost and 300 of 420 turns (3 of 3 runs).');
+});
+
+test('Scenario: Language of the line - Spanish gives the same figures', () => {
+  const text = digestWith([detailed(4, 2, 140, 100), detailed(3, 1.5, 120, 100), detailed(3, 1.5, 160, 100)], 'es');
+  assert.match(text, /^Agente principal: unos 50 % del costo y 300 de 420 turnos \(3 de 3 ejecuciones\)\.$/m);
+});
+
+test('Scenario: Share above half and at half - only above half says so, in words, and the figures are the same', () => {
+  const above = digestWith([detailed(10, 5.5, 200, 150)]);
+  assert.match(above, /^Main agent: about 55 % of the cost and 150 of 200 turns \(1 of 1 runs\)\. That is more than half of the cost: see "What a cloud run reports" in docs\/execution\.md\.$/m);
+  assert.match(digestWith([detailed(10, 5.5, 200, 150)], 'es'), /Es más de la mitad del costo: ver "Qué reporta una ejecución en la nube" en docs\/execution\.es\.md\./);
+  const half = digestWith([detailed(10, 5, 200, 150)]);
+  assert.match(half, /^Main agent: about 50 % of the cost/m);
+  assert.doesNotMatch(half, /more than half/);
+  assert.doesNotMatch(digestWith([detailed(10, 2, 200, 50)]), /more than half/);
+});
+
+test('Scenario: Some runs without the detail - the share covers only the runs that have it, and the line says how many', () => {
+  const runs = [detailed(4, 2, 140, 100), { turns: 10, cost: 9, tokens: 5, notional: false }, detailed(2, 1, 60, 40), RUNS[0]];
+  const text = digestWith(runs);
+  assert.match(text, /^Usage, last 7 days: 4 runs/m);
+  assert.match(text, /^Main agent: about 50 % of the cost and 140 of 200 turns \(2 of 4 runs\)\.$/m);
+});
+
+test('Scenario: No run with the detail - no line about the main agent, and the line of usage is as it was', () => {
+  const text = digestWith(RUNS);
+  assert.doesNotMatch(text, /Main agent/);
+  assert.match(text, /^Usage, last 7 days: 3 runs, 35 turns, about \$3\.75, 1,350 tokens\.$/m);
+  assert.doesNotMatch(digestWith([{ turns: 3, cost: 2, notional: false, agents: [{ name: 'main', turns: 3 }] }]), /Main agent/);
+});
+
+test('Scenario: A notional cost - the share is still shown', () => {
+  const text = digestWith([detailed(4, 3, 100, 90, { notional: true })]);
+  assert.match(text, /\(notional\)/);
+  assert.match(text, /^Main agent: about 75 % of the cost/m);
+});
+
+test('Scenario: Nothing waiting - no digest is posted, whatever the share', () => {
+  assert.equal(digestWith([detailed(10, 8, 200, 150)], 'en', []), null);
+});
+
+test('Scenario: Share above half - the digest script prints the line and changes nothing: no gh call, no file, no setting', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'status-share-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  // A `gh` that records any call: --input must never reach GitHub.
+  writeFileSync(join(bin, 'gh'), `#!/bin/sh\necho "$@" >> "${join(dir, 'gh-calls')}"\nexit 1\n`, { mode: 0o755 });
+  writeFileSync(join(dir, 'relevo.yml'), tpl);
+  const before = readFileSync(join(dir, 'relevo.yml'), 'utf8');
+  const usage = [detailed(10, 6, 200, 150), detailed(10, 6, 200, 150)];
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [issue(1, ['relevo:built'])], prs: [], milestones: [], usage }));
+  const d = spawnSync('node', [`${root}scripts/digest.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json'), '--now', '2026-03-10T12:00:00Z'], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  assert.equal(d.status, 0, d.stderr);
+  assert.match(d.stdout, /^Main agent: about 60 % of the cost and 300 of 400 turns \(2 of 2 runs\)\. That is more than half of the cost/m);
+  assert.equal(d.stderr, '');
+  assert.equal(existsSync(join(dir, 'gh-calls')), false, 'no call to gh');
+  assert.equal(readFileSync(join(dir, 'relevo.yml'), 'utf8'), before, 'relevo.yml is not touched');
+  assert.deepEqual(readdirSync(dir).sort(), ['bin', 'relevo.yml', 'state.json'], 'no file is written');
 });

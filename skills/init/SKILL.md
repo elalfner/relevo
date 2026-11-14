@@ -81,6 +81,8 @@ It carries out only the "will do" changes that are not installs. When GitHub ref
 
 ### 6. Check
 
+Plan items that start with `manual.` and come from what `doctor` found (`manual.links-unreadable`, `manual.runner-variable.<NAME>`, `manual.branch-checks`, `manual.plugin-update`) are steps for the person: show them in the plan and say so, apply nothing, and never change a secret, a repository variable or the rules of a branch for them. A stale pin of a workflow is already handled by the workflow update, which merges the new template and asks first; `manual.plugin-update` says to update the installed plugin before that, because the pins follow the installed version.
+
 Run `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs` and show its output.
 
 ## Report

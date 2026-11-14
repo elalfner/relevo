@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, pluginInstallScope, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { SHIP_APP_SECRETS, buildTimeoutMinutes, RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, pluginInstallScope, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { folderHash } from '../scripts/lib/role-skills.mjs';
@@ -35,7 +35,7 @@ function healthy(over = {}) {
     workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: true, enabled: true }])),
     pluginMarketplace: 'https://github.com/o/relevo.git', pluginRepoPrivate: false, pluginCheckouts: [], hasCi: true,
     defaultBranch: 'main', labels: allLabels, branches: { base: true, release: true },
-    protectionUnavailable: null, protection: { base: PROTECTED, release: PROTECTED }, pushScope: true, secretScanning: { scanning: true, pushProtection: true }, canApprove: false, secrets: ['ANTHROPIC_API_KEY'],
+    protectionUnavailable: null, protection: { base: { ...PROTECTED, requiredChecks: true }, release: PROTECTED }, pushScope: true, secretScanning: { scanning: true, pushProtection: true }, canApprove: false, secrets: ['ANTHROPIC_API_KEY', 'RELEVO_SHIP_APP_ID', 'RELEVO_SHIP_APP_KEY'],
     ...over,
   };
 }
@@ -1300,14 +1300,14 @@ test('last-push approval and required checks are read from rulesets and from cla
 });
 
 test('Scenario: No required checks - the ship workflow needs no App and the checks carry over', () => {
-  const r = byId(runChecks(healthy()), 'ship.app');
+  const r = byId(runChecks(healthy({ protection: { base: PROTECTED, release: PROTECTED } })), 'ship.app');
   assert.equal(r.status, 'pass');
   assert.match(r.message, /checks of the approved head carry over/);
 });
 
 test('Scenario: Required checks without the App - doctor fails and names the secrets', () => {
   const required = { ...PROTECTED, requiredChecks: true };
-  const r = byId(runChecks(healthy({ protection: { base: required, release: PROTECTED } })), 'ship.app');
+  const r = byId(runChecks(healthy({ protection: { base: required, release: PROTECTED }, secrets: ['ANTHROPIC_API_KEY'] })), 'ship.app');
   assert.equal(r.status, 'fail');
   assert.match(r.message, /cannot ship here/);
   assert.match(r.fix, /RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY/);
@@ -1547,7 +1547,7 @@ test('a repository with no workflow text read and the default runner gets no run
 
 test('Scenario: Information with no action - a note is neither a failure nor a warning, and never changes the exit status', () => {
   const one = { ...config, limits: { ...config.limits, concurrent_agents: 1 } };
-  const results = runChecks(healthy({ secrets: ['CLAUDE_CODE_OAUTH_TOKEN'], config: one }));
+  const results = runChecks(healthy({ secrets: ['CLAUDE_CODE_OAUTH_TOKEN', ...SHIP_APP_SECRETS], config: one }));
   const notes = results.filter((r) => r.status === 'note').map((r) => r.id);
   assert.ok(notes.includes('execution.policy'), 'the reminder about the terms of a subscription token');
   assert.ok(notes.includes('execution.credential'), 'the subscription token explanation');
@@ -1801,7 +1801,7 @@ test('the stamp of each workflow is read from the default branch', () => {
 // ---------- the plugin token follows the workflow
 
 test('Scenario: Workflows that load the plugin from the package - no plugin-secret check, even if the plugin repository is private', () => {
-  const none = runChecks(healthy({ pluginMarketplace: null, pluginRepoPrivate: true, secrets: ['ANTHROPIC_API_KEY'] }));
+  const none = runChecks(healthy({ pluginMarketplace: null, pluginRepoPrivate: true, secrets: ['ANTHROPIC_API_KEY', ...SHIP_APP_SECRETS] }));
   assert.equal(byId(none, 'automation.plugin-secret'), undefined);
   assert.equal(byId(none, 'automation.plugin-clone'), undefined);
   assert.deepEqual(failing(none), [], 'nothing fails for a missing token that nothing needs');
@@ -2449,4 +2449,243 @@ test('Scenario: a platform with an interface and no browser automation - a note,
   const r = runChecks(healthy({ interfaceBrowser: { app: false } }));
   assert.equal(byId(r, 'interface.browser.app').status, 'warn');
   assert.equal(byId(runChecks(healthy({ interfaceBrowser: { app: true } })), 'interface.browser.app'), undefined);
+});
+
+// ---------- run time limit
+
+const goWith = (timeout) => Object.fromEntries(WORKFLOW_FILES.map((name) => [name, name === 'relevo-go.yml'
+  ? { present: true, enabled: true, text: `jobs:\n  decide:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n  build:\n    runs-on: ubuntu-latest\n    timeout-minutes: ${timeout}\n  requeue:\n    timeout-minutes: 5\n` }
+  : { present: true, enabled: true }]));
+const withMinutes = (max, timeout) => healthy({ workflows: goWith(timeout), config: loadConfig(`limits:\n  run_max_cost: 5\n  run_max_minutes: ${max}\n${CONFIG_TEXT.replace('limits:\n  run_max_cost: 5\n', '')}`).config });
+
+test('Scenario: The setting is too close to the job timeout - doctor warns and says how to fix it', () => {
+  const r = byId(runChecks(withMinutes(58, 60)), 'execution.run-minutes');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /limits\.run_max_minutes is 58, but the build job .* after 60 minutes/);
+  assert.match(r.fix, /to 55 or less, or raise timeout-minutes .* to 63 or more/);
+});
+
+test('Scenario: The setting leaves room - doctor says nothing about it', () => {
+  assert.equal(byId(runChecks(withMinutes(50, 60)), 'execution.run-minutes'), undefined);
+  assert.equal(byId(runChecks(withMinutes(55, 60)), 'execution.run-minutes'), undefined, 'exactly five minutes of margin is enough');
+});
+
+test('Scenario: The timeout of the build job is read from the build job only', () => {
+  assert.equal(buildTimeoutMinutes('jobs:\n  decide:\n    timeout-minutes: 10\n  build:\n    runs-on: x\n    timeout-minutes: 60 # the limit\n'), 60);
+  assert.equal(buildTimeoutMinutes('jobs:\n  build:\n    runs-on: x\n  requeue:\n    timeout-minutes: 5\n'), null, 'the next job is not the build job');
+  assert.equal(buildTimeoutMinutes(undefined), null);
+});
+
+test('Scenario: No go workflow installed, or no timeout to read - doctor says nothing about the run time', () => {
+  assert.equal(byId(runChecks(healthy()), 'execution.run-minutes'), undefined, 'the healthy fixture has no text');
+  const absent = healthy({ workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: f !== 'relevo-go.yml', enabled: true }])) });
+  assert.equal(byId(runChecks(absent), 'execution.run-minutes'), undefined);
+});
+
+// ---------- environment checks (#123)
+
+const runsOnFile = (runsOn) => ({ present: true, enabled: true, text: `jobs:\n  build:\n    runs-on: ${runsOn}\n` });
+const withWorkflow = (runsOn) => ({ ...healthy().workflows, 'relevo-go.yml': runsOnFile(runsOn) });
+const SELF = loadConfig('runner:\n  labels: [self-hosted, linux]\n').config;
+
+test('Scenario: Linked repository not readable - names the repository and the two ways out', () => {
+  const r = byId(runChecks(healthy({ links: [{ repo: 'acme/design', reachable: false, private: null }], secrets: ['RELEVO_LINKS_TOKEN'] })), 'links.acme/design');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /acme\/design/);
+  assert.match(r.fix, /RELEVO_LINKS_TOKEN/);
+  assert.match(r.fix, /copy the file/);
+});
+
+test('Scenario: Private linked repository with the secret present - the token scope is a note', () => {
+  const results = runChecks(healthy({ links: [{ repo: 'acme/api', reachable: true, private: true }], secrets: ['RELEVO_LINKS_TOKEN'] }));
+  const n = byId(results, 'links.token-scope');
+  assert.equal(n.status, 'note');
+  assert.match(n.message, /acme\/api/);
+  assert.match(n.message, /never reads the value/);
+  const publicOnly = runChecks(healthy({ links: [{ repo: 'acme/api', reachable: true, private: false }], secrets: ['RELEVO_LINKS_TOKEN'] }));
+  assert.equal(byId(publicOnly, 'links.token-scope'), undefined);
+});
+
+test('Scenario: Variable overrides the file - doctor prints both runners and says the variable wins', () => {
+  const results = runChecks(healthy({
+    config: SELF,
+    workflows: withWorkflow("${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}"),
+    runnerVariables: { RELEVO_RUNNER: { value: 'ubuntu-latest' } },
+  }));
+  const w = byId(results, 'automation.runner.variable.RELEVO_RUNNER');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /\[ubuntu-latest\]/);
+  assert.match(w.message, /\[self-hosted, linux\]/);
+  assert.match(w.message, /the variable wins/);
+  assert.equal(byId(results, 'automation.runner'), undefined);
+});
+
+test('Scenario: Variable unset - the fallback of the workflow is the effective runner', () => {
+  const results = runChecks(healthy({
+    config: SELF,
+    workflows: withWorkflow("${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}"),
+    runnerVariables: { RELEVO_RUNNER: { value: null } },
+  }));
+  const w = byId(results, 'automation.runner.variable.RELEVO_RUNNER');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /not set/);
+});
+
+test('Scenario: Variable matches - a passed check', () => {
+  const results = runChecks(healthy({
+    workflows: withWorkflow("${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}"),
+    runnerVariables: { RELEVO_RUNNER: { value: '["ubuntu-latest"]' } },
+  }));
+  assert.equal(byId(results, 'automation.runner').status, 'pass');
+});
+
+test('Scenario: Variable cannot be read - the effective runner is not reported as correct', () => {
+  const results = runChecks(healthy({
+    workflows: withWorkflow("${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}"),
+    runnerVariables: { RELEVO_RUNNER: { unreadable: true } },
+  }));
+  const n = byId(results, 'automation.runner.variable');
+  assert.equal(n.status, 'note');
+  assert.match(n.message, /not checked/);
+  assert.equal(byId(results, 'automation.runner'), undefined);
+});
+
+test('The variables read by runs-on are found by name', async () => {
+  const { runnerVariableNames } = await import('../scripts/lib/doctor.mjs');
+  assert.deepEqual(runnerVariableNames(withWorkflow("${{ fromJSON(vars.RELEVO_RUNNER || '[\"ubuntu-latest\"]') }}")), ['RELEVO_RUNNER']);
+  assert.deepEqual(runnerVariableNames(withWorkflow('ubuntu-latest')), []);
+});
+
+const CHANGELOG = '# Changelog\n\n## [Unreleased]\n\n## [0.14.4] - 2026-11-03\n\n### Fixed\n\n- **The queue starts when a build ends.** Before, it waited.\n\n## [0.14.3] - 2026-11-02\n\n- Something in 0.14.3.\n\n## [0.14.2] - 2026-11-01\n\n- Old.\n';
+const pins = (v) => ({ 'relevo-go.yml': v, 'relevo-queue.yml': v });
+
+test('Scenario: Pin older than published - warns and names what the newer versions fix', () => {
+  const r = byId(runChecks(healthy({ pluginPins: pins('0.14.2'), publishedVersion: '0.14.4', changelog: CHANGELOG })), 'automation.plugin-latest');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /0\.14\.2/);
+  assert.match(r.message, /0\.14\.4: The queue starts when a build ends/);
+  assert.match(r.message, /0\.14\.3/);
+  assert.doesNotMatch(r.message, /Old\./);
+});
+
+test('Scenario: Pin is current - a passed check', () => {
+  assert.equal(byId(runChecks(healthy({ pluginPins: pins('0.14.4'), publishedVersion: '0.14.4' })), 'automation.plugin-latest').status, 'pass');
+});
+
+test('Scenario: Registry unreachable - the comparison is skipped with a note, never a warning', () => {
+  const r = byId(runChecks(healthy({ pluginPins: pins('0.14.2'), publishedVersion: null })), 'automation.plugin-latest');
+  assert.equal(r.status, 'note');
+  assert.match(r.message, /could not be read/);
+});
+
+test('Stale pin with no changelog on disk - points to the changelog instead of inventing text', () => {
+  const r = byId(runChecks(healthy({ pluginPins: pins('0.14.2'), publishedVersion: '0.14.4', changelog: null })), 'automation.plugin-latest');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /read the changelog of 0\.14\.4/);
+});
+
+test('Scenario: No required checks - the base branch warns because ship relies on them', () => {
+  const r = byId(runChecks(healthy({ protection: { base: PROTECTED, release: PROTECTED } })), 'repo.protection.checks');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /`ship` relies on them/);
+});
+
+test('Scenario: Checks required - a passed check', () => {
+  assert.equal(byId(runChecks(healthy()), 'repo.protection.checks').status, 'pass');
+});
+
+test('Scenario: No permission to read protection - could not be checked, never fine', () => {
+  const results = runChecks(healthy({ protectionError: 'HTTP 403: Resource not accessible' }));
+  assert.equal(byId(results, 'repo.protection').status, 'warn');
+  assert.match(byId(results, 'repo.protection').message, /not checked/);
+  assert.equal(byId(results, 'repo.protection.checks'), undefined);
+});
+
+test('gatherFacts reads the published version only when a workflow pins one, and the runner variable, with reads only', () => {
+  const calls = [];
+  const npmCalls = [];
+  const workflow = "env:\n  RELEVO_VERSION: 0.14.2\njobs:\n  build:\n    runs-on: ${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}\n";
+  const gh = readOnlyGh((args) => {
+    calls.push(args.join(' '));
+    const path = args[args.length - 1];
+    if (/actions\/variables\/RELEVO_RUNNER/.test(path)) return JSON.stringify({ value: 'ubuntu-latest' });
+    if (/contents\/\.github\/workflows\/relevo-go\.yml/.test(path)) return JSON.stringify({ content: Buffer.from(workflow).toString('base64') });
+    if (/contents\/\.github\/workflows\?/.test(path)) return JSON.stringify([{ name: 'relevo-go.yml' }]);
+    if (/^repos\/o\/r$/.test(path)) return JSON.stringify({ default_branch: 'main' });
+    throw Object.assign(new Error('404 Not Found'), { stderr: '404 Not Found' });
+  });
+  const tool = (name, args) => {
+    if (name === 'npm') { npmCalls.push(args); return '0.14.4\n'; }
+    if (name === 'gh' && args[0] === 'auth') return '';
+    if (name === 'gh') return '1';
+    throw new Error('none');
+  };
+  const base = { repo: 'o/r', tool, gh, exists: () => false, read: () => '', listDir: () => [], skillDirs: [], git: () => '', readUser: () => null, readFolder: () => [], restrictedFiles: () => [], root: '.', adapters: () => [] };
+  const facts = gatherFacts(base);
+  assert.equal(facts.publishedVersion, '0.14.4');
+  assert.match(npmCalls[0].join(' '), /--fetch-timeout/);
+  assert.deepEqual(facts.runnerVariables, { RELEVO_RUNNER: { value: 'ubuntu-latest' } });
+  assert.deepEqual(calls.filter((c) => /-X|--method|-f /.test(c)), []);
+  // No pin, no registry call.
+  npmCalls.length = 0;
+  const none = gatherFacts({ ...base, gh: readOnlyGh(() => { throw new Error('404 Not Found'); }) });
+  assert.equal(none.publishedVersion, null);
+  assert.deepEqual(npmCalls, []);
+});
+
+test('A plain runner variable is one label, as GitHub reads it', () => {
+  const results = runChecks(healthy({ config: SELF, workflows: withWorkflow('${{ vars.RELEVO_RUNNER }}'), runnerVariables: { RELEVO_RUNNER: { value: 'self-hosted, linux' } } }));
+  assert.equal(byId(results, 'automation.runner.variable.RELEVO_RUNNER').status, 'warn', 'one label "self-hosted, linux" is not [self-hosted, linux]');
+});
+
+test('A variable that is not set and has no fallback is reported as not judged, with the right reason', () => {
+  const n = byId(runChecks(healthy({ workflows: withWorkflow('${{ vars.RELEVO_RUNNER }}'), runnerVariables: { RELEVO_RUNNER: { value: null } } })), 'automation.runner.unparsed');
+  assert.equal(n.status, 'note');
+  assert.match(n.message, /unset with no fallback/);
+});
+
+test('Stale pin with an installed plugin that is itself behind - the fix updates the plugin first and the note says where the changelog stops', () => {
+  const r = byId(runChecks(healthy({ pluginPins: pins('0.14.2'), pluginVersion: '0.14.3', publishedVersion: '0.14.4', changelog: CHANGELOG })), 'automation.plugin-latest');
+  assert.match(r.fix, /update the installed plugin first/);
+  assert.match(r.message, /changelog here stops at 0\.14\.3/);
+});
+
+// ---------- Doctor reports an old pin of an action in a workflow (issue #132)
+
+const GO_WITH = (uses) => `# relevo-template: 0.14.5\nenv:\n  RELEVO_VERSION: '0.14.5'\njobs:\n  build:\n    steps:\n${uses.map((u) => `      - uses: ${u}\n`).join('')}`;
+const pinsOf = (text) => gatherFacts(probes({ localFiles: { 'relevo-go.yml': text }, remote: { 'relevo-go.yml': text } })).actionPins;
+const actionCheck = (text) => byId(runChecks({ ...healthy(), actionPins: pinsOf(text) }), 'automation.action-pins');
+
+test('Scenario: An older workflow - doctor warns with the file, the line, the action and the reason, and says it changes nothing', () => {
+  const text = GO_WITH(['actions/checkout@v4', 'actions/setup-node@v4']);
+  const check = actionCheck(text);
+  assert.equal(check.status, 'warn');
+  assert.match(check.message, /relevo-go\.yml:7 actions\/checkout@v4, relevo-go\.yml:8 actions\/setup-node@v4 run on Node\.js 20/);
+  assert.match(check.fix, /\/relevo:init/);
+  assert.match(check.fix, /doctor changes nothing/);
+});
+
+test('Scenario: Current pins - a commit pin with its version, or a newer tag, passes', () => {
+  const current = GO_WITH([
+    'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+    'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
+    'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0',
+    'supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0',
+    'actions/checkout@v5',
+  ]);
+  assert.equal(actionCheck(current).status, 'pass');
+});
+
+test('Scenario: A pin chosen on purpose - an old tag or an old commit with its version is reported every time and never edited', () => {
+  assert.equal(actionCheck(GO_WITH(['actions/create-github-app-token@v2'])).status, 'warn');
+  assert.equal(actionCheck(GO_WITH(['supabase/setup-cli@v1'])).status, 'warn');
+  assert.equal(actionCheck(GO_WITH(['actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v4.2.2'])).status, 'warn', 'a commit is judged by the version it names');
+  assert.equal(actionCheck(GO_WITH(['actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab'])).status, 'pass', 'a commit that names no version cannot be judged, so it is not reported');
+});
+
+test('an action that the templates do not use, a commented example and no workflow at all give no warning', () => {
+  assert.equal(actionCheck(GO_WITH(['subosito/flutter-action@v2', 'acme/own-action@v1'])).status, 'pass');
+  const commented = '# relevo-template: 0.14.5\njobs:\n  build:\n    steps:\n      #   uses: actions/setup-node@v4\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n';
+  assert.equal(actionCheck(commented).status, 'pass');
+  assert.equal(byId(runChecks({ ...healthy(), actionPins: [] }), 'automation.action-pins'), undefined);
 });

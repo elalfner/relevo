@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findCredentials, formatFindings, scanDiff } from '../scripts/lib/scan.mjs';
+import { credentialMatches, findCredentials, formatFindings, scanDiff } from '../scripts/lib/scan.mjs';
 import { explicitStageArgs } from '../scripts/lib/staging.mjs';
 
 const diff = (body) => `diff --git a/lib/a.dart b/lib/a.dart\nindex 111..222 100644\n--- a/lib/a.dart\n+++ b/lib/a.dart\n@@ -10,2 +10,4 @@\n context\n${body}`;
@@ -91,4 +91,18 @@ test('Scenario: safe staging - never add everything', () => {
   ['.', '*', '-A', '--all', '-u'].forEach((bad) => assert.throws(() => explicitStageArgs([bad]), /refusing/));
   assert.throws(() => explicitStageArgs([]), /explicit list/);
   assert.throws(() => explicitStageArgs(['../outside']), /leaves the repository/);
+});
+
+test('credentialMatches: the same kinds as findCredentials, every match with where it sits, and only the accepted assignments (#163)', () => {
+  const key = 'AKIAIOSFODNN7EXAMPLE';
+  const other = 'AKIAABCDEFGHIJKLMNOP';
+  const text = `A=${key} B=${other} token = readTokenFromVault(x) password: 'hunter2hunter2hunter2'`;
+  const found = credentialMatches(text);
+  assert.deepEqual(found.filter((m) => m.name === 'aws-access-key').map((m) => text.slice(m.start, m.end)), [key, other]);
+  assert.equal(found.filter((m) => m.name === 'assigned-secret').length, 1, 'a call is not an assigned secret');
+  assert.deepEqual([...new Set(found.map((m) => m.name))].sort(), findCredentials(text).map((c) => c.name).sort());
+  assert.deepEqual(credentialMatches('const answer = 42;'), []);
+  [`ghp_${'a1'.repeat(18)}`, 'sk-ant-api03-abcdefghijklmnop', '-----BEGIN RSA PRIVATE KEY-----', 'xoxb-1234567890-abcdef'].forEach((t) => {
+    assert.deepEqual(credentialMatches(t).map((m) => m.name), findCredentials(t).map((c) => c.name), t);
+  });
 });

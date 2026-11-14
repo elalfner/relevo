@@ -11,7 +11,7 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | Estado | Siguiente comando | Quién |
 |---|---|---|
 | `ready` | ninguno: el agente empieza solo; para construir en tu máquina, `/relevo:go <n> --local` | nadie |
-| `queued` | ninguno: empieza cuando la persona asignada tiene capacidad | nadie |
+| `queued` | ninguno: empieza cuando la persona asignada tiene capacidad, hay un agente libre o se fusiona el issue que comparte un archivo con él | nadie |
 | `building` | ninguno: el agente lo está construyendo | nadie |
 | `blocked` | ninguno: empieza cuando se fusionan los issues de los que depende | nadie |
 | `built` | `/relevo:review <n>` | la persona asignada |
@@ -38,7 +38,7 @@ El issue pasa a `changes-requested` y se avisa al autor. Ejecuta `/relevo:fix <n
 
 ### Falló QA
 
-El issue pasa a `qa-failed` y se avisa a la persona asignada, con el primer hallazgo. Cuando la construcción en la nube fue rechazada tras los reintentos (o dejó tareas sin terminar), el trabajo no se pierde: la rama lo guarda como un commit `wip: rejected by QA`, y el comentario dice que es código que QA no aprobó. Ejecuta `/relevo:fix <n>`: toma el hallazgo de ese comentario como el defecto, así que no tienes que describirlo, y corre las comprobaciones que QA no pudo correr. Para repensar el issue, usa `/relevo:think` y luego `/relevo:issue <n>`. Si el comentario dice, en cambio, que no se construyó porque el runner no tiene una herramienta (por ejemplo `flutter`), el job de build se detuvo antes del agente y no se gastó ningún turno del modelo: activa el paso del toolchain en `relevo-go.yml`, quita `relevo:qa-failed` y vuelve a poner `ready`. Si el commit seguro rechazó el trabajo (una ruta protegida, un archivo restringido, un archivo fuera de la plataforma, un marcador o una posible credencial), no se sube nada y el comentario lo dice; entonces no hay rama que corregir: resuelve la causa que indica el comentario, quita `relevo:qa-failed` y vuelve a poner `ready`. Si la rama tiene código que escribiste tú, ejecuta `/relevo:fix <n>` y describe lo que encontró QA. Si solo tiene la especificación (la construcción falló antes de escribir código), borra la rama remota y vuelve a poner `ready`.
+El issue pasa a `qa-failed` y se avisa a la persona asignada, con el primer hallazgo. Cuando la construcción en la nube fue rechazada tras los reintentos (o dejó tareas sin terminar), el trabajo no se pierde: la rama lo guarda como un commit `wip: rejected by QA`, y el comentario dice que es código que QA no aprobó. Lo mismo pasa cuando una ejecución se detiene en un límite (los turnos de los subagentes, los minutos de `limits.run_max_minutes`) o la corta el runner o el timeout del job: el trabajo queda en la rama como `wip: stopped by limit`, el comentario dice que se guardó, y `/relevo:fix <n>` lo verifica y termina las tareas que faltan. Una construcción deja además un checkpoint después de cada sección de tareas (`wip: checkpoint k/n`), así que un corte pierde a lo sumo una sección; si vuelves a poner `ready` con el mismo texto del issue y nadie ha hecho commit en la rama, la ejecución en la nube reanuda desde ella y construye solo lo que falta. Ejecuta `/relevo:fix <n>`: toma el hallazgo de ese comentario como el defecto, así que no tienes que describirlo, y corre las comprobaciones que QA no pudo correr. Para repensar el issue, usa `/relevo:think` y luego `/relevo:issue <n>`. Si el comentario dice, en cambio, que no se construyó porque el runner no tiene una herramienta (por ejemplo `flutter`), el job de build se detuvo antes del agente y no se gastó ningún turno del modelo: activa el paso del toolchain en `relevo-go.yml`, quita `relevo:qa-failed` y vuelve a poner `ready`. Si el commit seguro rechazó el trabajo (una ruta protegida, un archivo restringido, un archivo fuera de la plataforma, un marcador o una posible credencial), no se sube nada y el comentario lo dice; entonces no hay rama que corregir: resuelve la causa que indica el comentario, quita `relevo:qa-failed` y vuelve a poner `ready`. Si la rama tiene código que escribiste tú, ejecuta `/relevo:fix <n>` y describe lo que encontró QA. Si solo tiene la especificación (la construcción falló antes de escribir código), borra la rama remota y vuelve a poner `ready`.
 
 ### Quién lo rechazó: la puerta o uno de los revisores
 
@@ -60,7 +60,7 @@ Cuando la puerta está roja, el agente de desarrollo lo corrige antes de que cor
 
 ### Se acabó la cuota
 
-Una ejecución en la nube que se detiene por un límite de uso o un crédito vacío lo dice en el último comentario. El issue no se pierde: vuelve a poner `ready` más tarde, o constrúyelo en tu máquina con `/relevo:go <n> --local`. Con una suscripción la cuota se comparte con el uso interactivo de la misma cuenta, así que un día muy activo puede agotarla.
+Una ejecución en la nube que se detiene por un límite de uso o un crédito vacío lo dice en el último comentario, y el issue vuelve solo a `queued`: el comentario dice cuándo se reintentará (después de la hora de restablecimiento que da el log de la ejecución, en UTC, o, si el log no la da, tras una espera de 30 minutos, luego 2 horas y luego 5 horas, y dice que esa hora es una estimación). El reintento continúa desde el trabajo que se guardó en la rama, empieza solo (los demás issues en espera siguen cuando termina) y se hace como máximo 3 veces; después el issue queda en `qa-failed` y el comentario te pide que lo revises, y puedes volver a poner `ready` o construirlo en tu máquina con `/relevo:go <n> --local`. Si pones `ready` tú mismo, empieza de inmediato. Con una suscripción la cuota se comparte con el uso interactivo de la misma cuenta, así que un día muy activo puede agotarla.
 
 ### No sé cuál es el comportamiento correcto
 
@@ -82,9 +82,17 @@ El comentario dice por qué, y el build se detuvo antes de que empezara el agent
 - **`inputs`**: el issue declara en su sección `External inputs` algo que no está: un archivo que no existe en la rama base o una variable que no está definida. Agrégalo, o escribe qué debe hacer el issue sin eso. Un secreto o una entrada manual que el job no puede comprobar no es motivo para detenerse: aparece en el aviso de entrega como `Inputs to confirm before you test`.
 - **`policy`**: una tarea de la especificación cambia una ruta protegida o un archivo restringido, o agrega una dependencia que el issue no permite. Agrega el manifiesto a `Allow-paths:` si la dependencia es intencional, o cambia la tarea. Una ejecución sin supervisión nunca edita un archivo protegido.
 
+### Dos issues nombran el mismo archivo
+
+Las pantallas que se construyen en paralelo a partir del mismo patrón suelen editar los mismos archivos de registro: una lista de navegación, un router, un archivo de traducciones, tipos generados. La cola lee los archivos que nombra cada issue (las rutas locales de sus Code pointers y su Design reference, sus entradas `file:` y su `Allow-paths:`). Un issue que nombra un archivo que otro issue también nombra espera, en `relevo:queued`, hasta que ese otro issue se fusione: el otro issue ya se está construyendo, revisando o está en un pull request, o va antes que él en la cola. Un comentario dice qué archivo y qué issue, y no menciona a nadie.
+
+La espera tiene un tope, `limits.shared_file_wait_hours` (24 por defecto). Pasado ese tiempo el issue empieza de todos modos y su mensaje de traspaso lista los archivos que comparte, para que esperes un conflicto al fusionar. Un issue que no nombra ningún archivo nunca se retiene, y la cola nunca lee las tareas: solo lo que dice el issue. Para que los issues compartan un archivo, ponlo en `queue.append_only` cuando solo le añaden líneas, o en `integration.generated` cuando es generado. Ver [Configuración](configuration.es.md).
+
 ### Una rama que tiene conflictos con la base
 
 `/relevo:review <n>` primero mezcla la rama base en la rama. Cuando hay archivos en conflicto, los conflictos dentro de las rutas que el cambio puede tocar se entregan al agente de desarrollo en su modo de integración; luego QA revisa el resultado y solo después se hace el commit del merge. Un conflicto en cualquier otro archivo, o uno que QA no acepta, termina con el merge abortado y sin cambios, y la revisión te dice qué archivos resolver tú. `/relevo:status` muestra, para una rama atrasada respecto a la base, si el merge tendría conflictos y en qué archivos.
+
+Cuando termina la construcción, `go` también mezcla la rama base en la rama antes del traspaso, si la base se movió, y vuelve a ejecutar la puerta de validación. Un conflicto en un archivo generado (`integration.generated`) se resuelve ejecutando `integration.regenerate`; un conflicto en cualquier otro archivo termina en `relevo:qa-failed` con los archivos nombrados y la rama subida sin la mezcla, y `/relevo:fix <n>` es el camino a seguir.
 
 ## Cómo leer la revisión de una vista previa
 

@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process';
 import { resolveLabelNames } from './labels.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
 import { renderMessage } from './messages.mjs';
+import { lastSharedWait } from './shared-wait.mjs';
+import { retryState } from './limit-retry.mjs';
 
 /** The real client: runs the GitHub CLI and returns its output. */
 export function realGh(args) {
@@ -46,6 +48,7 @@ function normalizeIssue(raw) {
     ready_at: null,
     ready_by: null,
     urgent_by: null,
+    shared_wait: null,
   };
 }
 
@@ -60,14 +63,49 @@ export function labelEvent(timeline, labelName) {
 export const readyEvent = labelEvent;
 
 /**
- * Collect everything `planGo` needs. Returns { issues, completed, completedExternal, unreadable, running, permissions }.
+ * How long the last completed builds of the go workflow took, in minutes: the `build` job of the most recent completed runs that
+ * ran one, up to `limit` builds found among the last `scan` runs (a run that only decided has no such job, and so has a run of
+ * the queue, so they are skipped and do not push the builds out of the window; a skipped or cancelled job has no duration worth
+ * reporting).
+ * Returns null when it cannot be read (no `actions: read`, no such workflow, a network error on the list of runs, or every request
+ * for the jobs failed): a queue comment says "unknown" then and the plan never fails because of it. A request for the jobs of one
+ * run that fails (a transient error) only leaves that run out; the builds found in the others are kept.
+ */
+export function readRecentBuilds({ gh, repo, workflow = 'relevo-go.yml', limit = 10, scan = 30 }) {
+  try {
+    const runs = apiJson(gh, `repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=${scan}`).workflow_runs ?? [];
+    const minutes = [];
+    let failed = 0;
+    for (const run of runs) {
+      if (minutes.length >= limit) break;
+      let jobs;
+      try {
+        jobs = apiJson(gh, `repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`).jobs ?? [];
+      } catch {
+        failed += 1;
+        continue;
+      }
+      const build = jobs.find((j) => j.name === 'build' && ['success', 'failure'].includes(j.conclusion) && j.started_at && j.completed_at);
+      if (!build) continue;
+      const ms = Date.parse(build.completed_at) - Date.parse(build.started_at);
+      if (Number.isFinite(ms) && ms >= 0) minutes.push(Math.round((ms / 60000) * 10) / 10);
+    }
+    return failed > 0 && minutes.length === 0 ? null : minutes;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Collect everything `planGo` needs. Returns { issues, completed, completedExternal, unreadable, running, permissions, recentBuilds } (the last one a function).
  * `running` is supplied by the caller (workflow runs in progress). `ghLinks` reads issues of linked repositories
  * (`config.links` only; a repository outside the list is never asked).
  */
 export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = null }) {
   const names = resolveLabelNames(config.labels);
   // `qa-failed` issues are read only for a retry, and then only the retried one is kept.
-  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built', ...(retry ? ['qa-failed'] : [])];
+  // The states after `built` are read too: an issue in one of them still holds the files it names until it is merged.
+  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built', 'in-review', 'pr-open', 'changes-requested', ...(retry ? ['qa-failed'] : [])];
 
   const byNumber = new Map();
   stateKeys.forEach((key) => {
@@ -83,8 +121,20 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
     const { at, by } = labelEvent(timeline, names.ready);
     issue.ready_at = at;
     issue.ready_by = by;
+    // The wait for a shared file that began last, from the hidden marker of its comment.
+    issue.shared_wait = lastSharedWait(timeline);
     // The same timeline answers for the urgent label: who asked for the early start.
     if (issue.labels.includes(names.urgent)) issue.urgent_by = labelEvent(timeline, names.urgent).by;
+  });
+
+  // The retry time that a comment of a bot gave to an issue that stopped at a usage limit (see limit-retry.mjs). Only `queued` issues
+  // (held until then) and `building` ones (a retry in progress) need it. A comment list that cannot be read leaves it out.
+  issues.filter((i) => i.labels.includes(names.queued) || i.labels.includes(names.building)).forEach((issue) => {
+    try {
+      issue.limit_retry = retryState(apiJson(gh, `repos/${repo}/issues/${issue.number}/comments?per_page=100`, { paginate: true }));
+    } catch {
+      issue.limit_retry = null;
+    }
   });
 
   const wanted = new Set();
@@ -125,7 +175,8 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
     }
   });
 
-  return { issues, completed, completedExternal, unreadable, running, permissions };
+  // The recent builds are read only if a queue comment needs them (planGo calls the function), so a plan that queues nothing pays no extra request.
+  return { issues, completed, completedExternal, unreadable, running, permissions, recentBuilds: () => readRecentBuilds({ gh, repo }) };
 }
 
 /** The `gh` commands that carry out one decision (labels, assignees and comment). Pure. */

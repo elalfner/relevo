@@ -4,10 +4,14 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { MAX_REFERENCES, parseIssueBody } from './issue-parse.mjs';
+import { parseIssueModels } from './issue-model.mjs';
 import { resolvePlatform } from './platform-of.mjs';
 import { hardPathsInAllow, platformFolders } from './protected-paths.mjs';
 import { findCredentials } from './scan.mjs';
 import { vagueWarnings } from './vague-words.mjs';
+import { conflictText, findConflicts } from './rule-conflicts.mjs';
+import { mentionText, protectedMentions } from './protected-mentions.mjs';
+import { assumptionWarning, externalAssumptions, settleAssumptions } from './assumptions.mjs';
 
 export const TITLE_MAX = 72;
 export const BODY_WARN = 8000;
@@ -22,14 +26,17 @@ export const PLACEHOLDERS = ['<kind>: <name>: <what it is for>', '<the situation
 const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
 
 /**
- * Returns { ok, problems: string[], warnings: string[], scenarios, edgeCases, dependsOn, allowPaths } for a drafted title and body.
+ * Returns { ok, problems: string[], warnings: string[], scenarios, edgeCases, dependsOn, allowPaths, models } for a drafted title and body.
+ * `models` is what the optional lines `Model:` and `QA-model:` ask for ({ dev, qa }); a line that cannot be read is a warning, never a problem.
  * `rulesFile` is the `qa.rules_from` file (or files) of the project, which can never be listed in an `Allow-paths:` line.
  * `platforms` is the registry of relevo.yml ({ name: { ... } }); when given, the platform of the draft is checked too.
  * `links` is the `links` list of relevo.yml: a `Depends-on:` that names a repository outside it is a problem.
+ * `rules` is the lines of the rules files (parseRules of each): an `Out of scope` line that a rule requires against, or that a scenario needs, is a problem.
+ * `search` is (name) => path or null over the files of the repository (assumptions.mjs repoSearch): an assumption about a name outside the repository that it does not find is a warning; without it the assumptions are not read.
  * `repoRoot` is the folder of the repository: a design reference to a file of the repository must exist under it
  * (when it is null the existence is not checked, as in the light planning job that has no checkout).
  */
-export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [], repoRoot = null, language = 'en' }) {
+export function checkIssueDraft({ title, body, rulesFile = null, platforms = null, links = [], repoRoot = null, language = 'en', rules = [], search = null }) {
   const problems = [];
   const t = String(title ?? '').trim();
   if (!t) problems.push('the title is empty');
@@ -63,7 +70,20 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
     if (ref.kind === 'repo-file' && !links.includes(ref.repo)) problems.push(`Design reference: "${ref.target}" names ${ref.repo}, which is not in links of relevo.yml (${links.length ? links.join(', ') : 'no repository is linked'})`);
     if (ref.kind === 'attachment' && !ref.allowed) problems.push(`Design reference: ${ref.target} is not a GitHub attachment (github.com/user-attachments, user-images.githubusercontent.com)`);
   });
-  const warnings = [];
+  const scenarioNotes = [];
+  const found = findConflicts({ body, rules });
+  // A line that a rule requires is a problem; one that a scenario needs is a warning (the words alone flagged real issues that were fine).
+  found.conflicts.forEach((c) => (c.kind === 'rule' ? problems : scenarioNotes).push(conflictText(c)));
+  found.problems.forEach((p) => problems.push(p));
+  const warnings = [...scenarioNotes];
+  // A protected path that the text names is a warning, never a problem: a person decides, and the build still refuses the change.
+  protectedMentions({ body, allow: parsed.allowPaths, rulesFile, platformPaths: platformFolders(platforms) }).forEach((m) => warnings.push(mentionText(m)));
+  if (search) {
+    const exists = (name) => Boolean(repoRoot) && existsSync(join(repoRoot, name));
+    settleAssumptions(externalAssumptions(body), { search, exists }).confirm.forEach((a) => warnings.push(assumptionWarning(a)));
+  }
+  const models = parseIssueModels(body);
+  models.problems.forEach((m) => warnings.push(m));
   const bodyChars = String(body ?? "").length;
   const blocks = parsed.design.blocks ?? [];
   // The fenced example code of `Design reference` has its own limits and is not counted for the length of the text.
@@ -93,5 +113,5 @@ export function checkIssueDraft({ title, body, rulesFile = null, platforms = nul
     if (!r.ok) problems.push(r.reason === 'missing' ? `the body has no ${r.message}` : r.message);
   }
 
-  return { ok: problems.length === 0, problems, warnings, scenarios: parsed.scenarios, edgeCases: parsed.edgeCases, dependsOn: parsed.dependsOn, dependsOnExternal: parsed.dependsOnExternal, allowPaths: parsed.allowPaths };
+  return { ok: problems.length === 0, problems, warnings, scenarios: parsed.scenarios, edgeCases: parsed.edgeCases, dependsOn: parsed.dependsOn, dependsOnExternal: parsed.dependsOnExternal, allowPaths: parsed.allowPaths, models: { dev: models.dev, qa: models.qa } };
 }

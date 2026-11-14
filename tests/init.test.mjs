@@ -1149,3 +1149,39 @@ test('Scenario: The plan item of a subscription gives the command that stores th
   assert.ok(item.description.includes(STORE_TOKEN_COMMAND));
   assert.match(item.description, /two lines.*incomplete token fails with the same authentication error/);
 });
+
+// ---------- environment findings (#123)
+
+test('init lists the environment findings as manual steps and applies none of them', () => {
+  const facts = {
+    configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: true, release: true },
+    skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: ['RELEVO_LINKS_TOKEN'],
+    links: [{ repo: 'acme/design', reachable: false, private: null }],
+    protection: { base: { protected: true, pullRequestRequired: true, approvals: 1, requiredChecks: false }, release: { pullRequestRequired: true } },
+    pluginVersion: '0.14.2', publishedVersion: '0.14.4',
+    config: loadConfig('runner:\n  labels: [self-hosted, linux]\n').config,
+    workflows: { 'relevo-go.yml': { present: true, text: "jobs:\n  build:\n    runs-on: ${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}\n" } },
+    runnerVariables: { RELEVO_RUNNER: { value: 'ubuntu-latest' } },
+  };
+  const plan = planInit({ facts, answers: ANSWERS, templates, current: empty(), admin: true });
+  const byId = (id) => plan.find((i) => i.id === id);
+  assert.equal(byId('manual.links-unreadable').status, 'manual');
+  assert.match(byId('manual.links-unreadable').description, /acme\/design.*RELEVO_LINKS_TOKEN.*copy the file/);
+  assert.equal(byId('manual.runner-variable.RELEVO_RUNNER').status, 'manual');
+  assert.match(byId('manual.runner-variable.RELEVO_RUNNER').description, /ubuntu-latest.*self-hosted, linux|self-hosted, linux.*ubuntu-latest/);
+  assert.equal(byId('manual.branch-checks').status, 'manual');
+  assert.match(byId('manual.branch-checks').description, /init does not change it/);
+  assert.equal(byId('manual.plugin-update').status, 'manual');
+  assert.match(byId('manual.plugin-update').description, /0\.14\.4.*0\.14\.2/);
+  const applied = plan.filter((i) => i.id.startsWith('manual.') && i.status !== 'manual' && i.status !== 'ok');
+  assert.deepEqual(applied.map((i) => i.id), [], 'a manual step is never applied');
+});
+
+test('init adds no environment step when nothing is wrong or nothing could be read', () => {
+  const facts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: [],
+    protection: { base: { requiredChecks: true }, release: {} }, publishedVersion: null, pluginVersion: '0.14.4' };
+  const plan = planInit({ facts, answers: ANSWERS, templates, current: empty(), admin: true });
+  ['manual.links-unreadable', 'manual.branch-checks', 'manual.plugin-update'].forEach((id) => assert.equal(plan.some((i) => i.id === id), false, id));
+  const unreadable = planInit({ facts: { ...facts, protection: { base: { requiredChecks: false } }, protectionError: 'HTTP 403' }, answers: ANSWERS, templates, current: empty(), admin: true });
+  assert.equal(unreadable.some((i) => i.id === 'manual.branch-checks'), false, 'protection that could not be read is not reported as missing');
+});

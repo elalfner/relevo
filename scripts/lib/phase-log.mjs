@@ -5,7 +5,7 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const OUTCOME_CLASSES = ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'other'];
+export const OUTCOME_CLASSES = ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'limit', 'other'];
 
 export const LENSES = ['spec', 'security', 'code', 'interface'];
 
@@ -61,23 +61,24 @@ export function readClass(dir) {
 }
 
 /**
- * Appends the lens that `go` launches now. The lenses have a log of their own, apart from the phases: they are not
- * phases of the run, and the progress comment and the daily digest know only the five phases.
+ * Appends the start of a lens (`go` launches it now) or, with `end`, its end (its report arrived). The lenses have a log
+ * of their own, apart from the phases: they are not phases of the run, and the progress comment and the daily digest know
+ * only the five phases. Lenses overlap when they run together, so each has its own start and its own end.
  */
-export function recordLens(dir, { lens, attempt = null }, now = Date.now()) {
+export function recordLens(dir, { lens, attempt = null, end = false }, now = Date.now()) {
   if (!LENSES.includes(lens)) return false;
-  appendFileSync(join(dir, LENS_LOG), `${JSON.stringify({ lens, attempt: whole(attempt), at: now })}\n`);
+  appendFileSync(join(dir, LENS_LOG), `${JSON.stringify({ lens, attempt: whole(attempt), at: now, ...(end ? { event: 'end' } : {}) })}\n`);
   return true;
 }
 
-/** The recorded lenses in order; a line that is not valid is skipped. */
+/** The recorded starts and ends in order (`event` is `start` or `end`); a line that is not valid is skipped. */
 export function readLensLog(dir) {
   const file = dir ? join(dir, LENS_LOG) : null;
   if (!file || !existsSync(file)) return [];
   return readFileSync(file, 'utf8').split('\n').map((line) => {
     try {
       const e = JSON.parse(line);
-      return LENSES.includes(e.lens) && Number.isFinite(e.at) ? { lens: e.lens, attempt: whole(e.attempt), at: e.at } : null;
+      return LENSES.includes(e.lens) && Number.isFinite(e.at) ? { lens: e.lens, attempt: whole(e.attempt), at: e.at, event: e.event === 'end' ? 'end' : 'start' } : null;
     } catch {
       return null;
     }
@@ -85,15 +86,15 @@ export function readLensLog(dir) {
 }
 
 /**
- * [{ name, attempt, seconds }]: a lens lasts until the next lens begins or the next phase is announced, whichever comes
- * first, and the last one until `endMs`. The seconds include the receipt check that precedes the lens after it.
+ * [{ name, attempt, seconds }] for each start. A lens lasts until its own end (the first later `end` of the same lens and
+ * attempt). A lens with no end lasts until the next phase is announced, or until `endMs`; never until another lens begins,
+ * because lenses overlap.
  */
-export function lensSeconds(lenses, phases, endMs) {
-  return lenses.map((e, i) => {
-    const ends = [endMs];
-    if (i + 1 < lenses.length) ends.push(lenses[i + 1].at);
+export function lensSeconds(entries, phases, endMs) {
+  return entries.filter((e) => e.event !== 'end').map((e) => {
+    const own = entries.find((x) => x.event === 'end' && x.lens === e.lens && x.attempt === e.attempt && x.at >= e.at);
     const phase = phases.find((p) => p.at > e.at);
-    if (phase) ends.push(phase.at);
-    return { name: e.lens, ...(e.attempt ? { attempt: e.attempt } : {}), seconds: Math.max(0, Math.round((Math.min(...ends) - e.at) / 1000)) };
+    const until = own ? own.at : Math.min(endMs, phase ? phase.at : endMs);
+    return { name: e.lens, ...(e.attempt ? { attempt: e.attempt } : {}), seconds: Math.max(0, Math.round((until - e.at) / 1000)) };
   });
 }

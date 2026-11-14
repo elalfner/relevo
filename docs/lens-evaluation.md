@@ -34,7 +34,7 @@ The cases: a state update after an `await` without a check (Flutter), an unescap
 
 The total was 2.11 USD and 295.4 s. This run includes `security/vue/hard-coded-secret`, which the first runs did not cover: it found the defect and did not flag the good variant. Every lens met the threshold on all 11 cases.
 
-The lenses run one at a time, so a pass of the four on one small change takes about the sum of one run of each, around 50 s here, against 10 to 16 s for a single lens. These are small seeded changes; a real change will take longer. There is no measurement of the single QA agent that preceded the lenses, so the table does not say how much slower the four lenses are than it.
+These runs launched the lenses one at a time, so a pass of the four on one small change took about the sum of one run of each, around 50 s here (`go` now launches them together, so it takes about the longest one), against 10 to 16 s for a single lens. These are small seeded changes; a real change will take longer. There is no measurement of the single QA agent that preceded the lenses, so the table does not say how much slower the four lenses are than it.
 
 ## How the result was reached
 
@@ -50,6 +50,19 @@ The first runs measured the evaluation and not the lenses, and each was correcte
 | `interface`, good variants that meet the other rules | Valid. 3/3 and 0/3 | 0.33 |
 
 The total is about 2.84 USD in model usage. Three of the six runs are valid for their lens.
+
+## Cheaper models (2026-11-06)
+
+`--model <name>` runs every selected lens with one model instead of the one in its agent file, to check the models that `model: auto` can pick. One run per case, so the sample is small.
+
+| Lens | Model | Defects found | Good variants flagged | Cost (USD) |
+| --- | --- | --- | --- | --- |
+| `spec` | sonnet (default: opus) | 4/4 | 0/4 | 0.44 |
+| `security` | sonnet (default: opus) | 3/3 | 0/3 | 0.33 |
+| `code` | haiku (default: sonnet) | 1/1 | 1/1 | 0.01 |
+| `interface` | haiku (default: sonnet) | 3/3 | 1/3 | 0.04 |
+
+By the threshold above (every defect found, no good variant flagged): sonnet passes for `spec` and `security`; haiku does not pass for `code` and `interface`. It finds the seeded defects but also rejects clean changes (a missing `pubspec.yaml` in the fixture, a stub without a marker, one form), which would send correct work back to the developer. So `auto` should not go below sonnet for QA lenses until a larger sample says otherwise.
 
 ## What this does not show
 

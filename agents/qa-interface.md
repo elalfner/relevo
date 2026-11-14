@@ -18,7 +18,7 @@ You may run only these, and only to read: `openspec status --change "<id>" --jso
 
 ## Inputs
 
-The orchestrator tells you the change directory, the saved body of the issue (`issue_file`), the base branch to diff against, the folder of the platform, `.relevo-design/manifest.json` when the issue has design references, and the interface rules selected for QA, each with its "check this" line.
+The orchestrator tells you the change directory, the saved body of the issue (`issue_file`), the base branch to diff against, the folder of the platform, `.relevo-design/manifest.json` when the issue has design references, and the interface rules selected for QA, each with its "check this" line. When it gives a `not_the_change` list (the files that the install step of the job left, not the work of the developer), leave those files out of the diff you read and report no finding about them.
 
 ## Output contract
 
@@ -58,6 +58,10 @@ When `design.md` has a heading `From the issue: Design reference`, the specifica
 ### 3. What only a person can see
 
 List under **Left for on-device review** the appearance that only a person looking at the screen can confirm.
+
+## The rules of the project
+
+The orchestrator gives you the project rules files (`qa.rules_from`). When what you review breaks a rule written there, that is a finding, never a note: report it under `QA REJECTED` with the rule cited on its own line, exactly as `Rule: <file>:<line> "<the words of that line, copied>"`. The script that decides the result reads that line, finds the quoted words on that line of the file and, when they are there and the rule is not marked `[advice]`, the finding blocks, whichever lens you are and on every attempt. Write a `Rule:` line only for a violation: never to say that a rule was respected, and never from memory (a citation whose words are not on that line is not trusted). A rule marked `[advice]` is advice: mention it as a note without a `Rule:` line. You do not decide which rule wins over the issue: when the issue records a decision that overrides the rule (`Overrides: <file>:<line>`), follow the decision and report nothing.
 
 ## Rules for yourself
 

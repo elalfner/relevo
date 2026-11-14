@@ -38,6 +38,7 @@ test('Scenario: Authorised label - the issue passes the gates and starts', () =>
   assert.equal(d.assignee, 'persona-b');
   assert.equal(d.qa_retries, 1);
   assert.equal(d.run_max_cost, 5);
+  assert.equal(d.run_max_minutes, 50, 'the soft time limit travels with the decision');
   assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:ready'] });
 });
 
@@ -115,7 +116,7 @@ test('Scenario: Assignee at capacity - queued with a comment that says why, and 
   assert.equal(full.action, 'queue');
   assert.deepEqual(full.labels, { add: ['relevo:queued'], remove: ['relevo:ready'] });
   assert.equal(full.comment.kind, 'queued_capacity');
-  assert.deepEqual(full.comment.data, { issue: 9, title: full.comment.data.title, assignee: 'persona-b', built: 2, limit: 2 });
+  assert.deepEqual(full.comment.data, { issue: 9, title: full.comment.data.title, assignee: 'persona-b', built: 2, limit: 2, built_issues: '#1, #2' });
 
   const queued = issue({ number: 9, labels: ['relevo:queued'] });
   const freed = one([built(1), queued]);
@@ -530,4 +531,152 @@ test('a retry plans only the retried issue as qa-failed; another qa-failed issue
   const b = failed();
   const decisions = plan([a, b], retryOf(a)).decisions;
   assert.deepEqual(decisions.map((d) => d.issue), [a.number]);
+});
+
+// Gate 4, files shared with another issue.
+const naming = (...files) => `${BODY}\n## Code pointers\n\n${files.map((f) => `- \`${f}\``).join('\n')}\n`;
+const NOW = '2026-10-15T12:00:00Z';
+
+test('Scenario: Two issues name the same registry file - the later one is queued with a comment that names the file and the issue', () => {
+  const active = issue({ number: 12, labels: ['relevo:building'], body: naming('src/router.ts') });
+  const later = issue({ number: 15, body: naming('src/router.ts', 'src/Screen.vue') });
+  const d = plan([active, later], { input: { now: NOW } }).decisions.find((x) => x.issue === 15);
+  assert.equal(d.action, 'queue');
+  assert.deepEqual(d.labels, { add: ['relevo:queued'], remove: ['relevo:ready'] });
+  assert.equal(d.comment.kind, 'queued_shared_files');
+  assert.equal(d.comment.data.file, 'src/router.ts');
+  assert.equal(d.comment.data.other, 12);
+  assert.equal(d.comment.data.hours, 24);
+});
+
+test('Scenario: The first issue merges - the issue that waited only for the file starts', () => {
+  const waiting = issue({ number: 15, labels: ['relevo:queued'], body: naming('src/router.ts'), shared_wait: { file: 'src/router.ts', other: 12, at: '2026-10-15T08:00:00Z' } });
+  const d = one([waiting], { input: { now: NOW } });
+  assert.equal(d.action, 'start');
+  assert.equal(d.shared_files, undefined);
+});
+
+test('Scenario: The first issue is still ahead in the queue - only the older ready label may start', () => {
+  const older = issue({ number: 20, body: naming('src/router.ts'), ready_at: '2026-10-14T10:00:00Z' });
+  const newer = issue({ number: 21, body: naming('src/router.ts'), ready_at: '2026-10-14T11:00:00Z' });
+  const { decisions } = plan([newer, older], { input: { now: NOW } });
+  assert.equal(decisions.find((x) => x.issue === 20).action, 'start');
+  const waits = decisions.find((x) => x.issue === 21);
+  assert.equal(waits.action, 'queue');
+  assert.equal(waits.comment.data.other, 20);
+});
+
+test('Scenario: An issue that names no file - the gate never holds it', () => {
+  const active = issue({ number: 12, labels: ['relevo:building'], body: naming('src/router.ts') });
+  assert.equal(plan([active, issue({ number: 15 })], { input: { now: NOW } }).decisions.find((x) => x.issue === 15).action, 'start');
+});
+
+test('Scenario: A blocked issue ahead does not hold the line - the newer one starts', () => {
+  const older = issue({ number: 20, body: `${naming('src/router.ts')}\nDepends-on: #999\n`, ready_at: '2026-10-14T10:00:00Z' });
+  const newer = issue({ number: 21, body: naming('src/router.ts'), ready_at: '2026-10-14T11:00:00Z' });
+  const { decisions } = plan([older, newer], { input: { now: NOW } });
+  assert.equal(decisions.find((x) => x.issue === 20).action, 'block');
+  assert.equal(decisions.find((x) => x.issue === 21).action, 'start');
+});
+
+test('Scenario: An issue in review still holds its files until it is merged', () => {
+  const inReview = issue({ number: 12, labels: ['relevo:in-review'], body: naming('src/router.ts') });
+  const pr = issue({ number: 13, labels: ['relevo:pr-open'], body: naming('src/other.ts') });
+  const later = issue({ number: 15, body: naming('src/router.ts') });
+  const { decisions } = plan([inReview, pr, later], { input: { now: NOW } });
+  assert.equal(decisions.find((x) => x.issue === 15).action, 'queue');
+});
+
+test('Scenario: Append-only and generated files - only the files outside both lists make an issue wait', () => {
+  const config = 'queue:\n  append_only:\n    - src/nav/items.ts\nintegration:\n  generated:\n    - "src/gql/**"\n  regenerate: npm run codegen\n';
+  const active = issue({ number: 12, labels: ['relevo:building'], body: naming('src/nav/items.ts', 'src/gql/types.ts') });
+  const only = issue({ number: 15, body: naming('src/nav/items.ts', 'src/gql/types.ts') });
+  assert.equal(plan([active, only], { config, input: { now: NOW } }).decisions.find((x) => x.issue === 15).action, 'start');
+  const both = issue({ number: 16, body: naming('src/nav/items.ts', 'src/router.ts') });
+  const active2 = issue({ number: 12, labels: ['relevo:building'], body: naming('src/nav/items.ts', 'src/router.ts') });
+  const d = plan([active2, both], { config, input: { now: NOW } }).decisions.find((x) => x.issue === 16);
+  assert.equal(d.action, 'queue');
+  assert.equal(d.comment.data.file, 'src/router.ts');
+});
+
+test('Scenario: The first issue takes too long - after the bound the issue starts and the start decision lists the shared files', () => {
+  const active = issue({ number: 12, labels: ['relevo:building'], body: naming('src/router.ts') });
+  const waiting = issue({ number: 15, labels: ['relevo:queued'], body: naming('src/router.ts'), shared_wait: { file: 'src/router.ts', other: 12, at: '2026-10-14T11:00:00Z' } });
+  const d = plan([active, waiting], { config: 'limits:\n  shared_file_wait_hours: 24\n  concurrent_agents: 3\n', input: { now: NOW } }).decisions.find((x) => x.issue === 15);
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.shared_files, [{ file: 'src/router.ts', issue: 12 }]);
+  // The bound is not a dependency: the labels are those of any other start.
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:queued'] });
+});
+
+test('Scenario: Inside the bound - the issue keeps waiting and posts nothing again', () => {
+  const active = issue({ number: 12, labels: ['relevo:building'], body: naming('src/router.ts') });
+  const waiting = issue({ number: 15, labels: ['relevo:queued'], body: naming('src/router.ts'), shared_wait: { file: 'src/router.ts', other: 12, at: '2026-10-15T08:00:00Z' } });
+  const d = plan([active, waiting], { input: { now: NOW } }).decisions.find((x) => x.issue === 15);
+  assert.equal(d.action, 'queue');
+  assert.equal(d.comment, null);
+});
+
+test('Scenario: The reason changes - a new comment names the new issue and the bound is counted again', () => {
+  const active = issue({ number: 18, labels: ['relevo:building'], body: naming('src/router.ts') });
+  const waiting = issue({ number: 15, labels: ['relevo:queued'], body: naming('src/router.ts'), shared_wait: { file: 'src/router.ts', other: 12, at: '2026-10-10T08:00:00Z' } });
+  const d = plan([active, waiting], { input: { now: NOW } }).decisions.find((x) => x.issue === 15);
+  assert.equal(d.action, 'queue');
+  assert.equal(d.comment.kind, 'queued_shared_files');
+  assert.equal(d.comment.data.other, 18);
+});
+
+test('Scenario: An urgent issue is compared in its own position - it goes ahead of an older issue that names the same file', () => {
+  const older = issue({ number: 20, body: naming('src/router.ts'), ready_at: '2026-10-14T10:00:00Z' });
+  const urgent = issue({ number: 21, body: naming('src/router.ts'), labels: ['relevo:ready', 'relevo:urgent'], urgent_by: 'persona-a', ready_at: '2026-10-14T11:00:00Z' });
+  const { decisions } = plan([older, urgent], { input: { now: NOW } });
+  assert.equal(decisions.find((x) => x.issue === 21).action, 'start');
+  assert.equal(decisions.find((x) => x.issue === 20).action, 'queue');
+});
+
+// ---------- A queued issue says its position and what it waits for (issue #127)
+
+test('Scenario: Slots full, issues ahead - the comment counts the active runs, which they are and the issues queued before it', () => {
+  const running = [50, 51].map((n) => issue({ number: n, labels: ['relevo:building'], assignees: [`p${n}`] }));
+  const ahead = issue({ number: 7, assignees: ['p7'], labels: ['relevo:queued'], ready_at: '2026-10-14T09:00:00Z' });
+  const first = issue({ number: 8, assignees: ['p8'], ready_at: '2026-10-14T09:30:00Z' });
+  const mine = issue({ number: 9, assignees: ['p9'], ready_at: '2026-10-14T10:00:00Z' });
+  const { decisions } = plan([...running, ahead, first, mine], { config: 'limits:\n  concurrent_agents: 2\n', input: { recentBuilds: [30, 40, 20, 50, 10] } });
+  const byIssue = Object.fromEntries(decisions.map((d) => [d.issue, d]));
+  // #7 was queued before: it posts nothing but it is ahead of the others.
+  assert.equal(byIssue[7].comment, null);
+  assert.deepEqual(byIssue[8].comment.data, { issue: 8, title: byIssue[8].comment.data.title, active: 2, active_issues: '#50, #51', ahead: 1, typical_minutes: 30, typical_samples: 5 });
+  assert.equal(byIssue[9].comment.data.ahead, 2);
+});
+
+test('the first issue of the queue has nobody ahead, and zero is a figure', () => {
+  const building = issue({ number: 50, labels: ['relevo:building'] });
+  const d = one([building, issue({ number: 9 })], { config: 'limits:\n  concurrent_agents: 1\n' });
+  assert.equal(d.comment.data.ahead, 0);
+  assert.equal(d.comment.data.active, 1);
+});
+
+test('Scenario: No recent runs - fewer than three builds, or a failed read, leave the typical duration out', () => {
+  const building = issue({ number: 50, labels: ['relevo:building'] });
+  const cfg = { config: 'limits:\n  concurrent_agents: 1\n' };
+  [[], [10, 20], null, undefined, 'x', [Number.NaN, -5, 10]].forEach((recentBuilds) => {
+    const data = one([building, issue({ number: 9 })], { ...cfg, input: { recentBuilds } }).comment.data;
+    assert.ok(!('typical_minutes' in data) && !('typical_samples' in data), JSON.stringify(recentBuilds));
+  });
+  // The reader of the repository may fail: the plan goes on.
+  const data = one([building, issue({ number: 9 })], { ...cfg, input: { recentBuilds: () => { throw new Error('403'); } } }).comment.data;
+  assert.ok(!('typical_minutes' in data));
+});
+
+test('the median is of the minutes given, and the reader is called once and only when a queue comment needs it', () => {
+  let calls = 0;
+  const reader = () => { calls += 1; return [10, 20, 30, 40]; };
+  const none = plan([issue({ number: 9 })], { input: { recentBuilds: reader } });
+  assert.equal(none.decisions[0].action, 'start');
+  assert.equal(calls, 0, 'a plan that queues nothing reads nothing');
+  const building = issue({ number: 50, labels: ['relevo:building'] });
+  const { decisions } = plan([building, issue({ number: 8, ready_at: '2026-10-14T10:00:00Z' }), issue({ number: 9, ready_at: '2026-10-14T10:05:00Z' })], { config: 'limits:\n  concurrent_agents: 1\n', input: { recentBuilds: reader } });
+  assert.equal(calls, 1);
+  assert.equal(decisions[0].comment.data.typical_minutes, 25, 'the median of an even list is the mean of the middle two');
+  assert.equal(decisions[1].comment.data.typical_samples, 4);
 });

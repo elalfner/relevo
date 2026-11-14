@@ -76,6 +76,8 @@ if (arg('input')) {
   state = gather({ gh: realGh, ghLinks: realGhLinks(), repo, config, running, retry });
 }
 
+// A state file may give the minutes of the recent builds as `recent_builds` (gather reads them itself from the workflow runs).
+if (state.recent_builds !== undefined) state.recentBuilds = state.recent_builds;
 const result = planGo({ config, repo, ...state, retry });
 // `--credential false`: the workflow found no model credential, so nothing may be claimed for a cloud build.
 if (arg('credential') === 'false') {
