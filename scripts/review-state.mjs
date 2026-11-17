@@ -80,7 +80,7 @@ try {
       const stack = flag('stack');
       if (stack !== undefined && !api) fail('--stack goes with --adapter api');
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack });
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack });
       if (ios) state.source = { source: 'simulator', udid: pickSimulator(listSimulators(), process.env.IOS_SIMULATOR ?? null), process: flag('process'), since: formatLogStart() };
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
@@ -92,6 +92,8 @@ try {
       const state = syncState(load(), checklistFromChange(rest[0]));
       // The log of the old code is not the log of the new: an api review takes the files as they are now.
       if (state.kind === 'api') state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
+      // Likewise an iOS review reads the simulator log from now on.
+      if (state.source?.source === 'simulator') state.source.since = formatLogStart();
       save(state);
       const pending = state.items.filter((i) => i.status === 'pending').length;
       console.log(`${state.items.length} checklist item(s), ${pending} to test again; the log audit and the agreement must be repeated`);

@@ -411,3 +411,8 @@ test('the skill handles an iOS review: preflight, process, audit input, captures
   assert.match(body, /never boot, install, launch or terminate anything in a simulator/);
   assert.match(body, /no iOS driver yet/);
 });
+
+test('the iOS micro-fix and start steps do not use adb or a serial', () => {
+  assert.match(body, /in an iOS review `review-state\.mjs reset-log` instead, never `adb`/);
+  assert.match(body, /In an iOS review they run it in the simulator/);
+});

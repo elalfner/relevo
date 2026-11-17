@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureIos, formatLogStart, iosLogArgs, listSimulators, parseSimulators, pickSimulator, readIosLog } from '../scripts/lib/device-ios.mjs';
@@ -157,4 +157,33 @@ test('capture.mjs --target ios writes evidence/<name>.png, and IOS_SIMULATOR pic
   const bad = run('capture.mjs', ['../x', '--target', 'ios'], { bin, cwd });
   assert.equal(bad.status, 2);
   assert.match(bad.stderr, /capture names may use letters/);
+});
+
+// review-state.mjs with an iOS review: init, reset-log, sync and audit through the CLI and a fake xcrun.
+test('review-state.mjs --target ios: autopilot is forced off, the log source is recorded, audit reads the fake log', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-rs-ios-'));
+  mkdirSync(join(dir, 'change', 'specs', 'cap'), { recursive: true });
+  writeFileSync(join(dir, 'change', 'specs', 'cap', 'spec.md'), '## ADDED Requirements\n### Requirement: A\n#### Scenario: One\n- **WHEN** a\n- **THEN** b\n');
+  const bin = fakeXcrun(listing(phone(UDID, 'iPhone 17')));
+  // A fake that also answers the log read with one Fault.
+  writeFileSync(join(bin, 'xcrun'), readFileSync(join(bin, 'xcrun'), 'utf8').replace('exit 1\n', `if [ "$1" = "simctl" ] && [ "$2" = "spawn" ]; then echo '{"messageType":"Fault","subsystem":"com.apple.runtime-issues","eventMessage":"bad"}'; exit 0; fi\nexit 1\n`));
+  const state = join(dir, 'evidence', 'review-state.json');
+  const cli = (...args) => run('review-state.mjs', [...args, '--state', state], { bin });
+  assert.equal(cli('init', join(dir, 'change'), '--target', 'ios').status, 2);
+  const init = cli('init', join(dir, 'change'), '--autopilot', 'verify', '--target', 'ios', '--process', 'OMB');
+  assert.equal(init.status, 0, init.stderr);
+  const saved = () => JSON.parse(readFileSync(state, 'utf8'));
+  assert.equal(saved().autopilot, 'off');
+  assert.deepEqual([saved().source.source, saved().source.udid, saved().source.process], ['simulator', UDID, 'OMB']);
+  const edited = saved();
+  edited.source.since = '2000-01-01 00:00:00';
+  writeFileSync(state, JSON.stringify(edited));
+  assert.equal(cli('reset-log').status, 0);
+  assert.notEqual(saved().source.since, '2000-01-01 00:00:00');
+  writeFileSync(state, JSON.stringify(edited));
+  assert.equal(cli('sync', join(dir, 'change')).status, 0);
+  assert.notEqual(saved().source.since, '2000-01-01 00:00:00');
+  const audit = cli('audit');
+  assert.match(audit.stdout, /REVIEW REJECTED/);
+  assert.equal(saved().audit.findings[0].class, 'fault');
 });
