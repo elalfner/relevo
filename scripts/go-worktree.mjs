@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The worktree of an interactive `go` in Claude Code. Usage:
-//   node scripts/go-worktree.mjs create <issue> [--config relevo.yml]   prints {"worktree","base"} as JSON
+//   node scripts/go-worktree.mjs create <issue> [--config relevo.yml]   prints {"worktree","base","state"} as JSON
 //   node scripts/go-worktree.mjs remove <issue>
 //   exit 0: done   1: git failed   2: bad usage   3: the worktree of the issue already exists   4: already in a linked worktree
 // The skill reads exit 3 as "stop" and exit 4 as "build where you are".
@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { createWorktree, EXIT, removeWorktree } from './lib/go-worktree.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { resetStateDir } from './lib/worktree-path.mjs';
 
 const args = process.argv.slice(2);
 const [command, issue] = args;
@@ -30,8 +31,8 @@ if (command === 'create') {
   if (!existsSync(configPath)) fail(`relevo.yml not found at ${configPath}. Run /relevo:init to create it.`);
   const loaded = loadConfig(readFileSync(configPath, 'utf8'));
   if (!loaded.ok) fail(loaded.errors.map((e) => `error: ${e.message}`).join('\n'));
-  result = createWorktree({ issue, config: loaded.config, runner, exists: existsSync });
-  if (result.status === EXIT.ok) console.log(JSON.stringify({ worktree: result.worktree, base: result.base }));
+  result = createWorktree({ issue, config: loaded.config, runner, exists: existsSync, prepareState: resetStateDir });
+  if (result.status === EXIT.ok) console.log(JSON.stringify({ worktree: result.worktree, base: result.base, state: result.state }));
 } else if (command === 'remove') {
   result = removeWorktree({ issue, runner, exists: existsSync });
 } else {

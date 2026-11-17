@@ -189,3 +189,23 @@ test('the dry run shows the retry flag, and Antigravity gets it in its prompt', 
   const agy = planLocalRun({ issue: '42', repoRoot: REPO, config: { ...config, agent: { ...config.agent, build: 'antigravity' } }, retry: true });
   assert.ok(agy.claude[1].includes('/relevo:go 42 --retry'));
 });
+
+test('Scenario: the build gets its state folder as RELEVO_PROGRESS_DIR, made before it starts and outside every working tree', () => {
+  const prepared = [];
+  const runner = fakeRunner();
+  const r = run(runner, { prepareState: (d) => { prepared.push(d); return true; } });
+  const stream = runner.calls.find((c) => c.kind === 'stream');
+  assert.equal(stream.env.RELEVO_PROGRESS_DIR, '/home/me/code/.relevo-worktrees/.state/shop-42');
+  assert.deepEqual(prepared, [stream.env.RELEVO_PROGRESS_DIR]);
+  assert.ok(!stream.env.RELEVO_PROGRESS_DIR.startsWith(`${REPO}/`) && !stream.env.RELEVO_PROGRESS_DIR.startsWith(`${r.worktree}/`));
+  assert.equal(stream.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1');
+  // the state stays when the worktree is removed
+  assert.ok(!runner.calls.some((c) => c.cmd === 'git' && c.args.join(' ').includes('.state')));
+});
+
+test('when the state folder cannot be made the build runs as today, without the variable', () => {
+  const runner = fakeRunner();
+  const r = run(runner, { prepareState: () => false });
+  assert.equal(r.status, 0);
+  assert.equal(runner.calls.find((c) => c.kind === 'stream').env.RELEVO_PROGRESS_DIR, undefined);
+});

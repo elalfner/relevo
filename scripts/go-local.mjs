@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { runLocal } from './lib/go-local.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { resetStateDir } from './lib/worktree-path.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
@@ -47,6 +48,7 @@ const result = runLocal({
   retry: flag('retry'),
   workflowPresent: existsSync('.github/workflows/relevo-go.yml'),
   exists: existsSync,
+  prepareState: resetStateDir,
 });
 result.messages.forEach((m) => console.log(m));
 process.exit(result.status);

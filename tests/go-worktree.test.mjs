@@ -202,3 +202,23 @@ test('no script of Relevo copies, links or moves a file into a tree', () => {
   assert.deepEqual(offenders, [], `${offenders.join(', ')} copies or links files without the restricted list: a restricted file must never be one of them`);
   assert.ok(scripts.endsWith('/scripts/'));
 });
+
+test('Scenario: the state folder of the build is emptied and created beside the worktrees, and is kept when the worktree goes', () => {
+  const prepared = [];
+  const r = createWorktree({ issue: '42', config, runner: fakeRunner(), prepareState: (d) => { prepared.push(d); return true; } });
+  assert.equal(r.state, '/home/me/code/.relevo-worktrees/.state/shop-42');
+  assert.deepEqual(prepared, [r.state]);
+  assert.ok(!r.state.startsWith(`${REPO}/`) && !r.state.startsWith(`${WORKTREE}/`));
+  const runner = fakeRunner();
+  removeWorktree({ issue: '42', runner });
+  assert.ok(!gitCalls(runner).some((a) => a.includes('.state')));
+  const none = createWorktree({ issue: '42', config, runner: fakeRunner(), prepareState: () => false });
+  assert.equal(none.status, EXIT.ok);
+  assert.equal(none.state, null);
+});
+
+test('the state folder is not made when the worktree is refused', () => {
+  const prepared = [];
+  createWorktree({ issue: '42', config, runner: fakeRunner(), exists: (p) => p === WORKTREE, prepareState: (d) => prepared.push(d) });
+  assert.deepEqual(prepared, []);
+});

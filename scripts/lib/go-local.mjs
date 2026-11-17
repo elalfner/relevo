@@ -10,7 +10,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cloudBuilds } from './execution-mode.mjs';
 import { runFlags } from './run-flags.mjs';
-import { WORKTREES_FOLDER, worktreePath } from './worktree-path.mjs';
+import { WORKTREES_FOLDER, stateDir, worktreePath } from './worktree-path.mjs';
 
 export { WORKTREES_FOLDER };
 // The guard is part of the plugin, not of the project that is built, so it is found next to this file.
@@ -22,6 +22,7 @@ export const GUARD_TIMEOUT_MINUTES = 50;
 export function planLocalRun({ issue, repoRoot, config, retry = false }) {
   const base = config.branches.base;
   const worktree = worktreePath(repoRoot, issue);
+  const state = stateDir(repoRoot, issue);
   const isAntigravity = config.agent?.build === 'antigravity';
   // A retry builds a `build-failed` issue again: `go` plans it with the planner's --retry and the issue never becomes `ready`.
   const prompt = `/relevo:go ${issue}${retry ? ' --retry' : ''}`;
@@ -44,6 +45,7 @@ export function planLocalRun({ issue, repoRoot, config, retry = false }) {
     issue,
     base,
     worktree,
+    state,
     git: [
       ['fetch', 'origin', base],
       ['worktree', 'add', '--detach', worktree, `origin/${base}`],
@@ -58,7 +60,7 @@ export function planLocalRun({ issue, repoRoot, config, retry = false }) {
  * Run it. Returns { status, worktree, removed, messages } and never throws for an expected problem; `messages` is
  * what to print. `dryRun` returns the plan without running anything.
  */
-export function runLocal({ issue, config, runner, workflowPresent = false, dryRun = false, retry = false, exists = () => false }) {
+export function runLocal({ issue, config, runner, workflowPresent = false, dryRun = false, retry = false, exists = () => false, prepareState = () => true }) {
   const messages = [];
   const say = (m) => messages.push(m);
   if (!/^\d+$/.test(String(issue))) return { status: 2, worktree: null, removed: false, messages: ['give the issue number: go-local.mjs <issue>'] };
@@ -105,10 +107,13 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
     return { status: 1, worktree: null, removed: false, messages: [...messages, `could not prepare the worktree: ${String(err.stderr ?? err.message).trim().split('\n')[0]}`] };
   }
   say(`building #${issue} in ${plan.worktree}`);
+  // The progress folder of the build: emptied here so that it replaces the last one, outside every working tree, kept when the worktree goes.
+  const stateOk = prepareState(plan.state);
+  const env = stateOk ? { ...plan.env, RELEVO_PROGRESS_DIR: plan.state } : plan.env;
 
   let status;
   try {
-    status = runner.stream(plan.claude[0], plan.claude[1], { cwd: plan.worktree, env: plan.env });
+    status = runner.stream(plan.claude[0], plan.claude[1], { cwd: plan.worktree, env });
   } catch (err) {
     status = err.code === 'ENOENT' ? 127 : 1;
     const missing = config.agent?.build === 'antigravity'

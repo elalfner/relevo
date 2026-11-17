@@ -2,9 +2,9 @@
 
 ## 1. The progress folder of a machine
 
-- [ ] 1.1 Test a resolver of the progress folder: the variable wins; inside a worktree of `.relevo-worktrees/<repository>-<issue>` with a state folder it returns that folder; inside one without it, or anywhere else, it returns none; it never throws; run and see it fail
-- [ ] 1.2 Write the resolver beside `scripts/lib/worktree-path.mjs` with the path of the state folder (`.relevo-worktrees/.state/<repository>-<issue>/`), and use it in `scripts/progress.mjs`, `scripts/run-budget.mjs`, `scripts/tree-baseline.mjs` and every other script that reads `RELEVO_PROGRESS_DIR`; verify the new tests and the existing tests of those scripts pass, and that with the variable set nothing changed
-- [ ] 1.3 `scripts/lib/go-local.mjs` and `scripts/lib/go-worktree.mjs`: empty and create the state folder before the build and keep it when the worktree is removed; `go-local.mjs` gives it to its child as the variable; update `tests/go-local.test.mjs` and `tests/go-worktree.test.mjs`; verify they pass and that the working tree of the build stays clean
+- [x] 1.1 Test a resolver of the progress folder: the variable wins; inside a worktree of `.relevo-worktrees/<repository>-<issue>` with a state folder it returns that folder; inside one without it, or anywhere else, it returns none; it never throws; run and see it fail
+- [x] 1.2 Write the resolver beside `scripts/lib/worktree-path.mjs` with the path of the state folder (`.relevo-worktrees/.state/<repository>-<issue>/`), and use it in `scripts/progress.mjs`, `scripts/run-budget.mjs`, `scripts/tree-baseline.mjs` and every other script that reads `RELEVO_PROGRESS_DIR`; verify the new tests and the existing tests of those scripts pass, and that with the variable set nothing changed
+- [x] 1.3 `scripts/lib/go-local.mjs` and `scripts/lib/go-worktree.mjs`: empty and create the state folder before the build and keep it when the worktree is removed; `go-local.mjs` gives it to its child as the variable; update `tests/go-local.test.mjs` and `tests/go-worktree.test.mjs`; verify they pass and that the working tree of the build stays clean
 
 ## 2. The group in progress
 

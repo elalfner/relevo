@@ -5,7 +5,7 @@
 // Every process goes through an injected runner so the logic is tested without git or a network:
 //   capture(cmd, args, { cwd }) -> stdout (throws when the command fails)
 
-import { worktreePath } from './worktree-path.mjs';
+import { stateDir, worktreePath } from './worktree-path.mjs';
 
 /** Exit codes of `go-worktree.mjs`. `exists` and `linked` are answers, not failures: the skill reads them. */
 export const EXIT = { ok: 0, failed: 1, usage: 2, exists: 3, linked: 4 };
@@ -34,8 +34,9 @@ function context(issue, runner) {
 /**
  * Make the worktree of an issue from `origin/<base>`. `linked` when the session is already in a linked worktree (the
  * build runs where it is), `exists` when the worktree of the issue is already there (the same issue twice).
+ * `prepareState(dir) -> boolean` empties and creates the state folder of the build; `state` is its path, or null when it could not be made.
  */
-export function createWorktree({ issue, config, runner, exists = () => false }) {
+export function createWorktree({ issue, config, runner, exists = () => false, prepareState = () => true }) {
   const ctx = context(issue, runner);
   if (ctx.early) return ctx.early;
   if (ctx.linked) {
@@ -58,10 +59,11 @@ export function createWorktree({ issue, config, runner, exists = () => false }) 
   } catch (err) {
     return fail(EXIT.failed, `could not prepare the worktree: ${firstLine(err)}`);
   }
-  return { status: EXIT.ok, worktree, base, messages: [] };
+  const state = stateDir(ctx.repoRoot, issue);
+  return { status: EXIT.ok, worktree, base, state: prepareState(state) ? state : null, messages: [] };
 }
 
-/** Remove the worktree of an issue, after a clean end. Run it from the main working tree, not from inside. */
+/** Remove the worktree of an issue, after a clean end. Run it from the main working tree, not from inside. The state folder stays. */
 export function removeWorktree({ issue, runner, exists = () => true }) {
   const ctx = context(issue, runner);
   if (ctx.early) return ctx.early;

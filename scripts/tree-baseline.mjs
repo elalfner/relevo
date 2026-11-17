@@ -8,6 +8,7 @@
 // Saved under $RELEVO_PROGRESS_DIR, outside the working tree. Without that variable (a local run) it does nothing.
 // It never fails: exit 0 always, because a missing baseline only leaves everything in, which is the safe side.
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -18,7 +19,7 @@ import { readFileSync } from './lib/guarded-fs.mjs';
 
 const [command] = process.argv.slice(2);
 try {
-  const dir = process.env.RELEVO_PROGRESS_DIR;
+  const dir = progressDir();
   if (command === 'record') {
     if (dir) {
       const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });

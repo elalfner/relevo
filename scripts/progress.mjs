@@ -17,6 +17,7 @@
 // variable every command does nothing, which is also what a local run gets.
 // It never fails: exit 0 always, so a step that reports progress cannot fail a run. Errors go to stderr.
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -36,7 +37,7 @@ const arg = (name) => {
 };
 const fail = (message) => process.stderr.write(`progress: ${message}\n`);
 
-const dir = process.env.RELEVO_PROGRESS_DIR;
+const dir = progressDir();
 const statePath = dir ? join(dir, 'state.json') : null;
 
 function writeFileAtomic(path, text) {
