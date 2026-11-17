@@ -33,6 +33,8 @@ A local build:
 - **A session on the web does not build.** Its container has no toolchain of the project and no hard limits, and a build there would run on the model and the accumulated context of the conversation. In a Claude Code session on the web, `/relevo:go <n>` builds nothing: it says why and asks one yes/no question, whether to apply the `go` label so that the cloud builds the issue, with the permission check of `issue`. Where the cloud cannot build (no workflow, no credential, paused), it says that the issue needs a machine or the cloud, and applies nothing. There is no option that forces a build on the web.
 - **A local build that died is restarted by hand.** `status` reports a build with no activity as it does today, says that it is a local build and whose, and tells the person to return the issue to `ready`, which is now safe.
 
+- **`urgent` stays a request for the cloud alone.** It travels with the issue, takes effect when `go` is applied, and a local build ignores it: its only effects are an early start in the queue and skipping the review capacity of the assignee, and a local build has neither.
+
 The cloud when it cannot answer:
 
 - **Paused.** With `RELEVO_CLOUD_GO` set to `off` the `go` label stays on the issue as a pending request, and the cloud serves it when it resumes, with nothing to apply again.
@@ -47,8 +49,6 @@ What follows from it:
 - **The label set, the templates and the documentation follow.** `go` and `local` are added to the labels that `init` creates and that `relevo.yml` can rename; the workflow templates trigger on `go` and remove it wherever they remove `ready` today; `doctor` reports an installed workflow that still triggers on `ready`; the guides, in English and Spanish, describe the three kinds of user (one person, a team with the cloud, machines only).
 
 Not in this change: a setting that makes `ready` start the cloud as before (one label with two possible meanings is what a new user would trip on); a label that a person applies to force a local build (the local command is that choice); a heartbeat for local builds; showing the progress of a local build or its subagents, and making the developer agent mark each task as it finishes (a separate change).
-
-One question for the design: what the `urgent` label means now. It asks for an early start and skips the review capacity of the assignee, a gate that a local build no longer has, and nothing was decided about `urgent` on a `ready` issue that has no build request. The default to confirm is that it stays a request for the cloud alone: it waits with the issue, takes effect when `go` is applied, and a local build ignores it.
 
 ## Capabilities
 
