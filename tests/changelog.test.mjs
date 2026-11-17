@@ -34,3 +34,17 @@ test('each release lists what was added and what is known not to work yet', () =
   assert.match(first, /### Known limits/);
   assert.doesNotMatch(first, /sk-ant-|ghp_|\/Users\//);
 });
+
+test('split-ready-and-go: the unreleased entry is breaking, names both new labels and gives the migration in its order with the warning', () => {
+  const unreleased = changelog.split(/^## \[/m).find((section) => section.startsWith('Unreleased')) ?? '';
+  assert.match(unreleased, /\*\*BREAKING: `ready` approves an issue and starts nothing; the new `go` label asks the cloud to build it\.\*\*/);
+  assert.ok(unreleased.includes('`relevo:go`') && unreleased.includes('`relevo:local`'), 'both new labels are named');
+  const migration = unreleased.slice(unreleased.indexOf('### Migration'));
+  const order = ['Update the plugin', 'Run `/relevo:init`', 'Merge the workflow files to the default branch', 'Apply `relevo:go` to the issues that were `ready`', 'Run `/relevo:doctor`'];
+  order.reduce((at, step) => {
+    const i = migration.indexOf(step);
+    assert.ok(i > at, `${step} comes in its order`);
+    return i;
+  }, -1);
+  assert.match(migration, /Until the workflow files are merged[^\n]*approving an issue in that window starts a cloud build/);
+});

@@ -48,8 +48,51 @@ function normalizeIssue(raw) {
     ready_at: null,
     ready_by: null,
     urgent_by: null,
+    go_at: null,
+    go_by: null,
+    title_edited_at: null,
+    local_by: null,
     shared_wait: null,
   };
+}
+
+/** When the title was last changed: the last `renamed` event of the timeline, or null when it never was. */
+export function titleEditedAt(timeline) {
+  const events = timeline.filter((e) => e.event === 'renamed');
+  return events.length > 0 ? events[events.length - 1].created_at ?? null : null;
+}
+
+const LAST_EDITED_QUERY = 'query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { lastEditedAt } } }';
+
+/**
+ * When the body of an issue was last edited, as GitHub reports it (`lastEditedAt` of the GraphQL API; a change of labels, comments
+ * or milestone does not move it, and the title is read from the `renamed` events instead).
+ * Returns { ok: true, at: ISO } after an edit, { ok: true, at: null } for an issue never edited, and { ok: false, reason } when it
+ * could not be read: the caller must never take a failure for "not edited". It never throws.
+ * Not yet proved against the live API with the token of a workflow run: the spike of split-ready-and-go (tasks 1.1 to 1.3) does it.
+ */
+export function readLastEdited({ gh, repo, number }) {
+  const [owner, name] = String(repo ?? '').split('/');
+  if (!owner || !name || !Number.isInteger(number)) return { ok: false, reason: 'no repository or issue to read' };
+  let out;
+  try {
+    out = gh(['api', 'graphql', '-f', `query=${LAST_EDITED_QUERY}`, '-F', `owner=${owner}`, '-F', `name=${name}`, '-F', `number=${number}`]);
+  } catch (e) {
+    return { ok: false, reason: `the request for the last edit failed: ${String(e?.message ?? e).split('\n')[0]}` };
+  }
+  let data;
+  try {
+    data = JSON.parse(out);
+  } catch {
+    return { ok: false, reason: 'the answer about the last edit was not JSON' };
+  }
+  if (Array.isArray(data?.errors) && data.errors.length > 0) return { ok: false, reason: `GitHub answered with an error: ${data.errors[0]?.message ?? 'unknown'}` };
+  const issue = data?.data?.repository?.issue;
+  if (!issue || typeof issue !== 'object' || !('lastEditedAt' in issue)) return { ok: false, reason: 'the answer about the last edit has no lastEditedAt' };
+  const at = issue.lastEditedAt;
+  if (at === null) return { ok: true, at: null };
+  if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) return { ok: false, reason: 'the last edit is not a time' };
+  return { ok: true, at };
 }
 
 /** When and by whom a label was last applied, from the issue timeline. */
@@ -101,7 +144,7 @@ export function readRecentBuilds({ gh, repo, workflow = 'relevo-go.yml', limit =
  * `running` is supplied by the caller (workflow runs in progress). `ghLinks` reads issues of linked repositories
  * (`config.links` only; a repository outside the list is never asked).
  */
-export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = null }) {
+export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = null, only = null, person = null }) {
   const names = resolveLabelNames(config.labels);
   // `build-failed` issues are read only for a retry, and then only the retried one is kept.
   // The states after `built` are read too: an issue in one of them still holds the files it names until it is merged.
@@ -112,10 +155,21 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
     const found = apiJson(gh, `repos/${repo}/issues?state=open&per_page=100&labels=${encodeURIComponent(names[key])}`, { paginate: true });
     found.filter((i) => !i.pull_request && (key !== 'build-failed' || i.number === retry.issue)).forEach((i) => byNumber.set(i.number, normalizeIssue(i)));
   });
+  // The issue named by --only is read whatever its state: a `go` label on a draft or on a `build-failed` issue is answered too,
+  // and a local build of a draft is told that it needs `ready` first.
+  if (Number.isInteger(only) && !byNumber.has(only)) {
+    try {
+      const raw = apiJson(gh, `repos/${repo}/issues/${only}`);
+      if (raw && !raw.pull_request && raw.state === 'open') byNumber.set(only, normalizeIssue(raw));
+    } catch {
+      // An issue that cannot be read gets no decision, as before.
+    }
+  }
   const issues = [...byNumber.values()];
 
   const candidates = issues.filter((i) => [names.ready, names.queued, names.blocked].some((n) => i.labels.includes(n))
-    || (retry && i.number === retry.issue && i.labels.includes(names['build-failed'])));
+    || (retry && i.number === retry.issue && i.labels.includes(names['build-failed']))
+    || i.number === only);
   candidates.forEach((issue) => {
     const timeline = apiJson(gh, `repos/${repo}/issues/${issue.number}/timeline?per_page=100`, { paginate: true });
     const { at, by } = labelEvent(timeline, names.ready);
@@ -125,6 +179,23 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
     issue.shared_wait = lastSharedWait(timeline);
     // The same timeline answers for the urgent label: who asked for the early start.
     if (issue.labels.includes(names.urgent)) issue.urgent_by = labelEvent(timeline, names.urgent).by;
+    // And for the build request: who asked the cloud to build, and when.
+    if (issue.labels.includes(names.go)) {
+      const go = labelEvent(timeline, names.go);
+      issue.go_at = go.at;
+      issue.go_by = go.by;
+    }
+    // A change of the title after the approval withdraws it (see "The approval covers the text as it was approved").
+    issue.title_edited_at = titleEditedAt(timeline);
+  });
+
+  // Who started a local build: the person who applied the `local` mark. Only `building` issues with the mark need it.
+  issues.filter((i) => i.labels.includes(names.building) && i.labels.includes(names.local)).forEach((issue) => {
+    try {
+      issue.local_by = labelEvent(apiJson(gh, `repos/${repo}/issues/${issue.number}/timeline?per_page=100`, { paginate: true }), names.local).by;
+    } catch {
+      issue.local_by = null;
+    }
   });
 
   // The retry time that a comment of a bot gave to an issue that stopped at a usage limit (see limit-retry.mjs). Only `queued` issues
@@ -167,7 +238,7 @@ export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = n
   });
 
   const permissions = {};
-  new Set([...candidates.flatMap((i) => [i.ready_by, i.urgent_by]), retry?.by].filter(Boolean)).forEach((login) => {
+  new Set([...candidates.flatMap((i) => [i.ready_by, i.urgent_by, i.go_by]), retry?.by, person].filter(Boolean)).forEach((login) => {
     try {
       permissions[login] = apiJson(gh, `repos/${repo}/collaborators/${login}/permission`).permission ?? 'none';
     } catch {
@@ -204,7 +275,8 @@ export function commandsFor(decision, { repo, config }) {
  */
 export function applyDecisions(decisions, { gh, repo, config, includeStart = false }) {
   const done = [];
-  decisions.filter((d) => includeStart || d.action !== 'start').forEach((d) => {
+  // A report only informs: it changes no label and posts nothing, whatever it carries.
+  decisions.filter((d) => d.action !== 'report' && (includeStart || d.action !== 'start')).forEach((d) => {
     commandsFor(d, { repo, config }).forEach((cmd) => {
       gh(cmd);
       done.push(cmd);

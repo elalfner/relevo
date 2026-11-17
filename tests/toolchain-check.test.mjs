@@ -77,7 +77,7 @@ test('the comment names the tools, says nothing was built and no turns were spen
   const en = renderMessage('toolchain_missing', data);
   assert.match(en, /^@ana #41 "Show a message" was not built: the runner has no flutter/);
   assert.match(en, /Nothing was built and no model turns were spent\./);
-  assert.match(en, /Your next step: install the toolchain in the build job of relevo-go\.yml .*remove relevo:build-failed and label the issue relevo:ready again\./);
+  assert.match(en, /Your next step: install the toolchain in the build job of relevo-go\.yml .*then apply relevo:go so that the cloud builds it again, or run \/relevo:go 41 --retry on your machine\./);
   const es = renderMessage('toolchain_missing', data, 'es');
   assert.match(es, /no se construyó: el runner no tiene flutter/);
   assert.match(es, /no se gastó ningún turno del modelo/);

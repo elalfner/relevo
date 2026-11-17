@@ -21,8 +21,9 @@ function issue(over = {}) {
   seq += 1;
   return {
     number: 100 + seq, title: `Task ${seq}`, body: BODY, state: 'open',
-    labels: ['relevo:ready'], assignees: ['persona-b'], milestone: { number: 1, due_on: null },
-    ready_at: `2026-10-14T10:0${seq % 10}:00Z`, ready_by: 'persona-a', ...over,
+    labels: ['relevo:ready', 'relevo:go'], assignees: ['persona-b'], milestone: { number: 1, due_on: null },
+    ready_at: `2026-10-14T10:0${seq % 10}:00Z`, ready_by: 'persona-a',
+    go_at: `2026-10-14T11:0${seq % 10}:00Z`, go_by: 'persona-a', ...over,
   };
 }
 const plan = (issues, extra = {}) => planGo({ config: cfgFor(extra.config), issues, permissions: PERMS, ...extra.input });
@@ -39,13 +40,13 @@ test('Scenario: Authorised label - the issue passes the gates and starts', () =>
   assert.equal(d.qa_retries, 1);
   assert.equal(d.run_max_cost, 5);
   assert.equal(d.run_max_minutes, 50, 'the soft time limit travels with the decision');
-  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:ready', 'relevo:go'] });
 });
 
 test('Scenario: Unauthorised label - no run, the label is removed', () => {
   const d = one([issue({ ready_by: 'stranger' })]);
   assert.equal(d.action, 'denied');
-  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready', 'relevo:go'] });
   assert.equal(d.comment.kind, 'ready_denied');
 });
 
@@ -58,7 +59,7 @@ test('an unknown applier is treated as unauthorised', () => {
 test('Scenario: No milestone - no run and a comment asks for one', () => {
   const d = one([issue({ milestone: null })]);
   assert.equal(d.action, 'no-milestone');
-  assert.deepEqual(d.labels.remove, ['relevo:ready']);
+  assert.deepEqual(d.labels.remove, ['relevo:ready', 'relevo:go']);
   assert.equal(d.comment.kind, 'no_milestone');
   assert.equal(d.comment.data.actor, 'persona-a');
 });
@@ -72,7 +73,7 @@ test('no assignee means nobody to hand the result to: no run', () => {
 test('Scenario: Spec incomplete - needs-spec, back to the spec writer, nothing is built', () => {
   const d = one([issue({ body: '## Edge cases\n- only edge cases\n' })]);
   assert.equal(d.action, 'needs-spec');
-  assert.deepEqual(d.labels, { add: ['relevo:needs-spec'], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: ['relevo:needs-spec'], remove: ['relevo:ready', 'relevo:go'] });
   assert.deepEqual(d.assign, ['persona-a']);
   assert.equal(d.comment.kind, 'needs_spec');
   assert.match(d.comment.data.missing, /WHEN\/THEN/);
@@ -81,7 +82,7 @@ test('Scenario: Spec incomplete - needs-spec, back to the spec writer, nothing i
 test('Scenario: Blocked - a dependency is open, the label is set, the comment mentions nobody', () => {
   const d = one([issue({ body: `${BODY}\nDepends-on: #12\n` })]);
   assert.equal(d.action, 'block');
-  assert.deepEqual(d.labels, { add: ['relevo:blocked'], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: ['relevo:blocked'], remove: ['relevo:ready', 'relevo:go'] });
   assert.equal(d.comment.kind, 'blocked_notice');
   assert.equal(d.comment.data.blockers, '#12');
 });
@@ -114,7 +115,7 @@ test('Scenario: Assignee at capacity - queued with a comment that says why, and 
   const waiting = issue({ number: 9 });
   const full = one([built(1), built(2), waiting]);
   assert.equal(full.action, 'queue');
-  assert.deepEqual(full.labels, { add: ['relevo:queued'], remove: ['relevo:ready'] });
+  assert.deepEqual(full.labels, { add: ['relevo:queued'], remove: ['relevo:ready', 'relevo:go'] });
   assert.equal(full.comment.kind, 'queued_capacity');
   assert.deepEqual(full.comment.data, { issue: 9, title: full.comment.data.title, assignee: 'persona-b', built: 2, limit: 2, built_issues: '#1, #2' });
 
@@ -182,7 +183,7 @@ test('a start under the limit has neither urgent nor built_waiting, even for an 
 
 test('Scenario: Urgent issue and no free agent slot - it is queued with the agents reason, first in line', () => {
   const running = issue({ number: 50, labels: ['relevo:building'] });
-  const ready = urgentIssue({ number: 9, labels: ['relevo:ready', URGENT] });
+  const ready = urgentIssue({ number: 9, labels: ['relevo:ready', 'relevo:go', URGENT] });
   const d = planU([running, ready], 'limits:\n  concurrent_agents: 1\n').decisions[0];
   assert.equal(d.action, 'queue');
   assert.equal(d.comment.kind, 'queued_agents');
@@ -190,7 +191,7 @@ test('Scenario: Urgent issue and no free agent slot - it is queued with the agen
 });
 
 test('Scenario: Urgent issue is still blocked by a dependency - the notice says urgent does not skip it', () => {
-  const u = urgentIssue({ number: 9, labels: ['relevo:ready', URGENT], body: `${BODY}\nDepends-on: #7\n` });
+  const u = urgentIssue({ number: 9, labels: ['relevo:ready', 'relevo:go', URGENT], body: `${BODY}\nDepends-on: #7\n` });
   const d = planU([u]).decisions[0];
   assert.equal(d.action, 'block');
   assert.equal(d.comment.kind, 'blocked_notice');
@@ -200,7 +201,7 @@ test('Scenario: Urgent issue is still blocked by a dependency - the notice says 
 });
 
 test('Scenario: Urgent issue with an incomplete spec - needs-spec as for any other issue', () => {
-  const u = urgentIssue({ number: 9, labels: ['relevo:ready', URGENT], body: 'no scenarios' });
+  const u = urgentIssue({ number: 9, labels: ['relevo:ready', 'relevo:go', URGENT], body: 'no scenarios' });
   const d = planU([...builtBy('persona-b', 2), u]).decisions[0];
   assert.equal(d.action, 'needs-spec');
 });
@@ -253,7 +254,7 @@ test('a label with no known applier is not valid', () => {
 });
 
 test('an invalid label on an issue with a run in progress is left alone and posts nothing', () => {
-  const stranger = urgentIssue({ number: 5, labels: ['relevo:ready', URGENT], urgent_by: 'stranger' });
+  const stranger = urgentIssue({ number: 5, labels: ['relevo:ready', 'relevo:go', URGENT], urgent_by: 'stranger' });
   const skipped = plan([stranger], { input: { permissions: UPERMS, running: [5] } }).decisions[0];
   assert.equal(skipped.action, 'skip');
   assert.deepEqual(skipped.labels, { add: [], remove: [] });
@@ -270,7 +271,7 @@ test('a renamed urgent label is the one that counts', () => {
 });
 
 test('Scenario: Duplicate trigger - an issue with a run in progress is not started twice', () => {
-  const running = issue({ number: 5, labels: ['relevo:ready'] });
+  const running = issue({ number: 5, labels: ['relevo:ready', 'relevo:go'] });
   const d = one([running], { input: { running: [5] } });
   assert.equal(d.action, 'skip');
   assert.deepEqual(d.labels, { add: [], remove: [] });
@@ -311,10 +312,10 @@ test('closed issues and issues without a Relevo state are ignored', () => {
 });
 
 test('renamed labels are honoured', () => {
-  const i = issue({ labels: ['listo'] });
-  const d = one([i], { config: 'labels:\n  ready: listo\n  building: construyendo\n' });
+  const i = issue({ labels: ['listo', 'ya'] });
+  const d = one([i], { config: 'labels:\n  ready: listo\n  go: ya\n  building: construyendo\n' });
   assert.equal(d.action, 'start');
-  assert.deepEqual(d.labels, { add: ['construyendo'], remove: ['listo'] });
+  assert.deepEqual(d.labels, { add: ['construyendo'], remove: ['listo', 'ya'] });
 });
 
 test('the summary counts decisions by action', () => {
@@ -460,7 +461,7 @@ test('Scenario: Question left in the issue - a ready issue with an open question
   assert.equal(d.action, 'needs-spec');
   assert.equal(d.comment.data.reason, 'ambiguous');
   assert.match(d.comment.data.missing, /open question "Should clients without a phone be listed\?"/);
-  assert.deepEqual(d.labels, { add: ['relevo:needs-spec'], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: ['relevo:needs-spec'], remove: ['relevo:ready', 'relevo:go'] });
 });
 
 test('NEEDS CLARIFICATION in the issue is ambiguous too, and a body with no questions still starts', () => {
@@ -542,7 +543,7 @@ test('Scenario: Two issues name the same registry file - the later one is queued
   const later = issue({ number: 15, body: naming('src/router.ts', 'src/Screen.vue') });
   const d = plan([active, later], { input: { now: NOW } }).decisions.find((x) => x.issue === 15);
   assert.equal(d.action, 'queue');
-  assert.deepEqual(d.labels, { add: ['relevo:queued'], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: ['relevo:queued'], remove: ['relevo:ready', 'relevo:go'] });
   assert.equal(d.comment.kind, 'queued_shared_files');
   assert.equal(d.comment.data.file, 'src/router.ts');
   assert.equal(d.comment.data.other, 12);
@@ -628,7 +629,7 @@ test('Scenario: The reason changes - a new comment names the new issue and the b
 
 test('Scenario: An urgent issue is compared in its own position - it goes ahead of an older issue that names the same file', () => {
   const older = issue({ number: 20, body: naming('src/router.ts'), ready_at: '2026-10-14T10:00:00Z' });
-  const urgent = issue({ number: 21, body: naming('src/router.ts'), labels: ['relevo:ready', 'relevo:urgent'], urgent_by: 'persona-a', ready_at: '2026-10-14T11:00:00Z' });
+  const urgent = issue({ number: 21, body: naming('src/router.ts'), labels: ['relevo:ready', 'relevo:go', 'relevo:urgent'], urgent_by: 'persona-a', ready_at: '2026-10-14T11:00:00Z' });
   const { decisions } = plan([older, urgent], { input: { now: NOW } });
   assert.equal(decisions.find((x) => x.issue === 21).action, 'start');
   assert.equal(decisions.find((x) => x.issue === 20).action, 'queue');
@@ -679,4 +680,414 @@ test('the median is of the minutes given, and the reader is called once and only
   assert.equal(calls, 1);
   assert.equal(decisions[0].comment.data.typical_minutes, 25, 'the median of an even list is the mean of the middle two');
   assert.equal(decisions[1].comment.data.typical_samples, 4);
+});
+
+// --- split-ready-and-go: the planner in the cloud ---
+
+const cloud = (issues, extra = {}) => plan(issues, { ...extra, input: { place: 'cloud', ...(extra.input ?? {}) } });
+
+test('Scenario: Approval alone - a ready issue with no go label is not a candidate in the cloud', () => {
+  const r = cloud([issue({ number: 42, labels: ['relevo:ready'], go_by: null, go_at: null })]);
+  assert.deepEqual(r.decisions, []);
+});
+
+test('the place of the build is cloud when none is given', () => {
+  assert.deepEqual(plan([issue({ labels: ['relevo:ready'], go_by: null, go_at: null })]).decisions, []);
+});
+
+test('Scenario: Request on an approved issue - a valid go passes the gates, and the claim removes go with ready', () => {
+  const d = cloud([issue({ number: 42 })]).decisions[0];
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:ready', 'relevo:go'] });
+});
+
+test('Scenario: Request by someone without write access - go is removed, the issue stays ready, the comment names who applied it', () => {
+  const d = cloud([issue({ number: 42, go_by: 'stranger' })]).decisions[0];
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(d.comment.kind, 'go_denied');
+  assert.equal(d.comment.data.actor, 'stranger');
+});
+
+test('Scenario: Public repository - a request by a collaborator with write but not maintain access is removed', () => {
+  const d = cloud([issue({ number: 42, ready_by: 'persona-m', go_by: 'persona-a' })], { input: { permissions: { 'persona-m': 'maintain', 'persona-a': 'write' } }, config: 'trust: public\nreview:\n  mode: peer\n' }).decisions[0];
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(d.comment.kind, 'go_denied_maintainer');
+});
+
+test('Scenario: Applied by a bot - a login with no permission makes the request not valid', () => {
+  const d = cloud([issue({ number: 42, go_by: 'github-actions[bot]' })]).decisions[0];
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels.remove, ['relevo:go']);
+});
+
+test('a request with no known applier is not valid', () => {
+  const d = cloud([issue({ number: 42, go_by: null })]).decisions[0];
+  assert.equal(d.action, 'denied');
+  assert.equal(d.comment.data.actor, undefined);
+});
+
+test('Scenario: Unauthorised label - ready applied without permission removes ready and go', () => {
+  const d = cloud([issue({ number: 42, ready_by: 'stranger' })]).decisions[0];
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready', 'relevo:go'] });
+  assert.equal(d.comment.kind, 'ready_denied');
+});
+
+test('Scenario: Request by a non-maintainer - with trust public, a maintainer approved and a writer requested: no run, go removed', () => {
+  const d = cloud([issue({ number: 42, ready_by: 'persona-m', go_by: 'persona-a' })], { input: { permissions: { 'persona-m': 'admin', 'persona-a': 'write' } }, config: 'trust: public\nreview:\n  mode: peer\n' }).decisions[0];
+  assert.notEqual(d.action, 'start');
+  assert.ok(d.labels.remove.includes('relevo:go'));
+});
+
+const refused = (labels) => cloud([issue({ number: 42, labels })]).decisions.find((d) => d.issue === 42);
+
+test('Scenario: Draft - go on an issue with no lifecycle label is refused: it needs ready first', () => {
+  const d = refused(['relevo:go']);
+  assert.equal(d.action, 'refuse');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(d.comment.kind, 'go_needs_ready');
+});
+
+test('go on a needs-spec issue needs ready first too', () => {
+  const d = refused(['relevo:needs-spec', 'relevo:go']);
+  assert.equal(d.action, 'refuse');
+  assert.equal(d.comment.kind, 'go_needs_ready');
+  assert.deepEqual(d.labels.remove, ['relevo:go']);
+});
+
+test('Scenario: Already building - go is removed, the comment says it is being built, and the build is not touched', () => {
+  const d = refused(['relevo:building', 'relevo:go']);
+  assert.equal(d.action, 'refuse');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(d.comment.kind, 'go_building');
+});
+
+test('Scenario: Already built - go on built, in-review or pr-open is refused as already built', () => {
+  ['relevo:built', 'relevo:in-review', 'relevo:pr-open', 'relevo:changes-requested'].forEach((state) => {
+    const d = refused([state, 'relevo:go']);
+    assert.equal(d.action, 'refuse', state);
+    assert.equal(d.comment.kind, 'go_already_built', state);
+    assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] }, state);
+  });
+});
+
+test('Scenario: Failed build with code - go on build-failed with a branch says to run fix', () => {
+  const d = cloud([issue({ number: 42, labels: ['relevo:build-failed', 'relevo:go'], has_branch: true })]).decisions[0];
+  assert.equal(d.action, 'refuse');
+  assert.equal(d.comment.kind, 'go_use_fix');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+});
+
+test('Scenario: Rebuild in the cloud - go on build-failed with no branch is a retry: building, never ready', () => {
+  const d = cloud([issue({ number: 67, labels: ['relevo:build-failed', 'relevo:go'], has_branch: false })]).decisions[0];
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:build-failed', 'relevo:go'] });
+});
+
+test('a rebuild requested by someone without permission is refused like any request', () => {
+  const d = cloud([issue({ number: 67, labels: ['relevo:build-failed', 'relevo:go'], has_branch: false, go_by: 'stranger' })]).decisions[0];
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(d.comment.kind, 'go_denied');
+});
+
+test('a rebuild still passes the gates: no milestone goes back with go removed', () => {
+  const d = cloud([issue({ number: 67, labels: ['relevo:build-failed', 'relevo:go'], has_branch: false, milestone: null })]).decisions[0];
+  assert.equal(d.action, 'no-milestone');
+  assert.ok(d.labels.remove.includes('relevo:go'));
+});
+
+test('go on build-failed whose branch could not be looked for builds nothing and changes nothing', () => {
+  const d = cloud([issue({ number: 67, labels: ['relevo:build-failed', 'relevo:go'], has_branch: null })]).decisions[0];
+  assert.equal(d.action, 'report');
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.equal(d.comment, null);
+});
+
+test('Scenario: queued and blocked with go - the label is dropped silently, the request was already made', () => {
+  const q = cloud([issue({ number: 42, labels: ['relevo:queued', 'relevo:go'] }), issue({ number: 43, labels: ['relevo:building'] })], { config: 'limits:\n  concurrent_agents: 1\n' }).decisions.find((x) => x.issue === 42);
+  assert.equal(q.action, 'queue');
+  assert.deepEqual(q.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(q.comment, null);
+});
+
+test('Scenario: Request consumed - go is removed by every decision of the cloud', () => {
+  const full = { config: 'limits:\n  concurrent_agents: 1\n' };
+  const cases = [
+    cloud([issue({ milestone: null })]).decisions[0],
+    cloud([issue({ assignees: [] })]).decisions[0],
+    cloud([issue({ body: '## Edge cases\n- only\n' })]).decisions[0],
+    cloud([issue({ body: `${BODY}\nDepends-on: #7\n` })]).decisions[0],
+    cloud([issue({ number: 41, labels: ['relevo:building'] }), issue({ number: 43 })], full).decisions.find((x) => x.issue === 43),
+    cloud([issue()]).decisions[0],
+  ];
+  assert.deepEqual(cases.map((d) => d.action), ['no-milestone', 'no-assignee', 'needs-spec', 'block', 'queue', 'start']);
+  cases.forEach((d) => assert.ok(d.labels.remove.includes('relevo:go'), d.action));
+});
+
+test('Scenario: Left waiting - the issue is queued without go and starts when a slot frees up, with no second request', () => {
+  const full = { config: 'limits:\n  concurrent_agents: 1\n' };
+  const d = cloud([issue({ labels: ['relevo:building'] }), issue({ number: 42 })], full).decisions.find((x) => x.issue === 42);
+  assert.equal(d.action, 'queue');
+  assert.deepEqual(d.labels, { add: ['relevo:queued'], remove: ['relevo:ready', 'relevo:go'] });
+  const later = cloud([issue({ number: 42, labels: ['relevo:queued'] })], full).decisions[0];
+  assert.equal(later.action, 'start');
+  assert.deepEqual(later.labels, { add: ['relevo:building'], remove: ['relevo:queued'] });
+});
+
+test('Scenario: blocked built later with no label - a blocked issue whose dependency merged starts', () => {
+  const d = cloud([issue({ number: 42, labels: ['relevo:blocked'], body: `${BODY}\nDepends-on: #7\n` })], { input: { completed: [7] } }).decisions[0];
+  assert.equal(d.action, 'start');
+});
+
+test('Scenario: Request withdrawn - a ready issue moved back by hand from queued starts nothing', () => {
+  assert.deepEqual(cloud([issue({ number: 42, labels: ['relevo:ready'], go_by: null })]).decisions, []);
+});
+
+test('Scenario: Local builds do not take slots - two building issues with local leave both slots to the cloud', () => {
+  const locals = [issue({ number: 50, labels: ['relevo:building', 'relevo:local'] }), issue({ number: 51, labels: ['relevo:building', 'relevo:local'] })];
+  const d = cloud([...locals, issue({ number: 42 })], { config: 'limits:\n  concurrent_agents: 2\n' }).decisions.find((x) => x.issue === 42);
+  assert.equal(d.action, 'start');
+});
+
+test('Scenario: Cloud builds do - two building issues without local fill the limit of 2', () => {
+  const builds = [issue({ number: 50, labels: ['relevo:building'] }), issue({ number: 51, labels: ['relevo:building'] })];
+  const d = cloud([...builds, issue({ number: 42 })], { config: 'limits:\n  concurrent_agents: 2\n' }).decisions.find((x) => x.issue === 42);
+  assert.equal(d.action, 'queue');
+});
+
+test('a local build still holds the files it names', () => {
+  const local = issue({ number: 50, labels: ['relevo:building', 'relevo:local'], body: naming('src/router.ts') });
+  const d = cloud([local, issue({ number: 42, body: naming('src/router.ts') })]).decisions.find((x) => x.issue === 42);
+  assert.equal(d.action, 'queue');
+  assert.equal(d.comment.kind, 'queued_shared_files');
+});
+
+test('a local build in progress is still not started twice', () => {
+  assert.deepEqual(cloud([issue({ number: 50, labels: ['relevo:building', 'relevo:local'] })]).decisions, []);
+});
+
+test('the comment of an issue that waits for an agent counts the cloud builds only', () => {
+  const issues = [issue({ number: 50, labels: ['relevo:building'] }), issue({ number: 51, labels: ['relevo:building', 'relevo:local'] }), issue({ number: 42 })];
+  const d = cloud(issues, { config: 'limits:\n  concurrent_agents: 1\n' }).decisions.find((x) => x.issue === 42);
+  assert.equal(d.comment.data.active, 1);
+  assert.equal(d.comment.data.active_issues, '#50');
+});
+
+// --- split-ready-and-go: the approval covers the text as it was approved
+
+const READY_AT = '2026-10-12T09:00:00Z';
+const approved = (over = {}) => issue({ number: 42, ready_at: READY_AT, ready_by: 'persona-a', ...over });
+const checked = (i, edit, extra = {}) => plan([i], { ...extra, input: { edits: { [i.number]: edit }, ...(extra.input ?? {}) } }).decisions.find((d) => d.issue === i.number);
+
+test('Scenario: Body edited days after the approval - nothing is built, the issue is a draft, the comment names the approver', () => {
+  const d = checked(approved(), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(d.action, 'unapproved');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready', 'relevo:go'] });
+  assert.equal(d.comment.kind, 'approval_withdrawn');
+  assert.equal(d.comment.data.approver, 'persona-a');
+  assert.equal(d.comment.data.issue, 42);
+  assert.equal(d.assign, null);
+});
+
+test('Scenario: Title changed - only a title change after the approval is treated as edited', () => {
+  const d = checked(approved({ title_edited_at: '2026-10-13T09:00:00Z' }), { ok: true, at: null });
+  assert.equal(d.action, 'unapproved');
+  assert.equal(d.comment.data.edited, 'title');
+});
+
+test('a title changed before the approval is not an edit after it', () => {
+  assert.equal(checked(approved({ title_edited_at: '2026-10-11T09:00:00Z' }), { ok: true, at: '2026-10-11T10:00:00Z' }).action, 'start');
+});
+
+test('Scenario: Edited by the person who approved - the edit withdraws the approval as for anyone else', () => {
+  const d = checked(approved({ ready_by: 'persona-a' }), { ok: true, at: '2026-10-12T09:00:05Z' });
+  assert.equal(d.action, 'unapproved');
+});
+
+test('Scenario: Unchanged - neither text edited after the approval, the gates go on', () => {
+  assert.equal(checked(approved(), { ok: true, at: null }).action, 'start');
+  assert.equal(checked(approved(), { ok: true, at: '2026-10-12T08:59:59Z' }).action, 'start');
+});
+
+test('the approval check is decided before any other gate', () => {
+  const d = checked(approved({ milestone: null, assignees: [], body: 'no scenarios', ready_by: 'stranger' }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(d.action, 'unapproved');
+});
+
+test('the issue ends with no lifecycle label: a queued or blocked issue edited after its approval loses its state and its request', () => {
+  const q = checked(approved({ labels: ['relevo:queued', 'relevo:urgent'], urgent_by: 'persona-a' }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(q.action, 'unapproved');
+  assert.deepEqual(q.labels, { add: [], remove: ['relevo:queued'] });
+  const b = checked(approved({ labels: ['relevo:blocked', 'relevo:go'] }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.deepEqual(b.labels, { add: [], remove: ['relevo:blocked', 'relevo:go'] });
+});
+
+test('Scenario: Text changed since the approval - a build-failed rebuild requested with go is refused the same way', () => {
+  const d = checked(approved({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: false }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(d.action, 'unapproved');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:build-failed', 'relevo:go'] });
+  assert.equal(d.comment.kind, 'approval_withdrawn');
+});
+
+test('a retry by a person of a build-failed issue whose text changed is refused the same way', () => {
+  const i = approved({ labels: ['relevo:build-failed'] });
+  const d = checked(i, { ok: true, at: '2026-10-14T09:00:00Z' }, { input: { retry: { issue: 42, by: 'persona-a' } } });
+  assert.equal(d.action, 'unapproved');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:build-failed'] });
+});
+
+test('Scenario: The edit history cannot be read - nothing is built, the labels stay, the report says why', () => {
+  const d = checked(approved(), { ok: false, reason: 'HTTP 403' });
+  assert.equal(d.action, 'report');
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.equal(d.comment, null);
+  assert.match(d.reason, /approval could not be checked.*HTTP 403/);
+});
+
+test('the moment of the approval cannot be read - the same report', () => {
+  const d = checked(approved({ ready_at: null }), { ok: true, at: null });
+  assert.equal(d.action, 'report');
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.match(d.reason, /approval could not be checked/);
+});
+
+test('an issue the caller did not read is planned as before, so the limits of the others stay right', () => {
+  const other = issue({ number: 7 });
+  const r = plan([other, approved()], { input: { edits: { 42: { ok: true, at: null } } } });
+  assert.equal(r.decisions.find((d) => d.issue === 7).action, 'start');
+});
+
+// --- split-ready-and-go: the planner on a machine
+
+const LOCAL_PERMS = { 'persona-a': 'write', 'persona-e': 'write', reader: 'read', stranger: 'read' };
+const local = (issues, only, extra = {}) => plan(issues, { ...extra, input: { place: 'local', person: 'persona-e', only, permissions: LOCAL_PERMS, ...(extra.input ?? {}) } });
+const localOne = (i, extra) => local([i], i.number, extra).decisions.find((d) => d.issue === i.number);
+const approvedOnly = (over = {}) => issue({ number: 42, labels: ['relevo:ready'], go_by: null, go_at: null, ...over });
+
+test('Scenario: Approved issue built on a machine - a ready issue with no go starts and the claim adds building and local', () => {
+  const d = localOne(approvedOnly());
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready'] });
+});
+
+test('a local build of an issue that waits for the cloud with go serves the request: go leaves with the claim', () => {
+  const d = localOne(approvedOnly({ labels: ['relevo:ready', 'relevo:go'] }));
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready', 'relevo:go'] });
+});
+
+test('Scenario: Person without the permission - nothing is built or claimed, the report says building needs write access', () => {
+  const d = local([approvedOnly()], 42, { input: { person: 'reader' } }).decisions[0];
+  assert.equal(d.action, 'report');
+  assert.equal(d.report, 'no_permission');
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.equal(d.comment, null);
+  assert.equal(local([approvedOnly()], 42, { input: { person: null } }).decisions[0].report, 'no_permission');
+});
+
+test('the approver is checked too: ready applied without permission is denied as in the cloud', () => {
+  const d = localOne(approvedOnly({ ready_by: 'stranger' }));
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready'] });
+  assert.equal(d.comment.kind, 'ready_denied');
+});
+
+test('Scenario: Draft - nothing is built and the report says the issue needs ready first', () => {
+  ['bug', 'relevo:needs-spec'].forEach((label) => {
+    const d = localOne(approvedOnly({ labels: [label] }));
+    assert.equal(d.action, 'report', label);
+    assert.equal(d.report, 'needs_ready', label);
+    assert.deepEqual(d.labels, { add: [], remove: [] });
+  });
+});
+
+test('a local build of an issue in another state reports it and changes nothing', () => {
+  assert.equal(localOne(approvedOnly({ labels: ['relevo:building'] })).report, 'building');
+  assert.equal(localOne(approvedOnly({ labels: ['relevo:built'] })).report, 'already_built');
+  assert.equal(localOne(approvedOnly({ labels: ['relevo:build-failed'] })).report, 'build_failed');
+});
+
+test('Scenario: Limit of agents reached - the capacity gate and the limit of agents are skipped', () => {
+  const running = [50, 51].map((n) => issue({ number: n, labels: ['relevo:building'] }));
+  const built = [60, 61, 62].map((n) => issue({ number: n, labels: ['relevo:built'], assignees: ['persona-b'] }));
+  const d = local([...running, ...built, approvedOnly()], 42, { config: 'limits:\n  concurrent_agents: 1\n' }).decisions.find((x) => x.issue === 42);
+  assert.equal(d.action, 'start');
+  assert.equal(d.urgent, undefined);
+});
+
+test('Scenario: Shared file - the build starts at once and its decision lists the file and the issue', () => {
+  const holder = issue({ number: 40, labels: ['relevo:built'], body: naming('src/router.ts') });
+  const d = local([holder, approvedOnly({ body: naming('src/router.ts') })], 42).decisions.find((x) => x.issue === 42);
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.shared_files, [{ file: 'src/router.ts', issue: 40 }]);
+  assert.equal(d.comment, null);
+});
+
+test('Scenario: Dependency not merged - reported with no label change and no comment, naming the dependency', () => {
+  const d = localOne(approvedOnly({ body: `${BODY}\nDepends-on: #12\n` }));
+  assert.equal(d.action, 'report');
+  assert.equal(d.report, 'blocked');
+  assert.match(d.reason, /#12/);
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.equal(d.comment, null);
+});
+
+test('Scenario: Incomplete text - the issue goes to needs-spec as it would in the cloud', () => {
+  const d = localOne(approvedOnly({ body: '## Edge cases\n- only\n' }));
+  assert.equal(d.action, 'needs-spec');
+  assert.deepEqual(d.labels, { add: ['relevo:needs-spec'], remove: ['relevo:ready'] });
+  assert.equal(d.comment.kind, 'needs_spec');
+});
+
+test('a missing milestone or assignee is applied as in the cloud', () => {
+  assert.equal(localOne(approvedOnly({ milestone: null })).action, 'no-milestone');
+  assert.equal(localOne(approvedOnly({ assignees: [] })).action, 'no-assignee');
+});
+
+test('Scenario: Queued for capacity - a queued issue is taken: building and local', () => {
+  const d = localOne(approvedOnly({ labels: ['relevo:queued'] }));
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:queued'] });
+});
+
+test('a queued issue held for a usage limit of the cloud can still be built on a machine', () => {
+  const d = localOne(approvedOnly({ labels: ['relevo:queued'], limit_retry: { at: Date.parse('2099-01-01T00:00:00Z'), attempt: 1, reason: 'reset' } }));
+  assert.equal(d.action, 'start');
+});
+
+test('Scenario: Blocked - a blocked issue is refused, stays blocked, and the report names the dependency', () => {
+  const d = localOne(approvedOnly({ labels: ['relevo:blocked'], body: `${BODY}\nDepends-on: #12\n` }));
+  assert.equal(d.action, 'report');
+  assert.match(d.reason, /#12/);
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+});
+
+test('Scenario: Urgent and a local build - the label changes nothing, valid or not', () => {
+  const valid = localOne(approvedOnly({ labels: ['relevo:ready', 'relevo:urgent'], urgent_by: 'persona-a' }));
+  const invalid = localOne(approvedOnly({ labels: ['relevo:ready', 'relevo:urgent'], urgent_by: 'stranger' }));
+  [valid, invalid].forEach((d) => {
+    assert.equal(d.action, 'start');
+    assert.deepEqual(d.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready'] });
+    assert.equal(d.notice, undefined);
+    assert.equal(d.urgent, undefined);
+  });
+});
+
+test('a local build checks the approval against the last edit too', () => {
+  const d = local([approvedOnly({ ready_at: '2026-10-12T09:00:00Z' })], 42, { input: { edits: { 42: { ok: true, at: '2026-10-13T09:00:00Z' } } } }).decisions[0];
+  assert.equal(d.action, 'unapproved');
+});
+
+test('a local build plans only the issue it was given', () => {
+  const r = local([issue({ number: 7, labels: ['relevo:ready'] }), approvedOnly()], 42);
+  assert.deepEqual(r.decisions.map((d) => d.issue), [42]);
+});
+
+test('an edit in the same second as the approval is not an edit after it (one gh issue edit with --body and --add-label, spike of 2026-11-17)', () => {
+  const d = checked(approved({ ready_at: '2026-11-17T16:01:26Z' }), { ok: true, at: '2026-11-17T16:01:26Z' });
+  assert.equal(d.action, 'start');
+  assert.equal(checked(approved({ ready_at: '2026-11-17T16:01:26Z' }), { ok: true, at: '2026-11-17T16:01:27Z' }).action, 'unapproved');
 });

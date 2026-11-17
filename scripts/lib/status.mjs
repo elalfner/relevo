@@ -43,11 +43,14 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], usage = [], stages = [], localBuilds, me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, cloudReason = null, unread = [], usage = [], stages = [], localBuilds, me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
     needsReviewer: i.labels.includes(names['needs-reviewer']),
+    go: i.labels.includes(names.go),
+    local: i.labels.includes(names.local),
+    localBy: i.local_by ?? null,
     updatedAt: i.updated_at ?? null,
     waitingForRunner: i.waiting_for_runner === true,
     ...(externalBlocks[i.number] ? { blockedBy: externalBlocks[i.number] } : {}),
@@ -94,10 +97,13 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     return out;
   });
 
-  // When the cloud is not building, the ready issues assigned to the person are theirs to build.
-  const readyForMe = !cloudBuilds && me
-    ? mine.filter((e) => e.state === 'ready').map((e) => ({ number: e.number, title: e.title, command: `/relevo:go ${e.number}` }))
+  // The approved issues assigned to the person that nobody asked to build yet: a decision waits for them. They are built with the command
+  // on a machine, or with the `go` label where the cloud builds.
+  const readyForMe = me
+    ? mine.filter((e) => e.state === 'ready' && !e.go).map((e) => ({ number: e.number, title: e.title, command: `/relevo:go ${e.number}`, ...(cloudBuilds ? { label: names.go } : {}) }))
     : [];
+  // Where the cloud does not build, a `go` label is a request that nothing answers (or that waits for the cloud to resume).
+  const unanswered = cloudBuilds ? [] : entries.filter((e) => e.state === 'ready' && e.go).map((e) => ({ number: e.number, title: e.title, command: `/relevo:go ${e.number}` }));
 
   const alerts = [];
   // A build that stopped reporting: nothing happened on the issue for longer than limits.building_alert_hours.
@@ -105,7 +111,8 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     const hours = Math.floor((new Date(now).getTime() - Date.parse(e.updatedAt)) / HOUR);
     if (hours < config.limits.building_alert_hours) return;
     // A claimed build whose job has not started waits for a runner: there is nothing to restart, only a runner to look at.
-    alerts.push({ type: e.waitingForRunner ? 'waiting-runner' : 'stuck-build', issue: e.number, hours, command: `/relevo:go ${e.number}` });
+    // A local build never waits for a runner; the alert says it is local and who started it.
+    alerts.push({ type: e.waitingForRunner && !e.local ? 'waiting-runner' : 'stuck-build', issue: e.number, hours, command: `/relevo:go ${e.number}`, ...(e.local ? { local: true, by: e.localBy } : {}) });
   });
   prs.forEach((p) => {
     if (!p.approved && p.reviewer && p.requested_at) {
@@ -133,10 +140,12 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
 
   return {
     me, view: isSpecWriter ? 'spec-writer' : 'person',
-    onMe, toReview, toShip, readyForMe, waitingOnOthers, specWriter: specWriterView,
+    onMe, toReview, toShip, readyForMe, unanswered, waitingOnOthers, specWriter: specWriterView,
+    cloud: { builds: cloudBuilds, reason: cloudBuilds ? null : cloudReason },
     milestones: summaries, alerts, waiting, unread,
-    // The builds running on this machine, and the issues `building` that have no state here (another machine, or the cloud): listed without progress.
-    ...(Array.isArray(localBuilds) ? { localBuilds, buildingElsewhere: entries.filter((e) => e.state === 'building' && !localBuilds.some((b) => b.issue === e.number)).map((e) => ({ number: e.number, title: e.title })) } : {}),
+    // The builds running on this machine, and the local builds (`building` with `local`) that have no state here: another machine's, listed without progress.
+    // A cloud build has no state on any machine and is not listed.
+    ...(Array.isArray(localBuilds) ? { localBuilds, buildingElsewhere: entries.filter((e) => e.state === 'building' && e.local && !localBuilds.some((b) => b.issue === e.number)).map((e) => ({ number: e.number, title: e.title })) } : {}),
     // The runs of the last seven days added up, or null when none left a usage marker. Only the digest shows it.
     usage: usage.length ? sumUsage(usage) : null,
     // The share of the cost and of the turns that the main agent used, over the runs of those that have the detail of their agents.
@@ -162,8 +171,19 @@ const T = {
     noDue: 'has no due date, so no capacity warning is computed', merged: 'merged', inReview: 'in review', queued: 'queued', warn: 'capacity warning: more work than the team can review before the due date',
     alerts: 'Alerts', staleReview: 'review waiting', staleBranch: 'branch behind the base by',
     waitingFor: 'waiting for', open: 'open', closed: 'closed, not completed', unreadable: 'could not be read',
-    localBuilds: 'Building on this machine', lastChange: (n) => `last change ${n} min ago`, elsewhere: 'Building, no progress on this machine',
-    readyForMe: 'Ready, for you to build (the cloud is not building)', stuck: 'build with no activity for', restart: 'remove relevo:building and apply relevo:ready again, or run', waitingRunner: ['has waited', 'for a runner: look at the runners that take the build job (runner.build_labels), or build it on a machine with'],
+    localBuilds: 'Building on this machine', lastChange: (n) => `last change ${n} min ago`, elsewhere: 'Building on another machine, no progress here',
+    readyForMe: 'Approved, waiting for you to build them', orLabel: (l) => `, or apply ${l}`,
+    stuck: 'build with no activity for', localStuck: (by) => `local build started by ${by ? `@${by}` : 'someone'} with no activity for`,
+    restart: 'remove relevo:building and apply relevo:ready again (it starts nothing), then apply relevo:go or run',
+    restartLocal: 'remove relevo:building and relevo:local and apply relevo:ready again (it starts nothing), then apply relevo:go or run',
+    cloud: {
+      no_workflow: 'The go label has no effect in this repository: the go workflow is not installed. Approved issues are built with /relevo:go <n>.',
+      no_credential: 'The cloud has no model credential: a go label only gets the comment of a local run. Approved issues are built with /relevo:go <n>.',
+      paused: 'The cloud is paused (RELEVO_CLOUD_GO is off): a go label waits on the issue and is served when the cloud resumes.',
+      other: 'The cloud is not building: approved issues are built with /relevo:go <n>.',
+    },
+    unanswered: 'Build requests that nothing answers', waitingResume: 'Build requests waiting for the cloud', served: 'served when the cloud resumes',
+    waitingRunner: ['has waited', 'for a runner: look at the runners that take the build job (runner.build_labels), or build it on a machine with'],
   },
   es: {
     nothing: 'Nada espera por ti.', fromRead: '(con lo que se pudo leer)', unreadTitle: 'No se pudo leer, así que este informe puede estar incompleto',
@@ -177,8 +197,19 @@ const T = {
     noDue: 'no tiene fecha límite, así que no se calcula la advertencia de capacidad', merged: 'fusionadas', inReview: 'en revisión', queued: 'en cola', warn: 'advertencia de capacidad: hay más trabajo del que el equipo puede revisar antes de la fecha límite',
     alerts: 'Alertas', staleReview: 'revisión esperando', staleBranch: 'rama atrasada respecto a la base por',
     waitingFor: 'esperando', open: 'abierto', closed: 'cerrado, sin completar', unreadable: 'no se pudo leer',
-    localBuilds: 'En construcción en esta máquina', lastChange: (n) => `último cambio hace ${n} min`, elsewhere: 'En construcción, sin progreso en esta máquina',
-    readyForMe: 'Listas, para que las construyas (la nube no está construyendo)', stuck: 'construcción sin actividad desde hace', restart: 'quita relevo:building y vuelve a poner relevo:ready, o ejecuta', waitingRunner: ['espera un runner desde hace', ': mira los runners que toman el job de build (runner.build_labels), o constrúyelo en una máquina con'],
+    localBuilds: 'En construcción en esta máquina', lastChange: (n) => `último cambio hace ${n} min`, elsewhere: 'En construcción en otra máquina, sin progreso aquí',
+    readyForMe: 'Aprobadas, esperando a que las construyas', orLabel: (l) => `, o pon ${l}`,
+    stuck: 'construcción sin actividad desde hace', localStuck: (by) => `build local iniciado por ${by ? `@${by}` : 'alguien'} sin actividad desde hace`,
+    restart: 'quita relevo:building y vuelve a poner relevo:ready (no inicia nada), luego pon relevo:go o ejecuta',
+    restartLocal: 'quita relevo:building y relevo:local y vuelve a poner relevo:ready (no inicia nada), luego pon relevo:go o ejecuta',
+    cloud: {
+      no_workflow: 'La etiqueta go no tiene efecto en este repositorio: el workflow de go no está instalado. Los issues aprobados se construyen con /relevo:go <n>.',
+      no_credential: 'La nube no tiene credencial del modelo: una etiqueta go solo recibe el comentario de una ejecución local. Los issues aprobados se construyen con /relevo:go <n>.',
+      paused: 'La nube está en pausa (RELEVO_CLOUD_GO está en off): una etiqueta go espera en el issue y se atiende cuando la nube se reanude.',
+      other: 'La nube no está construyendo: los issues aprobados se construyen con /relevo:go <n>.',
+    },
+    unanswered: 'Peticiones de build que nada atiende', waitingResume: 'Peticiones de build esperando a la nube', served: 'se atiende cuando la nube se reanude',
+    waitingRunner: ['espera un runner desde hace', ': mira los runners que toman el job de build (runner.build_labels), o constrúyelo en una máquina con'],
   },
 };
 
@@ -206,7 +237,13 @@ export function renderStatus(report, language = 'en') {
     return `#${b.issue} ${line}${b.lastChangeMinutes === null || b.lastChangeMinutes === undefined ? '' : ` (${t.lastChange(b.lastChangeMinutes)})`}`;
   }));
   section(t.elsewhere, (report.buildingElsewhere ?? []).map((e) => `#${e.number} ${e.title}`));
-  section(t.readyForMe, report.readyForMe.map((e) => `#${e.number} ${e.title} → ${e.command}`));
+  section(t.readyForMe, report.readyForMe.map((e) => `#${e.number} ${e.title} → ${e.command}${e.label ? t.orLabel(e.label) : ''}`));
+  const cloud = report.cloud ?? { builds: true, reason: null };
+  if (!cloud.builds) {
+    out.push(t.cloud[cloud.reason] ?? t.cloud.other, '');
+    const paused = cloud.reason === 'paused';
+    section(paused ? t.waitingResume : t.unanswered, (report.unanswered ?? []).map((e) => (paused ? `#${e.number} ${e.title}: ${t.served}` : `#${e.number} ${e.title} → ${e.command}`)));
+  }
   section(t.review, report.toReview.map((r) => `#${r.number} ${r.pr}`));
   section(t.ship, report.toShip.map((r) => `#${r.number} → ${r.command}`));
   section(t.others, report.waitingOnOthers.map((e) => withWaits(e, `#${e.number} ${e.title} (${e.state})`)));
@@ -220,7 +257,7 @@ export function renderStatus(report, language = 'en') {
   if (report.milestones.length) out.push('');
   section(t.alerts, report.alerts.map((a) => {
     if (a.type === 'waiting-runner') return language === 'es' ? `#${a.issue} ${t.waitingRunner[0]} ${a.hours}h${t.waitingRunner[1]} ${a.command}` : `#${a.issue} ${t.waitingRunner[0]} ${a.hours}h ${t.waitingRunner[1]} ${a.command}`;
-    if (a.type === 'stuck-build') return `#${a.issue} ${t.stuck} ${a.hours}h: ${t.restart} ${a.command}`;
+    if (a.type === 'stuck-build') return `#${a.issue} ${a.local ? t.localStuck(a.by) : t.stuck} ${a.hours}h: ${a.local ? t.restartLocal : t.restart} ${a.command}`;
     return a.type === 'stale-review'
       ? `#${a.issue} ${t.staleReview} ${a.hours}h (@${a.reviewer}) ${a.pr}`
       : `#${a.issue} ${t.staleBranch} ${a.behind} ${a.pr} (${mergeText(a, language)})`;
@@ -313,7 +350,11 @@ export function renderDigest(report, language = 'en') {
     lines.push('', `${es ? 'Alertas' : 'Alerts'}:`);
     report.alerts.forEach((a) => {
       if (a.type === 'waiting-runner') lines.push(`- #${a.issue} ${es ? 'esperando un runner desde hace' : 'waiting for a runner for'} ${a.hours}h`);
-      else if (a.type === 'stuck-build') lines.push(`- #${a.issue} ${es ? 'construcción sin actividad desde hace' : 'build with no activity for'} ${a.hours}h`);
+      else if (a.type === 'stuck-build') {
+        const local = a.local ? (es ? ` (build local${a.by ? `, @${a.by}` : ''})` : '') : '';
+        const localEn = a.local ? `local build${a.by ? ` (@${a.by})` : ''} ` : '';
+        lines.push(es ? `- #${a.issue} construcción sin actividad desde hace ${a.hours}h${local}` : `- #${a.issue} ${localEn}${a.local ? 'with no activity for' : 'build with no activity for'} ${a.hours}h`);
+      }
       else lines.push(a.type === 'stale-review'
         ? `- #${a.issue} ${es ? 'revisión esperando' : 'review waiting'} ${a.hours}h (@${a.reviewer})`
         : `- #${a.issue} ${es ? 'rama atrasada por' : 'branch behind the base by'} ${a.behind} (${mergeText(a, es ? 'es' : 'en')})`);

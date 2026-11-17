@@ -63,7 +63,6 @@ const result = await runLocal({
   runner,
   dryRun: flag('dry-run'),
   retry: flag('retry'),
-  workflowPresent: existsSync('.github/workflows/relevo-go.yml'),
   exists: existsSync,
   state: realState,
   print: (m) => { printed += 1; console.log(m); },

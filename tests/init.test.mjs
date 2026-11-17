@@ -51,8 +51,10 @@ test('Scenario: Plan before changes - it lists files, labels, branches, rulesets
 test('Scenario: Fresh repository - everything is planned and the API key is a manual step', () => {
   const items = plan(bare());
   assert.equal(get(items, 'config').status, 'todo');
-  assert.equal(get(items, 'labels').labels.length, 13);
+  assert.equal(get(items, 'labels').labels.length, 15);
   assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:ship'), 'the ship label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:go'), 'the go label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:local'), 'the local label is created');
   assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:urgent'), 'the urgent label is created');
   assert.equal(get(items, 'branch.base').status, 'todo');
   assert.equal(get(items, 'protection').status, 'todo');
@@ -152,7 +154,7 @@ test('applying carries out labels, branch, ruleset, workflow permissions, files 
   };
   const results = applyPlan(plan(bare()), { repo: 'o/r', io });
   assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)));
-  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 13);
+  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 15);
   assert.ok(calls.some((c) => c.args.includes('-f') && c.args.includes('ref=refs/heads/dev') && c.args.includes('sha=abc123')));
   assert.ok(calls.some((c) => c.args.includes(`repos/o/r/rulesets`) && JSON.parse(c.input).name === 'relevo-protected-branches'));
   assert.ok(calls.some((c) => c.args.includes('repos/o/r/actions/permissions/workflow') && c.args.includes('can_approve_pull_request_reviews=false')));
@@ -1304,4 +1306,33 @@ test('Scenario: Both exist - nothing is renamed or deleted, and the issue that c
   const calls = [];
   applyPlan(items, { repo: 'o/r', io: { gh: (a) => { calls.push(a); return '{}'; }, write() {}, append() {} } });
   assert.ok(!calls.some((a) => a.some((x) => /\/labels\//.test(x)) || (a[0] === 'label' && a[1] === 'delete')), 'no label is renamed or deleted');
+});
+
+// --- split-ready-and-go: the labels and the trigger that init writes
+
+test('Scenario: the go and local labels are created with the others, with their descriptions', () => {
+  const labels = get(plan(bare()), 'labels').labels;
+  const go = labels.find((l) => l.name === 'relevo:go');
+  const local = labels.find((l) => l.name === 'relevo:local');
+  assert.ok(go && local);
+  assert.match(go.description, /Build it in the cloud/);
+  assert.match(local.description, /Being built on a machine/);
+});
+
+test('a written workflow starts on the go label, and a workflow of an earlier version is rewritten to start on it', () => {
+  const fresh = wf(planWith({ runs: 'cloud' }), 'relevo-go.yml').content;
+  assert.match(fresh, /github\.event\.label\.name == 'relevo:go'/);
+  assert.doesNotMatch(fresh, /github\.event\.label\.name == 'relevo:ready'/);
+  // A workflow installed from the 0.12.0 template, updated as scripts/init.mjs does: merged with the template it came from.
+  const old = readFileSync(new URL('./fixtures/workflows/relevo-go-0.12.0.yml', import.meta.url), 'utf8');
+  const current = withGo(old);
+  const facts = factsFor({ secrets: KEY_SECRET });
+  const upgrades = (file) => withDiff(current.workflows[file], planUpgrades({
+    files: [file], ours: current.workflows, templates: templates.workflows, agentBlocks: null, labels: undefined, build: 'claude',
+    source: { versions: () => ['0.12.0'], read: () => old }, restricted: restrictedList(facts.config), credential: 'api_key',
+  })[file]);
+  const upgraded = wf(planInit({ facts, answers: { ...ANSWERS, runs: 'cloud' }, templates, current, admin: true, upgrades }), 'relevo-go.yml');
+  assert.equal(upgraded.status, 'todo', JSON.stringify({ status: upgraded.status, description: upgraded.description }));
+  assert.match(upgraded.content, /github\.event\.label\.name == 'relevo:go'/);
+  assert.match(upgraded.diff, /^-.*github\.event\.label\.name == 'relevo:ready'/m);
 });

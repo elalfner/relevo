@@ -212,7 +212,7 @@ The line alone changes nothing about how tasks are built. What makes a build a *
 
 - **A milestone.** The milestone is the batch the issue belongs to.
 - **An assignee.** That person receives the built work and reviews it on a device.
-- **The ready label**, applied by someone with write access to the repository, once the spec is finished.
+- **The ready label**, applied by someone with write access to the repository, once the spec is finished. It is the approval and starts nothing: the build is requested with the `go` label or started with `/relevo:go <n>`. An edit of the title or the body after `ready` withdraws the approval, and the issue has to be approved again.
 
 If any of these is missing, nothing is built and a comment says which one.
 
@@ -231,4 +231,4 @@ Model: haiku
 QA-model: sonnet
 ```
 
-`Model:` is for the developer and `QA-model:` for every QA lens. The value is a single model name of `agents.ladder`. It can choose any model between the `floor` and the `ceiling` of the role: a value above the ceiling is lowered to it and one below the floor is raised to it, and the plan says so (each QA lens by its own range); a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. A role that is not `auto` keeps the model written in `relevo.yml`. The check of the issue accepts the lines and only warns about one that cannot be read. They are part of the text, so editing one after `ready` changes the hash of the issue. See [Choosing the model for each issue](configuration.md#choosing-the-model-for-each-issue-auto).
+`Model:` is for the developer and `QA-model:` for every QA lens. The value is a single model name of `agents.ladder`. It can choose any model between the `floor` and the `ceiling` of the role: a value above the ceiling is lowered to it and one below the floor is raised to it, and the plan says so (each QA lens by its own range); a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. A role that is not `auto` keeps the model written in `relevo.yml`. The check of the issue accepts the lines and only warns about one that cannot be read. They are part of the text, so editing one after `ready` withdraws the approval. See [Choosing the model for each issue](configuration.md#choosing-the-model-for-each-issue-auto).

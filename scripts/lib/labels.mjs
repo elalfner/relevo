@@ -6,7 +6,7 @@
 //   exit    - side exit that replaces the lifecycle label
 //   overlay - added next to the current state, never replaces it
 export const LABELS = [
-  { key: 'ready', name: 'relevo:ready', color: '0e8a16', kind: 'state', description: 'Spec is finished; the agent may start' },
+  { key: 'ready', name: 'relevo:ready', color: '0e8a16', kind: 'state', description: 'Approved: the text is what should be built; starts nothing' },
   { key: 'queued', name: 'relevo:queued', color: 'c5def5', kind: 'state', description: 'Waiting for capacity' },
   { key: 'building', name: 'relevo:building', color: 'fbca04', kind: 'state', description: 'The agent is building it' },
   { key: 'built', name: 'relevo:built', color: '1d76db', kind: 'state', description: 'Built and QA passed; waiting for the assignee' },
@@ -21,6 +21,10 @@ export const LABELS = [
   { key: 'ship', name: 'relevo:ship', color: '2ea44f', kind: 'overlay', description: 'Ship it: merge the approved pull request on GitHub' },
   // A request, not a state: start it before the others and without waiting for the assignee's review capacity.
   { key: 'urgent', name: 'relevo:urgent', color: 'ff7b00', kind: 'overlay', description: 'Start it first, even if the assignee has built issues waiting for review' },
+  // A request, not a state: the cloud builds an approved issue; removed by the first decision of the cloud, whatever it is.
+  { key: 'go', name: 'relevo:go', color: '0b6623', kind: 'overlay', description: 'Build it in the cloud: a request on a ready issue, removed when the cloud decides' },
+  // A mark next to `building`: the build runs on a person's machine. Applied by the claim of a local build, removed when the issue leaves `building`.
+  { key: 'local', name: 'relevo:local', color: 'bfd4f2', kind: 'overlay', description: 'Being built on a machine; applied by a local build, not by hand' },
 ];
 
 export const LABEL_KEYS = LABELS.map((l) => l.key);
@@ -45,7 +49,8 @@ export function labelDefinitions(overrides = {}) {
 /**
  * Compute the label changes needed to move an issue to `toKey`.
  * - state/exit labels are exclusive: moving to one removes any other exclusive label.
- * - overlay labels are only added.
+ * - overlay labels are only added, except `local`: it marks a local build, so a move to any exclusive label other
+ *   than `building` also removes it. A move to `building` does not add it: the claim of a local build does.
  * Returns { add: [names], remove: [names] } using effective label names.
  */
 export function transition(currentNames, toKey, overrides = {}) {
@@ -56,7 +61,7 @@ export function transition(currentNames, toKey, overrides = {}) {
   if (!EXCLUSIVE_KEYS.includes(toKey)) {
     return { add: current.has(target) ? [] : [target], remove: [] };
   }
-  const remove = EXCLUSIVE_KEYS.filter((k) => k !== toKey)
+  const remove = [...EXCLUSIVE_KEYS.filter((k) => k !== toKey), ...(toKey === 'building' ? [] : ['local'])]
     .map((k) => names[k])
     .filter((n) => current.has(n));
   return { add: current.has(target) ? [] : [target], remove };

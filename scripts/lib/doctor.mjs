@@ -13,7 +13,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { mergeRepositoryRules } from './interface-knowledge.mjs';
 import { QA_LENSES, effectiveRunners, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
-import { labelDefinitions } from './labels.mjs';
+import { labelDefinitions, resolveLabelNames } from './labels.mjs';
 import { githubAccess } from './gh-web.mjs';
 import { activeCredentialLine, credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { platformFolders } from './protected-paths.mjs';
@@ -358,6 +358,15 @@ export function gatherFacts(p) {
     const sa = repoInfo.security_and_analysis;
     f.secretScanning = sa ? { scanning: sa.secret_scanning?.status === 'enabled', pushProtection: sa.secret_scanning_push_protection?.status === 'enabled' } : null;
     f.labels = tryRun(() => flat(api(`repos/${f.repo}/labels?per_page=100`, true)).map((l) => l.name));
+    // The open issues that carry the mark of a local build without `building`: the mark then says nothing.
+    {
+      const labelNames = resolveLabelNames(f.config?.labels ?? {});
+      if (f.labels?.includes(labelNames.local)) {
+        f.strayLocal = tryRun(() => flat(api(`repos/${f.repo}/issues?state=open&labels=${encodeURIComponent(labelNames.local)}&per_page=100`, true))
+          .filter((i) => !i.pull_request && !(i.labels ?? []).some((l) => (typeof l === 'string' ? l : l.name) === labelNames.building))
+          .map((i) => i.number), []);
+      }
+    }
     // `init` names the issues that still carry the former label of a failed build when the new one exists too.
     if (f.labels?.includes('relevo:qa-failed') && f.labels.includes('relevo:build-failed')) {
       f.formerLabelIssues = tryRun(() => flat(api(`repos/${f.repo}/issues?state=all&labels=${encodeURIComponent('relevo:qa-failed')}&per_page=100`, true)).map((i) => i.number), []);
@@ -831,11 +840,18 @@ function executionChecks(f) {
     }
   }
 
-  const variable = f.cloudVariable ?? null;
-  if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
-  else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
-  else r.push(pass('execution.cloud', 'the go workflow is not installed: ready issues are built on machines with /relevo:go'));
+  r.push(goLabelCheck(f, installed, mode !== 'none'));
   return r;
+}
+
+/** What the `go` label does in the repository: starts a cloud build, waits for the cloud to resume, only comments, or nothing. */
+function goLabelCheck(f, installed, hasCredential) {
+  const variable = f.cloudVariable ?? null;
+  if (!installed) return pass('execution.cloud', 'the go workflow is not installed: the go label has no effect, and approved issues are built with /relevo:go <n>');
+  if (String(variable ?? '').trim().toLowerCase() === 'off') return pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): builds run locally with /relevo:go <n>, and a go label waits on the issue until the cloud resumes`);
+  if (!hasCredential) return pass('execution.cloud', 'no model credential: a go label only produces the comment of a local run, and approved issues are built with /relevo:go <n>');
+  if (cloudBuilds({ workflowPresent: installed, variable })) return pass('execution.cloud', `a go label on a ready issue starts a cloud build (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`);
+  return pass('execution.cloud', 'approved issues are built with /relevo:go <n>');
 }
 
 /** Where `go` builds when the agent is Antigravity: the key by name, and what stands in for the limits it lacks. */
@@ -844,10 +860,7 @@ function antigravityExecutionChecks(f) {
   const installed = Boolean(f.workflows?.['relevo-go.yml']?.present);
   if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('execution.credential', 'the cloud builds with a Gemini key: Antigravity has no cost limit, so limits.run_max_tokens (enforced by the run guard) and the quota of the Google Cloud project that owns the key are the ceiling; use a key made only for Relevo'));
   else r.push(pass('execution.credential', installed ? 'no GEMINI_API_KEY secret: the cloud cannot build (see the warning about the secret)' : 'no GEMINI_API_KEY and no go workflow: go builds on machines only'));
-  const variable = f.cloudVariable ?? null;
-  if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
-  else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
-  else r.push(pass('execution.cloud', 'the go workflow is not installed: ready issues are built on machines with /relevo:go'));
+  r.push(goLabelCheck(f, installed, f.secrets.includes('GEMINI_API_KEY')));
   return r;
 }
 
@@ -1070,6 +1083,7 @@ export function runChecks(f) {
     if (missing === null) r.push(warn('repo.labels', 'could not read the labels', 'check your access to the repository'));
     else if (missing.length === 0) r.push(pass('repo.labels', 'all lifecycle labels exist'));
     else r.push(fail('repo.labels', `missing labels: ${missing.join(', ')}`, 'run /relevo:init to create them'));
+    r.push(...strayLocalChecks(f));
     if (f.labels?.includes(FORMER_BUILD_FAILED)) r.push(fail('repo.labels.former', `the repository still has the label ${FORMER_BUILD_FAILED}, which is now ${labelDefinitions(f.config.labels).find((l) => l.key === 'build-failed').name}: the planner does not read it`, 'run /relevo:init: it renames the label and the issues that carry it keep it'));
     r.push(f.branches.base ? pass('repo.base-branch', `base branch ${f.config.branches.base} exists`) : fail('repo.base-branch', `base branch ${f.config.branches.base} does not exist`, `create it from ${f.config.branches.release}, or run /relevo:init`));
   }
@@ -1117,12 +1131,12 @@ export function runChecks(f) {
   if (f.secrets === null) r.push(warn('automation.secret', 'could not list the repository secrets', 'check that you may read them, or look in Settings > Secrets'));
   else if (f.config?.agent?.build === 'antigravity') {
     if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('automation.secret', 'a model credential secret exists (GEMINI_API_KEY)'));
-    else r.push(warn('automation.secret', 'no GEMINI_API_KEY secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add a key made only for Relevo, in its own Google Cloud project with a quota, to the repository secrets (init never touches it); for local builds nothing is needed'));
+    else r.push(warn('automation.secret', 'no GEMINI_API_KEY secret, so the cloud cannot build: a go label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add a key made only for Relevo, in its own Google Cloud project with a quota, to the repository secrets (init never touches it); for local builds nothing is needed'));
   } else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) {
     const mismatch = credentialMismatch(f);
     r.push(pass('automation.secret', mismatch ? `a model credential secret exists (${mismatch.secret}), but the workflow does not use it: see execution.credential-line` : 'a model credential secret exists'));
   }
-  else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
+  else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a go label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
 
   // One result per cause: the workflows in the same state, with the same status and the same fix, are one result that names them.
   const groups = new Map();
@@ -1598,7 +1612,7 @@ function pluginInstallChecks(f) {
   if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
   if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog (that moves the scripts, not the text)'));
-  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f), ...formerLabelWorkflowChecks(f), ...actionPinChecks(f));
+  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f), ...formerLabelWorkflowChecks(f), ...workflowTriggerChecks(f), ...actionPinChecks(f));
   return r;
 }
 
@@ -1691,6 +1705,34 @@ function formerLabelWorkflowChecks(f) {
     && f.workflows[file].text.split('\n').some((line) => /gh issue edit/.test(line) && line.includes(FORMER_BUILD_FAILED)));
   if (files.length === 0) return [];
   return [fail('automation.workflow-label', `${files.join(', ')} still ${files.length === 1 ? 'names' : 'name'} the label ${FORMER_BUILD_FAILED}, which is now relevo:build-failed: the workflow marks failed builds with a label that nothing reads`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes')];
+}
+
+/**
+ * The go workflow starts on the label its `if` names. It must be the effective `go` label: a workflow of an earlier version starts on
+ * `ready`, so approving an issue would build it. Read from the text on the default branch; nothing is said when it is unknown.
+ */
+function workflowTriggerChecks(f) {
+  const text = f.workflows?.['relevo-go.yml']?.text;
+  if (typeof text !== 'string' || !f.workflows['relevo-go.yml'].present) return [];
+  const names = resolveLabelNames(f.config?.labels ?? {});
+  const named = [...text.matchAll(/github\.event\.label\.name\s*==\s*'([^']+)'/g)].map((m) => m[1]);
+  if (named.length === 0 || named.every((n) => n === names.go)) return [];
+  const wrong = named.find((n) => n !== names.go);
+  const ready = wrong === names.ready;
+  return [fail('automation.workflow-trigger', `.github/workflows/relevo-go.yml starts when ${wrong} is applied${ready ? ': approving an issue would start a build, because the label that starts a cloud build is now the go label' : `, which is not the go label of relevo.yml (${names.go})`}`,
+    `update the workflow with /relevo:init, which makes it start on ${names.go}${ready ? '; until it is merged, do not approve issues, or pause the cloud with RELEVO_CLOUD_GO' : ''}`)];
+}
+
+/**
+ * The `local` label marks a local build next to `building`. Alone it means nothing, and a person may have applied it expecting it to
+ * keep the cloud away: the open issues that carry it without `building` are named.
+ */
+function strayLocalChecks(f) {
+  const stray = f.strayLocal ?? [];
+  if (stray.length === 0) return [];
+  const names = resolveLabelNames(f.config?.labels ?? {});
+  return [warn('repo.local-label', `${stray.map((n) => `#${n}`).join(', ')} ${stray.length === 1 ? 'carries' : 'carry'} ${names.local} without ${names.building}: the label is applied by a local build and does not keep the cloud from building`,
+    `remove ${names.local} from ${stray.length === 1 ? 'it' : 'them'}; to build an issue on a machine run /relevo:go <n>, which applies it itself`)];
 }
 
 /** Is the text of each workflow as current as the scripts it runs? The stamp is the version of the text; the pin is the scripts'. */

@@ -12,8 +12,8 @@ const config = join(dir, 'relevo.yml');
 writeFileSync(config, 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\n');
 const state = (over = {}) => ({
   issues: [{
-    number: 7, title: 'Show the version', body: BODY, state: 'open', labels: ['relevo:ready'], assignees: ['persona-b'],
-    milestone: { number: 1, due_on: null }, ready_at: '2026-10-15T10:00:00Z', ready_by: 'persona-a', ...over,
+    number: 7, title: 'Show the version', body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: ['persona-b'],
+    milestone: { number: 1, due_on: null }, ready_at: '2026-10-15T10:00:00Z', ready_by: 'persona-a', go_by: 'persona-a', ...over,
   }],
   completed: [], running: [], permissions: { 'persona-a': 'write' },
 });
@@ -134,7 +134,7 @@ test('Scenario: No credential - a start becomes local: nothing claimed, the issu
   const without = run(['--credential', 'false']);
   assert.equal(without.out.action, 'local');
   const d = without.printed.decisions[0];
-  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] }, 'the issue keeps ready and loses the request');
   assert.equal(d.comment.kind, 'cloud_not_configured');
   assert.equal(d.comment.data.actor, 'persona-a');
   assert.deepEqual([without.out.platform, without.out.stack, without.out.path], ['', '', ''], 'the build job gets nothing to start');
@@ -166,4 +166,57 @@ test('go-plan --retry needs --only, and a person without permission is denied', 
   assert.equal(noOnly.status, 2);
   assert.match(noOnly.stderr, /--retry needs --only/);
   assert.equal(JSON.parse(retryPlan({}, 'stranger').stdout).decisions[0].action, 'denied');
+});
+
+test('go-plan --place: the cloud is the default and ignores an approved issue with no request; another place is refused', () => {
+  assert.equal(parse(plan({ labels: ['relevo:ready'], go_by: null }).out).action, 'none');
+  const input = join(dir, 'place.json');
+  writeFileSync(input, JSON.stringify(state()));
+  const bad = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--place', 'moon'], { encoding: 'utf8' });
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /--place must be cloud or local/);
+});
+
+test('go-plan: a go label on a build-failed issue is a rebuild without a branch and a refusal with one', () => {
+  assert.equal(parse(plan({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: false }).out).action, 'start');
+  assert.equal(parse(plan({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: true }).out).action, 'refuse');
+});
+
+test('go-plan: a body edited after the approval is not built, and a last edit that could not be read builds nothing and changes nothing', () => {
+  const withEdit = (edit) => {
+    const input = join(dir, `edit-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(input, JSON.stringify({ ...state(), last_edited: { 7: edit } }));
+    return JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7'], { encoding: 'utf8' })).decisions[0];
+  };
+  const edited = withEdit({ ok: true, at: '2026-10-16T10:00:00Z' });
+  assert.equal(edited.action, 'unapproved');
+  assert.equal(edited.comment.kind, 'approval_withdrawn');
+  const failed = withEdit({ ok: false, reason: 'HTTP 403' });
+  assert.equal(failed.action, 'report');
+  assert.deepEqual(failed.labels, { add: [], remove: [] });
+  assert.equal(withEdit({ ok: true, at: null }).action, 'start');
+});
+
+test('go-plan --place local: a ready issue with no request starts for the person of the file, and a draft is reported', () => {
+  const local = (over, extra = {}) => {
+    const input = join(dir, `local-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(input, JSON.stringify({ ...state(over), person: 'persona-a', ...extra }));
+    return JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7', '--place', 'local'], { encoding: 'utf8' })).decisions[0];
+  };
+  const started = local({ labels: ['relevo:ready'], go_by: null });
+  assert.equal(started.action, 'start');
+  assert.deepEqual(started.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready'] });
+  assert.equal(local({ labels: ['bug'] }).report, 'needs_ready');
+  assert.equal(local({ labels: ['relevo:ready'] }, { person: 'nobody' }).report, 'no_permission');
+});
+
+test('Scenario: No credential - with --credential false the issue stays ready, loses go, and the comment is the one of a cloud not configured', () => {
+  const input = join(dir, 'nocred.json');
+  writeFileSync(input, JSON.stringify(state()));
+  const out = JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7', '--credential', 'false'], { encoding: 'utf8' }));
+  const d = out.decisions[0];
+  assert.equal(d.action, 'local');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(d.comment.kind, 'cloud_not_configured');
+  assert.equal(d.comment.data.actor, 'persona-a');
 });

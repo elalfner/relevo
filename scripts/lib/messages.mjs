@@ -33,6 +33,13 @@ const REQUIRED = {
   ready_denied_maintainer: ['issue'],
   urgent_denied: ['issue'],
   urgent_denied_maintainer: ['issue'],
+  go_denied: ['issue'],
+  go_denied_maintainer: ['issue'],
+  go_needs_ready: ['issue'],
+  go_building: ['issue'],
+  go_already_built: ['issue'],
+  go_use_fix: ['issue'],
+  approval_withdrawn: ['issue', 'edited'],
   blocked_notice: ['issue', 'title', 'blockers'],
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
   queued_agents: ['issue', 'title'],
@@ -157,19 +164,19 @@ export const CATALOG = {
     no_milestone: [
       '#{{issue}} was not started: it has no milestone',
       '',
-      '@{{actor}} your next step: add the issue to a milestone and label it ready again.',
+      '@{{actor}} your next step: add the issue to a milestone, approve it with ready again, then apply go or run `/relevo:go {{issue}}` on your machine.',
     ],
     no_assignee: [
       '#{{issue}} was not started: it has no assignee',
       '',
-      '@{{actor}} your next step: assign the issue to the person who will review it and label it ready again.',
+      '@{{actor}} your next step: assign the issue to the person who will review it, approve it with ready again, then apply go or run `/relevo:go {{issue}}` on your machine.',
     ],
     ready_denied: [
-      '#{{issue}} was not started: only people with write access can mark an issue ready, so the label was removed',
+      '#{{issue}} was not built: only people with write access can approve an issue with ready, so the ready and go labels were removed',
       'Applied by: @{{actor}}',
     ],
     ready_denied_maintainer: [
-      '#{{issue}} was not started: this repository is public, so only maintainers can mark an issue ready, and the label was removed',
+      '#{{issue}} was not built: this repository is public, so only maintainers can approve an issue with ready, and the ready and go labels were removed',
       'Applied by: @{{actor}}',
     ],
     urgent_denied: [
@@ -179,6 +186,38 @@ export const CATALOG = {
     urgent_denied_maintainer: [
       '#{{issue}}: the urgent label was removed because this repository is public, so only maintainers can ask for an early start. The issue keeps its place in the queue.',
       'Applied by: @{{actor}}',
+    ],
+    go_denied: [
+      '#{{issue}} was not built: only people with write access can request a build, so the go label was removed. The issue stays ready.',
+      'Applied by: @{{actor}}',
+    ],
+    go_denied_maintainer: [
+      '#{{issue}} was not built: this repository is public, so only maintainers can request a build, and the go label was removed. The issue stays ready.',
+      'Applied by: @{{actor}}',
+    ],
+    go_needs_ready: [
+      '#{{issue}} was not built: the go label requests the build of an approved issue, and this one is not ready, so the label was removed.',
+      'Your next step: when the text is complete, approve it with the ready label, then apply go again or run `/relevo:go {{issue}}` on your machine.',
+      'Applied by: @{{actor}}',
+    ],
+    go_building: [
+      '#{{issue}} is being built already, so the go label was removed. The build in progress was not touched.',
+      'Applied by: @{{actor}}',
+    ],
+    go_already_built: [
+      '#{{issue}} is already built, so the go label was removed. Its state says the next step.',
+      'Applied by: @{{actor}}',
+    ],
+    go_use_fix: [
+      '#{{issue}} failed with work on its branch, so the go label was removed: the work is corrected, not built again.',
+      'Your next step: run `/relevo:fix {{issue}}`; to build from the start instead, delete the remote branch and apply go again.',
+      'Applied by: @{{actor}}',
+    ],
+    approval_withdrawn: [
+      '#{{issue}} was not built: {{edited_phrase}} after it was approved, so the approval was withdrawn and the issue is a draft again',
+      'Approved by: @{{approver}}',
+      '',
+      'Your next step: read the text again; when it is what should be built, approve it with ready, then apply go or run `/relevo:go {{issue}}` on your machine.',
     ],
     blocked_notice: [
       '#{{issue}} "{{title}}" is blocked',
@@ -365,19 +404,19 @@ export const CATALOG = {
     no_milestone: [
       '#{{issue}} no se inició: no tiene milestone',
       '',
-      '@{{actor}} tu siguiente paso: agrega el issue a un milestone y márcalo como ready otra vez.',
+      '@{{actor}} tu siguiente paso: agrega el issue a un milestone, apruébalo con ready otra vez y luego pon go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
     ],
     no_assignee: [
       '#{{issue}} no se inició: no tiene responsable',
       '',
-      '@{{actor}} tu siguiente paso: asigna el issue a quien lo va a revisar y márcalo como ready otra vez.',
+      '@{{actor}} tu siguiente paso: asigna el issue a quien lo va a revisar, apruébalo con ready otra vez y luego pon go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
     ],
     ready_denied: [
-      '#{{issue}} no se inició: solo quienes tienen acceso de escritura pueden marcar un issue como ready, así que se quitó la etiqueta',
+      '#{{issue}} no se construyó: solo quienes tienen acceso de escritura pueden aprobar un issue con ready, así que se quitaron las etiquetas ready y go',
       'Aplicada por: @{{actor}}',
     ],
     ready_denied_maintainer: [
-      '#{{issue}} no se inició: este repositorio es público, así que solo quienes mantienen el proyecto pueden marcar un issue como ready, y se quitó la etiqueta',
+      '#{{issue}} no se construyó: este repositorio es público, así que solo quienes mantienen el proyecto pueden aprobar un issue con ready, y se quitaron las etiquetas ready y go',
       'Aplicada por: @{{actor}}',
     ],
     urgent_denied: [
@@ -387,6 +426,38 @@ export const CATALOG = {
     urgent_denied_maintainer: [
       '#{{issue}}: se quitó la etiqueta de urgente porque este repositorio es público, así que solo quienes mantienen el proyecto pueden pedir un inicio anticipado. El issue conserva su lugar en la cola.',
       'Aplicada por: @{{actor}}',
+    ],
+    go_denied: [
+      '#{{issue}} no se construyó: solo quienes tienen acceso de escritura pueden pedir un build, así que se quitó la etiqueta go. El issue sigue en ready.',
+      'Aplicada por: @{{actor}}',
+    ],
+    go_denied_maintainer: [
+      '#{{issue}} no se construyó: este repositorio es público, así que solo quienes mantienen el proyecto pueden pedir un build, y se quitó la etiqueta go. El issue sigue en ready.',
+      'Aplicada por: @{{actor}}',
+    ],
+    go_needs_ready: [
+      '#{{issue}} no se construyó: la etiqueta go pide el build de un issue aprobado, y este no está en ready, así que se quitó la etiqueta.',
+      'Tu siguiente paso: cuando el texto esté completo, apruébalo con la etiqueta ready y luego vuelve a poner go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
+      'Aplicada por: @{{actor}}',
+    ],
+    go_building: [
+      '#{{issue}} ya se está construyendo, así que se quitó la etiqueta go. El build en curso no se tocó.',
+      'Aplicada por: @{{actor}}',
+    ],
+    go_already_built: [
+      '#{{issue}} ya está construido, así que se quitó la etiqueta go. Su estado dice el siguiente paso.',
+      'Aplicada por: @{{actor}}',
+    ],
+    go_use_fix: [
+      '#{{issue}} falló con trabajo en su rama, así que se quitó la etiqueta go: ese trabajo se corrige, no se construye de nuevo.',
+      'Tu siguiente paso: ejecuta `/relevo:fix {{issue}}`; para construir desde el principio, borra la rama remota y vuelve a poner go.',
+      'Aplicada por: @{{actor}}',
+    ],
+    approval_withdrawn: [
+      '#{{issue}} no se construyó: {{edited_phrase}} después de que se aprobara, así que la aprobación se retiró y el issue vuelve a ser un borrador',
+      'Aprobado por: @{{approver}}',
+      '',
+      'Tu siguiente paso: vuelve a leer el texto; cuando sea lo que hay que construir, apruébalo con ready y luego pon go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
     ],
     blocked_notice: [
       '#{{issue}} "{{title}}" está bloqueado',
@@ -667,12 +738,22 @@ function contradictionLine(values, es) {
 // The comments of a run that ended without telling anyone. They were written inline in the go workflow, which is why a repository
 // with `language: es` got English: they now come from here. The labels and commands in the text are the same in both languages.
 const RETRY = '`relevo:build-failed`';
+// How a failed build that left nothing to correct is built again: the cloud rebuilds it with `go`, a machine with --retry.
+const REBUILD = {
+  en: (n) => `apply \`relevo:go\` so that the cloud builds it again, or run \`/relevo:go ${n} --retry\` on your machine`,
+  es: (n) => `pon \`relevo:go\` para que la nube lo construya de nuevo, o ejecuta \`/relevo:go ${n} --retry\` en tu máquina`,
+};
+// How a build is started again from an approval: the approval first, then the request or a local build.
+const READY_AGAIN = {
+  en: (n) => `remove ${RETRY}, apply \`relevo:ready\` again and then \`relevo:go\` (or run \`/relevo:go ${n}\` on your machine)`,
+  es: (n) => `quita ${RETRY}, pon \`relevo:ready\` otra vez y luego \`relevo:go\` (o ejecuta \`/relevo:go ${n}\` en tu máquina)`,
+};
 const mention = (values) => (present(values.assignee) ? `@${values.assignee} ` : '');
 
 function runFailedEarly(values, es) {
   return es
-    ? `${mention(values)}La ejecución falló antes de poder decidir qué hacer (estado del job: ${values.job_status}), así que no se construyó nada. Lee el log para ver por qué: ${values.run}. Cuando la causa esté resuelta, quita ${RETRY} y pon \`relevo:ready\` otra vez.`
-    : `${mention(values)}The run failed before it could decide what to do (job status: ${values.job_status}), so nothing was built. Read the log to see why: ${values.run}. When the cause is fixed, remove ${RETRY} and apply \`relevo:ready\` again.`;
+    ? `${mention(values)}La ejecución falló antes de poder decidir qué hacer (estado del job: ${values.job_status}), así que no se construyó nada. Lee el log para ver por qué: ${values.run}. Cuando la causa esté resuelta, ${REBUILD.es(values.issue)}.`
+    : `${mention(values)}The run failed before it could decide what to do (job status: ${values.job_status}), so nothing was built. Read the log to see why: ${values.run}. When the cause is fixed, ${REBUILD.en(values.issue)}.`;
 }
 
 // What the rescue step did with the work, for the situations where the work was not kept.
@@ -707,8 +788,8 @@ function runNoOutcome(values, es) {
         ? { en: 'resume from the work kept on the branch (no checkpoint was saved yet)', es: 'reanudar desde el trabajo guardado en la rama (todavía no hay ningún checkpoint)' }
         : { en: 'resume from the last point saved on the branch', es: 'reanudar desde el último punto guardado en la rama' };
     const next = own
-      ? (es ? ' La ejecución no estaba en la rama del issue, así que el trabajo está en una rama aparte: cámbiate a ella y revísalo, o quita `relevo:build-failed` y pon `relevo:ready` otra vez para construir desde el principio:' : ' The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or remove `relevo:build-failed` and apply `relevo:ready` again to build from the start:')
-      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o quita \`relevo:build-failed\` y pon \`relevo:ready\` otra vez para ${resume.es}. Si el texto del issue cambió o una persona hizo un commit en la rama, la ejecución se detiene con \`branch already exists\`; borra la rama remota para empezar de cero:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or remove \`relevo:build-failed\` and apply \`relevo:ready\` again to ${resume.en}. If the text of the issue changed or a person committed to the branch, the run stops with \`branch already exists\`; delete the remote branch to start over:`);
+      ? (es ? ` La ejecución no estaba en la rama del issue, así que el trabajo está en una rama aparte: cámbiate a ella y revísalo, o constrúyelo desde el principio (${REBUILD.es(values.issue)}):` : ` The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or build from the start (${REBUILD.en(values.issue)}):`)
+      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o ${READY_AGAIN.es(values.issue)} para ${resume.es}. Si el texto del issue cambió o una persona hizo un commit en la rama, la ejecución se detiene con \`branch already exists\`; borra la rama remota para empezar de cero:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or ${READY_AGAIN.en(values.issue)} to ${resume.en}. If the text of the issue changed or a person committed to the branch, the run stops with \`branch already exists\`; delete the remote branch to start over:`);
     return es
       ? `${mention(values)}La ejecución se detuvo antes de terminar (${why}). El trabajo hecho antes de detenerse se guardó en la rama \`${values.rescue_branch}\` como un commit de trabajo en curso.${next} ${values.run}`
       : `${mention(values)}The run stopped before it finished (${why}). The work done before the stop was kept on the branch \`${values.rescue_branch}\` as a work-in-progress commit.${next} ${values.run}`;
@@ -721,14 +802,14 @@ function runNoOutcome(values, es) {
       ? (es ? ` El trabajo hecho está en la rama \`${values.rescue_branch}\`: \`/relevo:fix ${values.issue}\` continúa desde ahí.` : ` The work done is on the branch \`${values.rescue_branch}\`: \`/relevo:fix ${values.issue}\` continues from it.`)
       : kept;
     return es
-      ? `${mention(values)}La ejecución volvió a detenerse por el límite de uso (o el crédito) de la cuenta del modelo, tras ${max} reintentos automáticos. Los reintentos se detuvieron aquí para no gastar la cuota que esperan. El código no tiene ningún problema: cuando la cuota esté disponible, quita ${RETRY} y pon \`relevo:ready\` otra vez, o constrúyelo en tu máquina con \`/relevo:go ${values.issue} --local\`. ${values.run}${keptBranch}`
-      : `${mention(values)}The run stopped at the usage limit (or the credit) of the model account again, after ${max} automatic retries. The retries stopped here so that they do not use the quota they wait for. Nothing is wrong with the code: when the quota is back, remove ${RETRY} and apply \`relevo:ready\` again, or build it on your machine with \`/relevo:go ${values.issue} --local\`. ${values.run}${keptBranch}`;
+      ? `${mention(values)}La ejecución volvió a detenerse por el límite de uso (o el crédito) de la cuenta del modelo, tras ${max} reintentos automáticos. Los reintentos se detuvieron aquí para no gastar la cuota que esperan. El código no tiene ningún problema: cuando la cuota esté disponible, ${REBUILD.es(values.issue)}. ${values.run}${keptBranch}`
+      : `${mention(values)}The run stopped at the usage limit (or the credit) of the model account again, after ${max} automatic retries. The retries stopped here so that they do not use the quota they wait for. Nothing is wrong with the code: when the quota is back, ${REBUILD.en(values.issue)}. ${values.run}${keptBranch}`;
   }
   // A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
   if (values.situation === 'usage_limit') {
     return es
-      ? `${mention(values)}La ejecución se detuvo porque se alcanzó el límite de uso (o el crédito) de la cuenta del modelo, así que no se construyó nada. El código no tiene ningún problema. Vuelve a poner \`relevo:ready\` al issue más tarde, después de quitar \`relevo:build-failed\`: ${values.run}${kept}`
-      : `${mention(values)}The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:build-failed\`: ${values.run}${kept}`;
+      ? `${mention(values)}La ejecución se detuvo porque se alcanzó el límite de uso (o el crédito) de la cuenta del modelo, así que no se construyó nada. El código no tiene ningún problema. Más tarde, ${REBUILD.es(values.issue)}: ${values.run}${kept}`
+      : `${mention(values)}The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Later, ${REBUILD.en(values.issue)}: ${values.run}${kept}`;
   }
   if (!present(values.job_status)) throw new Error('message "run_no_outcome" needs "job_status" when the run ended without a result');
   const cutnote = values.cut === 'turns'
@@ -737,8 +818,8 @@ function runNoOutcome(values, es) {
       ? (es ? ' El runner la detuvo en su límite de costo (--max-budget-usd).' : ' The runner stopped it at its cost limit (--max-budget-usd).')
       : '';
   return es
-    ? `${mention(values)}La ejecución terminó sin resultado (estado del job: ${values.job_status}), así que no se construyó ni se informó nada.${cutnote} Lee el log para ver por qué: ${values.run}. Cuando la causa esté resuelta, quita ${RETRY} y pon \`relevo:ready\` otra vez.${kept}`
-    : `${mention(values)}The run ended without a result (job status: ${values.job_status}), so nothing was built or reported.${cutnote} Read the log to see why: ${values.run}. When the cause is fixed, remove ${RETRY} and apply \`relevo:ready\` again.${kept}`;
+    ? `${mention(values)}La ejecución terminó sin resultado (estado del job: ${values.job_status}), así que no se construyó ni se informó nada.${cutnote} Lee el log para ver por qué: ${values.run}. Cuando la causa esté resuelta, ${REBUILD.es(values.issue)}.${kept}`
+    : `${mention(values)}The run ended without a result (job status: ${values.job_status}), so nothing was built or reported.${cutnote} Read the log to see why: ${values.run}. When the cause is fixed, ${REBUILD.en(values.issue)}.${kept}`;
 }
 
 // The comment of an issue that goes back to the queue after a usage limit. `at` is an ISO time: the log's reset time plus a minute
@@ -788,6 +869,13 @@ export function renderMessage(kind, data = {}, language = 'en') {
     values.summary_line = es
       ? `La construcción de Relevo terminó${none ? ' sin resultado' : ''}${after}. ${none ? 'El motivo está' : 'El resultado está'} en el último comentario de este issue.`
       : `The Relevo build ended${none ? ' without an outcome' : ''}${after}. ${none ? 'The reason is' : 'The result is'} in the latest comment of this issue.`;
+  }
+  if (kind === 'approval_withdrawn') {
+    const phrases = es
+      ? { body: 'su descripción cambió', title: 'su título cambió', 'title and body': 'su título y su descripción cambiaron' }
+      : { body: 'its body changed', title: 'its title changed', 'title and body': 'its title and body changed' };
+    if (!phrases[values.edited]) throw new Error(`message "approval_withdrawn" has an unknown edit "${values.edited}"`);
+    values.edited_phrase = phrases[values.edited];
   }
   if (kind === 'local_progress' || kind === 'local_status') {
     const labels = es

@@ -17,8 +17,8 @@ const config = (extra = '') => {
   return r.config;
 };
 const issue = (readyBy) => ({
-  number: 7, title: 'Task', body: BODY, state: 'open', labels: ['relevo:ready'], assignees: ['persona-b'],
-  milestone: { number: 1, due_on: null }, ready_at: '2026-10-14T10:00:00Z', ready_by: readyBy,
+  number: 7, title: 'Task', body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: ['persona-b'],
+  milestone: { number: 1, due_on: null }, ready_at: '2026-10-14T10:00:00Z', ready_by: readyBy, go_by: readyBy,
 });
 const decide = (cfg, by, permission) => planGo({ config: cfg, issues: [issue(by)], permissions: { [by]: permission } }).decisions[0];
 
@@ -28,7 +28,7 @@ test('Scenario: Public repository - a non-maintainer applying ready starts no ru
   const pub = config('trust: public\nreview:\n  mode: peer\n');
   const d = decide(pub, 'contributor', 'write');
   assert.equal(d.action, 'denied');
-  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready', 'relevo:go'] });
   assert.equal(d.comment.kind, 'ready_denied_maintainer');
   assert.match(renderMessage('ready_denied_maintainer', d.comment.data, 'en'), /public, so only maintainers/);
   assert.match(renderMessage('ready_denied_maintainer', d.comment.data, 'es'), /público/);
@@ -119,4 +119,21 @@ test('Scenario: Run started by the queue - only the Actions bot may start it, ne
   assert.equal(lines.length, 1);
   assert.match(lines[0], /allowed_bots: github-actions\s*$/);
   assert.ok(!/['"*]/.test(lines[0].split(':')[1]), 'allowed_bots must not be a wildcard');
+});
+
+// ---------- split-ready-and-go: the hash still covers the time between the claim and the build
+
+test('Scenario: Issue edited after ready - the hash check still runs between the claim and the specification, with its reason unchanged', () => {
+  const go = read('skills/go/SKILL.md');
+  const spec = go.indexOf('### 3. Specification');
+  const hash = go.indexOf('scripts/issue-hash.mjs --repo <owner/name> --issue <issue> --expect <issue_hash>');
+  assert.ok(spec > 0 && hash > spec, 'the check is the first thing of the specification step');
+  assert.match(go.slice(hash, hash + 600), /take the failure path with the reason `issue changed after ready`/);
+});
+
+test('a start that passed the approval check still carries the hash of the text it claimed', () => {
+  const i = { ...issue('persona-a'), title_edited_at: null };
+  const d = planGo({ config: config(), issues: [i], permissions: { 'persona-a': 'write' }, edits: { 7: { ok: true, at: null } } }).decisions[0];
+  assert.equal(d.action, 'start');
+  assert.match(d.issue_hash, /^[0-9a-f]{16,}$/);
 });

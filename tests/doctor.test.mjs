@@ -841,22 +841,22 @@ test('Scenario: Secret and line agree, both secrets, no secret, or no active lin
   assert.equal(none(['CLAUDE_CODE_OAUTH_TOKEN'], undefined), undefined, 'the text of the workflow is unknown');
 });
 
-test('Scenario: No credential - the go workflow is installed, so doctor warns that a ready label only leaves a comment', () => {
+test('Scenario: No credential - the go workflow is installed, so doctor warns that a go label only leaves a comment', () => {
   const results = runChecks(healthy({ secrets: [] }));
   const secret = byId(results, 'automation.secret');
   assert.equal(secret.status, 'warn');
-  assert.match(secret.message, /the cloud cannot build: a ready label only leaves a comment that says to run \/relevo:go/);
+  assert.match(secret.message, /the cloud cannot build: a go label only leaves a comment that says to run \/relevo:go/);
   assert.match(byId(results, 'execution.credential').message, /no model credential: the cloud cannot build/);
   const noWorkflow = healthy({ secrets: [], workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: false, enabled: null }])) });
   assert.match(byId(runChecks(noWorkflow), 'execution.credential').message, /no go workflow: go builds on machines only/);
 });
 
 test('Scenario: Cloud paused - the variable off is reported, and the other states are described', () => {
-  assert.match(byId(runChecks(healthy({ cloudVariable: 'off' })), 'execution.cloud').message, /the cloud is paused \(RELEVO_CLOUD_GO is off\)/);
+  assert.match(byId(runChecks(healthy({ cloudVariable: 'off' })), 'execution.cloud').message, /the cloud is paused \(RELEVO_CLOUD_GO is off\): builds run locally with \/relevo:go <n>, and a go label waits on the issue until the cloud resumes/);
   assert.match(byId(runChecks(healthy({ cloudVariable: ' OFF ' })), 'execution.cloud').message, /paused/);
-  assert.match(byId(runChecks(healthy({ cloudVariable: null })), 'execution.cloud').message, /the cloud builds ready issues \(set the repository variable RELEVO_CLOUD_GO to off to pause it\)/);
+  assert.match(byId(runChecks(healthy({ cloudVariable: null })), 'execution.cloud').message, /a go label on a ready issue starts a cloud build \(set the repository variable RELEVO_CLOUD_GO to off to pause it\)/);
   const noWorkflow = healthy({ workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: false, enabled: null }])) });
-  assert.match(byId(runChecks(noWorkflow), 'execution.cloud').message, /not installed: ready issues are built on machines/);
+  assert.match(byId(runChecks(noWorkflow), 'execution.cloud').message, /the go workflow is not installed: the go label has no effect, and approved issues are built with \/relevo:go <n>/);
 });
 
 test('a healthy repository with an API key and no variable has no new warning, and an unreadable secrets list adds nothing', () => {
@@ -2847,4 +2847,88 @@ test('Scenario: Nothing left - a migrated repository reports nothing about the f
   const res = runChecks(healthy({ workflows: wf }));
   assert.equal(byId(res, 'repo.labels.former'), undefined);
   assert.equal(byId(res, 'automation.workflow-label'), undefined);
+});
+
+// --- split-ready-and-go: the trigger of the workflow, a stray local mark, and what the go label does
+
+const goWorkflow = (text, over = {}) => healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text } }, ...over });
+
+test('Scenario: Workflow of an earlier version - a go workflow that starts on ready fails, names the file and points to init', () => {
+  const old = readFileSync(new URL('./fixtures/workflows/relevo-go-0.12.0.yml', import.meta.url), 'utf8');
+  const res = runChecks(goWorkflow(old));
+  const r = byId(res, 'automation.workflow-trigger');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /relevo-go\.yml/);
+  assert.match(r.message, /starts when relevo:ready is applied/);
+  assert.match(r.message, /approving an issue would start a build/);
+  assert.match(r.fix, /\/relevo:init/);
+  assert.equal(exitCode(res), 1);
+});
+
+test('Scenario: Current workflow - the template starts on the effective go label and doctor reports nothing about it', () => {
+  const current = readFileSync(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+  assert.equal(byId(runChecks(goWorkflow(current)), 'automation.workflow-trigger'), undefined);
+  assert.equal(byId(runChecks(goWorkflow(null)), 'automation.workflow-trigger'), undefined, 'a workflow whose text is unknown says nothing');
+});
+
+test('Scenario: Renamed go label - the workflow starts on relevo:go while labels.go is team:build: doctor fails and names the label', () => {
+  const current = readFileSync(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+  const renamed = { ...config, labels: { ...config.labels, go: 'team:build' } };
+  const r = byId(runChecks(goWorkflow(current, { config: renamed, labels: [...allLabels, 'team:build'] })), 'automation.workflow-trigger');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /starts when relevo:go is applied/);
+  assert.match(r.fix, /team:build/);
+  const fixed = current.replace("github.event.label.name == 'relevo:go'", "github.event.label.name == 'team:build'");
+  assert.equal(byId(runChecks(goWorkflow(fixed, { config: renamed, labels: [...allLabels, 'team:build'] })), 'automation.workflow-trigger'), undefined);
+});
+
+test('Scenario: Stray label - an open issue with local and without building is a warning that names it', () => {
+  const r = byId(runChecks(healthy({ strayLocal: [42, 43] })), 'repo.local-label');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /#42, #43/);
+  assert.match(r.message, /applied by a local build and does not keep the cloud from building/);
+  assert.ok(r.fix.length > 0);
+});
+
+test('Scenario: Local build in progress - no stray issue, nothing reported', () => {
+  assert.equal(byId(runChecks(healthy({ strayLocal: [] })), 'repo.local-label'), undefined);
+  assert.equal(byId(runChecks(healthy()), 'repo.local-label'), undefined);
+});
+
+test('Scenario: No credential - with the workflow installed, doctor says a go label only produces the local-run comment', () => {
+  assert.match(byId(runChecks(healthy({ secrets: [] })), 'execution.cloud').message, /a go label only produces the comment of a local run/);
+});
+
+test('the four sentences about the go label: starts a build, waits, only comments, has no effect', () => {
+  const noWorkflow = healthy({ workflows: Object.fromEntries(WORKFLOW_FILES.map((f) => [f, { present: false, enabled: null }])) });
+  const messages = [healthy(), healthy({ cloudVariable: 'off' }), healthy({ secrets: [] }), noWorkflow].map((f) => byId(runChecks(f), 'execution.cloud').message);
+  assert.match(messages[0], /starts a cloud build/);
+  assert.match(messages[1], /waits on the issue until the cloud resumes/);
+  assert.match(messages[2], /only produces the comment of a local run/);
+  assert.match(messages[3], /has no effect/);
+});
+
+test('gatherFacts reads the open issues with the local label and keeps those without building', () => {
+  const api = {
+    'repos/o/r': { default_branch: 'main' },
+    'repos/o/r/labels?per_page=100': [[{ name: 'relevo:local' }, { name: 'relevo:building' }]],
+    'repos/o/r/issues?state=open&labels=relevo%3Alocal&per_page=100': [[
+      { number: 42, labels: [{ name: 'relevo:ready' }, { name: 'relevo:local' }] },
+      { number: 43, labels: [{ name: 'relevo:building' }, { name: 'relevo:local' }] },
+      { number: 44, labels: [{ name: 'relevo:local' }], pull_request: {} },
+    ]],
+  };
+  const files = { 'relevo.yml': 'limits:\n  run_max_cost: 5\n' };
+  const f = gatherFacts({
+    tool: () => 'ok',
+    gh: (args) => { const path = args[args.length - 1]; if (!(path in api)) throw new Error('HTTP 404'); return JSON.stringify(api[path]); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: 'o/r',
+  });
+  assert.deepEqual(f.strayLocal, [42]);
+});
+
+test('the doctor skill names the two new checks', () => {
+  const skill = readFileSync(new URL('../skills/doctor/SKILL.md', import.meta.url), 'utf8');
+  assert.match(skill, /`automation\.workflow-trigger`/);
+  assert.match(skill, /`repo\.local-label`/);
 });

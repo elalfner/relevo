@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { changeId } from './branch.mjs';
-import { cloudBuilds } from './execution-mode.mjs';
 import { renderMessage } from './messages.mjs';
 import { readUsage, usageLine } from './run-usage.mjs';
 import { runFlags } from './run-flags.mjs';
@@ -105,7 +104,7 @@ export function planLocalRun({ issue, repoRoot, config, retry = false }) {
  * tasks or the newest lens or agent record changes, from the state folder and not from the agent. `dryRun` returns the plan.
  */
 export async function runLocal({
-  issue, config, runner, workflowPresent = false, dryRun = false, retry = false, exists = () => false,
+  issue, config, runner, dryRun = false, retry = false, exists = () => false,
   state = NO_STATE, now = Date.now, sleep = (ms) => new Promise((done) => setTimeout(done, ms)), intervalMs = PRINT_INTERVAL_MS, print = noop,
 }) {
   const messages = [];
@@ -140,17 +139,7 @@ export async function runLocal({
     return { status: 2, worktree: null, removed: false, messages: [err.code === 'ENOENT' ? 'the GitHub CLI (gh) is not installed' : 'the GitHub CLI is not signed in: run `gh auth login`'] };
   }
 
-  // The cloud may start the same issue: the variable decides.
-  let variable = null;
-  try {
-    variable = retry ? null : runner.capture('gh', ['variable', 'get', 'RELEVO_CLOUD_GO'], { cwd: repoRoot }).trim();
-  } catch {
-    variable = null;
-  }
-  // A retry is never `ready`, so the cloud does not start it and there is nothing to warn about.
-  if (!retry && cloudBuilds({ workflowPresent, variable })) {
-    say('warning: the cloud can also build this issue (the go workflow is installed and RELEVO_CLOUD_GO is not `off`); if the issue is `ready` it may already be running. Set RELEVO_CLOUD_GO to `off` in the repository variables to build only on machines.');
-  }
+  // Nothing a local build does starts the cloud: it applies no `go` label. So the cloud is not asked about and there is no warning.
 
   try {
     plan.git.forEach((args) => runner.capture('git', args, { cwd: repoRoot }));

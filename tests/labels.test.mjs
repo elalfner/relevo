@@ -6,7 +6,7 @@ test('label set matches the lifecycle spec', () => {
   const states = LABELS.filter((l) => l.kind === 'state').map((l) => l.key);
   assert.deepEqual(states, ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open']);
   const exits = LABELS.filter((l) => l.kind !== 'state').map((l) => l.key);
-  assert.deepEqual(exits.sort(), ['blocked', 'build-failed', 'changes-requested', 'needs-reviewer', 'needs-spec', 'ship', 'urgent']);
+  assert.deepEqual(exits.sort(), ['blocked', 'build-failed', 'changes-requested', 'go', 'local', 'needs-reviewer', 'needs-spec', 'ship', 'urgent']);
   assert.ok(!LABEL_KEYS.includes('merged'), 'there is no merged label: the final state is the closed issue');
 });
 
@@ -92,4 +92,44 @@ test('Scenario: the failed-build label is build-failed, with a description that 
   assert.equal(l.kind, 'exit');
   assert.equal(l.description, 'The build did not end in a hand-off; the comment says why and what to do');
   assert.ok(!LABEL_KEYS.includes('qa-failed'));
+});
+
+test('Scenario: the go and local labels - default names, overlays, renamable', () => {
+  const go = LABELS.find((l) => l.key === 'go');
+  const local = LABELS.find((l) => l.key === 'local');
+  assert.equal(go.name, 'relevo:go');
+  assert.equal(go.kind, 'overlay');
+  assert.equal(local.name, 'relevo:local');
+  assert.equal(local.kind, 'overlay');
+  assert.equal(resolveLabelNames({ go: 'team:build' }).go, 'team:build');
+  assert.equal(labelDefinitions({ local: 'team:machine' }).find((l) => l.key === 'local').name, 'team:machine');
+});
+
+test('Scenario: ready is the approval - its description says that it starts nothing', () => {
+  assert.match(LABELS.find((l) => l.key === 'ready').description, /starts nothing/);
+});
+
+test('Scenario: Local build ends - a move out of building removes local in the same operation', () => {
+  assert.deepEqual(transition(['relevo:building', 'relevo:local'], 'built'), { add: ['relevo:built'], remove: ['relevo:building', 'relevo:local'] });
+  assert.deepEqual(transition(['relevo:building', 'relevo:local'], 'build-failed'), {
+    add: ['relevo:build-failed'],
+    remove: ['relevo:building', 'relevo:local'],
+  });
+  assert.deepEqual(transition(['team:building', 'team:local'], 'built', { building: 'team:building', local: 'team:local' }), {
+    add: ['relevo:built'],
+    remove: ['team:building', 'team:local'],
+  });
+});
+
+test('Scenario: Stray label - a local label on an issue that is not building is removed at its next state change', () => {
+  assert.deepEqual(transition(['relevo:ready', 'relevo:local'], 'queued'), { add: ['relevo:queued'], remove: ['relevo:ready', 'relevo:local'] });
+});
+
+test('a move to another state leaves go and urgent alone', () => {
+  assert.deepEqual(transition(['relevo:ready', 'relevo:go', 'relevo:urgent'], 'queued'), { add: ['relevo:queued'], remove: ['relevo:ready'] });
+});
+
+test('a move to building does not add local by itself', () => {
+  assert.deepEqual(transition(['relevo:ready'], 'building'), { add: ['relevo:building'], remove: ['relevo:ready'] });
+  assert.deepEqual(transition(['relevo:ready', 'relevo:local'], 'building'), { add: ['relevo:building'], remove: ['relevo:ready'] });
 });

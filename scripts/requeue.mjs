@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
-import { planGo } from './lib/plan.mjs';
+import { planGo, withoutCredential } from './lib/plan.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import { ownedByQueue, staggerSeconds, startable } from './lib/requeue.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
@@ -40,11 +40,19 @@ if (arg('input')) {
   state = gather({ gh: realGh, ghLinks: realGhLinks(), repo, config });
 }
 
-// The whole queue is planned so that the limits stay right, but the queue only acts on the issues that are
-// already waiting: a freshly ready issue is handled by the `go` run its label started.
+// The whole queue is planned so that the limits stay right, but the queue only acts on the issues that are already waiting
+// and on the build requests nobody answered: a request that was just made is handled by the `go` run its label started.
 if (state.recent_builds !== undefined) state.recentBuilds = state.recent_builds;
-const { decisions: planned } = planGo({ config, repo, ...state });
-const decisions = ownedByQueue(planned, state.issues, resolveLabelNames(config.labels));
+const now = Date.now();
+const { decisions: planned } = planGo({ config, repo, ...state, place: 'cloud', now });
+const names = resolveLabelNames(config.labels);
+let decisions = ownedByQueue(planned, state.issues, names, now);
+// Without a model credential an unanswered request is answered as the go workflow would: the issue stays ready, loses `go`, and
+// one comment says to build it on a machine. A `queued` issue carries no request, so it is not commented again on every run.
+if (arg('credential') === 'false') {
+  const requested = new Set(state.issues.filter((i) => i.labels.includes(names.go)).map((i) => i.number));
+  decisions = decisions.map((d) => (requested.has(d.issue) ? withoutCredential([d], state.issues, config.labels)[0] : d));
+}
 const summary = {};
 decisions.forEach((d) => {
   summary[d.action] = (summary[d.action] ?? 0) + 1;
