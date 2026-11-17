@@ -39,3 +39,11 @@ _Avoid_: agent runner, build machine, heavy runner
 **Failed build**:
 A build that ended without a hand-off, whatever the reason: QA rejected the work, a limit stopped it, or it could not start or finish.
 _Avoid_: QA failure, rejected build, broken build
+
+**Group**:
+The tasks of one section of a change that the developer agent builds in a single launch.
+_Avoid_: batch, chunk, stage
+
+**Checkpoint**:
+The commit that keeps the work of a group, so that a run that is cut loses at most the group in progress.
+_Avoid_: save point, partial commit, snapshot
