@@ -53,9 +53,9 @@
 
 ## 9. Issue
 
-- [ ] 9.1 In `tests/can-edit-issue.test.mjs`, test the three results: editable, refused with the label, and `withdrawable` for `ready` without `go`; `ready` with `go` is refused; run them and see them fail
-- [ ] 9.2 `scripts/lib/can-edit-issue.mjs` and `scripts/can-edit-issue.mjs`: the third result with its own exit code; verify the tests pass
-- [ ] 9.3 In `tests/skill-issue.test.mjs`, test the question of three answers (nothing, `ready`, `ready` and `go`), that `go` is offered only where the cloud can build, that `needs-spec` swapped for `ready` starts nothing, and the withdrawal of the approval before an edit; make them pass in `skills/issue/SKILL.md` and `skills/issue/references/update.md`
+- [x] 9.1 In `tests/can-edit-issue.test.mjs`, test the three results: editable, refused with the label, and `withdrawable` for `ready` without `go`; `ready` with `go` is refused; run them and see them fail
+- [x] 9.2 `scripts/lib/can-edit-issue.mjs` and `scripts/can-edit-issue.mjs`: the third result with its own exit code; verify the tests pass
+- [x] 9.3 In `tests/skill-issue.test.mjs`, test the question of three answers (nothing, `ready`, `ready` and `go`), that `go` is offered only where the cloud can build, that `needs-spec` swapped for `ready` starts nothing, and the withdrawal of the approval before an edit; make them pass in `skills/issue/SKILL.md` and `skills/issue/references/update.md`
 
 ## 10. Status, doctor, init and fix
 

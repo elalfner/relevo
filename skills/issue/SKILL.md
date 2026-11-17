@@ -1,6 +1,6 @@
 ---
 name: issue
-description: Writes the GitHub issues that Relevo's go builds, and updates the description of one that already exists. Given an idea, a conversation or an OpenSpec exploration it asks only for what is missing (scenarios, edge cases, dependencies, screens, data contracts), checks each draft with the same rules go uses, shows everything for approval and then creates the issues. Given an issue number it rewrites that issue's description, but only while Relevo has not committed to building it. Use when asked to draft, write, create or update issues for a feature. It applies the ready label only when asked in a separate question and answered yes.
+description: Writes the GitHub issues that Relevo's go builds, and updates the description of one that already exists. Given an idea, a conversation or an OpenSpec exploration it asks only for what is missing (scenarios, edge cases, dependencies, screens, data contracts), checks each draft with the same rules go uses, shows everything for approval and then creates the issues. Given an issue number it rewrites that issue's description, but only while Relevo has not committed to building it. Use when asked to draft, write, create or update issues for a feature. It applies the ready and go labels only when asked in a separate question and answered.
 argument-hint: "[what to build, the path of a saved agreement, or the number of an issue to update]"
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Help the person write the issue or issues for `$ARGUMENTS` (or for what you have just been discussing) so that `/relevo:go` can build them with nobody to ask. The issue is the only thing the builder sees: whatever is not written in it will be guessed or will send it back.
 
-You write issues; you never build, assign work to the build queue or touch code. You apply `ready` only after the separate question of step 7.
+You write issues; you never build, assign work to the build queue or touch code. You apply `ready` (and `go`) only after the separate question of step 7.
 
 **Mode.** If `$ARGUMENTS` starts with an issue number (`42` or `#42`) you are updating that issue: follow "Updating an existing issue" at the end and skip steps 1 to 7. Anything else, or nothing, is the creation flow below.
 
@@ -122,24 +122,26 @@ Only after approval, in dependency order (so each `Depends-on` can name a real n
 
 Finish with the links of the issues created, then go to step 7.
 
-## 7. Offer `ready`
+## 7. Offer `ready` and `go`
 
-Ask one more question, apart from the approval of the drafts and with its own yes or no: "Apply `ready` now to #42, #43 and #44? Each one starts a build." Name every issue. Never apply it on your own, and never take the approval of the drafts as the answer.
+Ask one more question, apart from the approval of the drafts and with its own answer. It has three answers: apply nothing, apply `ready` only, or apply `ready` and `go`. Name every issue, for example "#42, #43 and #44: apply nothing, `ready`, or `ready` and `go`?". Say that `ready` approves the text and starts nothing, and that `go` asks the cloud to build it. Never apply a label on your own, and never take the approval of the drafts as the answer.
 
-- Permission first: `gh api repos/{owner}/{repo} --jq .permissions`. Applying `ready` needs `push`, `maintain` or `admin` (with `trust: public`, `maintain` or `admin`). If the person cannot, or the permission cannot be read, say so and leave the label to someone who can.
-- On a clear yes, for each issue: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to ready --current ""` and apply the result with `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs issue edit <n> --add-label …`. An issue that depends on another one that is not merged will be blocked by `go` by itself; say so.
-- On no, or silence, apply nothing and remind the person that `go` starts for an issue when someone with write access applies `ready`, and that is the moment to read the issue once more, because it is the last point to change what will be built.
+- Offer `go` only where the cloud can build: `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-where.mjs` prints `cloud.builds`. When `cloud.builds` is `false`, offer only nothing or `ready`, and say that an approved issue is built with `/relevo:go <n>` (its `reason` says why the cloud cannot: no go workflow, no credential, or paused).
+- Permission first: `gh api repos/{owner}/{repo} --jq .permissions`. Applying `ready` or `go` needs `push`, `maintain` or `admin` (with `trust: public`, `maintain` or `admin`). If the person cannot, or the permission cannot be read, say so and leave the label to someone who can.
+- On `ready` only, for each issue: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to ready --current ""` and apply the result with `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs issue edit <n> --add-label …`. Nothing starts: say how to build each one, the `go` label or `/relevo:go <n>` on a machine.
+- On `ready` and `go`: apply `ready` as above, then apply `go` in a command of its own, after `ready`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to go --current "<the labels>"` and `gh-web.mjs issue edit <n> --add-label …`. The cloud then evaluates each issue. An issue that depends on another one that is not merged will be blocked by the cloud by itself; say so.
+- On nothing, or silence, apply nothing and remind the person that an issue is built only after it is approved with `ready`, and that is the moment to read it once more, because the text that is approved is the text that is built: an edit after `ready` withdraws the approval.
 
 ## Updating an existing issue
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/issue/references/update.md` and follow it. It covers reading the issue, whether it may be edited, the check, the approval, applying the new text and the offer of `ready` for an issue that was in `needs-spec`.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/issue/references/update.md` and follow it. It covers reading the issue, whether it may be edited (and withdrawing the approval of a `ready` issue first), the check, the approval, applying the new text and the offer of `ready` and `go` for an issue that was in `needs-spec` or whose approval was withdrawn.
 
 ## Never
 
-- Never apply `ready` or any other Relevo label except `ready` after the separate question of step 7 is answered with a clear yes.
+- Never apply `ready` or any other Relevo label except `ready` and `go` after the separate question of step 7 is answered with a clear choice, and never remove one except `ready` when the person agrees to withdraw the approval to edit.
 - Never create an issue before the person approved it and the check passed.
 - Never edit an issue that `can-edit-issue.mjs` refuses, and never edit before approval and a fresh read of its labels.
-- Never change the title, milestone or assignee of an existing issue, nor its labels except the swap offered in the update flow.
+- Never change the title, milestone or assignee of an existing issue, nor its labels except the swap offered in the update flow and the withdrawal of `ready` the person agreed to.
 - Never invent scenarios, edge cases, endpoints or data.
 - Never put credentials, tokens or personal data in an issue.
 - Never put anything in `Documentation` except glossary entries and decision records, and never change the wording the person agreed.
