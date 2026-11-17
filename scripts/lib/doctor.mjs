@@ -603,6 +603,17 @@ function gatherPlatforms(f, p, tryRun) {
         const tool = resolved.profile.targets[target] ?? '';
         return { target, tool, ok: tool === '' ? true : available(tool) };
       });
+      // An iOS review reads a simulator: whether simctl answers, a runtime is installed and a simulator is booted.
+      if (f.macos && f.ios === undefined && entry.targetTools.some((t) => t.target === 'ios' && t.tool === 'xcrun' && t.ok)) {
+        const json = (args) => tryRun(() => JSON.parse(String(p.tool('xcrun', args))), null);
+        const runtimes = json(['simctl', 'list', 'runtimes', '--json']);
+        const booted = json(['simctl', 'list', 'devices', 'booted', '--json']);
+        f.ios = {
+          simctl: runtimes !== null,
+          runtimes: runtimes ? (runtimes.runtimes ?? []).filter((r) => r.isAvailable !== false).length : 0,
+          booted: booted ? Object.values(booted.devices ?? {}).flat().filter((d) => d.state === 'Booted').length : 0,
+        };
+      }
       // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
       const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
       if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
@@ -907,6 +918,14 @@ function platformChecks(f) {
       const id = `tools.target.${e.name}.${target}`;
       if (tool === '') r.push(pass(id, `target ${target} of ${e.name} needs no extra tool`));
       else if (tool === 'xcrun' && !f.macos) r.push(note(id, `target ${target} of ${e.name}: iOS can only be built and reviewed on macOS`));
+      else if (ok && tool === 'xcrun' && target === 'ios' && f.ios) {
+        r.push(pass(id, `target ${target} of ${e.name}: ${tool} is installed`));
+        const key = `review.ios.${e.name}`;
+        if (!f.ios.simctl) r.push(warn(`${key}.simctl`, `platform ${e.name}: \`xcrun simctl\` does not answer, so \`review\` cannot read a simulator`, 'install Xcode and run `sudo xcode-select -s /Applications/Xcode.app`'));
+        else if (f.ios.runtimes === 0) r.push(warn(`${key}.runtime`, `platform ${e.name}: no iOS Simulator runtime is installed`, 'install one in Xcode (Settings > Components) or with `xcodebuild -downloadPlatform iOS`'));
+        else if (f.ios.booted === 0) r.push(note(`${key}.booted`, `platform ${e.name}: no simulator is booted; the iOS review needs one running the app (the review never boots it)`));
+        else r.push(pass(`${key}.booted`, `platform ${e.name}: ${f.ios.booted} iOS simulator(s) booted`));
+      }
       else if (ok) r.push(pass(id, `target ${target} of ${e.name}: ${tool} is installed`));
       else r.push(warn(id, `target ${target} of ${e.name}: ${tool} is not installed; \`review\` needs it for this target`, TOOL_INSTALL[tool] ?? `install ${tool}`));
     });

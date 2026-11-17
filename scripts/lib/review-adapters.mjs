@@ -7,6 +7,9 @@ const DEFAULT_TARGET = { flutter: 'android', vue: 'web' };
 
 const ADAPTERS = {
   'flutter/android': { kind: 'device', log: 'adb logcat', capture: 'adb screencap', driver: 'flutter_driver', needs: ['adb'] },
+  // iOS: a simulator driven with xcrun, observe-only: the person drives, there is no driver for the agent yet.
+  'flutter/ios': { kind: 'device', log: 'xcrun simctl log show', capture: 'xcrun simctl io screenshot', driver: null, needs: ['xcrun'] },
+  'swiftui/ios': { kind: 'device', log: 'xcrun simctl log show', capture: 'xcrun simctl io screenshot', driver: null, needs: ['xcrun'] },
   'flutter/web': { kind: 'browser', log: 'the browser runner', capture: 'capture(name, check) of the browser runner', driver: 'flutter_driver', needs: ['a browser'] },
   'vue/web': { kind: 'browser', log: 'the browser runner', capture: 'capture(name, check) of the browser runner', driver: 'playwright', needs: ['playwright'] },
   // A stack with no targets is keyed `<stack>/-`: a backend has nothing to drive and nothing to capture, only tests and a log.
@@ -15,12 +18,9 @@ const ADAPTERS = {
   'supabase/-': { kind: 'api', log: 'docker:supabase_db_{project_id}', capture: null, driver: 'supabase test db', needs: ['supabase', 'docker'] },
 };
 
-const EXISTING = 'flutter on android, flutter on web, vue on web, laravel (api) and supabase (api)';
+const EXISTING = 'flutter on android, flutter and swiftui on ios, flutter on web, vue on web, laravel (api) and supabase (api)';
 const NEXT_STEP = `The adapters that exist are ${EXISTING}. The issue stays built. Open the pull request by hand after reading the diff, or ask for an adapter for this stack. A stack that has an adapter can tune its review in the "review" block of .relevo/stacks/<stack>.md.`;
 
-const NOT_AVAILABLE = {
-  'flutter/ios': 'the review of iOS is not available yet: it needs a macOS machine with a simulator (xcrun), and nothing in Relevo has been run there',
-};
 
 /** The target a platform is reviewed on when none is given: its first target, or the usual one of its stack. */
 export function targetOf({ stack, targets = [] }) {
@@ -35,7 +35,7 @@ export function adapterFor({ stack, target }) {
   const key = `${stack}/${target}`;
   if (ADAPTERS[key]) return { supported: true, stack, target, ...ADAPTERS[key], reason: null };
   if (!target && ADAPTERS[`${stack}/-`]) return { supported: true, stack, target: null, ...ADAPTERS[`${stack}/-`], reason: null };
-  const why = NOT_AVAILABLE[key] ?? (target ? `there is no review adapter for the stack "${stack}" on the target "${target}"` : `the platform of stack "${stack}" names no target to review`);
+  const why = target ? `there is no review adapter for the stack "${stack}" on the target "${target}"` : `the platform of stack "${stack}" names no target to review`;
   return {
     supported: false, stack, target, kind: null, log: null, capture: null, driver: null, needs: [],
     reason: `${why}. ${NEXT_STEP}`,
@@ -56,4 +56,10 @@ const ADVICE = {
 export function autopilotAdvice(adapter, { autopilot = 'off', language = 'en' } = {}) {
   if (!needsAutopilot(adapter) || autopilot !== 'off') return null;
   return ADVICE[pickLanguage(language)];
+}
+
+/** What to tell the person when the autopilot is on for an iOS platform: the agent has no iOS driver yet, so the review proceeds as with `off`. */
+export function autopilotNotice(adapter, { autopilot = 'off' } = {}) {
+  if (!adapter.supported || adapter.target !== 'ios' || autopilot === 'off') return null;
+  return `review.autopilot is "${autopilot}", but the agent cannot drive an iOS app yet: the review proceeds as with "off". You drive the app in the simulator and confirm every line.`;
 }

@@ -401,3 +401,13 @@ test('Scenario: Supabase ready / Local stack stopped - the skill names the Supab
   const source = readFileSync(root('scripts/review-state.mjs'), 'utf8');
   assert.ok(source.includes("case 'started-stack'"), 'review-state has no "started-stack" command');
 });
+
+test('the skill handles an iOS review: preflight, process, audit input, captures, and no driving of the simulator', () => {
+  assert.match(body, /device\.mjs --target ios/);
+  assert.match(body, /IOS_SIMULATOR/);
+  assert.match(body, /review-state\.mjs init [^\n]*--target ios --process/);
+  assert.match(body, /simctl spawn <udid> log show --style ndjson/);
+  assert.match(body, /capture\.mjs <name>` \(`--target ios`/);
+  assert.match(body, /never boot, install, launch or terminate anything in a simulator/);
+  assert.match(body, /no iOS driver yet/);
+});

@@ -158,6 +158,8 @@ export function auditReport(audit, { issue, scope } = {}) {
     lines.push(`Scope: what ${scope.pattern} received since the review started, and the test runs of the review (${scope.runs ?? 0} recorded).`, '');
     if (audit.findings.length === 0 && scope.flavor === 'postgres') lines.push('The log slice has no fatal entry, deadlock, out-of-memory or database error, and no recorded run failed.');
     else if (audit.findings.length === 0) lines.push('The log slice has no unhandled exception, server error, database error or lazy-loading violation, and no recorded run failed.');
+  } else if (scope?.kind === 'ios') {
+    lines.push(`Scope: the log of \`${scope.process}\` in the iOS Simulator since ${scope.since} (local time).`, '');
   } else if (scope?.pids?.length) {
     lines.push(`Scope: only the processes of \`${scope.package}\` (pid ${scope.pids.join(', ')}); other apps' log lines were ignored.`, '');
   } else {
@@ -166,10 +168,13 @@ export function auditReport(audit, { issue, scope } = {}) {
   if (audit.findings.length === 0 && scope?.kind === 'api') {
     // said above
   } else if (audit.findings.length === 0) {
-    lines.push('The device log contains none of the error classes: layout, lifecycle, exceptions, network or data errors, missing activity.');
+    lines.push(scope?.kind === 'ios' ? 'The simulator log has no fault and no error from the app or from a library that is not Apple\'s.' : 'The device log contains none of the error classes: layout, lifecycle, exceptions, network or data errors, missing activity.');
   } else {
     lines.push(`${audit.findings.length} finding(s):`, '');
-    audit.findings.forEach((f, i) => lines.push(`${i + 1}. **${f.class}** (log line ${f.line}): \`${f.excerpt.replace(/`/g, "'")}\`${f.waived ? ` — WAIVED by the reviewer: ${f.reason}` : ''}`));
+    audit.findings.forEach((f, i) => lines.push(`${i + 1}. **${f.class}** (${f.line ? `log line ${f.line}` : 'simulator log'}${f.count > 1 ? `, ${f.count} times` : ''}): \`${f.excerpt.replace(/`/g, "'")}\`${f.waived ? ` — WAIVED by the reviewer: ${f.reason}` : ''}`));
+  }
+  if (audit.ignored > 0) {
+    lines.push('', `${audit.ignored} error(s) written by Apple frameworks were ignored as system noise; they are not findings.`);
   }
   if (audit.expected?.length > 0) {
     lines.push('', `${audit.expected.length} expected denial(s): permission, row-level security or constraint errors; they are not findings.`);

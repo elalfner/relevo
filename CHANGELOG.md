@@ -4,6 +4,18 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`/relevo:review` reviews an iOS app in the iOS Simulator.** A platform whose target is `ios` (Flutter, or a SwiftUI stack defined in `.relevo/stacks/`) now has a review adapter: `device.mjs --target ios` picks the one booted simulator (or `IOS_SIMULATOR`), `capture.mjs --target ios` saves screenshots with `xcrun simctl io`, and `review-state.mjs init ... --target ios --process <executable>` makes the audit read the app's log with `simctl spawn ... log show --style ndjson`. A `Fault` and an `Error` of the app or of a library that is not Apple's are findings; the errors of Apple frameworks are counted as system noise; an empty log or a simulator that is gone is inconclusive. It is observe-only: with `review.autopilot` `precheck` or `verify` on an iOS platform the review says that there is no iOS driver yet and proceeds as `off`. `/relevo:doctor` checks `simctl`, a runtime and a booted simulator.
+
+### Changed
+
+- The stop message of `review` no longer says that iOS is not available; its list of adapters now includes Flutter and SwiftUI on iOS.
+
+### Known limits
+
+- The `simctl io screenshot` form, the SwiftUI runtime-issue entry, the process name from the installed bundle and crash reports were not verified on a working simulator (see `openspec/changes/ios-review-adapter/tasks.md`). A crash of the app is not read. A physical iPhone is not supported.
+
 ## [0.14.4] - 2026-11-05
 
 ### Added

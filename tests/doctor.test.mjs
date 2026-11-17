@@ -2449,3 +2449,13 @@ test('Scenario: a platform with an interface and no browser automation - a note,
   assert.equal(byId(r, 'interface.browser.app').status, 'warn');
   assert.equal(byId(runChecks(healthy({ interfaceBrowser: { app: true } })), 'interface.browser.app'), undefined);
 });
+
+test('Scenario: iOS review needs - simctl, a runtime and a booted simulator are checked on macOS, and a repository with no iOS platform is not asked', () => {
+  const run = (ios, over = {}) => runChecks(healthy({ macos: true, ios, platformFacts: [flutterPlatform({ targets: { ios: 'xcrun' }, available: { xcrun: true }, ...over })] }));
+  assert.equal(byId(run({ simctl: false, runtimes: 0, booted: 0 }), 'review.ios.app.simctl').status, 'warn');
+  assert.equal(byId(run({ simctl: true, runtimes: 0, booted: 0 }), 'review.ios.app.runtime').status, 'warn');
+  assert.equal(byId(run({ simctl: true, runtimes: 1, booted: 0 }), 'review.ios.app.booted').status, 'note');
+  assert.equal(byId(run({ simctl: true, runtimes: 1, booted: 1 }), 'review.ios.app.booted').status, 'pass');
+  const none = runChecks(healthy({ macos: true, platformFacts: [flutterPlatform()] }));
+  assert.equal(none.some((r) => /^review\.ios\./.test(r.id)), false);
+});

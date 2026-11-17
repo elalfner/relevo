@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Prints how `review` works for a platform of relevo.yml, as JSON. Usage:
 //   node scripts/review-adapter.mjs --platform web [--target web] [--config relevo.yml]
-// Output: { supported, stack, target, kind, log, capture, driver, needs, reason, platform, needs_autopilot, advice }
+// Output: { supported, stack, target, kind, log, capture, driver, needs, reason, platform, needs_autopilot, advice, notice }
+// `notice` is set for an iOS platform when review.autopilot is not off: there is no iOS driver yet and the review proceeds as with off.
 // `advice` is what to tell the person, in the language of relevo.yml, when a browser review cannot start with review.autopilot off.
 //   exit 0: supported   exit 1: no adapter for this platform and target (the reason is in the output)   exit 2: bad usage or invalid relevo.yml
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
-import { adapterFor, autopilotAdvice, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
+import { adapterFor, autopilotAdvice, autopilotNotice, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -31,5 +32,6 @@ if (!platform) fail(`there is no platform "${name}" in relevo.yml (platforms: ${
 const target = arg('target') ?? targetOf(platform);
 const adapter = adapterFor({ stack: platform.stack, target });
 const advice = autopilotAdvice(adapter, { autopilot: loaded.config.review?.autopilot, language: loaded.config.language });
-console.log(JSON.stringify({ ...adapter, platform: name, needs_autopilot: needsAutopilot(adapter), advice }));
+const notice = autopilotNotice(adapter, { autopilot: loaded.config.review?.autopilot });
+console.log(JSON.stringify({ ...adapter, platform: name, needs_autopilot: needsAutopilot(adapter), advice, notice }));
 process.exit(adapter.supported ? 0 : 1);

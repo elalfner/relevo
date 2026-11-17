@@ -9,6 +9,7 @@
 //                                                 --tap reads the output of `supabase test db` for the assertions and the failing names
 //   review-state.mjs started-stack                a Supabase review: the agent started the local stack, so it stops it at the end
 //   review-state.mjs runs-list                    print the "Test runs" section for the pull request body
+//   review-state.mjs init <change-dir> --target ios --process <executable>   an iOS review: reads the log of the booted simulator
 //   review-state.mjs reset-log                    an api review: take the log files as they are now (after a fix)
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
 //   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
@@ -34,6 +35,8 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { readSlice, snapshotLog } from './lib/api-log.mjs';
 import { checklistFromChange } from './lib/checklist.mjs';
+import { listSimulators, pickSimulator, readIosLog, formatLogStart } from './lib/device-ios.mjs';
+import { auditSimulatorSource } from './lib/logaudit-ios.mjs';
 import { auditApi, auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
 import { parseTap } from './lib/pgtap.mjs';
 import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, markStackStarted, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
@@ -70,10 +73,15 @@ try {
       const flag = (name) => (rest.indexOf(`--${name}`) === -1 ? undefined : rest[rest.indexOf(`--${name}`) + 1]);
       const api = flag('adapter') === 'api';
       if (flag('adapter') !== undefined && !api) fail('--adapter can only be "api"');
+      const ios = flag('target') === 'ios';
+      if (flag('target') !== undefined && !ios) fail('--target can only be "ios"');
+      if (ios && api) fail('--target ios is a device review: it does not go with --adapter api');
+      if (ios && !flag('process')) fail('an iOS review needs --process <executable name of the app>');
       const stack = flag('stack');
       if (stack !== undefined && !api) fail('--stack goes with --adapter api');
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
       const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack });
+      if (ios) state.source = { source: 'simulator', udid: pickSimulator(listSimulators(), process.env.IOS_SIMULATOR ?? null), process: flag('process'), since: formatLogStart() };
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
       console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})${api ? `; ${describeLog(log)}` : ''}`);
@@ -141,7 +149,13 @@ try {
       break;
     case 'reset-log': {
       const state = load();
-      if (state.kind !== 'api') fail('reset-log is for an api review');
+      if (state.source?.source === 'simulator') {
+        state.source.since = formatLogStart();
+        save(state);
+        console.log(`the simulator log is read from ${state.source.since} (local time)`);
+        break;
+      }
+      if (state.kind !== 'api') fail('reset-log is for an api or an iOS review');
       state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
       save(state);
       console.log(describeLog(state.log));
@@ -161,6 +175,20 @@ try {
         writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
         console.log(audit.verdict);
         if (audit.reason) console.log(`  ${audit.reason}`);
+        audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+        break;
+      }
+      if (state.source?.source === 'simulator') {
+        const audit = auditSimulatorSource(state.source, readIosLog);
+        const scope = { kind: 'ios', process: state.source.process, since: state.source.since };
+        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ignored: audit.ignored, ...(audit.reason ? { reason: audit.reason } : {}) };
+        applyWaivers(state);
+        audit.verdict = state.audit.verdict;
+        save(state);
+        writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
+        console.log(audit.verdict);
+        if (audit.reason) console.log(`  ${audit.reason}`);
+        if (audit.ignored) console.log(`  ${audit.ignored} Apple system error(s) ignored`);
         audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
         break;
       }
