@@ -68,7 +68,7 @@
 
 - [x] 11.1 `docs/guide.md` and `docs/guide.es.md`: the approval, the build request and the mark of a local build, a draft and how it becomes an approved issue, the three kinds of user, and the scenario of a quota that ran out; verify the documentation tests pass
 - [x] 11.2 `docs/execution.md`, `docs/get-started.md`, `docs/issue-format.md`, `docs/security.md` and their Spanish pages, `README.md` and `README.es.md`: every sentence that says that `ready` starts a build, the pause of the cloud with a pending request, and the approval check in the security page; verify `tests/docs-claims.test.mjs` passes and `grep -rn "ready.*starts\|starts.*ready" docs README.md` finds no claim of the former behaviour
-- [ ] 11.3 `CHANGELOG.md`: an entry under Unreleased, marked breaking, with the migration steps of `design.md` in their order and the warning about the window before the workflows are merged; verify it names both new labels
+- [x] 11.3 `CHANGELOG.md`: an entry under Unreleased, marked breaking, with the migration steps of `design.md` in their order and the warning about the window before the workflows are merged; verify it names both new labels
 
 ## 12. Integration
 
