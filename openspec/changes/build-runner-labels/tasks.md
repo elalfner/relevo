@@ -27,8 +27,8 @@
 
 ## 5. Status
 
-- [ ] 5.1 In `tests/status.test.mjs`, test an issue past the alert time whose comment has the waiting marker (reported as waiting for a runner, with the hours and the two ways forward, and no restart hint), one without the marker (the alert of today), and one before the alert time (nothing, and no comment is read); run them and see them fail
-- [ ] 5.2 `scripts/lib/status.mjs` and its data reader: the read of the progress comment for the issues past the alert time, and the texts in both languages; `skills/status/SKILL.md`; verify the tests pass
+- [x] 5.1 In `tests/status.test.mjs`, test an issue past the alert time whose comment has the waiting marker (reported as waiting for a runner, with the hours and the two ways forward, and no restart hint), one without the marker (the alert of today), and one before the alert time (nothing, and no comment is read); run them and see them fail
+- [x] 5.2 `scripts/lib/status.mjs` and its data reader: the read of the progress comment for the issues past the alert time, and the texts in both languages; `skills/status/SKILL.md`; verify the tests pass
 
 ## 6. The documentation
 
