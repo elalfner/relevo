@@ -45,7 +45,6 @@ const result = runLocal({
   runner,
   dryRun: flag('dry-run'),
   retry: flag('retry'),
-  workflowPresent: existsSync('.github/workflows/relevo-go.yml'),
   exists: existsSync,
 });
 result.messages.forEach((m) => console.log(m));

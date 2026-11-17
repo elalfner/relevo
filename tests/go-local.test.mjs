@@ -121,14 +121,14 @@ test('Scenario: Run fails - the worktree stays and its path is printed', () => {
   assert.match(r.messages.join('\n'), /status 3; the worktree is kept for inspection: \/home\/me\/code\/\.relevo-worktrees\/shop-42/);
 });
 
-test('Scenario: Cloud can also build it - a warning when the workflow is installed and the variable is not off', () => {
-  const warns = (over) => run(fakeRunner({ variable: over.variable ?? null }), { workflowPresent: over.workflowPresent }).messages.some((m) => /the cloud can also build this issue/.test(m));
-  assert.equal(warns({ workflowPresent: true }), true);
-  assert.equal(warns({ workflowPresent: true, variable: 'on' }), true);
-  assert.equal(warns({ workflowPresent: true, variable: 'off' }), false);
-  assert.equal(warns({ workflowPresent: false }), false);
-  const text = run(fakeRunner(), { workflowPresent: true }).messages.join('\n');
-  assert.match(text, /RELEVO_CLOUD_GO to `off`/);
+test('Scenario: Local build - no cloud warning and the variable of the cloud is not read, because a local build starts no cloud', () => {
+  [null, 'on', 'off'].forEach((variable) => {
+    const runner = fakeRunner({ variable });
+    const r = run(runner);
+    assert.equal(r.status, 0);
+    assert.ok(!r.messages.some((m) => /cloud/.test(m)), `no cloud warning with the variable ${variable}`);
+    assert.ok(!runner.calls.some((c) => c.cmd === 'gh' && c.args[0] === 'variable'), 'RELEVO_CLOUD_GO is not read');
+  });
 });
 
 test('--dry-run prints the plan and runs nothing', () => {
@@ -170,7 +170,7 @@ test('the command-line wrapper rejects a missing issue and a missing relevo.yml'
 
 test('Scenario: Local retry - the agent runs /relevo:go <n> --retry with the same limits, and the cloud is not asked about', () => {
   const runner = fakeRunner();
-  const r = run(runner, { retry: true, workflowPresent: true });
+  const r = run(runner, { retry: true });
   assert.equal(r.status, 0);
   const claude = runner.calls.find((c) => c.kind === 'stream');
   assert.deepEqual(claude.args, ['-p', '/relevo:go 42 --retry', ...runFlags(config)]);
@@ -178,9 +178,8 @@ test('Scenario: Local retry - the agent runs /relevo:go <n> --retry with the sam
   assert.ok(!r.messages.some((m) => /cloud/.test(m)), 'no cloud warning for a retry');
 });
 
-test('Scenario: No cloud warning is still shown for a normal run', () => {
-  const r = run(fakeRunner({ variable: 'on' }), { workflowPresent: true });
-  assert.ok(r.messages.some((m) => /the cloud can also build this issue/.test(m)));
+test('the source of the local run no longer reads RELEVO_CLOUD_GO', () => {
+  assert.doesNotMatch(readFileSync(`${root}scripts/lib/go-local.mjs`, 'utf8'), /RELEVO_CLOUD_GO|cloudBuilds/);
 });
 
 test('the dry run shows the retry flag, and Antigravity gets it in its prompt', () => {

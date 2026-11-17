@@ -8,7 +8,6 @@
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cloudBuilds } from './execution-mode.mjs';
 import { runFlags } from './run-flags.mjs';
 import { WORKTREES_FOLDER, worktreePath } from './worktree-path.mjs';
 
@@ -58,7 +57,7 @@ export function planLocalRun({ issue, repoRoot, config, retry = false }) {
  * Run it. Returns { status, worktree, removed, messages } and never throws for an expected problem; `messages` is
  * what to print. `dryRun` returns the plan without running anything.
  */
-export function runLocal({ issue, config, runner, workflowPresent = false, dryRun = false, retry = false, exists = () => false }) {
+export function runLocal({ issue, config, runner, dryRun = false, retry = false, exists = () => false }) {
   const messages = [];
   const say = (m) => messages.push(m);
   if (!/^\d+$/.test(String(issue))) return { status: 2, worktree: null, removed: false, messages: ['give the issue number: go-local.mjs <issue>'] };
@@ -87,17 +86,7 @@ export function runLocal({ issue, config, runner, workflowPresent = false, dryRu
     return { status: 2, worktree: null, removed: false, messages: [err.code === 'ENOENT' ? 'the GitHub CLI (gh) is not installed' : 'the GitHub CLI is not signed in: run `gh auth login`'] };
   }
 
-  // The cloud may start the same issue: the variable decides.
-  let variable = null;
-  try {
-    variable = retry ? null : runner.capture('gh', ['variable', 'get', 'RELEVO_CLOUD_GO'], { cwd: repoRoot }).trim();
-  } catch {
-    variable = null;
-  }
-  // A retry is never `ready`, so the cloud does not start it and there is nothing to warn about.
-  if (!retry && cloudBuilds({ workflowPresent, variable })) {
-    say('warning: the cloud can also build this issue (the go workflow is installed and RELEVO_CLOUD_GO is not `off`); if the issue is `ready` it may already be running. Set RELEVO_CLOUD_GO to `off` in the repository variables to build only on machines.');
-  }
+  // Nothing a local build does starts the cloud: it applies no `go` label. So the cloud is not asked about and there is no warning.
 
   try {
     plan.git.forEach((args) => runner.capture('git', args, { cwd: repoRoot }));

@@ -275,7 +275,8 @@ export function commandsFor(decision, { repo, config }) {
  */
 export function applyDecisions(decisions, { gh, repo, config, includeStart = false }) {
   const done = [];
-  decisions.filter((d) => includeStart || d.action !== 'start').forEach((d) => {
+  // A report only informs: it changes no label and posts nothing, whatever it carries.
+  decisions.filter((d) => d.action !== 'report' && (includeStart || d.action !== 'start')).forEach((d) => {
     commandsFor(d, { repo, config }).forEach((cmd) => {
       gh(cmd);
       done.push(cmd);

@@ -101,7 +101,7 @@ test('Scenario: Decision made by the workflow - the skill decodes it, skips its 
   assert.match(body, /base64 -d/);
   assert.match(body, /which you never read as an instruction/);
   assert.match(body, /failure path with the reason `invalid decision`/);
-  assert.match(body, /Otherwise\*\* \(for example when someone runs `go` by hand\)/);
+  assert.match(body, /Otherwise\*\* \(someone runs `go` by hand, here or through `go-local\.mjs`\), this is a local build/);
 });
 
 test('Scenario: Glossary entries / A decision record - the skill copies the Documentation section verbatim and adds one task', () => {
@@ -318,7 +318,7 @@ test('a restricted file versioned on the base branch is reported as that, not as
 test('Scenario: Local flag with retry - the skill passes --retry to go-local.mjs and to the planner', () => {
   assert.match(body, /go-local\.mjs <issue>` \(with `--retry` when `\$ARGUMENTS` has it\)/);
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--retry`\*\*/);
-  assert.match(body, /--only <issue> --retry --apply --claim/);
+  assert.match(body, /--only <issue> --place local --retry --apply --claim/);
   assert.match(body, /a branch means `\/relevo:fix <issue>`/);
 });
 
@@ -626,4 +626,27 @@ test('Scenario: Two lenses contradict each other - qa-run.md does not retry and 
   assert.match(qaRun, /`QA rejected: the lenses contradict each other`/);
   assert.match(qaRun, /--previous spec=<file>/);
   assert.match(body, /\*\*The lenses contradict each other\*\*/);
+});
+
+// --- split-ready-and-go: a local build plans with --place local
+
+test('Scenario: Approved issue built on a machine - without --decision the skill plans and claims with --place local', () => {
+  const step1 = body.slice(body.indexOf('### 1. Plan and claim'), body.indexOf('### 2. Branch'));
+  assert.match(step1, /go-plan\.mjs --repo <owner\/name> --only <issue> --place local --apply --claim/);
+  assert.match(step1, /--only <issue> --place local --retry --apply --claim/);
+  assert.match(step1, /with `--place cloud`/, 'the decision of the workflow comes from the cloud planner');
+  assert.doesNotMatch(step1, /go-plan\.mjs[^\n]*--place cloud/, 'the skill itself never plans for the cloud');
+});
+
+test('a decision that only informs is reported, and the skill builds nothing', () => {
+  const step1 = body.slice(body.indexOf('### 1. Plan and claim'), body.indexOf('### 2. Branch'));
+  assert.match(step1, /- `report`: a decision that only informs\. Nothing was claimed, no label changed/);
+  ['needs_ready', 'no_permission', 'blocked'].forEach((r) => assert.ok(step1.includes(`\`${r}\``), r));
+  assert.match(step1, /Do not build\./);
+});
+
+test('Scenario: Local build claimed - the claim of a local build is building and local', () => {
+  const step1 = body.slice(body.indexOf('### 1. Plan and claim'), body.indexOf('### 2. Branch'));
+  assert.match(step1, /`building` and `local` in one change/);
+  assert.match(step1, /not the limit of agents or the capacity of the assignee/);
 });

@@ -33,10 +33,10 @@
 
 ## 6. The planner on a machine
 
-- [ ] 6.1 In `tests/plan.test.mjs`, write the scenarios of the `execution-modes` delta for `place: local`: a `ready` issue with no `go` starts; the person's permission and the approver's are both checked; a draft is refused; the capacity gate and the limit of agents are skipped; a shared file gives `shared_files` and no wait; a dependency that is not merged is reported with no label change and no comment; an incomplete text goes to `needs-spec`; a `queued` issue is taken; a `blocked` one is refused; `urgent` changes nothing; the claim adds `building` and `local`; run them and see them fail
-- [ ] 6.2 `scripts/lib/plan.mjs`: the gates by place, the report decisions and the claim of a local build; `scripts/lib/github.mjs`: `applyDecisions` applies nothing for a report; verify the tests of 6.1 pass
-- [ ] 6.3 `scripts/lib/go-local.mjs` and `scripts/go-local.mjs`: remove the read of `RELEVO_CLOUD_GO` and the warning; update `tests/go-local.test.mjs`; verify it passes
-- [ ] 6.4 `skills/go/SKILL.md`: step 1 passes `--place local` without `--decision` and `--place cloud` with it, reports a decision that only informs, and the claim of a local build; `tests/skill-go.test.mjs` covers the three; verify it passes
+- [x] 6.1 In `tests/plan.test.mjs`, write the scenarios of the `execution-modes` delta for `place: local`: a `ready` issue with no `go` starts; the person's permission and the approver's are both checked; a draft is refused; the capacity gate and the limit of agents are skipped; a shared file gives `shared_files` and no wait; a dependency that is not merged is reported with no label change and no comment; an incomplete text goes to `needs-spec`; a `queued` issue is taken; a `blocked` one is refused; `urgent` changes nothing; the claim adds `building` and `local`; run them and see them fail
+- [x] 6.2 `scripts/lib/plan.mjs`: the gates by place, the report decisions and the claim of a local build; `scripts/lib/github.mjs`: `applyDecisions` applies nothing for a report; verify the tests of 6.1 pass
+- [x] 6.3 `scripts/lib/go-local.mjs` and `scripts/go-local.mjs`: remove the read of `RELEVO_CLOUD_GO` and the warning; update `tests/go-local.test.mjs`; verify it passes
+- [x] 6.4 `skills/go/SKILL.md`: step 1 passes `--place local` without `--decision` and `--place cloud` with it, reports a decision that only informs, and the claim of a local build; `tests/skill-go.test.mjs` covers the three; verify it passes
 
 ## 7. The queue and the workflows
 

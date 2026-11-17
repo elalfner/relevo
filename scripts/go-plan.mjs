@@ -110,7 +110,7 @@ if (arg('input')) {
 // A state file may give the minutes of the recent builds as `recent_builds` (gather reads them itself from the workflow runs).
 if (state.recent_builds !== undefined) state.recentBuilds = state.recent_builds;
 const edits = state.last_edited ?? null;
-const result = planGo({ config, repo, ...state, retry, place, person, edits });
+const result = planGo({ config, repo, ...state, retry, place, person, edits, only: place === 'local' && Number.isInteger(onlyArg) ? onlyArg : null });
 // `--credential false`: the workflow found no model credential, so nothing may be claimed for a cloud build.
 if (arg('credential') === 'false') {
   result.decisions = withoutCredential(result.decisions, state.issues);

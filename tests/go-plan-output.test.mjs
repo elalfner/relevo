@@ -196,3 +196,16 @@ test('go-plan: a body edited after the approval is not built, and a last edit th
   assert.deepEqual(failed.labels, { add: [], remove: [] });
   assert.equal(withEdit({ ok: true, at: null }).action, 'start');
 });
+
+test('go-plan --place local: a ready issue with no request starts for the person of the file, and a draft is reported', () => {
+  const local = (over, extra = {}) => {
+    const input = join(dir, `local-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(input, JSON.stringify({ ...state(over), person: 'persona-a', ...extra }));
+    return JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7', '--place', 'local'], { encoding: 'utf8' })).decisions[0];
+  };
+  const started = local({ labels: ['relevo:ready'], go_by: null });
+  assert.equal(started.action, 'start');
+  assert.deepEqual(started.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready'] });
+  assert.equal(local({ labels: ['bug'] }).report, 'needs_ready');
+  assert.equal(local({ labels: ['relevo:ready'] }, { person: 'nobody' }).report, 'no_permission');
+});

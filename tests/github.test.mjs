@@ -595,3 +595,17 @@ test('titleEditedAt takes the last renamed event', () => {
   assert.equal(titleEditedAt([renamed('2026-10-13T08:00:00Z'), renamed('2026-10-14T08:00:00Z')]), '2026-10-14T08:00:00Z');
   assert.equal(titleEditedAt([labeled('relevo:ready', 'a', '2026-10-13T08:00:00Z')]), null);
 });
+
+test('applyDecisions applies nothing for a report, even with --claim', () => {
+  const calls = [];
+  const report = { issue: 42, action: 'report', report: 'blocked', reason: 'waiting for #12', labels: { add: ['relevo:blocked'], remove: [] }, comment: { kind: 'blocked_notice', data: {} }, assign: null };
+  assert.deepEqual(applyDecisions([report], { gh: (a) => calls.push(a), repo: REPO, config, includeStart: true }), []);
+  assert.equal(calls.length, 0);
+});
+
+test('applyDecisions carries out the claim of a local build: building and local in one edit', () => {
+  const calls = [];
+  const start = { issue: 42, action: 'start', labels: { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready'] }, comment: null, assign: null };
+  applyDecisions([start], { gh: (a) => calls.push(a), repo: REPO, config, includeStart: true });
+  assert.deepEqual(calls, [['issue', 'edit', '42', '--repo', REPO, '--add-label', 'relevo:building', '--add-label', 'relevo:local', '--remove-label', 'relevo:ready']]);
+});
