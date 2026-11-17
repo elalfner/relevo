@@ -604,8 +604,8 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   // repository variable and the rules of a branch are the person's to change.
   const unreadable = (facts.links ?? []).filter((l) => l.reachable === false).map((l) => l.repo);
   if (unreadable.length > 0) items.push(item('manual.links-unreadable', 'manual', `${unreadable.join(', ')} cannot be read with your sign-in, so a file or dependency in ${unreadable.length > 1 ? 'them' : 'it'} would answer 404 to the automation: grant read access to issues, pull requests and contents on ${unreadable.length > 1 ? 'them' : 'it'} to the token stored as RELEVO_LINKS_TOKEN (init never reads or writes it), or copy the file the issue points to into this repository`));
-  variableRunners(facts).overrides.forEach(({ name, labels, wanted, value }) => {
-    items.push(item(`manual.runner-variable.${name}`, 'manual', `The runner the workflows use comes from the repository variable ${name} (${value === null ? 'not set, so the workflow fallback applies' : JSON.stringify(value)}), which wins over runner.labels: it runs on [${labels.join(', ')}] while relevo.yml says [${wanted.join(', ')}]. Set the variable to match relevo.yml, delete it, or change runner.labels yourself; init changes no variable`));
+  variableRunners(facts).overrides.forEach(({ name, labels, wanted, value, setting }) => {
+    items.push(item(`manual.runner-variable.${name}`, 'manual', `The runner the workflows use comes from the repository variable ${name} (${value === null ? 'not set, so the workflow fallback applies' : JSON.stringify(value)}), which wins over ${setting}: it runs on [${labels.join(', ')}] while relevo.yml says [${wanted.join(', ')}]. Set the variable to match relevo.yml, delete it, or change ${setting} yourself; init changes no variable`));
   });
   const baseProtection = facts.protection?.base;
   if (!facts.protectionUnavailable && !facts.protectionError && baseProtection && typeof baseProtection.requiredChecks === 'boolean' && !baseProtection.requiredChecks) {

@@ -13,9 +13,9 @@
 
 ## 3. Doctor
 
-- [ ] 3.1 In `tests/doctor.test.mjs`, test the comparison per job: a build job on its own labels passes with the key and fails without it, the other jobs are compared with `runner.labels`, the report gives both runners when they differ, and a `runs-on` taken from a repository variable is resolved for each job; run them and see them fail
-- [ ] 3.2 `scripts/lib/doctor.mjs`: the comparison per job and the report; verify the tests of 3.1 and the existing runner tests pass
-- [ ] 3.3 Test the advice: builds that share self-hosted runners with the light jobs, a workflow of the project on the labels of the build job (named, never changed), no advice on the runners of GitHub or when the builds are apart, and that the advice never fails the check; make it pass in `scripts/lib/doctor.mjs` and `skills/doctor/SKILL.md`
+- [x] 3.1 In `tests/doctor.test.mjs`, test the comparison per job: a build job on its own labels passes with the key and fails without it, the other jobs are compared with `runner.labels`, the report gives both runners when they differ, and a `runs-on` taken from a repository variable is resolved for each job; run them and see them fail
+- [x] 3.2 `scripts/lib/doctor.mjs`: the comparison per job and the report; verify the tests of 3.1 and the existing runner tests pass
+- [x] 3.3 Test the advice: builds that share self-hosted runners with the light jobs, a workflow of the project on the labels of the build job (named, never changed), no advice on the runners of GitHub or when the builds are apart, and that the advice never fails the check; make it pass in `scripts/lib/doctor.mjs` and `skills/doctor/SKILL.md`
 
 ## 4. A build that waits
 
