@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: the `qa-failed` label is now `build-failed`.** The label marked every build that ended without a hand-off (a QA rejection, a limit, a missing tool, a refused commit, a run with no outcome), so its name and description said QA for causes that were not QA. It is one label still, and the comment says the reason and the next step. The old name is not accepted as a synonym: the key `qa-failed` under `labels` in `relevo.yml` fails validation and names `build-failed`; `render-message.mjs build_failed` and `next-step.mjs --state build-failed` replace the old kind and state. The reasons in the comments and the classes `qa-non-fixable` and `qa-fixable-after-retries` keep their names. To migrate: update the plugin, run `/relevo:init` (it rewrites the workflows and renames the label `relevo:qa-failed` to `relevo:build-failed`, so the issues that carry it keep it), change the key `qa-failed` to `build-failed` under `labels` in `relevo.yml` if you had renamed it, and run `/relevo:doctor`, which fails while the old label or a workflow that names it is left.
+
 ## [0.15.0] - 2026-11-14
 
 ### Added

@@ -35,10 +35,10 @@ export function latestReviews(reviews = []) {
 const MISSING_COMMAND = {
   built: '/relevo:review',
   'in-review': '/relevo:review',
-  'qa-failed': '/relevo:fix',
+  'build-failed': '/relevo:fix',
   'changes-requested': '/relevo:fix',
 };
-const STATE_KEYS = ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open', 'qa-failed', 'changes-requested', 'needs-spec', 'blocked'];
+const STATE_KEYS = ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open', 'build-failed', 'changes-requested', 'needs-spec', 'blocked'];
 
 /** Summarise the checks of a pull request: none, passing, failing or pending. */
 export function checkRollup(rollup = []) {

@@ -61,7 +61,7 @@ test('safety rules are stated', () => {
 test('the issue keeps its place: labels come from fix-state, and the reviewer is re-requested', () => {
   assert.match(body, /fix-state\.mjs --current/);
   assert.match(body, /gh pr edit <number> --add-reviewer <login>/);
-  assert.match(body, /`qa-failed` issue to `built`, and a `changes-requested` one to `pr-open`/);
+  assert.match(body, /`build-failed` issue to `built`, and a `changes-requested` one to `pr-open`/);
 });
 
 test('the review skill supports what fix relies on: retest and sync', () => {

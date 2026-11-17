@@ -16,6 +16,7 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 - Never read, write, print or ask for the model API key or any token. Tell the person to add it to the repository secrets themselves.
 - Never apply a change before the person says yes to the plan, and never install anything before they confirm that exact command.
 - Never overwrite `relevo.yml` that already exists and differs; report it. A `relevo.yml` with the older `platform: flutter-android` line stays as it is.
+- A repository that still has the label `relevo:qa-failed` (the former name of `relevo:build-failed`) gets one plan line, `Rename the label relevo:qa-failed to relevo:build-failed`: the label is renamed, not replaced, so the issues that carry it keep it. When both labels exist, `init` renames and deletes nothing and names the issues that still carry the former one; moving them is up to the person.
 - A workflow that already exists and differs is reported, unless the plan offers to update it: that line (`Update .github/workflows/<file> from A to B, keeping your own changes`) means a three-way merge with the published templates came out clean, and it is written only with the person's yes to the plan. A workflow whose merge conflicts or has no close published version is left as it is; never edit it to resolve the conflict yourself.
 - Never create files under `openspec/` by hand. If there is no OpenSpec root, tell the person to run `openspec init`.
 - Never commit or push. The new files are left for the person to commit.

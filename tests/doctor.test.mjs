@@ -2689,3 +2689,34 @@ test('an action that the templates do not use, a commented example and no workfl
   assert.equal(actionCheck(commented).status, 'pass');
   assert.equal(byId(runChecks({ ...healthy(), actionPins: [] }), 'automation.action-pins'), undefined);
 });
+
+// --- The former name of the failed-build label ---
+
+test('Scenario: The former label is still there - doctor fails, names the label and says to run /relevo:init', () => {
+  const res = runChecks(healthy({ labels: [...allLabels, 'relevo:qa-failed'] }));
+  const r = byId(res, 'repo.labels.former');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /relevo:qa-failed/);
+  assert.match(r.message, /relevo:build-failed/);
+  assert.match(r.fix, /\/relevo:init/);
+  assert.equal(exitCode(res), 1);
+});
+
+test('Scenario: A workflow still names it - doctor fails, names the file and says to update the workflow with /relevo:init', () => {
+  const old = readFileSync(new URL('./fixtures/workflows/relevo-go-0.12.0.yml', import.meta.url), 'utf8');
+  const wf = { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: old } };
+  const res = runChecks(healthy({ workflows: wf }));
+  const r = byId(res, 'automation.workflow-label');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /relevo-go\.yml/);
+  assert.match(r.message, /relevo:qa-failed/);
+  assert.match(r.fix, /\/relevo:init/);
+});
+
+test('Scenario: Nothing left - a migrated repository reports nothing about the former label', () => {
+  const current = readFileSync(new URL('../templates/workflows/relevo-go.yml', import.meta.url), 'utf8');
+  const wf = { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: current } };
+  const res = runChecks(healthy({ workflows: wf }));
+  assert.equal(byId(res, 'repo.labels.former'), undefined);
+  assert.equal(byId(res, 'automation.workflow-label'), undefined);
+});

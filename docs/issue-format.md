@@ -72,7 +72,7 @@ An unattended run never changes workflows (`.github/`), `relevo.yml`, `.relevo/`
 Allow-paths: pubspec.yaml, pubspec.lock
 ```
 
-Each entry is a path or a pattern (`*` stays inside a folder, `**` crosses folders; a name without a slash matches at any depth). The first group can never be allowed: listing `.github/workflows/ci.yml` or `**` makes the issue fail its check. Without the line, a run that touches a dependency file ends in `qa-failed` with the reason "protected path in the diff".
+Each entry is a path or a pattern (`*` stays inside a folder, `**` crosses folders; a name without a slash matches at any depth). The first group can never be allowed: listing `.github/workflows/ci.yml` or `**` makes the issue fail its check. Without the line, a run that touches a dependency file ends in `build-failed` with the reason "protected path in the diff".
 
 ### 6. Platform (when the repository has several)
 

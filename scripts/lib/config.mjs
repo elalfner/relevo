@@ -404,7 +404,9 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
       errors.push({ path: 'labels', message: 'labels must be a map of label key to label name' });
     } else {
       Object.entries(labels).forEach(([key, name]) => {
-        if (!LABEL_KEYS.includes(key)) {
+        if (key === 'qa-failed') {
+          errors.push({ path: `labels.${key}`, message: `the label key "qa-failed" is now "build-failed"; rename it under labels` });
+        } else if (!LABEL_KEYS.includes(key)) {
           errors.push({ path: `labels.${key}`, message: `unknown label key "${key}"; allowed keys: ${describeAllowed(LABEL_KEYS)}` });
         } else if (typeof name !== 'string' || name.trim() === '' || name.length > GITHUB_LABEL_MAX) {
           errors.push({ path: `labels.${key}`, message: `labels.${key} must be a non-empty string of at most ${GITHUB_LABEL_MAX} characters` });

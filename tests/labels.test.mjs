@@ -6,7 +6,7 @@ test('label set matches the lifecycle spec', () => {
   const states = LABELS.filter((l) => l.kind === 'state').map((l) => l.key);
   assert.deepEqual(states, ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open']);
   const exits = LABELS.filter((l) => l.kind !== 'state').map((l) => l.key);
-  assert.deepEqual(exits.sort(), ['blocked', 'changes-requested', 'needs-reviewer', 'needs-spec', 'qa-failed', 'ship', 'urgent']);
+  assert.deepEqual(exits.sort(), ['blocked', 'build-failed', 'changes-requested', 'needs-reviewer', 'needs-spec', 'ship', 'urgent']);
   assert.ok(!LABEL_KEYS.includes('merged'), 'there is no merged label: the final state is the closed issue');
 });
 
@@ -26,8 +26,8 @@ test('Scenario: One state at a time - moving to a state removes the previous one
 });
 
 test('side exits replace the lifecycle label', () => {
-  assert.deepEqual(transition(['relevo:building'], 'qa-failed'), { add: ['relevo:qa-failed'], remove: ['relevo:building'] });
-  assert.deepEqual(transition(['relevo:qa-failed'], 'built'), { add: ['relevo:built'], remove: ['relevo:qa-failed'] });
+  assert.deepEqual(transition(['relevo:building'], 'build-failed'), { add: ['relevo:build-failed'], remove: ['relevo:building'] });
+  assert.deepEqual(transition(['relevo:build-failed'], 'built'), { add: ['relevo:built'], remove: ['relevo:build-failed'] });
   assert.deepEqual(transition(['relevo:pr-open'], 'changes-requested'), {
     add: ['relevo:changes-requested'],
     remove: ['relevo:pr-open'],
@@ -84,4 +84,12 @@ test('clearAll removes every Relevo label and leaves the others', () => {
 
 test('unknown keys are rejected', () => {
   assert.throws(() => transition([], 'merged'), /unknown label key/);
+});
+
+test('Scenario: the failed-build label is build-failed, with a description that says what it marks', () => {
+  const l = LABELS.find((x) => x.key === 'build-failed');
+  assert.equal(l.name, 'relevo:build-failed');
+  assert.equal(l.kind, 'exit');
+  assert.equal(l.description, 'The build did not end in a hand-off; the comment says why and what to do');
+  assert.ok(!LABEL_KEYS.includes('qa-failed'));
 });

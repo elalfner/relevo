@@ -5,8 +5,8 @@
 //   node scripts/go-plan.mjs --input state.json  [--config relevo.yml]
 //
 // --only N  keeps only the decision for issue N (the whole queue is still planned, so limits stay correct).
-// --retry   with --only N: plans the issue N, which must be `qa-failed` and have no branch on the remote, as if the person who
-//           runs this (the user of `gh`) had made it `ready`; the claim moves it from `qa-failed` to `building`. It never adds `ready`,
+// --retry   with --only N: plans the issue N, which must be `build-failed` and have no branch on the remote, as if the person who
+//           runs this (the user of `gh`) had made it `ready`; the claim moves it from `build-failed` to `building`. It never adds `ready`,
 //           so the cloud does not start. With --input the person is `retry_by` of the file and the branch is not looked for.
 // --apply   carries out every decision except `start` (labels, assignees, comments).
 // --claim   also carries out the `start` decision of the issue given by --only (marks it as building).

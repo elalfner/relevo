@@ -236,7 +236,7 @@ The agent and QA run the commands of the profile, and they need the dependencies
 ```
 
 - Install without the scripts of the packages where the tool allows it (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` runs none.
-- The step "Check the toolchain" looks, once the tools are there, for each path that the profile lists under `installed`. When one is missing the issue becomes `relevo:qa-failed`, the comment names the path and says to enable the install step, and no model turn is spent.
+- The step "Check the toolchain" looks, once the tools are there, for each path that the profile lists under `installed`. When one is missing the issue becomes `relevo:build-failed`, the comment names the path and says to enable the install step, and no model turn is spent.
 - `/relevo:doctor` warns, for each platform whose profile lists `installed`, when the go workflow has no active step that installs its dependencies. A commented example, and an install into another folder (the steps that install OpenSpec and the Relevo scripts), do not count.
 
 ## Extra skills per role
@@ -251,7 +251,7 @@ The agent and QA run the commands of the profile, and they need the dependencies
 
 ## What an unattended run cannot change
 
-- `relevo.yml`, everything under `.relevo/`, the folders of skills and `skills-lock.json` (inside the folder of each platform too), because they decide the checks the work is held to. A run that touches them ends in `qa-failed`.
+- `relevo.yml`, everything under `.relevo/`, the folders of skills and `skills-lock.json` (inside the folder of each platform too), because they decide the checks the work is held to. A run that touches them ends in `build-failed`.
 - The files you list in `qa.rules_from`.
 - Files outside the folder of the platform of the issue (apart from the change's own specification, `GLOSSARY.md` and `docs/adr/`), unless the issue lists them in `Allow-paths:`.
 - The command of a check, from a profile: only `relevo.yml` can replace one.

@@ -1185,3 +1185,45 @@ test('init adds no environment step when nothing is wrong or nothing could be re
   const unreadable = planInit({ facts: { ...facts, protection: { base: { requiredChecks: false } }, protectionError: 'HTTP 403' }, answers: ANSWERS, templates, current: empty(), admin: true });
   assert.equal(unreadable.some((i) => i.id === 'manual.branch-checks'), false, 'protection that could not be read is not reported as missing');
 });
+
+// --- Init renames the label of a failed build ---
+
+const FORMER = 'relevo:qa-failed';
+const withConfig = (over = {}) => bare({ configText: renderConfig(template, ANSWERS), config: loadConfig(renderConfig(template, ANSWERS)).config, ...over });
+const without = allLabels.filter((n) => n !== 'relevo:build-failed');
+
+test('Scenario: Only the former label exists - one rename call, then the creation of the others, and the report says it was renamed', () => {
+  const items = plan(withConfig({ labels: [...without, FORMER] }));
+  const rename = get(items, 'labels.rename');
+  assert.equal(rename.status, 'todo');
+  assert.match(rename.description, /Rename the label relevo:qa-failed to relevo:build-failed/);
+  assert.ok(items.indexOf(rename) < items.indexOf(get(items, 'labels')), 'the rename comes before the creation');
+  assert.ok(get(items, 'labels').labels.every((l) => l.name === 'relevo:build-failed'), 'only the renamed label is created again, to set its description');
+  const calls = [];
+  const io = { gh: (args, input) => { calls.push({ args, input }); return '{}'; }, write() {}, append() {} };
+  const results = applyPlan(items.filter((i) => ['labels.rename', 'labels'].includes(i.id)), { repo: 'o/r', io });
+  assert.ok(results.every((r) => r.ok));
+  assert.equal(calls.filter((c) => c.args[0] === 'api' && c.args.includes('PATCH')).length, 1);
+  const patch = calls[0].args;
+  assert.ok(patch.includes('repos/o/r/labels/relevo%3Aqa-failed') && patch.includes('new_name=relevo:build-failed'), JSON.stringify(patch));
+  assert.equal(calls[1].args[0], 'label');
+  assert.ok(results.find((r) => r.id === 'labels.rename').message.includes('renamed'));
+});
+
+test('Scenario: Neither exists - init creates relevo:build-failed as it creates the others', () => {
+  const items = plan(withConfig({ labels: without }));
+  assert.equal(items.find((i) => i.id === 'labels.rename'), undefined);
+  assert.deepEqual(get(items, 'labels').labels.map((l) => l.name), ['relevo:build-failed']);
+});
+
+test('Scenario: Both exist - nothing is renamed or deleted, and the issue that carries the former one is named', () => {
+  const items = plan(withConfig({ labels: [...allLabels, FORMER], formerLabelIssues: [41] }));
+  const item = get(items, 'labels.former');
+  assert.equal(item.status, 'manual');
+  assert.match(item.description, /#41/);
+  assert.match(item.description, /relevo:qa-failed/);
+  assert.equal(items.find((i) => i.id === 'labels.rename'), undefined);
+  const calls = [];
+  applyPlan(items, { repo: 'o/r', io: { gh: (a) => { calls.push(a); return '{}'; }, write() {}, append() {} } });
+  assert.ok(!calls.some((a) => a.some((x) => /\/labels\//.test(x)) || (a[0] === 'label' && a[1] === 'delete')), 'no label is renamed or deleted');
+});

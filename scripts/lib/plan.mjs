@@ -13,7 +13,7 @@
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
 //   now        ms since the epoch (the clock of the plan; the tests give it)
 //   (an issue may carry `limit_retry: { at, attempt, reason }`: the retry time that the comment of a usage limit gave, `at` in ms; see limit-retry.mjs)
-//   retry      { issue, by } | null  the person `by` retries the `qa-failed` issue `issue`: it is planned as if `by` had made it `ready`
+//   retry      { issue, by } | null  the person `by` retries the `build-failed` issue `issue`: it is planned as if `by` had made it `ready`
 //
 // Output: { decisions: [...], summary }, in the order the issues were processed.
 
@@ -111,8 +111,8 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
   // Valid urgent issues are considered first, so they take the free agent slots before the others; inside each group
   // the order is the time `ready` was applied.
-  // A retry stands in for `ready`: the issue is `qa-failed`, the person who runs it takes the place of who applied the label.
-  const isRetry = (issue) => Boolean(retry) && retry.issue === issue.number && has(issue, 'qa-failed');
+  // A retry stands in for `ready`: the issue is `build-failed`, the person who runs it takes the place of who applied the label.
+  const isRetry = (issue) => Boolean(retry) && retry.issue === issue.number && has(issue, 'build-failed');
   const startedBy = (issue) => (isRetry(issue) ? retry.by : issue.ready_by);
 
   // An issue that waits for a usage limit to reset: `queued` with a retry time that has not come. It is held: it takes no slot and says nothing.
@@ -385,12 +385,12 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
     });
   });
 
-  // A retry of an issue that is not `qa-failed` (or is not open) changes nothing.
+  // A retry of an issue that is not `build-failed` (or is not open) changes nothing.
   if (retry && !decisions.some((d) => d.issue === retry.issue)) {
     decisions.push({
       issue: retry.issue,
       action: 'skip',
-      reason: 'only an open issue labelled qa-failed can be retried',
+      reason: 'only an open issue labelled build-failed can be retried',
       labels: { add: [], remove: [] },
       comment: null,
       assign: null,

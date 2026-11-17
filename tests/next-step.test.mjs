@@ -44,25 +44,25 @@ test('Scenario: Ambiguity - the spec writer decides the open question and /relev
   assert.match(step.hint, /\/relevo:think #7/);
 });
 
-test('qa-failed goes to fix, or says to delete the branch when it holds only the specification', () => {
-  assert.equal(nextStep({ state: 'qa-failed', issue: 9 }).command, '/relevo:fix 9');
-  const spec = nextStep({ state: 'qa-failed', reason: 'delete-branch', issue: 9 });
+test('build-failed goes to fix, or says to delete the branch when it holds only the specification', () => {
+  assert.equal(nextStep({ state: 'build-failed', issue: 9 }).command, '/relevo:fix 9');
+  const spec = nextStep({ state: 'build-failed', reason: 'delete-branch', issue: 9 });
   assert.equal(spec.command, null);
   assert.match(spec.line, /delete the remote branch/);
   assert.match(spec.line, /ready again/);
 });
 
-test('Scenario: Rebuild variant - qa-failed with nothing pushed has no command and says to relabel ready', () => {
-  const step = nextStep({ state: 'qa-failed', reason: 'rebuild', issue: 37 });
+test('Scenario: Rebuild variant - build-failed with nothing pushed has no command and says to relabel ready', () => {
+  const step = nextStep({ state: 'build-failed', reason: 'rebuild', issue: 37 });
   assert.equal(step.command, null);
   assert.equal(step.who, 'assignee');
   assert.match(step.hint, /nothing was pushed/);
-  assert.match(step.hint, /remove relevo:qa-failed and label the issue relevo:ready again/);
+  assert.match(step.hint, /remove relevo:build-failed and label the issue relevo:ready again/);
   assert.match(step.hint, /\/relevo:go 37 --local --retry \(the cloud does not start\)/);
   assert.doesNotMatch(step.line, /\/relevo:fix/);
-  const es = nextStep({ state: 'qa-failed', reason: 'rebuild', issue: 37, language: 'es' });
+  const es = nextStep({ state: 'build-failed', reason: 'rebuild', issue: 37, language: 'es' });
   assert.match(es.hint, /no se subió nada/);
-  assert.match(es.hint, /quita relevo:qa-failed y vuelve a poner relevo:ready/);
+  assert.match(es.hint, /quita relevo:build-failed y vuelve a poner relevo:ready/);
   assert.match(es.hint, /\/relevo:go 37 --local --retry \(la nube no arranca\)/);
 });
 
@@ -107,7 +107,7 @@ test('the command prints the line, the JSON on request, and exits 2 on bad input
 });
 
 test('a restricted file versioned on the base branch has no command: it says to remove the file and label ready again', () => {
-  const step = nextStep({ state: 'qa-failed', reason: 'restricted', issue: 9 });
+  const step = nextStep({ state: 'build-failed', reason: 'restricted', issue: 9 });
   assert.equal(step.command, null);
   assert.match(step.line, /git rm --cached/);
   assert.match(step.line, /ready again/);
@@ -130,16 +130,16 @@ test('Scenario: The next step for `policy` - the writer rewrites the issue', () 
 });
 
 test('missing installed dependencies have a next step in the workflow, not a command', () => {
-  const step = nextStep({ state: 'qa-failed', reason: 'installed', issue: 9 });
+  const step = nextStep({ state: 'build-failed', reason: 'installed', issue: 9 });
   assert.equal(step.command, null);
   assert.match(step.hint, /installs the dependencies/);
-  assert.match(nextStep({ state: 'qa-failed', reason: 'installed', issue: 9, language: 'es' }).hint, /instala las dependencias/);
+  assert.match(nextStep({ state: 'build-failed', reason: 'installed', issue: 9, language: 'es' }).hint, /instala las dependencias/);
 });
 
 test('the classes of a QA finding that the developer agent cannot fix each have a next step for the kept work', () => {
-  assert.equal(nextStep({ state: 'qa-failed', reason: 'input', issue: 9 }).command, '/relevo:fix 9');
-  assert.equal(nextStep({ state: 'qa-failed', reason: 'spec', issue: 9 }).command, '/relevo:issue 9');
-  assert.equal(nextStep({ state: 'qa-failed', reason: 'policy', issue: 9 }).command, '/relevo:issue 9');
+  assert.equal(nextStep({ state: 'build-failed', reason: 'input', issue: 9 }).command, '/relevo:fix 9');
+  assert.equal(nextStep({ state: 'build-failed', reason: 'spec', issue: 9 }).command, '/relevo:issue 9');
+  assert.equal(nextStep({ state: 'build-failed', reason: 'policy', issue: 9 }).command, '/relevo:issue 9');
 });
 
 test('Scenario: A queued issue can wait for a shared file - the single hint says so, in both languages', () => {
@@ -156,10 +156,10 @@ test('Scenario: Next step for the reason conflict - the writer settles which one
 });
 
 test('Scenario: The next step for a protected path refused by the commit guard - the writer changes the issue, in both languages', () => {
-  const step = nextStep({ state: 'qa-failed', reason: 'protected', issue: 12 });
+  const step = nextStep({ state: 'build-failed', reason: 'protected', issue: 12 });
   assert.deepEqual([step.command, step.who], ['/relevo:issue 12', 'spec_writer']);
   assert.match(step.hint, /a person makes the edit, or the issue changes/);
-  assert.match(nextStep({ state: 'qa-failed', reason: 'protected', issue: 12, language: 'es' }).hint, /una persona hace la edición/);
+  assert.match(nextStep({ state: 'build-failed', reason: 'protected', issue: 12, language: 'es' }).hint, /una persona hace la edición/);
 });
 
 test('the policy hint does not offer Allow-paths for a protected path that is not a manifest', () => {

@@ -62,7 +62,7 @@ test('a usage phrase that a language lacks is English; an unknown phrase is an e
 // Sample data for each kind, so that a kind added later without a sample fails here and is not left untested.
 const SAMPLE = {
   built: { assignee: 'a', issue: 1, title: 't', tasks_done: 1, tasks_total: 1, branch: 'b', scenarios: 1, checklist: '- [ ] x' },
-  qa_failed: { assignee: 'a', issue: 1, title: 't', finding: 'f', branch: 'b' },
+  build_failed: { assignee: 'a', issue: 1, title: 't', finding: 'f', branch: 'b' },
   toolchain_missing: { assignee: 'a', issue: 1, title: 't', tools: 'php', platform: 'back' },
   installed_missing: { assignee: 'a', issue: 1, title: 't', paths: 'vendor', platform: 'back' },
   needs_spec: { spec_writer: 'a', issue: 1, title: 't', missing: 'm' },
@@ -124,7 +124,7 @@ test('the phrase that gives the reason of a replica is in English and Spanish, a
   assert.ok(USAGE_TEXT.en.replica_why && USAGE_TEXT.es.replica_why);
 });
 
-test('the qa_failed comment renders in every language with no placeholder left, for a QA rejection and for each kind of stop', () => {
+test('the build_failed comment renders in every language with no placeholder left, for a QA rejection and for each kind of stop', () => {
   const base = { assignee: 'a', issue: 1, title: 't', finding: 'f', branch: 'b' };
   [
     {},
@@ -134,7 +134,7 @@ test('the qa_failed comment renders in every language with no placeholder left, 
     { reason: 'protected path in the diff', branch_state: 'unsafe' },
     { reason: 'a reason added to the skill later' },
   ].forEach((extra) => SUPPORTED_LANGUAGES.forEach((language) => {
-    const text = renderMessage('qa_failed', { ...base, ...extra }, language);
+    const text = renderMessage('build_failed', { ...base, ...extra }, language);
     assert.doesNotMatch(text, /\{\{|undefined/, `${language} ${JSON.stringify(extra)} left a placeholder`);
     const stop = extra.reason && extra.reason !== 'QA rejected after the retries';
     assert.equal(/QA still rejected|QA la rechazó/.test(text), !stop, `${language} ${JSON.stringify(extra)}`);

@@ -19,7 +19,7 @@ const pr = (extra) => ({ number: 40, issue: 12, url: 'https://x/pull/40', author
 test('Scenario: Assignee view - built issues first with their command, then reviews, then what waits on others', () => {
   const r = buildStatus({
     config, me: 'ana', now: NOW,
-    issues: [issue(1, ['relevo:built']), issue(2, ['relevo:pr-open']), issue(3, ['relevo:qa-failed'])],
+    issues: [issue(1, ['relevo:built']), issue(2, ['relevo:pr-open']), issue(3, ['relevo:build-failed'])],
     prs: [pr({ issue: 5, author: 'beto', reviewer: 'ana', number: 41 })],
   });
   assert.deepEqual(r.onMe.map((e) => e.command), ['/relevo:review 1', '/relevo:fix 3']);

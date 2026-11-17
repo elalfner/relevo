@@ -87,7 +87,7 @@ const TABLE = {
       },
     },
   },
-  'qa-failed': {
+  'build-failed': {
     // The recovery depends on what is on the branch.
     fix: {
       command: '/relevo:fix {n}',
@@ -108,8 +108,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'install the toolchain in the build job of relevo-go.yml (the template has the step for Flutter and Laravel, and /relevo:doctor checks it), then remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'instala el toolchain en el job de build de relevo-go.yml (la plantilla trae el paso para Flutter y Laravel, y /relevo:doctor lo comprueba), luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'install the toolchain in the build job of relevo-go.yml (the template has the step for Flutter and Laravel, and /relevo:doctor checks it), then remove relevo:build-failed and label the issue relevo:ready again',
+        es: 'instala el toolchain en el job de build de relevo-go.yml (la plantilla trae el paso para Flutter y Laravel, y /relevo:doctor lo comprueba), luego quita relevo:build-failed y vuelve a poner relevo:ready al issue',
       },
     },
     // QA rejected and no finding can be corrected by the developer agent: the retries were skipped. The work that
@@ -152,8 +152,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'enable the step that installs the dependencies in the build job of relevo-go.yml (/relevo:doctor checks it), then remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'activa el paso que instala las dependencias en el job de build de relevo-go.yml (/relevo:doctor lo comprueba), luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'enable the step that installs the dependencies in the build job of relevo-go.yml (/relevo:doctor checks it), then remove relevo:build-failed and label the issue relevo:ready again',
+        es: 'activa el paso que instala las dependencias en el job de build de relevo-go.yml (/relevo:doctor lo comprueba), luego quita relevo:build-failed y vuelve a poner relevo:ready al issue',
       },
     },
     'delete-branch': {
@@ -169,8 +169,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'nothing was pushed, so there is no branch to fix: resolve the cause named above, then build it again on your machine with /relevo:go {n} --local --retry (the cloud does not start), or remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'no se subió nada, así que no hay rama que corregir: resuelve la causa indicada arriba, luego constrúyelo de nuevo en tu máquina con /relevo:go {n} --local --retry (la nube no arranca), o quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'nothing was pushed, so there is no branch to fix: resolve the cause named above, then build it again on your machine with /relevo:go {n} --local --retry (the cloud does not start), or remove relevo:build-failed and label the issue relevo:ready again',
+        es: 'no se subió nada, así que no hay rama que corregir: resuelve la causa indicada arriba, luego constrúyelo de nuevo en tu máquina con /relevo:go {n} --local --retry (la nube no arranca), o quita relevo:build-failed y vuelve a poner relevo:ready al issue',
       },
     },
     // Nothing was built: the base branch versions a file on the restricted list, which no command of Relevo can fix.
@@ -178,8 +178,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'a restricted file is versioned on the base branch: rotate any secret in it, remove it from the repository (git rm --cached) and keep it ignored, merge that into the base branch, then remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'un archivo restringido está versionado en la rama base: rota cualquier secreto que tenga, quítalo del repositorio (git rm --cached) y mantenlo ignorado, fusiona eso en la rama base, luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'a restricted file is versioned on the base branch: rotate any secret in it, remove it from the repository (git rm --cached) and keep it ignored, merge that into the base branch, then remove relevo:build-failed and label the issue relevo:ready again',
+        es: 'un archivo restringido está versionado en la rama base: rota cualquier secreto que tenga, quítalo del repositorio (git rm --cached) y mantenlo ignorado, fusiona eso en la rama base, luego quita relevo:build-failed y vuelve a poner relevo:ready al issue',
       },
     },
   },
@@ -223,14 +223,14 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
-  'qa-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild'],
+  'build-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild'],
 };
 
 const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
 
 /**
  * The next step for an issue in `state`.
- * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `qa-failed`
+ * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `build-failed`
  * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */

@@ -103,19 +103,19 @@ export function readRecentBuilds({ gh, repo, workflow = 'relevo-go.yml', limit =
  */
 export function gather({ gh, ghLinks = gh, repo, config, running = [], retry = null }) {
   const names = resolveLabelNames(config.labels);
-  // `qa-failed` issues are read only for a retry, and then only the retried one is kept.
+  // `build-failed` issues are read only for a retry, and then only the retried one is kept.
   // The states after `built` are read too: an issue in one of them still holds the files it names until it is merged.
-  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built', 'in-review', 'pr-open', 'changes-requested', ...(retry ? ['qa-failed'] : [])];
+  const stateKeys = ['ready', 'queued', 'blocked', 'building', 'built', 'in-review', 'pr-open', 'changes-requested', ...(retry ? ['build-failed'] : [])];
 
   const byNumber = new Map();
   stateKeys.forEach((key) => {
     const found = apiJson(gh, `repos/${repo}/issues?state=open&per_page=100&labels=${encodeURIComponent(names[key])}`, { paginate: true });
-    found.filter((i) => !i.pull_request && (key !== 'qa-failed' || i.number === retry.issue)).forEach((i) => byNumber.set(i.number, normalizeIssue(i)));
+    found.filter((i) => !i.pull_request && (key !== 'build-failed' || i.number === retry.issue)).forEach((i) => byNumber.set(i.number, normalizeIssue(i)));
   });
   const issues = [...byNumber.values()];
 
   const candidates = issues.filter((i) => [names.ready, names.queued, names.blocked].some((n) => i.labels.includes(n))
-    || (retry && i.number === retry.issue && i.labels.includes(names['qa-failed'])));
+    || (retry && i.number === retry.issue && i.labels.includes(names['build-failed'])));
   candidates.forEach((issue) => {
     const timeline = apiJson(gh, `repos/${repo}/issues/${issue.number}/timeline?per_page=100`, { paginate: true });
     const { at, by } = labelEvent(timeline, names.ready);

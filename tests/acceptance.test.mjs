@@ -22,20 +22,20 @@ const config = (review) => write(`relevo-${review}.yml`, `limits:\n  run_max_cos
 
 // ---------- go: QA still rejects after the retries
 
-test('Scenario: QA still rejects - the issue leaves building for qa-failed in one operation, never reaching built', () => {
-  const change = JSON.parse(node('label-change.mjs', ['--to', 'qa-failed', '--current', 'relevo:building,bug']).stdout);
-  assert.deepEqual(change, { add: ['relevo:qa-failed'], remove: ['relevo:building'] });
+test('Scenario: QA still rejects - the issue leaves building for build-failed in one operation, never reaching built', () => {
+  const change = JSON.parse(node('label-change.mjs', ['--to', 'build-failed', '--current', 'relevo:building,bug']).stdout);
+  assert.deepEqual(change, { add: ['relevo:build-failed'], remove: ['relevo:building'] });
   assert.ok(!change.add.includes('relevo:built') && !change.add.includes('relevo:pr-open'), 'the state does not advance');
 });
 
 test('Scenario: QA still rejects - the assignee is mentioned with the finding and the next command, and says whether the branch was pushed', () => {
   const data = { assignee: 'persona-b', issue: 31, title: 'Summary screen', finding: 'lib/summary.dart:42 the list overflows', branch: 'feature/31-summary', reason: 'QA rejected after the retries', log_url: 'https://example.test/run/1' };
-  const pushed = node('render-message.mjs', ['qa_failed', '--language', 'en'], JSON.stringify({ ...data, pushed: true })).stdout;
+  const pushed = node('render-message.mjs', ['build_failed', '--language', 'en'], JSON.stringify({ ...data, pushed: true })).stdout;
   assert.match(pushed, /^@persona-b /);
   assert.match(pushed, /lib\/summary\.dart:42/);
   assert.match(pushed, /\/relevo:fix 31/);
   assert.match(pushed, /feature\/31-summary/);
-  const notPushed = node('render-message.mjs', ['qa_failed', '--language', 'en'], JSON.stringify({ ...data, pushed: false })).stdout;
+  const notPushed = node('render-message.mjs', ['build_failed', '--language', 'en'], JSON.stringify({ ...data, pushed: false })).stdout;
   assert.match(notPushed, /not pushed/i);
 });
 

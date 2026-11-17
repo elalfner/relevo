@@ -3,7 +3,7 @@
 //   node scripts/restricted-check.mjs [--ref origin/dev] [--config relevo.yml]
 // Without --ref it lists the files of the index (`git ls-files`); with it, the files of that commit (`git ls-tree`), which
 // is how `go` checks the base branch before it builds. A versioned secret is already in the history, so a run that
-// meets one ends in `qa-failed` with the reason "restricted file in the diff" instead of building around it.
+// meets one ends in `build-failed` with the reason "restricted file in the diff" instead of building around it.
 //   exit 0: none versioned   exit 1: prints each path and the rule   exit 2: bad arguments or git failed
 
 import { execFileSync } from 'node:child_process';

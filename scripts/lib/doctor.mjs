@@ -355,6 +355,10 @@ export function gatherFacts(p) {
     const sa = repoInfo.security_and_analysis;
     f.secretScanning = sa ? { scanning: sa.secret_scanning?.status === 'enabled', pushProtection: sa.secret_scanning_push_protection?.status === 'enabled' } : null;
     f.labels = tryRun(() => flat(api(`repos/${f.repo}/labels?per_page=100`, true)).map((l) => l.name));
+    // `init` names the issues that still carry the former label of a failed build when the new one exists too.
+    if (f.labels?.includes('relevo:qa-failed') && f.labels.includes('relevo:build-failed')) {
+      f.formerLabelIssues = tryRun(() => flat(api(`repos/${f.repo}/issues?state=all&labels=${encodeURIComponent('relevo:qa-failed')}&per_page=100`, true)).map((i) => i.number), []);
+    }
     f.branches = {
       base: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(base)}`); return true; }, false),
       release: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(release)}`); return true; }, false),
@@ -1062,6 +1066,7 @@ export function runChecks(f) {
     if (missing === null) r.push(warn('repo.labels', 'could not read the labels', 'check your access to the repository'));
     else if (missing.length === 0) r.push(pass('repo.labels', 'all lifecycle labels exist'));
     else r.push(fail('repo.labels', `missing labels: ${missing.join(', ')}`, 'run /relevo:init to create them'));
+    if (f.labels?.includes(FORMER_BUILD_FAILED)) r.push(fail('repo.labels.former', `the repository still has the label ${FORMER_BUILD_FAILED}, which is now ${labelDefinitions(f.config.labels).find((l) => l.key === 'build-failed').name}: the planner does not read it`, 'run /relevo:init: it renames the label and the issues that carry it keep it'));
     r.push(f.branches.base ? pass('repo.base-branch', `base branch ${f.config.branches.base} exists`) : fail('repo.base-branch', `base branch ${f.config.branches.base} does not exist`, `create it from ${f.config.branches.release}, or run /relevo:init`));
   }
   const cb = f.configOnBranches;
@@ -1516,7 +1521,7 @@ function pluginInstallChecks(f) {
   if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
   if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog (that moves the scripts, not the text)'));
-  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f), ...actionPinChecks(f));
+  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f), ...formerLabelWorkflowChecks(f), ...actionPinChecks(f));
   return r;
 }
 
@@ -1600,6 +1605,15 @@ function versionChecks(f) {
     r.push(warn('plugin.scopes', `the plugin is on different versions: ${scopes.map((e) => `${e.scope} ${e.version}`).join(', ')}`, `update the lagging scope: ${lagging.map((s) => `claude plugin update relevo@relevo --scope ${s}`).join('; ')}`));
   }
   return r;
+}
+
+/** The label of a failed build was `relevo:qa-failed`; a workflow that still applies it marks builds that nothing reads. */
+const FORMER_BUILD_FAILED = 'relevo:qa-failed';
+function formerLabelWorkflowChecks(f) {
+  const files = WORKFLOW_FILES.filter((file) => typeof f.workflows?.[file]?.text === 'string'
+    && f.workflows[file].text.split('\n').some((line) => /gh issue edit/.test(line) && line.includes(FORMER_BUILD_FAILED)));
+  if (files.length === 0) return [];
+  return [fail('automation.workflow-label', `${files.join(', ')} still ${files.length === 1 ? 'names' : 'name'} the label ${FORMER_BUILD_FAILED}, which is now relevo:build-failed: the workflow marks failed builds with a label that nothing reads`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes')];
 }
 
 /** Is the text of each workflow as current as the scripts it runs? The stamp is the version of the text; the pin is the scripts'. */

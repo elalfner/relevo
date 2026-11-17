@@ -338,21 +338,21 @@ test('the client for linked repositories uses GH_LINKS_TOKEN as the token, and t
   assert.equal(seen[0].cmd, 'gh');
 });
 
-test('Scenario: gather reads a qa-failed issue only for a retry, only the retried one, and the permission of the person', () => {
+test('Scenario: gather reads a build-failed issue only for a retry, only the retried one, and the permission of the person', () => {
   const world = {
-    issuesByLabel: { 'relevo:qa-failed': [rawIssue(67, ['relevo:qa-failed']), rawIssue(68, ['relevo:qa-failed'])] },
+    issuesByLabel: { 'relevo:build-failed': [rawIssue(67, ['relevo:build-failed']), rawIssue(68, ['relevo:build-failed'])] },
     timeline: {},
     permissions: { 'persona-a': 'write' },
     issueDetails: {},
   };
   const without = gather({ gh: fakeGh(world), repo: REPO, config });
-  assert.deepEqual(without.issues, [], 'without a retry qa-failed is not read');
+  assert.deepEqual(without.issues, [], 'without a retry build-failed is not read');
   const state = gather({ gh: fakeGh(world), repo: REPO, config, retry: { issue: 67, by: 'persona-a' } });
   assert.deepEqual(state.issues.map((i) => i.number), [67]);
   assert.equal(state.permissions['persona-a'], 'write');
   const decision = planGo({ config, repo: REPO, ...state, retry: { issue: 67, by: 'persona-a' } }).decisions[0];
   assert.equal(decision.action, 'start');
-  assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:qa-failed'] });
+  assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:build-failed'] });
 });
 
 test('gather reads the states after built as issues that are not candidates, and the marker of the wait for a shared file', () => {

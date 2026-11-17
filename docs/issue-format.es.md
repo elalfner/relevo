@@ -72,7 +72,7 @@ Una ejecución sin supervisión nunca cambia los workflows (`.github/`), `relevo
 Allow-paths: pubspec.yaml, pubspec.lock
 ```
 
-Cada entrada es una ruta o un patrón (`*` se queda dentro de una carpeta, `**` cruza carpetas; un nombre sin barra coincide a cualquier profundidad). El primer grupo nunca puede permitirse: listar `.github/workflows/ci.yml` o `**` hace que el issue falle su comprobación. Sin la línea, una ejecución que toca un archivo de dependencias termina en `qa-failed` con el motivo "protected path in the diff".
+Cada entrada es una ruta o un patrón (`*` se queda dentro de una carpeta, `**` cruza carpetas; un nombre sin barra coincide a cualquier profundidad). El primer grupo nunca puede permitirse: listar `.github/workflows/ci.yml` o `**` hace que el issue falle su comprobación. Sin la línea, una ejecución que toca un archivo de dependencias termina en `build-failed` con el motivo "protected path in the diff".
 
 ### 6. Plataforma (cuando el repositorio tiene varias)
 
