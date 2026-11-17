@@ -59,7 +59,7 @@
 
 ## 10. Status, doctor, init and fix
 
-- [ ] 10.1 In `tests/status.test.mjs`, test the `ready` issues of the person listed with both ways when the cloud builds and with the command alone when it does not, a `ready` issue with `go` that nothing answers, and the alert of a stuck local build with who started it and the new restart hint; make them pass in `scripts/lib/status.mjs`, its data reader and `skills/status/SKILL.md`
+- [x] 10.1 In `tests/status.test.mjs`, test the `ready` issues of the person listed with both ways when the cloud builds and with the command alone when it does not, a `ready` issue with `go` that nothing answers, and the alert of a stuck local build with who started it and the new restart hint; make them pass in `scripts/lib/status.mjs`, its data reader and `skills/status/SKILL.md`
 - [ ] 10.2 In `tests/doctor.test.mjs`, test the failure for a workflow that starts on `ready` (the `relevo-go-0.12.0.yml` fixture) or on a name that is not the effective `go` label, the warning for an open issue with `local` and without `building`, and the four sentences about what the `go` label does; make them pass in `scripts/lib/doctor.mjs` and `skills/doctor/SKILL.md`
 - [ ] 10.3 In `tests/init.test.mjs`, test that the `go` and `local` labels are created with the others and that a rewritten workflow starts on `go`; make it pass
 - [ ] 10.4 `skills/fix/SKILL.md` and `scripts/lib/next-step.mjs`: every text that says to apply `ready` again names the `go` label or `/relevo:go <n> --retry`; `tests/skill-fix.test.mjs` and `tests/next-step.test.mjs` cover it; verify they pass

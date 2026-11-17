@@ -177,15 +177,18 @@ test('Scenario: Cloud paused - the ready issues of the person are listed with th
   const r = buildStatus({ config, me: 'ana', now: NOW, issues, cloudBuilds: false });
   assert.deepEqual(r.readyForMe, [{ number: 42, title: 'Issue 42', command: '/relevo:go 42' }]);
   const text = renderStatus(r);
-  assert.match(text, /Ready, for you to build \(the cloud is not building\):\n  #42 Issue 42 → \/relevo:go 42/);
-  assert.match(renderStatus(r, 'es'), /Listas, para que las construyas \(la nube no está construyendo\):\n  #42 Issue 42 → \/relevo:go 42/);
+  assert.match(text, /Approved, waiting for you to build them:\n  #42 Issue 42 → \/relevo:go 42\n/);
+  assert.doesNotMatch(text, /apply relevo:go/, 'the label is not offered while the cloud does not build');
+  assert.match(renderStatus(r, 'es'), /Aprobadas, esperando a que las construyas:\n  #42 Issue 42 → \/relevo:go 42/);
 });
 
-test('Scenario: Cloud building - no such section, and the default is the cloud building', () => {
-  const issues = [issue(42, ['relevo:ready'])];
-  assert.deepEqual(buildStatus({ config, me: 'ana', now: NOW, issues, cloudBuilds: true }).readyForMe, []);
-  assert.deepEqual(buildStatus({ config, me: 'ana', now: NOW, issues }).readyForMe, []);
-  assert.doesNotMatch(renderStatus(buildStatus({ config, me: 'ana', now: NOW, issues })), /Ready, for you to build/);
+test('Scenario: Cloud building - the ready issue with no go label is listed with both ways to build it', () => {
+  const issues = [issue(42, ['relevo:ready']), issue(43, ['relevo:ready', 'relevo:go'])];
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues, cloudBuilds: true });
+  assert.deepEqual(r.readyForMe, [{ number: 42, title: 'Issue 42', command: '/relevo:go 42', label: 'relevo:go' }], 'a ready issue with go was requested already');
+  assert.deepEqual(buildStatus({ config, me: 'ana', now: NOW, issues }).readyForMe, r.readyForMe, 'the default is the cloud building');
+  assert.match(renderStatus(r), /#42 Issue 42 → \/relevo:go 42, or apply relevo:go/);
+  assert.match(renderStatus(r, 'es'), /#42 Issue 42 → \/relevo:go 42, o pon relevo:go/);
   assert.deepEqual(buildStatus({ config, now: NOW, issues, cloudBuilds: false }).readyForMe, [], 'the team view has no person');
 });
 
@@ -193,8 +196,8 @@ test('Scenario: Stuck build / Recent activity - an alert after limits.building_a
   const issues = [aged(7, ['relevo:building'], '2026-03-10T05:00:00Z'), aged(8, ['relevo:building'], '2026-03-10T10:30:00Z'), aged(9, ['relevo:built'], '2026-03-01T00:00:00Z')];
   const r = buildStatus({ config, me: 'ana', now: NOW, issues });
   assert.deepEqual(r.alerts, [{ type: 'stuck-build', issue: 7, hours: 7, command: '/relevo:go 7' }], 'default 3 hours; recent activity and other states give none');
-  assert.match(renderStatus(r), /#7 build with no activity for 7h: remove relevo:building and apply relevo:ready again, or run \/relevo:go 7/);
-  assert.match(renderStatus(r, 'es'), /#7 construcción sin actividad desde hace 7h: quita relevo:building y vuelve a poner relevo:ready, o ejecuta \/relevo:go 7/);
+  assert.match(renderStatus(r), /#7 build with no activity for 7h: remove relevo:building and apply relevo:ready again \(it starts nothing\), then apply relevo:go or run \/relevo:go 7/);
+  assert.match(renderStatus(r, 'es'), /#7 construcción sin actividad desde hace 7h: quita relevo:building y vuelve a poner relevo:ready \(no inicia nada\), luego pon relevo:go o ejecuta \/relevo:go 7/);
   assert.match(renderDigest(r), /- #7 build with no activity for 7h/);
   assert.match(renderDigest(r, 'es'), /- #7 construcción sin actividad desde hace 7h/);
 });
@@ -225,7 +228,7 @@ test('gatherStatus reads whether the cloud builds: the workflow on the default b
 
 test('the status skill describes the new rows and the stuck-build alert', () => {
   const skill = readFileSync(`${root}skills/status/SKILL.md`, 'utf8');
-  assert.match(skill, /the `ready` issues assigned to the person with `\/relevo:go <n>` \(only when the cloud is not building/);
+  assert.match(skill, /the `ready` issues assigned to the person that carry no `go` label, with `\/relevo:go <n>` and, where the cloud builds, the `go` label/);
   assert.match(skill, /`RELEVO_CLOUD_GO` is `off`/);
   assert.match(skill, /`limits\.building_alert_hours`/);
 });
@@ -537,4 +540,65 @@ test('Scenario: Share above half - the digest script prints the line and changes
   assert.equal(existsSync(join(dir, 'gh-calls')), false, 'no call to gh');
   assert.equal(readFileSync(join(dir, 'relevo.yml'), 'utf8'), before, 'relevo.yml is not touched');
   assert.deepEqual(readdirSync(dir).sort(), ['bin', 'relevo.yml', 'state.json'], 'no file is written');
+});
+
+// --- split-ready-and-go: what waits for a decision, requests nothing answers, and local builds
+
+test('Scenario: Request with no workflow - status says the go label has no effect and lists the request with the command', () => {
+  const issues = [issue(42, ['relevo:ready', 'relevo:go'], 'beto')];
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues, cloudBuilds: false, cloudReason: 'no_workflow' });
+  assert.deepEqual(r.cloud, { builds: false, reason: 'no_workflow' });
+  assert.deepEqual(r.unanswered, [{ number: 42, title: 'Issue 42', command: '/relevo:go 42' }]);
+  const text = renderStatus(r);
+  assert.match(text, /The go label has no effect in this repository: the go workflow is not installed\. Approved issues are built with \/relevo:go <n>\./);
+  assert.match(text, /#42 Issue 42 → \/relevo:go 42/);
+  assert.equal(text.match(/has no effect/g).length, 1, 'said once');
+  assert.match(renderStatus(r, 'es'), /La etiqueta go no tiene efecto en este repositorio/);
+});
+
+test('Scenario: Request during a pause - status says the cloud is paused and the request is served when it resumes', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(42, ['relevo:ready', 'relevo:go'])], cloudBuilds: false, cloudReason: 'paused' });
+  const text = renderStatus(r);
+  assert.match(text, /The cloud is paused \(RELEVO_CLOUD_GO is off\)/);
+  assert.match(text, /#42 Issue 42: served when the cloud resumes/);
+  assert.match(renderStatus(r, 'es'), /#42 Issue 42: se atiende cuando la nube se reanude/);
+});
+
+test('no credential: the go label only gets the comment of a local run, and the requests are listed with the command', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(42, ['relevo:ready', 'relevo:go'])], cloudBuilds: false, cloudReason: 'no_credential' });
+  assert.match(renderStatus(r), /The cloud has no model credential/);
+  assert.match(renderStatus(r), /#42 Issue 42 → \/relevo:go 42/);
+});
+
+test('while the cloud builds there is no notice and no request is listed as unanswered', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(42, ['relevo:ready', 'relevo:go'])] });
+  assert.deepEqual(r.unanswered, []);
+  assert.doesNotMatch(renderStatus(r), /no effect|paused|credential/);
+});
+
+test('Scenario: Stuck local build - the alert says it is a local build, who started it, and that ready starts nothing', () => {
+  const issues = [{ ...aged(7, ['relevo:building', 'relevo:local'], '2026-03-10T05:00:00Z'), local_by: 'ana' }];
+  const r = buildStatus({ config, me: 'beto', now: NOW, issues });
+  assert.deepEqual(r.alerts, [{ type: 'stuck-build', issue: 7, hours: 7, command: '/relevo:go 7', local: true, by: 'ana' }]);
+  assert.match(renderStatus(r), /#7 local build started by @ana with no activity for 7h: remove relevo:building and relevo:local and apply relevo:ready again \(it starts nothing\), then apply relevo:go or run \/relevo:go 7/);
+  assert.match(renderStatus(r, 'es'), /#7 build local iniciado por @ana sin actividad desde hace 7h/);
+  assert.match(renderDigest(r), /- #7 local build \(@ana\) with no activity for 7h/);
+});
+
+test('gatherStatus reads why the cloud does not build and who started a local build', () => {
+  const gh = (args) => {
+    const path = args[args.length - 1];
+    if (path.includes('labels=relevo%3Abuilding')) return JSON.stringify([[{ number: 7, title: 'T', labels: [{ name: 'relevo:building' }, { name: 'relevo:local' }], assignees: [], updated_at: '2026-03-10T05:00:00Z' }]]);
+    if (path.includes('issues?')) return JSON.stringify([[]]);
+    if (path.includes('/pulls?')) return JSON.stringify([[]]);
+    if (path.includes('/issues/7/timeline')) return JSON.stringify([[{ event: 'labeled', label: { name: 'relevo:local' }, actor: { login: 'ana' }, created_at: '2026-03-10T05:00:00Z' }]]);
+    if (path.endsWith('.github/workflows/relevo-go.yml')) return '{}';
+    if (path.endsWith('/actions/variables/RELEVO_CLOUD_GO')) throw new Error('HTTP 404 Not Found');
+    if (path.endsWith('/actions/secrets')) return JSON.stringify({ secrets: [] });
+    throw new Error(`unexpected ${path}`);
+  };
+  const data = gatherStatus({ gh, repo: 'acme/app', config });
+  assert.equal(data.cloudBuilds, false);
+  assert.equal(data.cloudReason, 'no_credential');
+  assert.equal(data.issues.find((i) => i.number === 7).local_by, 'ana');
 });
