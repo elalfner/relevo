@@ -8,6 +8,9 @@
 //           `local` (the skill, with no decision of the workflow) plans a `ready` issue for the person who runs it, with no label.
 //           In the cloud, `go` on a `build-failed` issue with --only N is a rebuild when the issue has no branch on the remote.
 //           With --input the person of `local` is `person` of the file, and `has_branch` of the issue says whether it has a branch.
+// --only N  also reads when the body of issue N was last edited, so that the planner checks the approval before any gate: a text
+//           edited after `ready` is not built. Only that issue is read (one GraphQL query). With --input it is `last_edited` of the
+//           file, keyed by issue number (`{ "7": { "ok": true, "at": null } }`); without it the body is not checked there.
 // --only N  keeps only the decision for issue N (the whole queue is still planned, so limits stay correct).
 // --retry   with --only N: plans the issue N, which must be `build-failed` and have no branch on the remote, as if the person who
 //           runs this (the user of `gh`) had made it `ready`; the claim moves it from `build-failed` to `building`. It never adds `ready`,
@@ -25,7 +28,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
-import { applyDecisions, gather, realGh, realGhLinks } from './lib/github.mjs';
+import { applyDecisions, gather, readLastEdited, realGh, realGhLinks } from './lib/github.mjs';
 import { planGo, withoutCredential } from './lib/plan.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
@@ -88,6 +91,8 @@ if (arg('input')) {
     retry = { issue: retryIssue, by };
   }
   state = gather({ gh: realGh, ghLinks: realGhLinks(), repo, config, running, retry, only: Number.isInteger(onlyArg) ? onlyArg : null, person });
+  // The issue about to be claimed: when its body was last edited. A failure is passed on as it is, so nothing is built.
+  if (Number.isInteger(onlyArg)) state.last_edited = { [onlyArg]: readLastEdited({ gh: realGh, repo, number: onlyArg }) };
   // A `go` label on a `build-failed` issue: a rebuild when nothing was pushed, `fix` when there is a branch. The API is asked, so the
   // `decide` job needs no checkout; a lookup that fails leaves it unknown and the planner builds nothing.
   const names = resolveLabelNames(config.labels);
@@ -104,7 +109,8 @@ if (arg('input')) {
 
 // A state file may give the minutes of the recent builds as `recent_builds` (gather reads them itself from the workflow runs).
 if (state.recent_builds !== undefined) state.recentBuilds = state.recent_builds;
-const result = planGo({ config, repo, ...state, retry, place, person });
+const edits = state.last_edited ?? null;
+const result = planGo({ config, repo, ...state, retry, place, person, edits });
 // `--credential false`: the workflow found no model credential, so nothing may be claimed for a cloud build.
 if (arg('credential') === 'false') {
   result.decisions = withoutCredential(result.decisions, state.issues);

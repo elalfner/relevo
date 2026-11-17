@@ -875,3 +875,87 @@ test('the comment of an issue that waits for an agent counts the cloud builds on
   assert.equal(d.comment.data.active, 1);
   assert.equal(d.comment.data.active_issues, '#50');
 });
+
+// --- split-ready-and-go: the approval covers the text as it was approved
+
+const READY_AT = '2026-10-12T09:00:00Z';
+const approved = (over = {}) => issue({ number: 42, ready_at: READY_AT, ready_by: 'persona-a', ...over });
+const checked = (i, edit, extra = {}) => plan([i], { ...extra, input: { edits: { [i.number]: edit }, ...(extra.input ?? {}) } }).decisions.find((d) => d.issue === i.number);
+
+test('Scenario: Body edited days after the approval - nothing is built, the issue is a draft, the comment names the approver', () => {
+  const d = checked(approved(), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(d.action, 'unapproved');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready', 'relevo:go'] });
+  assert.equal(d.comment.kind, 'approval_withdrawn');
+  assert.equal(d.comment.data.approver, 'persona-a');
+  assert.equal(d.comment.data.issue, 42);
+  assert.equal(d.assign, null);
+});
+
+test('Scenario: Title changed - only a title change after the approval is treated as edited', () => {
+  const d = checked(approved({ title_edited_at: '2026-10-13T09:00:00Z' }), { ok: true, at: null });
+  assert.equal(d.action, 'unapproved');
+  assert.equal(d.comment.data.edited, 'title');
+});
+
+test('a title changed before the approval is not an edit after it', () => {
+  assert.equal(checked(approved({ title_edited_at: '2026-10-11T09:00:00Z' }), { ok: true, at: '2026-10-11T10:00:00Z' }).action, 'start');
+});
+
+test('Scenario: Edited by the person who approved - the edit withdraws the approval as for anyone else', () => {
+  const d = checked(approved({ ready_by: 'persona-a' }), { ok: true, at: '2026-10-12T09:00:05Z' });
+  assert.equal(d.action, 'unapproved');
+});
+
+test('Scenario: Unchanged - neither text edited after the approval, the gates go on', () => {
+  assert.equal(checked(approved(), { ok: true, at: null }).action, 'start');
+  assert.equal(checked(approved(), { ok: true, at: '2026-10-12T08:59:59Z' }).action, 'start');
+});
+
+test('the approval check is decided before any other gate', () => {
+  const d = checked(approved({ milestone: null, assignees: [], body: 'no scenarios', ready_by: 'stranger' }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(d.action, 'unapproved');
+});
+
+test('the issue ends with no lifecycle label: a queued or blocked issue edited after its approval loses its state and its request', () => {
+  const q = checked(approved({ labels: ['relevo:queued', 'relevo:urgent'], urgent_by: 'persona-a' }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(q.action, 'unapproved');
+  assert.deepEqual(q.labels, { add: [], remove: ['relevo:queued'] });
+  const b = checked(approved({ labels: ['relevo:blocked', 'relevo:go'] }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.deepEqual(b.labels, { add: [], remove: ['relevo:blocked', 'relevo:go'] });
+});
+
+test('Scenario: Text changed since the approval - a build-failed rebuild requested with go is refused the same way', () => {
+  const d = checked(approved({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: false }), { ok: true, at: '2026-10-14T09:00:00Z' });
+  assert.equal(d.action, 'unapproved');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:build-failed', 'relevo:go'] });
+  assert.equal(d.comment.kind, 'approval_withdrawn');
+});
+
+test('a retry by a person of a build-failed issue whose text changed is refused the same way', () => {
+  const i = approved({ labels: ['relevo:build-failed'] });
+  const d = checked(i, { ok: true, at: '2026-10-14T09:00:00Z' }, { input: { retry: { issue: 42, by: 'persona-a' } } });
+  assert.equal(d.action, 'unapproved');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:build-failed'] });
+});
+
+test('Scenario: The edit history cannot be read - nothing is built, the labels stay, the report says why', () => {
+  const d = checked(approved(), { ok: false, reason: 'HTTP 403' });
+  assert.equal(d.action, 'report');
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.equal(d.comment, null);
+  assert.match(d.reason, /approval could not be checked.*HTTP 403/);
+});
+
+test('the moment of the approval cannot be read - the same report', () => {
+  const d = checked(approved({ ready_at: null }), { ok: true, at: null });
+  assert.equal(d.action, 'report');
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.match(d.reason, /approval could not be checked/);
+});
+
+test('an issue the caller did not read is planned as before, so the limits of the others stay right', () => {
+  const other = issue({ number: 7 });
+  const r = plan([other, approved()], { input: { edits: { 42: { ok: true, at: null } } } });
+  assert.equal(r.decisions.find((d) => d.issue === 7).action, 'start');
+});

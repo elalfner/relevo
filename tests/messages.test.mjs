@@ -793,3 +793,16 @@ test('no message tells a person that applying ready alone builds an issue', () =
     assert.match(text, /apply `relevo:go` so that the cloud builds it again, or run `\/relevo:go 12 --retry` on your machine/, situation);
   });
 });
+
+test('Scenario: Body edited days after the approval - approval_withdrawn names the approver and asks for a new approval', () => {
+  const en = renderMessage('approval_withdrawn', { issue: 42, edited: 'body', approver: 'ana' }, 'en');
+  assert.match(en, /^#42 was not built: its body changed after it was approved, so the approval was withdrawn and the issue is a draft again/);
+  assert.match(en, /Approved by: @ana/);
+  assert.match(en, /approve it with ready, then apply go or run `\/relevo:go 42`/);
+  const es = renderMessage('approval_withdrawn', { issue: 42, edited: 'title and body', approver: 'ana' }, 'es');
+  assert.match(es, /su título y su descripción cambiaron después de que se aprobara/);
+  assert.match(es, /Aprobado por: @ana/);
+  assert.match(renderMessage('approval_withdrawn', { issue: 42, edited: 'title' }, 'en'), /its title changed/);
+  assert.doesNotMatch(renderMessage('approval_withdrawn', { issue: 42, edited: 'title' }, 'en'), /Approved by/, 'an unknown approver drops the line');
+  assert.throws(() => renderMessage('approval_withdrawn', { issue: 42, edited: 'labels' }, 'en'), /unknown edit/);
+});

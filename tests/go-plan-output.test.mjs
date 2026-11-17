@@ -181,3 +181,18 @@ test('go-plan: a go label on a build-failed issue is a rebuild without a branch 
   assert.equal(parse(plan({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: false }).out).action, 'start');
   assert.equal(parse(plan({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: true }).out).action, 'refuse');
 });
+
+test('go-plan: a body edited after the approval is not built, and a last edit that could not be read builds nothing and changes nothing', () => {
+  const withEdit = (edit) => {
+    const input = join(dir, `edit-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(input, JSON.stringify({ ...state(), last_edited: { 7: edit } }));
+    return JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7'], { encoding: 'utf8' })).decisions[0];
+  };
+  const edited = withEdit({ ok: true, at: '2026-10-16T10:00:00Z' });
+  assert.equal(edited.action, 'unapproved');
+  assert.equal(edited.comment.kind, 'approval_withdrawn');
+  const failed = withEdit({ ok: false, reason: 'HTTP 403' });
+  assert.equal(failed.action, 'report');
+  assert.deepEqual(failed.labels, { add: [], remove: [] });
+  assert.equal(withEdit({ ok: true, at: null }).action, 'start');
+});

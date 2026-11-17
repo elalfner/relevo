@@ -27,9 +27,9 @@
 
 ## 5. The approval check
 
-- [ ] 5.1 In `tests/plan.test.mjs`, test the `unapproved` decision: body edited after `ready_at`, title edited after it, edited by the approver, not edited, the labels it removes (`ready` and `go`), that the issue ends with no lifecycle label, and that a `build-failed` retry with an edited text is refused the same way; and the report that changes nothing when the last edit could not be read; run them and see them fail
-- [ ] 5.2 `scripts/lib/plan.mjs` and `scripts/go-plan.mjs`: read the last edit only for the issue about to be claimed, decide before any other gate, in both places; the message `approval_withdrawn` that names who approved, in both languages; verify the tests of 5.1 pass
-- [ ] 5.3 `tests/security-*.test.mjs` or the test that covers the issue hash: the hash check still runs between the claim and the build, and its reason is unchanged; verify it passes
+- [x] 5.1 In `tests/plan.test.mjs`, test the `unapproved` decision: body edited after `ready_at`, title edited after it, edited by the approver, not edited, the labels it removes (`ready` and `go`), that the issue ends with no lifecycle label, and that a `build-failed` retry with an edited text is refused the same way; and the report that changes nothing when the last edit could not be read; run them and see them fail
+- [x] 5.2 `scripts/lib/plan.mjs` and `scripts/go-plan.mjs`: read the last edit only for the issue about to be claimed, decide before any other gate, in both places; the message `approval_withdrawn` that names who approved, in both languages; verify the tests of 5.1 pass
+- [x] 5.3 `tests/security-*.test.mjs` or the test that covers the issue hash: the hash check still runs between the claim and the build, and its reason is unchanged; verify it passes
 
 ## 6. The planner on a machine
 

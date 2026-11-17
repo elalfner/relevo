@@ -39,6 +39,7 @@ const REQUIRED = {
   go_building: ['issue'],
   go_already_built: ['issue'],
   go_use_fix: ['issue'],
+  approval_withdrawn: ['issue', 'edited'],
   blocked_notice: ['issue', 'title', 'blockers'],
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
   queued_agents: ['issue', 'title'],
@@ -206,6 +207,12 @@ export const CATALOG = {
       '#{{issue}} failed with work on its branch, so the go label was removed: the work is corrected, not built again.',
       'Your next step: run `/relevo:fix {{issue}}`; to build from the start instead, delete the remote branch and apply go again.',
       'Applied by: @{{actor}}',
+    ],
+    approval_withdrawn: [
+      '#{{issue}} was not built: {{edited_phrase}} after it was approved, so the approval was withdrawn and the issue is a draft again',
+      'Approved by: @{{approver}}',
+      '',
+      'Your next step: read the text again; when it is what should be built, approve it with ready, then apply go or run `/relevo:go {{issue}}` on your machine.',
     ],
     blocked_notice: [
       '#{{issue}} "{{title}}" is blocked',
@@ -429,6 +436,12 @@ export const CATALOG = {
       '#{{issue}} falló con trabajo en su rama, así que se quitó la etiqueta go: ese trabajo se corrige, no se construye de nuevo.',
       'Tu siguiente paso: ejecuta `/relevo:fix {{issue}}`; para construir desde el principio, borra la rama remota y vuelve a poner go.',
       'Aplicada por: @{{actor}}',
+    ],
+    approval_withdrawn: [
+      '#{{issue}} no se construyó: {{edited_phrase}} después de que se aprobara, así que la aprobación se retiró y el issue vuelve a ser un borrador',
+      'Aprobado por: @{{approver}}',
+      '',
+      'Tu siguiente paso: vuelve a leer el texto; cuando sea lo que hay que construir, apruébalo con ready y luego pon go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
     ],
     blocked_notice: [
       '#{{issue}} "{{title}}" está bloqueado',
@@ -829,6 +842,13 @@ export function renderMessage(kind, data = {}, language = 'en') {
     values.summary_line = es
       ? `La construcción de Relevo terminó${none ? ' sin resultado' : ''}${after}. ${none ? 'El motivo está' : 'El resultado está'} en el último comentario de este issue.`
       : `The Relevo build ended${none ? ' without an outcome' : ''}${after}. ${none ? 'The reason is' : 'The result is'} in the latest comment of this issue.`;
+  }
+  if (kind === 'approval_withdrawn') {
+    const phrases = es
+      ? { body: 'su descripción cambió', title: 'su título cambió', 'title and body': 'su título y su descripción cambiaron' }
+      : { body: 'its body changed', title: 'its title changed', 'title and body': 'its title and body changed' };
+    if (!phrases[values.edited]) throw new Error(`message "approval_withdrawn" has an unknown edit "${values.edited}"`);
+    values.edited_phrase = phrases[values.edited];
   }
   if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
   // Advisory notes of the QA lenses: how many, the lens of the first three, and all of them in a hidden marker for the review.

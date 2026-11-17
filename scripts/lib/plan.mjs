@@ -15,6 +15,10 @@
 //              the `go` label, and the build needs both `ready_by` and `go_by` to have the permission of `ready`; every decision
 //              about an issue that carries `go` removes it. On a machine (`local`) see "A local build" below.
 //   person     place `local`: the login of the person who runs the build
+//   edits      { [issue]: { ok: true, at: ISO | null } | { ok: false, reason } }: the last edit of the body of the issues about to be
+//              claimed (see readLastEdited in github.mjs). For an issue with an entry the approval is checked before any other gate:
+//              a body or a title (`title_edited_at`) edited after `ready_at` withdraws it, and an entry that failed, or a `ready_at`
+//              that is unknown, builds nothing and changes nothing. An issue with no entry is planned as before.
 //   completed  issue numbers closed as completed (their pull request merged)
 //   running    issue numbers with an agent run in progress
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
@@ -25,7 +29,7 @@
 // Output: { decisions: [...], summary }, in the order the issues were processed.
 
 import { namedFiles, parseIssueBody, sharedFiles } from './issue-parse.mjs';
-import { resolveLabelNames, transition } from './labels.mjs';
+import { LABELS, resolveLabelNames, transition } from './labels.mjs';
 import { branchName, changeId } from './branch.mjs';
 import { issueHash } from './issue-hash.mjs';
 import { resolvePlatform } from './platform-of.mjs';
@@ -63,7 +67,7 @@ export function withoutCredential(decisions, issues = []) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now(), place = 'cloud', person = null }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now(), place = 'cloud', person = null, edits = null }) {
   if (place !== 'cloud' && place !== 'local') throw new Error(`unknown place "${place}": expected cloud or local`);
   const cloud = place === 'cloud';
   const names = resolveLabelNames(config.labels);
@@ -198,6 +202,11 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   };
 
   const moveTo = (issue, key) => transition(issue.labels, key, config.labels);
+  // A decision that only informs: nothing is built, no label changes, nothing is posted. Not even a request is consumed.
+  const report = (issue, reason, extra = {}) => {
+    decisions.push({ issue: issue.number, action: 'report', reason, labels: { add: [], remove: [] }, comment: null, assign: null, ...extra });
+  };
+  const EXCLUSIVE = LABELS.filter((l) => l.kind !== 'overlay').map((l) => names[l.key]);
   const dropReady = (issue) => ({ add: [], remove: issue.labels.filter((l) => l === names.ready) });
 
   candidates.forEach((issue) => {
@@ -205,11 +214,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       const kind = refusal(issue);
       if (kind === null) {
         // A `build-failed` issue whose branch could not be looked for: nothing is built and nothing changes.
-        decision(issue, 'report', 'could not look for the branch of the issue on the remote, so it cannot tell a rebuild from a fix', {
-          labels: { add: [], remove: [] },
-        });
-        // A report changes nothing: not even the request is consumed.
-        decisions[decisions.length - 1].labels = { add: [], remove: [] };
+        report(issue, 'could not look for the branch of the issue on the remote, so it cannot tell a rebuild from a fix');
         return;
       }
       decision(issue, 'refuse', `the go label cannot be taken by this issue (${kind})`, {
@@ -226,6 +231,32 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
     if (holdsForLimit(issue)) {
       decision(issue, 'skip', `the usage limit of the model account has not reset: it retries after ${new Date(issue.limit_retry.at).toISOString()}`);
       return;
+    }
+
+    // The approval covers the text as it was approved: checked before any other gate, for the issue about to be claimed.
+    const edit = edits ? edits[issue.number] : undefined;
+    if (edit !== undefined) {
+      const readyAt = issue.ready_at ? Date.parse(issue.ready_at) : Number.NaN;
+      if (!edit || edit.ok !== true || Number.isNaN(readyAt)) {
+        const why = !edit || edit.ok !== true ? edit?.reason ?? 'the last edit was not read' : 'the moment the ready label was applied is unknown';
+        report(issue, `the approval could not be checked (${why}): nothing is built and the labels stay as they are`);
+        return;
+      }
+      const later = (at) => Boolean(at) && Date.parse(at) > readyAt;
+      const body = later(edit.at);
+      const title = later(issue.title_edited_at);
+      if (body || title) {
+        // Back to a draft: every lifecycle label and the request leave; overlays such as `urgent` stay with the issue.
+        const remove = [...EXCLUSIVE, names.go, names.local].filter((n, i, all) => issue.labels.includes(n) && all.indexOf(n) === i);
+        decision(issue, 'unapproved', `the ${body && title ? 'title and body were' : body ? 'body was' : 'title was'} edited after ready was applied`, {
+          labels: { add: [], remove },
+          comment: {
+            kind: 'approval_withdrawn',
+            data: { issue: issue.number, edited: body && title ? 'title and body' : body ? 'body' : 'title', ...(issue.ready_by ? { approver: issue.ready_by } : {}) },
+          },
+        });
+        return;
+      }
     }
 
     const parsed = parseIssueBody(issue.body);

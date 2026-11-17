@@ -187,7 +187,7 @@ First check that the issue is the one that was claimed:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/issue-hash.mjs --repo <owner/name> --issue <issue> --expect <issue_hash>
 ```
 
-If it exits 1, the text was edited after `ready`: take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`, and save its body to a file outside the working tree (call it `<issue_file>`): the sections are copied from it by a script, never retyped.
+If it exits 1, the text was edited after the issue was claimed (an edit between the approval and the claim was already caught by the planner): take the failure path with the reason `issue changed after ready` and `branch_state` `not_pushed`; build nothing. If the decision has no `issue_hash` (a planner older than this check), continue and say in your final report that the text was not verified. Then read the issue once, with `gh issue view <issue> --json title,body`, and save its body to a file outside the working tree (call it `<issue_file>`): the sections are copied from it by a script, never retyped.
 
 **References.** If the issue has a `## Design reference` section, or a `## Code pointers` bullet, or a `link` bullet of `## External inputs`, that names a file of another repository as `owner/repo:path` (`issue-sections.mjs --body-file <issue_file> --list` names its sections), get what they point to before you write anything.
 
