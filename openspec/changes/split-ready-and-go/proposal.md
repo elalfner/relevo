@@ -48,6 +48,8 @@ What follows from it:
 
 Not in this change: a setting that makes `ready` start the cloud as before (one label with two possible meanings is what a new user would trip on); a label that a person applies to force a local build (the local command is that choice); a heartbeat for local builds; showing the progress of a local build or its subagents, and making the developer agent mark each task as it finishes (a separate change).
 
+One question for the design: what the `urgent` label means now. It asks for an early start and skips the review capacity of the assignee, a gate that a local build no longer has, and nothing was decided about `urgent` on a `ready` issue that has no build request. The default to confirm is that it stays a request for the cloud alone: it waits with the issue, takes effect when `go` is applied, and a local build ignores it.
+
 ## Capabilities
 
 ### New Capabilities
