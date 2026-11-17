@@ -577,4 +577,11 @@ Results, against `design.md` D6:
 
 One boundary the design did not state: **`gh issue edit <n> --body ... --add-label ...` in one command (#157) gives a `lastEditedAt` and a `labeled` time in the same second** (16:01:26 both). The planner compares with "later than", so that edit is not taken for an edit after the approval; a test now fixes that. Done as two commands, body then label, the label comes after the edit (16:01:33 and 16:01:34), which is what `issue` does.
 
-Not done here: **the same query with a person's `gh`** (the local build). This session cannot use GitHub's GraphQL API at all (HTTP 403 for every GraphQL query), so a person has to run the query above on their machine, against an issue edited once, and add the result here.
+The same query with a person's `gh` (the local build), run on 2026-11-17 against `elalfner/relevo-sandbox` issue #158 (created, edited, labeled, commented and closed as not planned), with `gh api graphql -f query='query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){issue(number:$i){lastEditedAt updatedAt}}}' -F o=elalfner -F n=relevo-sandbox -F i=158`:
+
+- Never edited: `{"lastEditedAt":null,"updatedAt":"2026-11-17T16:10:24Z"}`.
+- After `gh issue edit 158 --body "version 2"`: `{"lastEditedAt":"2026-11-17T16:10:30Z","updatedAt":"2026-11-17T16:10:31Z"}`.
+- After adding the label `spike-test` and a comment: `{"lastEditedAt":"2026-11-17T16:10:30Z","updatedAt":"2026-11-17T16:10:38Z"}`. `updatedAt` moved, `lastEditedAt` did not.
+- Issue 999999: `gh` exited with code 1, the response had `"issue":null` and an error of type `NOT_FOUND` ("Could not resolve to an Issue with the number of 999999."), so a failure is told apart from a never-edited issue (`null` without an error).
+
+All four match what D6 assumes: a person's `gh` behaves like the token of a workflow run.
