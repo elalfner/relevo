@@ -14,6 +14,10 @@
 //       the loop of the workflow: every 30 seconds it edits the one progress comment; ends by itself
 //   node scripts/progress.mjs stop [--wait seconds]
 //       asks the loop to end and waits for it
+//   node scripts/progress.mjs waiting --issue n [--repo owner/name] [--config relevo.yml]
+//       the decision job, after it claims the issue: one comment says that the build waits for a runner
+//   node scripts/progress.mjs started --issue n [--repo owner/name] [--config relevo.yml]
+//       the first step of the build job: drops the waiting marker of that comment with one edit, and keeps the comment
 //   node scripts/progress.mjs close --issue n [--outcome result|none] [--run-url url] [--repo owner/name] [--config relevo.yml]
 //       replaces the progress comment by one line
 // Everything is kept under $RELEVO_PROGRESS_DIR, outside the working tree (the agent needs it clean). Without that
@@ -28,7 +32,7 @@ import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import {
-  INTERVAL_MS, PHASES, closeProgress, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
+  INTERVAL_MS, PHASES, closeProgress, markStarted, markWaiting, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
 } from './lib/progress.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { groupInProgress, readGroups } from './lib/group-progress.mjs';
@@ -80,6 +84,16 @@ function decisionOf(b64) {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 async function main(command) {
+  // The comment of the wait is written by the decision job and the first step of the build job, before any progress folder exists.
+  if (command === 'waiting' || command === 'started') {
+    const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
+    const issue = arg('issue');
+    if (!repo || !issue) return fail('give --issue and --repo (or GITHUB_REPOSITORY)');
+    const client = progressClient({ gh: realGh, repo, issue });
+    const { language: lang } = language();
+    (command === 'waiting' ? markWaiting : markStarted)({ client, language: lang });
+    return;
+  }
   if (!dir) return;
   mkdirSync(dir, { recursive: true });
 

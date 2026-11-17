@@ -94,6 +94,7 @@ const SAMPLE = {
   local_no_build: { issue: 1 },
   local_progress_off: {},
   run_progress_closed: { run_url: 'http://r', summary_line: 's' },
+  run_waiting: {},
   run_failed_early: { issue: 1, job_status: 'failure', run: 'http://r', assignee: 'a' },
   run_no_outcome: { situation: 'no_result', issue: 1, job_status: 'cancelled', run: 'http://r', assignee: 'a' },
   queued_shared_files: { issue: 1, title: 'T', file: 'src/router.ts', other: 2, hours: 24 },

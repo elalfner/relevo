@@ -50,6 +50,7 @@ const REQUIRED = {
   local_status: ['phase'],
   local_no_build: ['issue'],
   local_progress_off: [],
+  run_waiting: [],
   run_failed_early: ['issue', 'job_status', 'run'],
   run_no_outcome: ['situation', 'issue', 'run'],
   usage_limit_retry: ['issue', 'at', 'attempt', 'max', 'reason', 'run'],
@@ -259,6 +260,12 @@ export const CATALOG = {
     local_status: ['{{line}}', '{{change_line}}', '{{end_line}}', '{{usage_line}}'],
     local_no_build: ['There is no local build of #{{issue}} on this machine.'],
     local_progress_off: ['The progress of this build is not available (its folder could not be made or read); the build runs as usual.'],
+    run_waiting: [
+      'Relevo build claimed: it waits for a runner',
+      'The build starts as soon as a runner that can take it is free; nothing is lost while it waits, and the time it waits does not count against the limits of the run.',
+      '',
+      'This comment is updated when the build starts and is closed when it ends.',
+    ],
     ship_failed: [
       '#{{issue}} was not shipped: the run ended without an outcome',
       '',
@@ -461,6 +468,12 @@ export const CATALOG = {
     local_status: ['{{line}}', '{{change_line}}', '{{end_line}}', '{{usage_line}}'],
     local_no_build: ['No hay una construcción local de #{{issue}} en esta máquina.'],
     local_progress_off: ['El progreso de esta construcción no está disponible (no se pudo crear o leer su carpeta); la construcción sigue como siempre.'],
+    run_waiting: [
+      'Construcción de Relevo reclamada: espera un runner',
+      'La construcción empieza en cuanto un runner que pueda tomarla esté libre; no se pierde nada mientras espera, y el tiempo de espera no cuenta contra los límites de la ejecución.',
+      '',
+      'Este comentario se actualiza cuando empieza la construcción y se cierra al terminar.',
+    ],
     ship_failed: [
       '#{{issue}} no se fusionó: la ejecución terminó sin resultado',
       '',

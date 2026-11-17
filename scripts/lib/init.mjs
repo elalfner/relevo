@@ -119,15 +119,29 @@ export function resolveCredential({ answer = null, secrets = null, installed = n
 
 export const DEFAULT_RUNNER = ['ubuntu-latest'];
 
+const runsOnValue = (list) => (list.length === 1 ? list[0] : `[${list.join(', ')}]`);
+
 /**
- * The workflow with the runner of `runner.labels` in every `runs-on`. The templates run on `ubuntu-latest`, which is
- * what an empty or default list leaves alone; a list of one label is written as that label.
+ * The workflow with the runner of `runner.labels` in every `runs-on`, except the job named `build`, which takes
+ * `buildLabels` (`runner.build_labels`) when there are some. The templates run on `ubuntu-latest`, which is what an
+ * empty or default list leaves alone; a list of one label is written as that label.
  */
-export function runnerLine(workflow, labels) {
+export function runnerLine(workflow, labels, buildLabels = null) {
   const list = labels ?? DEFAULT_RUNNER;
-  if (list.length === 1 && list[0] === DEFAULT_RUNNER[0]) return workflow;
+  const isDefault = list.length === 1 && list[0] === DEFAULT_RUNNER[0];
+  if (!buildLabels && isDefault) return workflow;
   if (!workflow.includes('runs-on: ubuntu-latest')) throw new Error('the workflow template has no runs-on line to switch');
-  return workflow.replaceAll('runs-on: ubuntu-latest', `runs-on: ${list.length === 1 ? list[0] : `[${list.join(', ')}]`}`);
+  if (!buildLabels) return workflow.replaceAll('runs-on: ubuntu-latest', `runs-on: ${runsOnValue(list)}`);
+  let inJobs = false;
+  let job = null;
+  return workflow.split('\n').map((line) => {
+    if (/^jobs:/.test(line)) inJobs = true;
+    const name = inJobs ? /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line) : null;
+    if (name) job = name[1];
+    if (!inJobs || !/^\s*runs-on: ubuntu-latest$/.test(line)) return line;
+    const wanted = job === 'build' ? buildLabels : list;
+    return wanted.length === 1 && wanted[0] === DEFAULT_RUNNER[0] ? line : line.replace('ubuntu-latest', runsOnValue(wanted));
+  }).join('\n');
 }
 
 /** The text of a `platforms:` block for { name: { stack, path, targets } }. */
@@ -227,10 +241,15 @@ export function renderConfig(template, answers = {}) {
   } else if (answers.runMaxCost !== undefined) out = set(out, 'run_max_cost', answers.runMaxCost);
   if (answers.language) out = set(out, 'language', answers.language);
   // The commented example of the template becomes the setting; the default runner leaves the template as it is.
-  if (answers.runnerLabels && !(answers.runnerLabels.length === 1 && answers.runnerLabels[0] === DEFAULT_RUNNER[0])) {
-    const re = /^# runner:[^\n]*\n#   labels:[^\n]*\n/m;
+  const ownLabels = answers.runnerLabels && !(answers.runnerLabels.length === 1 && answers.runnerLabels[0] === DEFAULT_RUNNER[0]) ? answers.runnerLabels : null;
+  const buildLabels = answers.runnerBuildLabels ?? null;
+  if (ownLabels || buildLabels) {
+    const re = /^# runner:[^\n]*\n#   labels:[^\n]*\n(#   build_labels:[^\n]*\n)?/m;
     if (!re.test(out)) throw new Error('the template has no "runner" example to switch on');
-    out = out.replace(re, `runner:                             # where the Relevo workflows run (docs/execution.md)\n  labels: [${answers.runnerLabels.join(', ')}]\n`);
+    const lines = [];
+    if (ownLabels) lines.push(`  labels: [${ownLabels.join(', ')}]`);
+    if (buildLabels) lines.push(`  build_labels: [${buildLabels.join(', ')}]${ownLabels ? '' : '       # only the build job of go runs here; every other job stays on ubuntu-latest'}`);
+    out = out.replace(re, `runner:                             # where the Relevo workflows run (docs/execution.md)\n${lines.join('\n')}\n`);
   }
   // A browser review is always driven by the agent, so a Vue web platform cannot keep the autopilot off.
   const autopilot = answers.autopilot ?? (Object.values(platforms ?? {}).some(isVueWeb) ? 'precheck' : null);
@@ -373,7 +392,7 @@ function offeredSkillItems(offered) {
 /**
  * Plan every change. `ctx`:
  *   facts      from gatherFacts (doctor)
- *   answers    the person's answers (members, specWriter, reviewMode, language, platforms, links, runs, credential, runnerLabels, stackProfiles, base, release, merger)
+ *   answers    the person's answers (members, specWriter, reviewMode, language, platforms, links, runs, credential, runnerLabels, runnerBuildLabels, stackProfiles, base, release, merger)
  *   templates  { config: text, workflows: { file: text } }
  *   current    { workflows: { file: text|null }, gitignore: text|null, keepFiles: { path: boolean } }
  *   admin      true when the person has administrator permission on the repository
@@ -518,11 +537,13 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   if (!AGENT_BUILDS.includes(build)) throw new Error(`agentBuild must be one of ${AGENT_BUILDS.join(', ')} (got "${build}")`);
   // The runner of the workflows: the setting of the repository, else the person's answer, else GitHub's.
   const runnerLabels = facts.config?.runner?.labels ?? answers.runnerLabels ?? DEFAULT_RUNNER;
+  // The build job alone may run elsewhere: the setting of the repository, else the answer, else it follows runner.labels.
+  const runnerBuildLabels = facts.config ? facts.config.runner?.build_labels ?? null : answers.runnerBuildLabels ?? null;
   const cloudFiles = ['relevo-go.yml', 'relevo-queue.yml'];
   WORKFLOW_FILES.forEach((file) => {
     if (runs === 'local' && cloudFiles.includes(file)) return;
     const shared = file === 'relevo-go.yml' ? credentialLine(templates.workflows[file], credential) : templates.workflows[file];
-    const wanted = runnerLine(withRestricted(agentWorkflow(shared, build, templates.agentBlocks), restrictedList(facts.config)), runnerLabels);
+    const wanted = runnerLine(withRestricted(agentWorkflow(shared, build, templates.agentBlocks), restrictedList(facts.config)), runnerLabels, runnerBuildLabels);
     const have = current.workflows[file] ?? null;
     // The state of the update is asked for only when the file exists and differs: it may need the network.
     const upgrade = () => (typeof upgrades === 'function' ? upgrades(file) : upgrades[file]);
@@ -583,8 +604,8 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   // repository variable and the rules of a branch are the person's to change.
   const unreadable = (facts.links ?? []).filter((l) => l.reachable === false).map((l) => l.repo);
   if (unreadable.length > 0) items.push(item('manual.links-unreadable', 'manual', `${unreadable.join(', ')} cannot be read with your sign-in, so a file or dependency in ${unreadable.length > 1 ? 'them' : 'it'} would answer 404 to the automation: grant read access to issues, pull requests and contents on ${unreadable.length > 1 ? 'them' : 'it'} to the token stored as RELEVO_LINKS_TOKEN (init never reads or writes it), or copy the file the issue points to into this repository`));
-  variableRunners(facts).overrides.forEach(({ name, labels, wanted, value }) => {
-    items.push(item(`manual.runner-variable.${name}`, 'manual', `The runner the workflows use comes from the repository variable ${name} (${value === null ? 'not set, so the workflow fallback applies' : JSON.stringify(value)}), which wins over runner.labels: it runs on [${labels.join(', ')}] while relevo.yml says [${wanted.join(', ')}]. Set the variable to match relevo.yml, delete it, or change runner.labels yourself; init changes no variable`));
+  variableRunners(facts).overrides.forEach(({ name, labels, wanted, value, setting }) => {
+    items.push(item(`manual.runner-variable.${name}`, 'manual', `The runner the workflows use comes from the repository variable ${name} (${value === null ? 'not set, so the workflow fallback applies' : JSON.stringify(value)}), which wins over ${setting}: it runs on [${labels.join(', ')}] while relevo.yml says [${wanted.join(', ')}]. Set the variable to match relevo.yml, delete it, or change ${setting} yourself; init changes no variable`));
   });
   const baseProtection = facts.protection?.base;
   if (!facts.protectionUnavailable && !facts.protectionError && baseProtection && typeof baseProtection.requiredChecks === 'boolean' && !baseProtection.requiredChecks) {
