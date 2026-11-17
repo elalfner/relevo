@@ -51,8 +51,10 @@ test('Scenario: Plan before changes - it lists files, labels, branches, rulesets
 test('Scenario: Fresh repository - everything is planned and the API key is a manual step', () => {
   const items = plan(bare());
   assert.equal(get(items, 'config').status, 'todo');
-  assert.equal(get(items, 'labels').labels.length, 13);
+  assert.equal(get(items, 'labels').labels.length, 15);
   assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:ship'), 'the ship label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:go'), 'the go label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:local'), 'the local label is created');
   assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:urgent'), 'the urgent label is created');
   assert.equal(get(items, 'branch.base').status, 'todo');
   assert.equal(get(items, 'protection').status, 'todo');
@@ -152,7 +154,7 @@ test('applying carries out labels, branch, ruleset, workflow permissions, files 
   };
   const results = applyPlan(plan(bare()), { repo: 'o/r', io });
   assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)));
-  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 13);
+  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 15);
   assert.ok(calls.some((c) => c.args.includes('-f') && c.args.includes('ref=refs/heads/dev') && c.args.includes('sha=abc123')));
   assert.ok(calls.some((c) => c.args.includes(`repos/o/r/rulesets`) && JSON.parse(c.input).name === 'relevo-protected-branches'));
   assert.ok(calls.some((c) => c.args.includes('repos/o/r/actions/permissions/workflow') && c.args.includes('can_approve_pull_request_reviews=false')));

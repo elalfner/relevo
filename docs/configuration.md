@@ -56,6 +56,8 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `trust` | `private-team` or `public` | `private-team` |
 | `run.full_output` | `true` prints a redacted rendering of the agent output in the log of every cloud run and keeps the first part of each result in the transcript of a run that ends abnormally. It may expose a secret the redactor does not know, and it is refused with `trust: public` ([Seeing what the agent did](security.md#seeing-what-the-agent-did)) | `false` |
 | `labels` | rename any label; the keys are fixed, the names are yours | `relevo:ready`, `relevo:built`, … |
+| `labels.go` | name of the build request: applied to a `ready` issue, it asks the cloud to build it, and the cloud removes it when it decides | `relevo:go` |
+| `labels.local` | name of the mark of a local build: a local build adds it next to `building` and it leaves with `building`; nobody applies it by hand | `relevo:local` |
 
 ## Platforms, profiles and checks
 

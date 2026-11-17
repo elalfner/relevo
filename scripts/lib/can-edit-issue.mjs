@@ -17,8 +17,12 @@ const REASON = {
   ship: 'its pull request is being merged',
   // Not a state: it travels next to one, so the state decides whether the text may change.
   urgent: 'the label asks for an early start and does not commit the issue to a build',
+  // A request: the cloud was asked to build the current text.
+  go: 'a build was requested for the current text; the cloud removes the label when it decides',
+  // A mark next to `building`: `building` decides. Alone it means nothing.
+  local: 'the label marks a local build and does not commit the issue to a build by itself',
 };
-export const EDITABLE_LABELS = ['needs-spec', 'urgent'];
+export const EDITABLE_LABELS = ['needs-spec', 'urgent', 'local'];
 
 /**
  * @param {{state?: string, labels?: Array<string|{name: string}>}} issue  `gh issue view --json state,labels`

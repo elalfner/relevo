@@ -8,9 +8,9 @@
 
 ## 2. The label set
 
-- [ ] 2.1 In `tests/labels.test.mjs`, add the `go` and `local` labels (default names, renamable, kind), and tests of `transition`: a move out of `building` removes `local`, a move to another state leaves `go` and `urgent` alone, a move to `building` does not add `local` by itself; run them and see them fail
-- [ ] 2.2 `scripts/lib/labels.mjs`: the two labels and the rule of `local`; `templates/relevo.yml`: the commented `labels` example; verify the label tests and the config tests pass
-- [ ] 2.3 `docs/configuration.md` and `docs/configuration.es.md`: the two keys; verify `tests/docs-claims.test.mjs` passes
+- [x] 2.1 In `tests/labels.test.mjs`, add the `go` and `local` labels (default names, renamable, kind), and tests of `transition`: a move out of `building` removes `local`, a move to another state leaves `go` and `urgent` alone, a move to `building` does not add `local` by itself; run them and see them fail
+- [x] 2.2 `scripts/lib/labels.mjs`: the two labels and the rule of `local`; `templates/relevo.yml`: the commented `labels` example; verify the label tests and the config tests pass
+- [x] 2.3 `docs/configuration.md` and `docs/configuration.es.md`: the two keys; verify `tests/docs-claims.test.mjs` passes
 
 ## 3. What the planner reads
 

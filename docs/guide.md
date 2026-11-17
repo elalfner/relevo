@@ -23,6 +23,8 @@ An issue is always in one state, shown by a label, and each state has one next s
 | `needs-reviewer` | none: assign a reviewer, or ask someone to take it | the spec writer |
 | `ship` | none: the ship workflow is merging it; if it stops, its comment says why and the label is removed | nobody |
 | `urgent` | none: it travels next to the state above and asks for an early start (see below) | nobody |
+| `go` | none: a request next to `ready`; the cloud decides about the issue and removes the label | nobody |
+| `local` | none: it marks a build on a machine next to `building`, and leaves with it | nobody |
 
 Before an issue has a state, `/relevo:think` explores the idea and `/relevo:issue` writes the issue. `/relevo:status` shows who is waiting on what.
 

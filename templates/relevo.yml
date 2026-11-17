@@ -80,5 +80,7 @@ trust: private-team                # private-team | public
 
 # Rename any label here; keys are fixed, names are yours.
 # labels:
-#   ready: relevo:ready
+#   ready: relevo:ready             # the approval: the text is what should be built; starts nothing
+#   go: relevo:go                   # the build request: the cloud builds a ready issue
+#   local: relevo:local             # marks a build on a machine, next to building
 #   built: relevo:built

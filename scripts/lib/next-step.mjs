@@ -205,6 +205,18 @@ const TABLE = {
     who: 'nobody',
     hint: { en: 'it starts before the others; the state it is in decides the next step', es: 'empieza antes que las demás; el estado en que está decide el siguiente paso' },
   },
+  // A request next to `ready`, not a state: the cloud decides about the issue and removes it.
+  go: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'the cloud was asked to build it and removes the label when it decides', es: 'se pidió a la nube que lo construya y quita la etiqueta cuando decide' },
+  },
+  // A mark next to `building`, not a state: the build runs on a person's machine.
+  local: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'it is being built on a machine', es: 'se está construyendo en una máquina' },
+  },
 };
 
 const WHO = {

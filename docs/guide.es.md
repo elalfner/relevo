@@ -23,6 +23,8 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | `needs-reviewer` | ninguno: asigna un revisor, o pide a alguien que lo tome | quien escribe la spec |
 | `ship` | ninguno: el workflow de ship lo está fusionando; si se detiene, su comentario dice por qué y se quita la etiqueta | nadie |
 | `urgent` | ninguno: acompaña al estado de arriba y pide un inicio anticipado (ver abajo) | nadie |
+| `go` | ninguno: una petición junto a `ready`; la nube decide sobre el issue y quita la etiqueta | nadie |
+| `local` | ninguno: marca un build en una máquina junto a `building`, y se va con él | nadie |
 
 Antes de que un issue tenga estado, `/relevo:think` explora la idea y `/relevo:issue` escribe el issue. `/relevo:status` muestra quién espera a quién.
 
