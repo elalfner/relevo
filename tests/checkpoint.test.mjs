@@ -138,3 +138,35 @@ test('Scenario: The numbers cannot be recorded - the checkpoint is made as today
   assert.equal(r.code, 0);
   assert.equal(JSON.parse(r.out).state, 'kept');
 });
+
+const checkpointTasks = (f, tasks, k = 1, n = 2) => {
+  const r = spawnSync(process.execPath, [CLI, '--decision', b64(DECISION), '--k', String(k), '--of', String(n), ...(tasks === undefined ? [] : ['--tasks', tasks])], { cwd: f.work, encoding: 'utf8' });
+  return { code: r.status, out: JSON.parse(r.stdout.trim().split('\n').pop()) };
+};
+
+test('Scenario: Unmarked tasks - the output lists the tasks of the group that are still unchecked in the tasks.md of the change', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  put(f.work, 'openspec/changes/7-x/tasks.md', '## 1. A\n\n- [x] 1.1 a\n- [ ] 1.2 b\n\n## 2. B\n\n- [ ] 2.1 c\n');
+  const { code, out } = checkpointTasks(f, '1.1,1.2');
+  assert.equal(code, 0);
+  assert.deepEqual(out.unmarked, ['1.2']);
+});
+
+test('Scenario: Every task marked - the list is empty', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  put(f.work, 'openspec/changes/7-x/tasks.md', '- [x] 1.1 a\n- [X] 1.2 b\n- [ ] 2.1 c\n');
+  assert.deepEqual(checkpointTasks(f, '1.1,1.2').out.unmarked, []);
+});
+
+test('no list when no task numbers are given, or when what is given is not a task number, or when the file is not there', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  put(f.work, 'openspec/changes/7-x/tasks.md', '- [ ] 1.1 a\n');
+  assert.ok(!('unmarked' in checkpointTasks(f, undefined).out));
+  assert.ok(!('unmarked' in checkpointTasks(f, 'abc,;rm').out));
+  const g = fixture();
+  put(g.work, 'src/a.js', 'one\n');
+  assert.ok(!('unmarked' in checkpointTasks(g, '1.1').out));
+});

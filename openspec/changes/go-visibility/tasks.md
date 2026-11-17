@@ -26,10 +26,10 @@
 
 ## 5. The developer launches and the unmarked tasks
 
-- [ ] 5.1 In the tests of `checkpoint.mjs`, test that its output lists as `unmarked` the tasks of `--tasks` still unchecked in the `tasks.md` of the change, an empty list when all are marked, and no list when the tasks given are not task numbers; make it pass in `scripts/checkpoint.mjs` with `uncheckedTasks`
-- [ ] 5.2 In `tests/skill-go.test.mjs` and `tests/skill-fix.test.mjs`, test that every launch of the developer is described as one Agent call in the foreground, never in the background, with the turn held; that a group launch has the description `build <k>/<n>: <tasks>` and a correction one that names its attempt or iteration; and that step 4 handles `unmarked` (one relaunch when the report has no open question, the open-question path otherwise, `tasks left unfinished` at that group when it stays unmarked); run them and see them fail
-- [ ] 5.3 `skills/go/SKILL.md`, `skills/go/references/qa-run.md` and `skills/fix/SKILL.md`: the wording of the launches, the descriptions and the handling of `unmarked`; verify the skill tests pass
-- [ ] 5.4 In `tests/usage.test.mjs`, test that the usage comment shows the description of a launch beside its entry, tells three group launches apart, and keeps replicas in their own list; make it pass in `scripts/lib/run-usage.mjs`
+- [x] 5.1 In the tests of `checkpoint.mjs`, test that its output lists as `unmarked` the tasks of `--tasks` still unchecked in the `tasks.md` of the change, an empty list when all are marked, and no list when the tasks given are not task numbers; make it pass in `scripts/checkpoint.mjs` with `uncheckedTasks`
+- [x] 5.2 In `tests/skill-go.test.mjs` and `tests/skill-fix.test.mjs`, test that every launch of the developer is described as one Agent call in the foreground, never in the background, with the turn held; that a group launch has the description `build <k>/<n>: <tasks>` and a correction one that names its attempt or iteration; and that step 4 handles `unmarked` (one relaunch when the report has no open question, the open-question path otherwise, `tasks left unfinished` at that group when it stays unmarked); run them and see them fail
+- [x] 5.3 `skills/go/SKILL.md`, `skills/go/references/qa-run.md` and `skills/fix/SKILL.md`: the wording of the launches, the descriptions and the handling of `unmarked`; verify the skill tests pass
+- [x] 5.4 In `tests/usage.test.mjs`, test that the usage comment shows the description of a launch beside its entry, tells three group launches apart, and keeps replicas in their own list; make it pass in `scripts/lib/run-usage.mjs`
 
 ## 6. The session
 

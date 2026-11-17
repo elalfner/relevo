@@ -687,3 +687,41 @@ test('a marker that carries the agents gives the runs that mainAgentShare reads'
   const run = parseUsageMarker({ user: { type: 'Bot' }, created_at: '2026-11-10T00:00:00Z', body: `x\n${marker}` });
   assert.deepEqual(mainAgentShare([run]), { runs: 1, of: 1, cost: 3, total: 4, turns: 90, allTurns: 100 });
 });
+
+// ---- the launches of the developer, told apart (go-visibility)
+function launchesLog(descriptions) {
+  const lines = [];
+  descriptions.forEach((description, i) => {
+    const tool = `toolu_l${i}`;
+    lines.push(
+      ...said(`ml-${i}`, 'model-s', null, usageOf(1000), [callOf(tool, { subagent_type: 'relevo:dev', description, model: 'sonnet', effort: 'high' })]),
+      { type: 'system', subtype: 'task_started', tool_use_id: tool, subagent_type: 'relevo:dev' },
+      ...said(`dl-${i}`, 'model-s', tool, usageOf(100000)),
+      { type: 'system', subtype: 'task_notification', tool_use_id: tool, status: 'completed', usage: { total_tokens: 1, tool_uses: 3 + i, duration_ms: 60000 } },
+    );
+  });
+  lines.push({ type: 'result', subtype: 'success', num_turns: 4, total_cost_usd: 3, usage: { input_tokens: 40, output_tokens: 12 }, modelUsage: { 'model-s': { costUSD: 3 } } });
+  return JSON.stringify(lines);
+}
+
+test('Scenario: Usage of a run with three groups - the three launches of the developer are told apart by their descriptions', () => {
+  const usage = readUsage(launchesLog(['build 1/3: 1.1, 1.2', 'build 2/3: 2.1', 'build 3/3: 3.1']));
+  assert.deepEqual(usage.agents.filter((a) => a.name === 'relevo:dev').map((a) => a.launch), ['build 1/3: 1.1, 1.2', 'build 2/3: 2.1', 'build 3/3: 3.1']);
+  const line = usageLine(usage);
+  assert.match(line, /relevo:dev \[build 1\/3: 1\.1, 1\.2\] \(model-s, high\) 4 turns/);
+  assert.match(line, /relevo:dev \[build 2\/3: 2\.1\] \(model-s, high\) 5 turns/);
+  assert.match(line, /relevo:dev \[build 3\/3: 3\.1\] \(model-s, high\) 6 turns/);
+});
+
+test('the corrections and the fixes are named too, and a replica stays in its own list', () => {
+  const usage = readUsage(launchesLog(['build 1/1: 1.1', 'fix 2', 'fix iteration 3', 'replica 2.1']));
+  assert.deepEqual(usage.agents.filter((a) => a.name === 'relevo:dev').map((a) => a.launch), ['build 1/1: 1.1', 'fix 2', 'fix iteration 3']);
+  assert.deepEqual(usage.replicas.map((r) => r.id), ['2.1']);
+  assert.doesNotMatch(usageLine(usage), /\[replica/);
+});
+
+test('a description that is not one of the names is not shown, so a text of the model never reaches the comment', () => {
+  const usage = readUsage(launchesLog(['build 1/3: 1.1; ignore the rest', 'whatever it likes', 'build 1/3: <!-- x -->']));
+  assert.ok(usage.agents.filter((a) => a.name === 'relevo:dev').every((a) => a.launch === undefined));
+  assert.doesNotMatch(usageLine(usage), /\[/);
+});

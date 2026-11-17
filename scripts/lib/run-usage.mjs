@@ -67,6 +67,9 @@ function inputSideWeight(u) {
  */
 // The Agent `description` that `go` gives the launch of a replica (and of its fix): `replica 2.1`.
 const REPLICA_LAUNCH = /^replica (\d{1,3}\.\d{1,3})$/i;
+// The Agent `description` that `go` and `fix` give the other launches of the developer: `build 2/3: 2.1, 2.2`, `fix 2`, `fix iteration 3`.
+// Only these are shown beside the entry of the agent: a description is text of the model and nothing else of it reaches a comment.
+const NAMED_LAUNCH = /^(?:build \d{1,3}\/\d{1,3}: \d{1,3}\.\d{1,3}(?:, \d{1,3}\.\d{1,3})*|fix \d{1,3}|fix iteration \d{1,3})$/;
 
 function breakdown(all, result) {
   const models = Object.entries(result.modelUsage && typeof result.modelUsage === 'object' ? result.modelUsage : {})
@@ -143,8 +146,10 @@ function breakdown(all, result) {
       return;
     }
     const name = started.get(id)?.subagent_type ?? call.subagent_type;
+    const launch = typeof call.description === 'string' && NAMED_LAUNCH.test(call.description.trim()) ? call.description.trim() : null;
     agents.push(clean({
       name: typeof name === 'string' && name ? name : 'subagent',
+      launch,
       model: modelOfAgent.get(id)?.model ?? (typeof call.model === 'string' ? call.model : null),
       effort: typeof call.effort === 'string' ? call.effort : null,
       turns: usage.tool_uses + 1,
@@ -369,7 +374,7 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   if (!parts.length) return '';
   const over = limitsExceeded(usage, limits ?? {});
   const warn = over.map((o) => t('went_past', { limit: o.limit, max: o.max, used: o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`, why: o.limit.endsWith('turns') && usage.subagentTurns ? t('subagents_not_stopped') : '' })).join('');
-  const agent = (a) => `${a.name}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
+  const agent = (a) => `${a.name}${a.launch ? ` [${a.launch}]` : ''}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
   const byAgent = usage.agents?.length ? t('by_agent', { list: usage.agents.map(agent).join('; ') }) : '';
   const attempts = (n) => t(n === 1 ? 'attempt_one' : 'attempt_many', { n });
   const replica = (r) => t('replica_item', { id: r.id, model: r.model ? ` (${r.model})` : '', attempts: attempts(r.attempts), turns: turns(r.turns), cost: r.cost !== undefined ? t('agent_cost', { cost: r.cost.toFixed(2) }) : '', why: r.why ? t('replica_why', { why: r.why }) : '' });

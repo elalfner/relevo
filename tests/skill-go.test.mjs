@@ -627,3 +627,32 @@ test('Scenario: Two lenses contradict each other - qa-run.md does not retry and 
   assert.match(qaRun, /--previous spec=<file>/);
   assert.match(body, /\*\*The lenses contradict each other\*\*/);
 });
+
+// ---------- the launches of the developer, and the unmarked tasks of a group
+
+test('Scenario: Launch of a group - every launch of the developer is one Agent call in the foreground, never in the background, with the turn held', () => {
+  const section = body.slice(body.indexOf('## Subagents run in the foreground'), body.indexOf('## The budget of the run'));
+  assert.match(section, /Every launch of `relevo:dev`[^.]*(group|build)[^.]*(correction|fix)[^.]*is one Agent call in the foreground/);
+  assert.match(section, /Never start one in the background and never end your turn while one is running/);
+  const step4 = body.slice(body.indexOf('Then build the pending tasks one group at a time'));
+  assert.match(step4, /one Agent call in the foreground, never in the background, and your turn does not end while it runs/);
+});
+
+test('a group launch has the description `build <k>/<n>: <tasks>` and a correction one names its attempt', () => {
+  assert.match(body, /Agent `description` `build <k>\/<n>: <tasks>` \(for example `build 2\/3: 2\.1, 2\.2`/);
+  assert.match(body, /usage comment/);
+  assert.match(ref, /`description` `fix <attempt>` \(for example `fix 2`/);
+  // the replica description is unchanged
+  assert.match(body, /`description` `replica <task id>`/);
+});
+
+test('Scenario: Unmarked tasks - step 4 reads `unmarked`: one relaunch when the report has no open question, `tasks left unfinished` at that group when it stays unmarked', () => {
+  const step4 = body.slice(body.indexOf('When a group finishes, record what the agent used'), body.indexOf('**A replicated build.**'));
+  assert.match(step4, /`unmarked`/);
+  assert.match(step4, /not empty and its report has no open question[^.]*launch `relevo:dev` once more[^.]*those tasks alone/);
+  assert.match(step4, /the checkpoint of the same group again/);
+  assert.match(step4, /still not empty[^.]*failure path with the reason `tasks left unfinished`[^.]*(do not build|no later group|without building)/i);
+  assert.match(step4, /open question/);
+  // the check after the last group stays
+  assert.match(body, /After the last group run the instructions command again: if `progress\.remaining` is above 0, take the failure path with the reason `tasks left unfinished`/);
+});
