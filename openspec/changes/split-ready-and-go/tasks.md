@@ -3,7 +3,8 @@
 ## 1. The spike of the approval check
 
 - [ ] 1.1 In a sandbox repository, read `lastEditedAt` of an issue with `gh api graphql` using the token of a workflow run (`github.token`) and using a person's `gh`; verify both return a time after a body edit and `null` for an issue never edited
-- [ ] 1.2 On the same issue, apply a label, add a comment and change the milestone; verify `lastEditedAt` does not move, and that a title change adds a `renamed` event with its time to the REST timeline
+  - Done with the token of a workflow run (sandbox, run 44120874668; `docs/pilot-findings.md`). Left: the same query with a person's `gh`, which a cloud session cannot send (GraphQL is blocked).
+- [x] 1.2 On the same issue, apply a label, add a comment and change the milestone; verify `lastEditedAt` does not move, and that a title change adds a `renamed` event with its time to the REST timeline
 - [ ] 1.3 Write the three results in `docs/pilot-findings.md` with the commands used; if any of them is not as `design.md` D6 assumes, stop here and revise the design before any other task
 
 ## 2. The label set

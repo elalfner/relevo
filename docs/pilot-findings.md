@@ -551,3 +551,30 @@ Date: 2026-11-03. A project outside the repository with `relevo.yml` (one Supaba
 - **Not tried**: a model following the skill, a stack the review did not start itself being left running, and a remote Docker daemon.
 
 - **Existing failure, not from this change**: `playwrightFacts resolves Playwright from the folder of the platform, not from where the command runs` fails in `tests/doctor.test.mjs` before and after this change.
+
+## The approval check: what `lastEditedAt` and the timeline say (tasks 1.1–1.3 of `split-ready-and-go`)
+
+Date: 2026-11-17. Repository: the sandbox (`elalfner/relevo-sandbox`). The workflow `spike-last-edited.yml` ran on a push to its own branch `feature/spike-last-edited` (run 44120874668), with the token of the run (`github.token`, `permissions: issues: write, contents: read`). It created two issues (#156, #157), changed them with `gh issue edit`, `gh issue comment` and `gh api -X PATCH`, read `lastEditedAt` after each step and closed them. The query, the same one `readLastEdited` sends:
+
+```bash
+gh api graphql -f query='query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){issue(number:$i){lastEditedAt updatedAt}}}' -F o=elalfner -F n=relevo-sandbox -F i=<n>
+```
+
+| Step | `lastEditedAt` | `updatedAt` |
+|---|---|---|
+| issue just created | `null` | 16:00:56 |
+| body edited | 16:01:00 | 16:01:00 |
+| label, comment and milestone added | 16:01:00 (unchanged) | 16:01:09 |
+| title changed | 16:01:00 (unchanged) | 16:01:15 |
+
+The REST timeline of #156 had `labeled` at 16:01:07, `milestoned` at 16:01:09 and `renamed` (`from`, `to`) at 16:01:15.
+
+Results, against `design.md` D6:
+
+1. **The token of a workflow run reads `lastEditedAt`**: `null` for an issue never edited, the time of the edit after a body edit. As assumed.
+2. **A label, a comment and a milestone do not move it, and neither does a title change**; a title change adds a `renamed` event with its time to the REST timeline. As assumed: the title is read from that event, the body from `lastEditedAt`. `updatedAt` moves on everything and is not usable.
+3. **A failure is told apart from "not edited"**: an issue that does not exist answers `issue: null` with a `NOT_FOUND` error and `gh` exits 1. `readLastEdited` returns a failure for both.
+
+One boundary the design did not state: **`gh issue edit <n> --body ... --add-label ...` in one command (#157) gives a `lastEditedAt` and a `labeled` time in the same second** (16:01:26 both). The planner compares with "later than", so that edit is not taken for an edit after the approval; a test now fixes that. Done as two commands, body then label, the label comes after the edit (16:01:33 and 16:01:34), which is what `issue` does.
+
+Not done here: **the same query with a person's `gh`** (the local build). This session cannot use GitHub's GraphQL API at all (HTTP 403 for every GraphQL query), so a person has to run the query above on their machine, against an issue edited once, and add the result here.

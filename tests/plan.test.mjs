@@ -1085,3 +1085,9 @@ test('a local build plans only the issue it was given', () => {
   const r = local([issue({ number: 7, labels: ['relevo:ready'] }), approvedOnly()], 42);
   assert.deepEqual(r.decisions.map((d) => d.issue), [42]);
 });
+
+test('an edit in the same second as the approval is not an edit after it (one gh issue edit with --body and --add-label, spike of 2026-11-17)', () => {
+  const d = checked(approved({ ready_at: '2026-11-17T16:01:26Z' }), { ok: true, at: '2026-11-17T16:01:26Z' });
+  assert.equal(d.action, 'start');
+  assert.equal(checked(approved({ ready_at: '2026-11-17T16:01:26Z' }), { ok: true, at: '2026-11-17T16:01:27Z' }).action, 'unapproved');
+});
