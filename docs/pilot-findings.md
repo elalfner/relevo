@@ -603,6 +603,22 @@ The timeline of #161 has `ready` (16:53:43), then `building` and the removal of 
 
 12.2d is not shown, and should be repeated with issues that name different files, with the cloud build of one issue still running while the local build is on.
 
+### Task 12.2 again, with the branch in the local build too (issues #164–#167)
+
+The first local build (B) used the Relevo installed in the sandbox, so 12.2c and 12.2d were repeated the same day with a `claude` wrapper on the `PATH` that adds `--plugin-dir` for the clone of the branch: the session of `go-local.mjs` then ran the scripts of the branch (its transcript has no 0.14.4 path and the claim was `go-plan.mjs --only 166 --place local --apply --claim`). The cloud used `RELEVO_VERSION: '0.16.0-rc.1'` of the workflow. Four issues that name four different files, so nothing waits for a shared file: P (#164, `test/greeting_test.dart`), Q (#165, `test/build_number_test.dart`), R (#166, `test/widget_test.dart`) and S (#167, a new `test/tooltip_test.dart`).
+
+- **Local build carries `building` and `local`, and starts no run:** R (#166) had `ready` at 17:36:29, then at 17:37:24 `building` and `local` in the same second, and at 17:40:32 `built` with both removed. The runs for R (44138858246, 44139030675, 44139031760, 44139584949) were all `skipped`; none built it. As expected.
+- **A third issue is not queued behind the local build:** with P and Q building in the cloud (runs 44138911689 and 44138916876) and R building in local, `ready` then `go` on S at 17:38:51 started run 44139285146 at once (`building`, no `queued`, no comment of the queue). With `limits.concurrent_agents` at 3, a local build counted as a cloud one would have made 3 of 3 and queued S. So the local build takes no place. As expected. (The case was not "queued behind a cloud build", which would need `concurrent_agents` at 1.)
+
+| Issue | Where | Turns | Cost |
+|---|---|---|---|
+| P #164 | cloud, run 44138911689 | 31 | $1.02 |
+| Q #165 | cloud, run 44138916876 | 29 | $0.85 |
+| R #166 | local | 27 | $1.56 |
+| S #167 | cloud, run 44139285146 | 28 | $0.89 |
+
+The repeat cost $4.32. With it, 12.2 behaves as expected in the four steps; the first local build (B above) does not count for 12.2c.
+
 ### Task 12.3
 
 The first text of D named `lib/main.dart` like the others, so it was rewritten before the test to change only `test/greeting_test.dart` (no overlap).
@@ -627,4 +643,4 @@ Total $4.72, against a budget of $5 per run (`run_max_cost`).
 
 ### Result
 
-12.2 is not shown: the local build ran with the installed plugin (0.14.4) instead of the branch, so `local` was never tested, and the case of C was not shown either. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2 and 12.3 are left unmarked in `tasks.md`.
+12.2 behaves as expected once the local build runs the branch (the repeat above); the first attempt did not test it. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2 and 12.4 are marked in `tasks.md`; 12.3 is left unmarked on the decision of the person running the test.
