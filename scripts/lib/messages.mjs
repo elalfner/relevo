@@ -17,7 +17,7 @@ const MAX_VALUE_LENGTH = 400;
 
 const REQUIRED = {
   built: ['assignee', 'issue', 'title', 'tasks_done', 'tasks_total', 'branch', 'scenarios'],
-  qa_failed: ['assignee', 'issue', 'title', 'finding', 'branch'],
+  build_failed: ['assignee', 'issue', 'title', 'finding', 'branch'],
   toolchain_missing: ['assignee', 'issue', 'title', 'tools', 'platform'],
   installed_missing: ['assignee', 'issue', 'title', 'paths', 'platform'],
   needs_spec: ['spec_writer', 'issue', 'title', 'missing'],
@@ -54,9 +54,9 @@ const REQUIRED = {
 // The lifecycle state whose next step each message shows (see next-step.mjs, the only place that knows the commands).
 const STATE_OF = {
   built: 'built',
-  qa_failed: 'qa-failed',
-  toolchain_missing: 'qa-failed',
-  installed_missing: 'qa-failed',
+  build_failed: 'build-failed',
+  toolchain_missing: 'build-failed',
+  installed_missing: 'build-failed',
   needs_spec: 'needs-spec',
   changes_requested: 'changes-requested',
   approved: 'pr-open',
@@ -84,7 +84,7 @@ export const CATALOG = {
       '{{checklist}}',
       '{{qa_notes_marker}}',
     ],
-    qa_failed: [
+    build_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" {{headline}}',
       '',
       'What happened: {{happened}}',
@@ -281,7 +281,7 @@ export const CATALOG = {
       '{{checklist}}',
       '{{qa_notes_marker}}',
     ],
-    qa_failed: [
+    build_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" {{headline}}',
       '',
       'Qué pasó: {{happened}}',
@@ -565,9 +565,9 @@ function tasksInfo(values, es) {
   return es ? ` (${values.tasks_done} de ${values.tasks_total} tareas hechas)` : ` (${values.tasks_done} of ${values.tasks_total} tasks done)`;
 }
 
-// The next step of a qa_failed message when no recovery is given: what the branch holds decides it. When nothing was pushed
+// The next step of a build_failed message when no recovery is given: what the branch holds decides it. When nothing was pushed
 // (`unsafe`, `not_pushed` or the older `pushed: false`) there is no branch to fix, so the issue is built again.
-function qaFailedReason(values) {
+function buildFailedReason(values) {
   if (values.branch_state === 'kept') return 'kept';
   const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
   return state === 'unsafe' || state === 'not_pushed' ? 'rebuild' : 'fix';
@@ -597,7 +597,7 @@ function shorten(value) {
 
 const FINDING_CLASSES = ['fixable', 'input', 'spec', 'policy'];
 
-// The finding classes that the developer agent cannot correct are also the reasons of the next step of `qa-failed`.
+// The finding classes that the developer agent cannot correct are also the reasons of the next step of `build-failed`.
 // Only work that was kept on the branch has a next step of its own for them.
 function classReason(values) {
   return values.branch_state === 'kept' && ['input', 'spec', 'policy'].includes(values.finding_class) ? values.finding_class : null;
@@ -606,7 +606,7 @@ function classReason(values) {
 // One line that says what kind of finding stopped the run, when the developer agent could not correct it.
 function classLine(values, es) {
   if (!present(values.finding_class)) return '';
-  if (!FINDING_CLASSES.includes(values.finding_class)) throw new Error(`message "qa_failed" has an unknown finding_class "${values.finding_class}"`);
+  if (!FINDING_CLASSES.includes(values.finding_class)) throw new Error(`message "build_failed" has an unknown finding_class "${values.finding_class}"`);
   if (values.finding_class === 'fixable') return '';
   const skipped = values.retries_skipped === true;
   const what = {
@@ -624,7 +624,7 @@ const CONTRADICTION_KEYS = ['contradiction_first_lens', 'contradiction_first_fin
 function contradicted(values) {
   const given = CONTRADICTION_KEYS.filter((k) => present(values[k]));
   if (given.length === 0) return false;
-  if (given.length !== CONTRADICTION_KEYS.length) throw new Error(`message "qa_failed" needs all of ${CONTRADICTION_KEYS.join(', ')} or none`);
+  if (given.length !== CONTRADICTION_KEYS.length) throw new Error(`message "build_failed" needs all of ${CONTRADICTION_KEYS.join(', ')} or none`);
   return true;
 }
 const quoteOf = (text) => `“${String(text).replace(/\s+/g, ' ').trim().slice(0, 300)}”`;
@@ -639,7 +639,7 @@ function contradictionLine(values, es) {
 
 // The comments of a run that ended without telling anyone. They were written inline in the go workflow, which is why a repository
 // with `language: es` got English: they now come from here. The labels and commands in the text are the same in both languages.
-const RETRY = '`relevo:qa-failed`';
+const RETRY = '`relevo:build-failed`';
 const mention = (values) => (present(values.assignee) ? `@${values.assignee} ` : '');
 
 function runFailedEarly(values, es) {
@@ -680,8 +680,8 @@ function runNoOutcome(values, es) {
         ? { en: 'resume from the work kept on the branch (no checkpoint was saved yet)', es: 'reanudar desde el trabajo guardado en la rama (todavía no hay ningún checkpoint)' }
         : { en: 'resume from the last point saved on the branch', es: 'reanudar desde el último punto guardado en la rama' };
     const next = own
-      ? (es ? ' La ejecución no estaba en la rama del issue, así que el trabajo está en una rama aparte: cámbiate a ella y revísalo, o quita `relevo:qa-failed` y pon `relevo:ready` otra vez para construir desde el principio:' : ' The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or remove `relevo:qa-failed` and apply `relevo:ready` again to build from the start:')
-      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o quita \`relevo:qa-failed\` y pon \`relevo:ready\` otra vez para ${resume.es}. Si el texto del issue cambió o una persona hizo un commit en la rama, la ejecución se detiene con \`branch already exists\`; borra la rama remota para empezar de cero:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or remove \`relevo:qa-failed\` and apply \`relevo:ready\` again to ${resume.en}. If the text of the issue changed or a person committed to the branch, the run stops with \`branch already exists\`; delete the remote branch to start over:`);
+      ? (es ? ' La ejecución no estaba en la rama del issue, así que el trabajo está en una rama aparte: cámbiate a ella y revísalo, o quita `relevo:build-failed` y pon `relevo:ready` otra vez para construir desde el principio:' : ' The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or remove `relevo:build-failed` and apply `relevo:ready` again to build from the start:')
+      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o quita \`relevo:build-failed\` y pon \`relevo:ready\` otra vez para ${resume.es}. Si el texto del issue cambió o una persona hizo un commit en la rama, la ejecución se detiene con \`branch already exists\`; borra la rama remota para empezar de cero:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or remove \`relevo:build-failed\` and apply \`relevo:ready\` again to ${resume.en}. If the text of the issue changed or a person committed to the branch, the run stops with \`branch already exists\`; delete the remote branch to start over:`);
     return es
       ? `${mention(values)}La ejecución se detuvo antes de terminar (${why}). El trabajo hecho antes de detenerse se guardó en la rama \`${values.rescue_branch}\` como un commit de trabajo en curso.${next} ${values.run}`
       : `${mention(values)}The run stopped before it finished (${why}). The work done before the stop was kept on the branch \`${values.rescue_branch}\` as a work-in-progress commit.${next} ${values.run}`;
@@ -700,8 +700,8 @@ function runNoOutcome(values, es) {
   // A usage limit, a quota or an empty credit balance is not a failure of the code: say so.
   if (values.situation === 'usage_limit') {
     return es
-      ? `${mention(values)}La ejecución se detuvo porque se alcanzó el límite de uso (o el crédito) de la cuenta del modelo, así que no se construyó nada. El código no tiene ningún problema. Vuelve a poner \`relevo:ready\` al issue más tarde, después de quitar \`relevo:qa-failed\`: ${values.run}${kept}`
-      : `${mention(values)}The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:qa-failed\`: ${values.run}${kept}`;
+      ? `${mention(values)}La ejecución se detuvo porque se alcanzó el límite de uso (o el crédito) de la cuenta del modelo, así que no se construyó nada. El código no tiene ningún problema. Vuelve a poner \`relevo:ready\` al issue más tarde, después de quitar \`relevo:build-failed\`: ${values.run}${kept}`
+      : `${mention(values)}The run stopped because the usage limit (or the credit) of the model account was reached, so nothing was built. Nothing is wrong with the code. Label the issue \`relevo:ready\` again later, after removing \`relevo:build-failed\`: ${values.run}${kept}`;
   }
   if (!present(values.job_status)) throw new Error('message "run_no_outcome" needs "job_status" when the run ended without a result');
   const cutnote = values.cut === 'turns'
@@ -807,28 +807,28 @@ export function renderMessage(kind, data = {}, language = 'en') {
   if (kind === 'run_no_outcome') values.body = runNoOutcome(values, es);
   if (kind === 'usage_limit_retry') values.body = usageLimitRetry(values, es);
 
-  // The next step comes from one table. needs-spec depends on why the issue came back, qa-failed on what the branch holds.
+  // The next step comes from one table. needs-spec depends on why the issue came back, build-failed on what the branch holds.
   if (STATE_OF[kind]) {
-    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'qa_failed' ? values.recovery ?? classReason(values) ?? policyStop(values)?.next ?? qaFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'build_failed' ? values.recovery ?? classReason(values) ?? policyStop(values)?.next ?? buildFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
     const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
     if (!present(values.command) && step.command) values.command = step.command;
     if (kind === 'toolchain_missing' || kind === 'installed_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
-    if (kind === 'qa_failed') {
+    if (kind === 'build_failed') {
       // For kept work the next step says what the command does and the other way forward; the others are the bare command.
       const kept = ['kept', 'input', 'spec', 'policy', 'protected'].includes(step.reason);
       values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}${kept ? ` (${step.hint})` : ''}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
     }
   }
-  if (kind === 'qa_failed') {
+  if (kind === 'build_failed') {
     values.class_line = classLine(values, es);
     values.contradiction_line = contradictionLine(values, es);
     const location = present(values.file) ? `${values.file}${present(values.line) ? `:${values.line}` : ''}` : '';
     values.location_suffix = location ? ` (${location})` : '';
     // `pushed: false` is the older way to say that the branch was not pushed because of a credential or a marker.
     const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
-    if (!['pushed', 'unsafe', 'not_pushed', 'existing', 'kept'].includes(state)) throw new Error(`message "qa_failed" has an unknown branch_state "${state}"`);
-    if (state === 'existing' && !present(values.recovery)) throw new Error('message "qa_failed" needs "recovery" when the branch already existed');
+    if (!['pushed', 'unsafe', 'not_pushed', 'existing', 'kept'].includes(state)) throw new Error(`message "build_failed" has an unknown branch_state "${state}"`);
+    if (state === 'existing' && !present(values.recovery)) throw new Error('message "build_failed" needs "recovery" when the branch already existed');
     // A run that stopped at a limit was not judged by QA: the text says so instead of saying that QA rejected it.
     const stoppedAtLimit = values.reason === 'run limit reached';
     values.headline = stopsNotQa(values) ? (es ? 'se detuvo ❌' : 'stopped ❌') : (es ? 'no pasó QA ❌' : 'failed QA ❌');

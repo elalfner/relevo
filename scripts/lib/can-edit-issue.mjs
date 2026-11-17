@@ -11,7 +11,7 @@ const REASON = {
   built: 'a branch already exists and the text would no longer match what was built',
   'in-review': 'it is being reviewed against the current text',
   'pr-open': 'a pull request already exists for the current text',
-  'qa-failed': 'a branch already exists and the text would no longer match what was built',
+  'build-failed': 'a branch already exists and the text would no longer match what was built',
   'changes-requested': 'a branch already exists and the text would no longer match what was built',
   'needs-reviewer': 'it is built and waiting for a reviewer',
   ship: 'its pull request is being merged',

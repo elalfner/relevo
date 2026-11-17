@@ -60,21 +60,21 @@ test('Scenario: The safe commit refuses the work - nothing is pushed', () => {
 
 test('the comment for kept work says the code was not approved, what to do, and keeps the next step', () => {
   const data = { assignee: 'a', issue: 37, title: 'T', finding: 'tests could not run', branch: 'feature/37-x', branch_state: 'kept', tasks_done: 2, tasks_total: 3, log_url: 'u' };
-  const en = renderMessage('qa_failed', data);
+  const en = renderMessage('build_failed', data);
   assert.match(en, /holds the work that QA did not approve \(2 of 3 tasks done\)/);
   assert.match(en, /kept as work in progress so nothing is lost/);
   assert.match(en, /no pull request was opened/);
   assert.match(en, /Your next step: \/relevo:fix 37 \(.*\/relevo:think and then \/relevo:issue 37\)/);
-  const es = renderMessage('qa_failed', data, 'es');
+  const es = renderMessage('build_failed', data, 'es');
   assert.match(es, /tiene el trabajo que QA no aprobó \(2 de 3 tareas hechas\)/);
   assert.match(es, /Tu siguiente paso: \/relevo:fix 37 \(.*\/relevo:think y luego \/relevo:issue 37\)/);
-  assert.doesNotMatch(renderMessage('qa_failed', { ...data, tasks_done: undefined }), /tasks done/, 'without the numbers the count is left out');
-  assert.match(renderMessage('qa_failed', { ...data, branch_state: 'pushed' }), /Your next step: \/relevo:fix 37$/m, 'the other states keep the bare command');
-  assert.equal(nextStep({ state: 'qa-failed', reason: 'kept', issue: 37 }).command, '/relevo:fix 37');
+  assert.doesNotMatch(renderMessage('build_failed', { ...data, tasks_done: undefined }), /tasks done/, 'without the numbers the count is left out');
+  assert.match(renderMessage('build_failed', { ...data, branch_state: 'pushed' }), /Your next step: \/relevo:fix 37$/m, 'the other states keep the bare command');
+  assert.equal(nextStep({ state: 'build-failed', reason: 'kept', issue: 37 }).command, '/relevo:fix 37');
 });
 
 test('an unknown branch state is still refused', () => {
-  assert.throws(() => renderMessage('qa_failed', { assignee: 'a', issue: 1, title: 'T', finding: 'f', branch: 'b', branch_state: 'lost' }), /unknown branch_state/);
+  assert.throws(() => renderMessage('build_failed', { assignee: 'a', issue: 1, title: 'T', finding: 'f', branch: 'b', branch_state: 'lost' }), /unknown branch_state/);
 });
 
 const comments = [
@@ -122,7 +122,7 @@ test('the script prints the context through a fake gh, and a failed read still p
 });
 
 test('Scenario: A restricted file in the diff - the failure comment names the path and the reason, says nothing was pushed, and the work is not kept', () => {
-  const body = renderMessage('qa_failed', { assignee: 'ana', issue: 37, title: 'T', finding: 'config/private.pem', branch: 'feature/37-t', reason: 'restricted file in the diff', branch_state: 'unsafe' });
+  const body = renderMessage('build_failed', { assignee: 'ana', issue: 37, title: 'T', finding: 'config/private.pem', branch: 'feature/37-t', reason: 'restricted file in the diff', branch_state: 'unsafe' });
   assert.match(body, /\(restricted file in the diff\)/);
   assert.match(body, /Finding: config\/private\.pem/);
   assert.match(body, /was NOT pushed/);
@@ -175,7 +175,7 @@ test('Scenario: fix still finds the comment - a stop that is not a QA rejection 
   assert.equal(failureContext({ comments: [{ body: 'This run stopped ❌ for a person' }], subject: '' }).found, false, 'a line that only looks like it is not a failure comment');
 });
 
-test('every title that qa_failed can produce is found by the reader of fix, so a title cannot change without it', () => {
+test('every title that build_failed can produce is found by the reader of fix, so a title cannot change without it', () => {
   const base = { assignee: 'a', issue: 37, title: 'T', finding: 'the finding', branch: 'feature/37-t' };
   const cases = [
     {},
@@ -188,9 +188,17 @@ test('every title that qa_failed can produce is found by the reader of fix, so a
     { reason: 'a reason added to the skill later' },
   ];
   ['en', 'es'].forEach((language) => cases.forEach((extra) => {
-    const body = renderMessage('qa_failed', { ...base, ...extra }, language);
+    const body = renderMessage('build_failed', { ...base, ...extra }, language);
     const found = failureContext({ comments: [{ body }], subject: '' });
     assert.equal(found.found, true, `${language} ${JSON.stringify(extra)}: ${body.split('\n')[0]}`);
     assert.match(found.finding, /^the finding( \(CLAUDE\.md\))?$/, 'the finding is read, with its location when the comment has one');
   }));
+});
+
+test('Scenario: an issue that carries relevo:build-failed - the work of the failed build is recognised by the subject of its commit, not by the label', () => {
+  const body = renderMessage('build_failed', { assignee: 'dev', issue: 37, title: 'x', branch: 'issue-37', pushed: true, kept: true, finding: 'tests could not run' });
+  assert.doesNotMatch(body, /qa-failed/);
+  const r = failureContext({ comments: [{ body }], subject: wipSubject(37), issue: 37 });
+  assert.equal(r.kept, true);
+  assert.equal(r.found, true);
 });

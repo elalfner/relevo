@@ -77,13 +77,13 @@ test('the comment names the tools, says nothing was built and no turns were spen
   const en = renderMessage('toolchain_missing', data);
   assert.match(en, /^@ana #41 "Show a message" was not built: the runner has no flutter/);
   assert.match(en, /Nothing was built and no model turns were spent\./);
-  assert.match(en, /Your next step: install the toolchain in the build job of relevo-go\.yml .*remove relevo:qa-failed and label the issue relevo:ready again\./);
+  assert.match(en, /Your next step: install the toolchain in the build job of relevo-go\.yml .*remove relevo:build-failed and label the issue relevo:ready again\./);
   const es = renderMessage('toolchain_missing', data, 'es');
   assert.match(es, /no se construyó: el runner no tiene flutter/);
   assert.match(es, /no se gastó ningún turno del modelo/);
   assert.match(es, /Tu siguiente paso: instala el toolchain en el job de build de relevo-go\.yml/);
   assert.throws(() => renderMessage('toolchain_missing', { assignee: 'ana', issue: 41, title: 'T', platform: 'app' }), /tools/);
-  assert.equal(nextStep({ state: 'qa-failed', reason: 'toolchain', issue: 41 }).command, null);
+  assert.equal(nextStep({ state: 'build-failed', reason: 'toolchain', issue: 41 }).command, null);
 });
 
 test('Scenario: A runner without jq - the script exits 1 and names jq even though the stack tools are there', () => {

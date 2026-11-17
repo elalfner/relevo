@@ -18,7 +18,7 @@ An issue is always in one state, shown by a label, and each state has one next s
 | `in-review` | `/relevo:review <n>` to continue; if something fails, `/relevo:fix <n>` | the assignee |
 | `pr-open` | `/relevo:ship <n>`, after someone other than the author approves on GitHub; or apply `relevo:ship` to the issue | the approver |
 | `needs-spec` | `/relevo:issue <n>`; if the question needs exploring, `/relevo:think #<n>` first | the spec writer |
-| `qa-failed` | `/relevo:fix <n>`; if the branch has only the specification, delete it and apply `ready` again; if QA found something that only a person can supply or decide, `/relevo:issue <n>` after that | the assignee |
+| `build-failed` | `/relevo:fix <n>`; if the branch has only the specification, delete it and apply `ready` again; if QA found something that only a person can supply or decide, `/relevo:issue <n>` after that | the assignee |
 | `changes-requested` | `/relevo:fix <n>` | the author |
 | `needs-reviewer` | none: assign a reviewer, or ask someone to take it | the spec writer |
 | `ship` | none: the ship workflow is merging it; if it stops, its comment says why and the label is removed | nobody |
@@ -36,9 +36,9 @@ Do not edit the code yourself. Write what went wrong on the checklist line (`fai
 
 When a reviewer requested changes on the pull request, the issue becomes `changes-requested` and the author is told. Run `/relevo:fix <n> <what the reviewer asked>`. When it finishes, the issue returns to `pr-open` and the reviewer is asked to look again.
 
-### QA failed
+### Failed build
 
-The issue becomes `qa-failed` and the assignee is told, with the first finding. When the cloud build was rejected after the retries (or left tasks unfinished), the work is not lost: the branch holds it as a commit `wip: rejected by QA`, and the comment says it is code that QA did not approve. The same happens when a run stops at a limit (the turns of the subagents, the minutes of `limits.run_max_minutes`) or is cut by the runner or the job timeout: the work is on the branch as `wip: stopped by limit`, the comment says it was kept, and `/relevo:fix <n>` verifies it and finishes the tasks that are left. A build also leaves a checkpoint after each section of tasks (`wip: checkpoint k/n`), so a cut loses at most one section; if you apply `ready` again with the same issue text and nobody has committed on the branch, the cloud run resumes from it and builds only what is pending. Run `/relevo:fix <n>`: it takes the finding from that comment as the defect, so you do not have to describe it, and runs the checks QA could not run. To rethink the issue instead, use `/relevo:think` and then `/relevo:issue <n>`. If the comment instead says the build was not built because the runner has no tool (for example `flutter`), the build job stopped before the agent and no model turn was spent: enable the toolchain step in `relevo-go.yml`, remove `relevo:qa-failed` and apply `ready` again. If the safe commit refused the work (a protected path, a restricted file, a file outside the platform, a marker or a possible credential), nothing is pushed and the comment says so; there is no branch to fix then, so resolve the cause the comment names, remove `relevo:qa-failed` and apply `ready` again. If the branch has code that you wrote, run `/relevo:fix <n>` and describe what QA found. If it has only the specification (the build failed before any code), delete the remote branch and apply `ready` again.
+The issue becomes `build-failed` and the assignee is told, with the first finding. When the cloud build was rejected after the retries (or left tasks unfinished), the work is not lost: the branch holds it as a commit `wip: rejected by QA`, and the comment says it is code that QA did not approve. The same happens when a run stops at a limit (the turns of the subagents, the minutes of `limits.run_max_minutes`) or is cut by the runner or the job timeout: the work is on the branch as `wip: stopped by limit`, the comment says it was kept, and `/relevo:fix <n>` verifies it and finishes the tasks that are left. A build also leaves a checkpoint after each section of tasks (`wip: checkpoint k/n`), so a cut loses at most one section; if you apply `ready` again with the same issue text and nobody has committed on the branch, the cloud run resumes from it and builds only what is pending. Run `/relevo:fix <n>`: it takes the finding from that comment as the defect, so you do not have to describe it, and runs the checks QA could not run. To rethink the issue instead, use `/relevo:think` and then `/relevo:issue <n>`. If the comment instead says the build was not built because the runner has no tool (for example `flutter`), the build job stopped before the agent and no model turn was spent: enable the toolchain step in `relevo-go.yml`, remove `relevo:build-failed` and apply `ready` again. If the safe commit refused the work (a protected path, a restricted file, a file outside the platform, a marker or a possible credential), nothing is pushed and the comment says so; there is no branch to fix then, so resolve the cause the comment names, remove `relevo:build-failed` and apply `ready` again. If the branch has code that you wrote, run `/relevo:fix <n>` and describe what QA found. If it has only the specification (the build failed before any code), delete the remote branch and apply `ready` again.
 
 ### Who rejected it: the gate or one of the reviewers
 
@@ -60,7 +60,7 @@ When the gate is red the developer agent fixes it before any reviewer runs, and 
 
 ### The quota ran out
 
-A cloud run that stops at a usage limit or an empty credit says so in the last comment, and the issue goes back to `queued` by itself: the comment says when it will retry (after the reset time that the log of the run gives, in UTC, or, when the log does not give one, after a back-off of 30 minutes, then 2 hours, then 5 hours, and it says that the time is a guess). The retry continues from the work that was kept on the branch, starts alone (the other waiting issues follow when it ends) and is made at most 3 times; after that the issue is `qa-failed` and the comment asks you to look, and you can apply `ready` again or build it on your machine with `/relevo:go <n> --local`. Applying `ready` yourself starts it at once. With a subscription the quota is shared with the interactive use of the same account, so a busy day can use it up.
+A cloud run that stops at a usage limit or an empty credit says so in the last comment, and the issue goes back to `queued` by itself: the comment says when it will retry (after the reset time that the log of the run gives, in UTC, or, when the log does not give one, after a back-off of 30 minutes, then 2 hours, then 5 hours, and it says that the time is a guess). The retry continues from the work that was kept on the branch, starts alone (the other waiting issues follow when it ends) and is made at most 3 times; after that the issue is `build-failed` and the comment asks you to look, and you can apply `ready` again or build it on your machine with `/relevo:go <n> --local`. Applying `ready` yourself starts it at once. With a subscription the quota is shared with the interactive use of the same account, so a busy day can use it up.
 
 ### I do not know the correct behaviour
 
@@ -92,7 +92,7 @@ The wait is bounded by `limits.shared_file_wait_hours` (24 by default). After th
 
 `/relevo:review <n>` first merges the base branch into the branch. When files conflict, the conflicts inside the paths the change may touch are handed to the developer agent in its integrate mode; QA then checks the result, and only after that is the merge committed. A conflict in any other file, or one that QA does not accept, ends with the merge aborted and nothing changed, and the review tells you which files to resolve yourself. `/relevo:status` shows, for a branch that has fallen behind the base, whether the merge would conflict and in which files.
 
-When the build ends, `go` also merges the base branch into the branch before it hands off, if the base moved, and runs the validation gate again. A conflict in a generated file (`integration.generated`) is resolved by running `integration.regenerate`; a conflict in any other file ends in `relevo:qa-failed` with the files named and the branch pushed without the merge, and `/relevo:fix <n>` is the way forward.
+When the build ends, `go` also merges the base branch into the branch before it hands off, if the base moved, and runs the validation gate again. A conflict in a generated file (`integration.generated`) is resolved by running `integration.regenerate`; a conflict in any other file ends in `relevo:build-failed` with the files named and the branch pushed without the merge, and `/relevo:fix <n>` is the way forward.
 
 ## How to read the check of a preview
 
@@ -122,7 +122,7 @@ If the machine has no browser automation, nothing was checked and `think` says s
 
 - With an API key, `limits.run_max_cost` is a real ceiling on spending; with a subscription it is only notional and the controls are `limits.run_max_turns` and a low `limits.concurrent_agents`.
 - Every cloud run leaves a comment with its turns, cost and tokens when the log has them.
-- A run that reaches its turn or cost limit stops and the issue is `qa-failed` with the reason.
+- A run that reaches its turn or cost limit stops and the issue is `build-failed` with the reason.
 
 ## Public repositories
 

@@ -116,7 +116,7 @@ The script stages the paths, refuses protected paths and files outside the folde
 
 Use what `fix-state.mjs` printed in step 0.
 
-1. If `labels` is not empty, apply it with `gh issue edit` (it returns a `qa-failed` issue to `built`, and a `changes-requested` one to `pr-open`). In every other state the labels do not change.
+1. If `labels` is not empty, apply it with `gh issue edit` (it returns a `build-failed` issue to `built`, and a `changes-requested` one to `pr-open`). In every other state the labels do not change.
 2. Decide who is told:
    - `notify` is `assignee`: the issue's assignee, with the ask `Your next step: /relevo:review <issue>`.
    - `notify` is `reviewer`: find the pull request (`gh pr list --head <branch> --json number,reviews`), take the people who requested changes, re-request each one with `gh pr edit <number> --add-reviewer <login>`, and mention them with the ask `please re-review`.

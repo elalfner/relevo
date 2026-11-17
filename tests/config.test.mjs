@@ -623,3 +623,10 @@ test('Scenario: Full agent output setting - off by default, a boolean, and refus
   assert.equal(loadConfig(`trust: public\n${base}run:\n  full_output: false\n`).ok, true);
   assert.equal(loadConfig(`trust: private-team\n${base}run:\n  full_output: true\n`).ok, true);
 });
+
+test('Scenario: the former key qa-failed of labels is refused and the message names build-failed', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}labels:\n  qa-failed: x\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'labels.qa-failed' && /build-failed/.test(e.message)));
+  assert.equal(loadConfig(`${MINIMAL}labels:\n  build-failed: x\n`).ok, true);
+});

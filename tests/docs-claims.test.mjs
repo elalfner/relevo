@@ -119,8 +119,8 @@ test('Scenario: the life of an issue in the guide says what the hand-off message
 
 test('the guide answers the situations the plan listed, with the command of each', () => {
   const need = {
-    'docs/guide.md': [/review found/i, /asks for changes|requested changes/i, /QA fail|qa-failed/i, /quota|usage limit/i, /do not know|don't know/i, /fix or a new issue/i, /cloud, local or both/i, /public/i],
-    'docs/guide.es.md': [/revisi[oó]n encontr/i, /pidi[oó] cambios|pide cambios/i, /fall[oó] QA|qa-failed/i, /cuota|l[ií]mite de uso/i, /no s[eé]/i, /fix o un issue nuevo/i, /nube, local o ambos/i, /p[uú]blic/i],
+    'docs/guide.md': [/review found/i, /asks for changes|requested changes/i, /QA fail|build-failed/i, /quota|usage limit/i, /do not know|don't know/i, /fix or a new issue/i, /cloud, local or both/i, /public/i],
+    'docs/guide.es.md': [/revisi[oó]n encontr/i, /pidi[oó] cambios|pide cambios/i, /fall[oó] QA|build-failed/i, /cuota|l[ií]mite de uso/i, /no s[eé]/i, /fix o un issue nuevo/i, /nube, local o ambos/i, /p[uú]blic/i],
   };
   Object.entries(need).filter(([f]) => exists(f)).forEach(([f, patterns]) => {
     const page = read(f);
@@ -294,7 +294,7 @@ test('Get started says the build does not install the dependencies of a Vue or L
     assert.ok(step6.includes('npm ci --ignore-scripts'), `${file} step 6 names the Vue command`);
     assert.ok(step6.includes('composer install --no-scripts'), `${file} step 6 names the Laravel command`);
     assert.ok(step6.includes('relevo-go.yml'), file);
-    assert.match(text, /\| .*relevo:qa-failed.*(dependencies|dependencias)/, `${file} table row mentions the dependencies`);
+    assert.match(text, /\| .*relevo:build-failed.*(dependencies|dependencias)/, `${file} table row mentions the dependencies`);
   });
 });
 

@@ -64,23 +64,23 @@ test('Scenario: Subagent in the background - the unattended run keeps subagents 
   assert.match(workflow, /CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'/);
 });
 
-test('Scenario: Run ends without an outcome - a final step always runs and moves the issue to qa-failed with the run link', () => {
+test('Scenario: Run ends without an outcome - a final step always runs and moves the issue to build-failed with the run link', () => {
   assert.match(workflow, /if: always\(\)/);
   assert.ok(workflow.indexOf('anthropics/claude-code-action') < workflow.lastIndexOf('Report a run that ended without an outcome'), 'the build job reports after the agent step');
   assert.match(workflow, /grep -qxE 'relevo:\(ready\|building\)'/);
-  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
   assert.match(workflow, /RUN_URL: \$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/);
   assert.match(workflow, /gh issue comment "\$ISSUE"/);
 });
 
 test('Scenario: Run ends with an outcome - the final step leaves the issue alone', () => {
   const guard = workflow.indexOf("grep -qxE 'relevo:(ready|building)'");
-  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed', guard));
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:build-failed', guard));
 });
 
 test('the final step uses the default labels of the template', () => {
   const names = resolveLabelNames({});
-  for (const key of ['ready', 'building', 'qa-failed']) assert.ok(workflow.includes(names[key]), `${names[key]} must appear`);
+  for (const key of ['ready', 'building', 'build-failed']) assert.ok(workflow.includes(names[key]), `${names[key]} must appear`);
 });
 
 test('Scenario: Subscription - the template shows the token as a ready-to-use alternative to the API key', () => {
@@ -103,7 +103,7 @@ test('Scenario: Dispatched run fails before claiming the issue - it is reported,
 
 test('Scenario: Run ends normally with the issue queued - nothing is reported', () => {
   const guard = workflow.indexOf('JOB_STATUS" != "success"');
-  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed', guard));
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:build-failed', guard));
 });
 
 // ---------- two jobs: a light gate and a heavy build
@@ -278,7 +278,7 @@ test('Scenario: A runner without the toolchain - the check stops the job before 
   assert.doesNotMatch(text.replace(/^\s*#.*$/gm, ''), /\.relevo-plugin/, 'nothing is written in the workspace: the agent needs a clean tree');
   assert.match(text, /toolchain-check\.mjs" --platform "\$PLATFORM" --plugin-root "\$RUNNER_TEMP\/relevo"/);
   assert.match(text, /render-message\.mjs" toolchain_missing --config relevo\.yml/);
-  assert.match(text, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(text, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
   assert.match(text, /gh issue comment "\$ISSUE" --body "\$body"/);
   assert.match(text, /exit 1\s*$/, 'the job fails after it commented');
 });

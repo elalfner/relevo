@@ -56,13 +56,13 @@ test('every go-plan flag the skill uses is implemented', () => {
 
 test('every label the skill moves an issue to is a real label key', () => {
   const keys = [...body.matchAll(/label-change\.mjs --to ([\w-]+)/g)].map((m) => m[1]);
-  assert.ok(keys.includes('qa-failed') && keys.includes('built') && keys.includes('needs-spec'));
+  assert.ok(keys.includes('build-failed') && keys.includes('built') && keys.includes('needs-spec'));
   new Set(keys).forEach((k) => assert.ok(LABEL_KEYS.includes(k), `"${k}" is not a label key`));
 });
 
 test('every message the skill renders is a real message kind', () => {
   const kinds = [...body.matchAll(/render-message\.mjs (\w+)/g)].map((m) => m[1]);
-  assert.ok(kinds.includes('qa_failed') && kinds.includes('built') && kinds.includes('needs_spec'));
+  assert.ok(kinds.includes('build_failed') && kinds.includes('built') && kinds.includes('needs_spec'));
   new Set(kinds).forEach((k) => assert.ok(MESSAGE_KINDS.includes(k), `"${k}" is not a message kind`));
 });
 

@@ -132,7 +132,7 @@ jobs:
             exit 0
           fi
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed
           # The words come from the message catalog, in the language of relevo.yml. This step runs because a step before it failed,
           # possibly the one that installs the scripts: then the English sentence below is posted, so the issue is still told.
           body=""
@@ -140,7 +140,7 @@ jobs:
             body=$(ASSIGNEE="$assignee" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, job_status: e.JOB_STATUS, run: e.RUN_URL}))' \
               | node .relevo-plugin/scripts/render-message.mjs run_failed_early --config relevo.yml) || body=""
           fi
-          [ -n "$body" ] || body="${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          [ -n "$body" ] || body="${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:build-failed\` and apply \`relevo:ready\` again."
           gh issue comment "$ISSUE" --body "$body"
 
       # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
@@ -324,7 +324,7 @@ jobs:
               | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" installed_missing --config relevo.yml)
             what="The dependencies are not installed ($paths is missing), so nothing was built"
           fi
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed
           gh issue comment "$ISSUE" --body "$body"
           echo "::error::$what"
           exit 1
@@ -723,7 +723,7 @@ jobs:
             if [ -f "$candidate" ]; then render="$candidate"; break; fi
           done
           # A usage limit is not a failure of the code: the issue goes back to the queue with a retry time and one comment says when,
-          # instead of `qa-failed`. It is bounded (3 retries), it never retries when the work done was not kept (the rescue step says),
+          # instead of `build-failed`. It is bounded (3 retries), it never retries when the work done was not kept (the rescue step says),
           # and it needs the comment of the catalog (the hidden retry time is in it): without that comment the path below runs.
           retry_body=""
           limit_stop=""
@@ -744,7 +744,7 @@ jobs:
             echo "reported=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed
           # What happened decides the text: the rescue step kept the work, or the model account reached its usage limit (a
           # quota or an empty credit balance is not a failure of the code; after the retries were used up it says so), or the run
           # simply ended without a result.
@@ -766,7 +766,7 @@ jobs:
           if [ -z "$body" ]; then
             kept=""
             [ "$RESCUE_STATE" = "kept" ] && kept=" The work done before the stop was kept on the branch \`$RESCUE_BRANCH\`."
-            body="${assignee:+@$assignee }The run ended without an outcome (job status: $JOB_STATUS), so nothing was built or reported.$kept Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+            body="${assignee:+@$assignee }The run ended without an outcome (job status: $JOB_STATUS), so nothing was built or reported.$kept Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:build-failed\` and apply \`relevo:ready\` again."
           fi
           # Where to look: the summary of the run page holds the trimmed transcript (it needs read access to the repository).
           if [ "$TRANSCRIPT_SAVED" = "true" ]; then

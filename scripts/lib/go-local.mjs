@@ -23,7 +23,7 @@ export function planLocalRun({ issue, repoRoot, config, retry = false }) {
   const base = config.branches.base;
   const worktree = worktreePath(repoRoot, issue);
   const isAntigravity = config.agent?.build === 'antigravity';
-  // A retry builds a `qa-failed` issue again: `go` plans it with the planner's --retry and the issue never becomes `ready`.
+  // A retry builds a `build-failed` issue again: `go` plans it with the planner's --retry and the issue never becomes `ready`.
   const prompt = `/relevo:go ${issue}${retry ? ' --retry' : ''}`;
   const command = isAntigravity
     ? ['node', [

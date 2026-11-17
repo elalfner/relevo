@@ -37,7 +37,7 @@ function workingDays(from, to) {
 }
 
 function stateOf(issue, names) {
-  const order = ['needs-spec', 'qa-failed', 'changes-requested', 'blocked', 'in-review', 'pr-open', 'built', 'building', 'queued', 'ready'];
+  const order = ['needs-spec', 'build-failed', 'changes-requested', 'blocked', 'in-review', 'pr-open', 'built', 'building', 'queued', 'ready'];
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
@@ -51,9 +51,9 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
   })).filter((e) => e.state);
 
   const mine = me ? entries.filter((e) => e.assignee === me) : [];
-  const nextCommand = { built: 'review', 'in-review': 'review', 'qa-failed': 'fix', 'changes-requested': 'fix' };
+  const nextCommand = { built: 'review', 'in-review': 'review', 'build-failed': 'fix', 'changes-requested': 'fix' };
   const onMe = [];
-  ['built', 'in-review', 'qa-failed', 'changes-requested'].forEach((state) => {
+  ['built', 'in-review', 'build-failed', 'changes-requested'].forEach((state) => {
     mine.filter((e) => e.state === state).forEach((e) => onMe.push({ ...e, command: `/relevo:${nextCommand[state]} ${e.number}` }));
   });
   const toReview = me
@@ -63,7 +63,7 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     ? prs.filter((p) => p.approved && (config.review.merger === 'author' ? p.author === me : p.reviewer === me))
       .map((p) => ({ number: p.issue, pr: p.url, command: `/relevo:ship ${p.issue}` }))
     : [];
-  const waitingOnOthers = mine.filter((e) => !['built', 'in-review', 'qa-failed', 'changes-requested'].includes(e.state));
+  const waitingOnOthers = mine.filter((e) => !['built', 'in-review', 'build-failed', 'changes-requested'].includes(e.state));
 
   const specWriter = config.team.spec_writer;
   const isSpecWriter = Boolean(me) && me === specWriter;
@@ -76,7 +76,7 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     : null;
 
   // Milestones: merged, in review, queued, and a capacity warning against the due date.
-  const flight = new Set(['building', 'built', 'in-review', 'pr-open', 'changes-requested', 'qa-failed']);
+  const flight = new Set(['building', 'built', 'in-review', 'pr-open', 'changes-requested', 'build-failed']);
   const summaries = milestones.map((m) => {
     const inMs = entries.filter((e) => e.milestone === m.number);
     const queued = inMs.filter((e) => ['ready', 'queued', 'blocked', 'needs-spec'].includes(e.state)).length;
@@ -117,7 +117,7 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     (waiting[login] ??= []).push(line);
   };
   entries.forEach((e) => {
-    if (['built', 'in-review', 'qa-failed', 'changes-requested'].includes(e.state)) add(e.assignee, { number: e.number, state: e.state, command: `/relevo:${nextCommand[e.state]} ${e.number}` });
+    if (['built', 'in-review', 'build-failed', 'changes-requested'].includes(e.state)) add(e.assignee, { number: e.number, state: e.state, command: `/relevo:${nextCommand[e.state]} ${e.number}` });
     if (e.state === 'needs-spec') add(specWriter, { number: e.number, state: e.state });
     if (e.needsReviewer) add(specWriter, { number: e.number, state: 'needs-reviewer' });
   });

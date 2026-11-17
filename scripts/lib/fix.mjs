@@ -7,7 +7,7 @@ import { LABELS, resolveLabelNames, transition } from './labels.mjs';
 const OUTCOMES = {
   'in-review': { to: 'in-review', notify: null },
   built: { to: 'built', notify: null },
-  'qa-failed': { to: 'built', notify: 'assignee' },
+  'build-failed': { to: 'built', notify: 'assignee' },
   'changes-requested': { to: 'pr-open', notify: 'reviewer' },
   'pr-open': { to: 'pr-open', notify: null },
 };

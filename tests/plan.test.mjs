@@ -475,20 +475,20 @@ test('an ambiguity together with missing parts is still ambiguous, and names bot
   assert.match(d.comment.data.missing, /WHEN\/THEN.*open question/);
 });
 
-// --- Retry of a qa-failed issue without a branch (go-retry-qa-failed) ---
-const failed = (over = {}) => issue({ labels: ['relevo:qa-failed'], ready_by: null, ready_at: null, ...over });
+// --- Retry of a build-failed issue without a branch (go-retry-build-failed) ---
+const failed = (over = {}) => issue({ labels: ['relevo:build-failed'], ready_by: null, ready_at: null, ...over });
 const retryOf = (i, by = 'persona-a') => ({ input: { retry: { issue: i.number, by } } });
 
-test('Scenario: Retry of a qa-failed issue without a branch - it starts, claims building and never adds ready', () => {
+test('Scenario: Retry of a build-failed issue without a branch - it starts, claims building and never adds ready', () => {
   const i = failed({ number: 67, title: 'Summary screen' });
   const d = one([i], retryOf(i));
   assert.equal(d.action, 'start');
   assert.equal(d.branch, 'feature/67-summary-screen');
-  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:qa-failed'] });
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:build-failed'] });
   assert.equal(d.comment, null, 'the claim posts no comment');
 });
 
-test('Scenario: Without the flag - a qa-failed issue is still ignored', () => {
+test('Scenario: Without the flag - a build-failed issue is still ignored', () => {
   assert.deepEqual(plan([failed()]).decisions, []);
 });
 
@@ -496,7 +496,7 @@ test('Scenario: The person may not start work - read access, or a non-maintainer
   const i = failed();
   const readOnly = one([i], retryOf(i, 'stranger'));
   assert.equal(readOnly.action, 'denied');
-  assert.deepEqual(readOnly.labels, { add: [], remove: [] }, 'the issue stays qa-failed');
+  assert.deepEqual(readOnly.labels, { add: [], remove: [] }, 'the issue stays build-failed');
   const j = failed();
   const publicRepo = one([j], { config: 'trust: public\n', ...retryOf(j) });
   assert.equal(publicRepo.action, 'denied');
@@ -513,20 +513,20 @@ test('Scenario: Gates still apply - no milestone, no assignee, incomplete specif
   const incomplete = failed({ body: 'just a title' });
   const d = one([incomplete], retryOf(incomplete));
   assert.equal(d.action, 'needs-spec');
-  assert.deepEqual(d.labels.remove, ['relevo:qa-failed'], 'needs-spec replaces the state label');
+  assert.deepEqual(d.labels.remove, ['relevo:build-failed'], 'needs-spec replaces the state label');
 });
 
-test('Scenario: The issue is not qa-failed - nothing changes', () => {
+test('Scenario: The issue is not build-failed - nothing changes', () => {
   const built = issue({ labels: ['relevo:built'] });
   const d = one([built], retryOf(built));
   assert.equal(d.action, 'skip');
-  assert.match(d.reason, /only an open issue labelled qa-failed/);
+  assert.match(d.reason, /only an open issue labelled build-failed/);
   assert.deepEqual(d.labels, { add: [], remove: [] });
   const gone = one([], { input: { retry: { issue: 999, by: 'persona-a' } } });
   assert.equal(gone.action, 'skip');
 });
 
-test('a retry plans only the retried issue as qa-failed; another qa-failed issue is ignored', () => {
+test('a retry plans only the retried issue as build-failed; another build-failed issue is ignored', () => {
   const a = failed();
   const b = failed();
   const decisions = plan([a, b], retryOf(a)).decisions;

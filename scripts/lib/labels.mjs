@@ -14,7 +14,7 @@ export const LABELS = [
   { key: 'pr-open', name: 'relevo:pr-open', color: '0075ca', kind: 'state', description: 'Pull request open; waiting for the peer' },
   { key: 'needs-spec', name: 'relevo:needs-spec', color: 'd93f0b', kind: 'exit', description: 'Spec is incomplete or defective; back to the spec writer' },
   { key: 'blocked', name: 'relevo:blocked', color: 'b60205', kind: 'exit', description: 'Waiting for a dependency to merge' },
-  { key: 'qa-failed', name: 'relevo:qa-failed', color: 'e11d21', kind: 'exit', description: 'QA still rejected after the retries; branch is pushed' },
+  { key: 'build-failed', name: 'relevo:build-failed', color: 'e11d21', kind: 'exit', description: 'The build did not end in a hand-off; the comment says why and what to do' },
   { key: 'changes-requested', name: 'relevo:changes-requested', color: 'f9d0c4', kind: 'exit', description: 'The reviewer asked for changes' },
   { key: 'needs-reviewer', name: 'relevo:needs-reviewer', color: 'fef2c0', kind: 'overlay', description: 'No reviewer available or the review is overdue' },
   // A request, not a state: the ship workflow merges the pull request and always removes it.

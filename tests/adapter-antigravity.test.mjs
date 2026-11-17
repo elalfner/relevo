@@ -61,8 +61,8 @@ test('Scenario: The Claude Code worktree instructions of go do not reach the Ant
 });
 
 test('a label that looks like an agent name is not renamed', () => {
-  const text = adaptText('labels relevo:qa-failed and relevo:built; agents relevo:dev and relevo:qa.', { pluginDir });
-  assert.equal(text, 'labels relevo:qa-failed and relevo:built; agents relevo-dev and relevo-qa.');
+  const text = adaptText('labels relevo:build-failed and relevo:built; agents relevo:dev and relevo:qa.', { pluginDir });
+  assert.equal(text, 'labels relevo:build-failed and relevo:built; agents relevo-dev and relevo-qa.');
 });
 
 test('Scenario: A reserved skill - the key is kept, and only for the skills that had it', () => {

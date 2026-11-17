@@ -301,6 +301,9 @@ export function pushScopeChecklist({ base, release }) {
   return [`Settings > Rules > Rulesets: add a second ruleset on all branches except \`feature/*\`, \`${base}\` and \`${release}\` that restricts creation, with the Maintain and Admin roles allowed to bypass, so the agent can only create \`feature/*\` branches.`];
 }
 
+/** The name the failed-build label had before it became build-failed. */
+const FORMER_BUILD_FAILED = 'relevo:qa-failed';
+
 const item = (id, status, description, extra = {}) => ({ id, status, description, ...extra });
 
 const OPTIONAL = 'It is optional: if you decline, nothing else changes and /relevo:doctor keeps a note about it.';
@@ -473,7 +476,17 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   });
 
   // labels
-  const missing = (facts.labels ?? null) === null ? names : names.filter((l) => !facts.labels.includes(l.name));
+  // The label of a failed build was `relevo:qa-failed`. With only that one, it is renamed (the issues that carry it keep it);
+  // with both, nothing is touched and the issues that still carry the former one are named.
+  const buildFailed = names.find((l) => l.key === 'build-failed');
+  const hasFormer = Array.isArray(facts.labels) && facts.labels.includes(FORMER_BUILD_FAILED);
+  const renaming = hasFormer && !facts.labels.includes(buildFailed.name);
+  if (renaming) items.push(item('labels.rename', 'todo', `Rename the label ${FORMER_BUILD_FAILED} to ${buildFailed.name}; it is renamed, not replaced, so the issues that carry it keep it`, { from: FORMER_BUILD_FAILED, to: buildFailed.name }));
+  else if (hasFormer) {
+    const issues = facts.formerLabelIssues ?? [];
+    items.push(item('labels.former', 'manual', `Both ${FORMER_BUILD_FAILED} and ${buildFailed.name} exist, so init renames and deletes nothing. ${issues.length ? `Still carrying the former one: ${issues.map((n) => `#${n}`).join(', ')}. ` : ''}Move those issues to ${buildFailed.name} and delete ${FORMER_BUILD_FAILED} yourself`));
+  }
+  const missing = (facts.labels ?? null) === null ? names : names.filter((l) => (renaming && l.key === 'build-failed') || !facts.labels.includes(l.name));
   items.push(missing.length === 0 ? item('labels', 'ok', 'All lifecycle labels exist') : item('labels', 'todo', `Create ${missing.length} label(s): ${missing.map((l) => l.name).join(', ')}`, { labels: missing }));
 
   // base branch
@@ -628,6 +641,9 @@ export function applyPlan(items, { repo, io }) {
       switch (it.id) {
         case 'config':
           io.write('relevo.yml', it.content);
+          break;
+        case 'labels.rename':
+          io.gh(['api', '-X', 'PATCH', `repos/${repo}/labels/${encodeURIComponent(it.from)}`, '-f', `new_name=${it.to}`]);
           break;
         case 'labels':
           it.labels.forEach((l) => io.gh(['label', 'create', l.name, '--repo', repo, '--color', l.color, '--description', l.description, '--force']));
