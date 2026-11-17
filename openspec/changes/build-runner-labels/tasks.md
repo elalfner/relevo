@@ -32,8 +32,8 @@
 
 ## 6. The documentation
 
-- [ ] 6.1 `docs/execution.md` and `docs/execution.es.md`, the page on self-hosted runners: which jobs run where, the limit of a machine shared by several repositories, how to label runners for builds, the light jobs on the runners of GitHub, the checks of the project, the shared memory and processors, and the Antigravity build runner; verify `tests/docs-claims.test.mjs` passes
-- [ ] 6.2 `CHANGELOG.md`: an entry under Unreleased, Added; verify it says that nothing changes without the key
+- [x] 6.1 `docs/execution.md` and `docs/execution.es.md`, the page on self-hosted runners: which jobs run where, the limit of a machine shared by several repositories, how to label runners for builds, the light jobs on the runners of GitHub, the checks of the project, the shared memory and processors, and the Antigravity build runner; verify `tests/docs-claims.test.mjs` passes
+- [x] 6.2 `CHANGELOG.md`: an entry under Unreleased, Added; verify it says that nothing changes without the key
 
 ## 7. Integration
 
