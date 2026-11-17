@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renderMessage } from '../scripts/lib/messages.mjs';
 import {
-  CLOSED_MARKER, PROGRESS_MARKER, closeProgress, currentPhase, deducePhase, isClosed, minutesSince, progressClient, readAnnouncement,
+  CLOSED_MARKER, PROGRESS_MARKER, WAITING_MARKER, closeProgress, isWaiting, markStarted, markWaiting, renderWaiting, currentPhase, deducePhase, isClosed, minutesSince, progressClient, readAnnouncement,
   readTreeFacts, renderClosed, renderProgress, shouldWrite, watch, writeProgress,
 } from '../scripts/lib/progress.mjs';
 import { countTasks } from '../scripts/lib/tasks-file.mjs';
@@ -159,6 +159,63 @@ test('a comment with the marker typed by a person, or a closed one of an earlier
   assert.equal(person.comments.length, 3, 'a new comment is created for this run');
   assert.match(person.comments[0].body, /^mine/);
   assert.match(person.comments[1].body, /^old run/);
+});
+
+// ---------- the wait for a runner
+
+test('Scenario: First report - the waiting text says that the build waits for a runner and carries both markers', () => {
+  const text = renderWaiting({});
+  assert.match(text, /^Relevo build claimed: it waits for a runner/);
+  assert.ok(text.includes(PROGRESS_MARKER) && text.endsWith(WAITING_MARKER));
+  assert.ok(isWaiting(text));
+  assert.equal(isClosed(text), false);
+  assert.match(renderWaiting({ language: 'es' }), /^Construcción de Relevo reclamada: espera un runner/);
+  assert.equal(isWaiting(renderProgress({ phase: 'qa', minutes: 1 })), false);
+  assert.equal(isWaiting(renderClosed({})), false);
+});
+
+test('markWaiting creates one comment, and edits an open one instead of creating a second', () => {
+  const issue = fakeIssue();
+  assert.equal(markWaiting({ client: clientOf(issue), language: 'en' }), 'created');
+  assert.equal(issue.comments.length, 1);
+  assert.ok(isWaiting(issue.comments[0].body));
+  assert.equal(markWaiting({ client: clientOf(issue), language: 'en' }), 'edited');
+  assert.equal(issue.comments.length, 1);
+  const open = fakeIssue([{ body: `older run\n\n${PROGRESS_MARKER}` }]);
+  assert.equal(markWaiting({ client: clientOf(open), language: 'en' }), 'edited');
+  assert.equal(open.comments.length, 1);
+  assert.ok(isWaiting(open.comments[0].body));
+  const closed = fakeIssue([{ body: `old\n${PROGRESS_MARKER}\n${CLOSED_MARKER}` }]);
+  markWaiting({ client: clientOf(closed), language: 'en' });
+  assert.equal(closed.comments.length, 2, 'a closed comment belongs to an earlier run');
+});
+
+test('markStarted drops the waiting marker with one edit and keeps the comment', () => {
+  const issue = fakeIssue();
+  markWaiting({ client: clientOf(issue), language: 'en' });
+  const before = issue.writes().length;
+  assert.equal(markStarted({ client: clientOf(issue), language: 'en' }), 'edited');
+  assert.equal(issue.writes().length, before + 1, 'one edit');
+  assert.equal(issue.comments.length, 1, 'the same comment');
+  assert.ok(issue.comments[0].body.includes(PROGRESS_MARKER));
+  assert.equal(isWaiting(issue.comments[0].body), false);
+  assert.match(issue.comments[0].body, /Running for 0 min/);
+  assert.equal(markStarted({ client: clientOf(issue), language: 'en' }), 'none', 'a comment that does not wait is left alone');
+  assert.equal(issue.writes().length, before + 1);
+  assert.equal(markStarted({ client: clientOf(fakeIssue()), language: 'en' }), 'none', 'no comment, nothing to do');
+});
+
+test('the watch that follows keeps the comment that markStarted edited, and its text has no waiting marker', async () => {
+  const issue = fakeIssue();
+  markWaiting({ client: clientOf(issue), language: 'en' });
+  markStarted({ client: clientOf(issue), language: 'en' });
+  const state = {};
+  await watch({
+    client: clientOf(issue), state, readFacts: () => ({ tasks: { done: 0, total: 2 }, hasChange: true, committed: false }), readAnnounced: () => null,
+    stopRequested: () => state.lastText !== undefined, stillBuilding: () => true, sleep: async () => {}, maxMs: 1000,
+  });
+  assert.equal(issue.comments.length, 1);
+  assert.equal(isWaiting(issue.comments[0].body), false);
 });
 
 test('Scenario: First report - the first write creates the comment, the next ones edit it, and the same text writes nothing', () => {

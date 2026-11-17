@@ -90,6 +90,7 @@ const SAMPLE = {
   ship_failed: { issue: 1, run: 'http://r', actor: 'a' },
   run_progress: { phase: 'qa', minutes: 3, tasks_done: 1, tasks_total: 2 },
   run_progress_closed: { run_url: 'http://r', summary_line: 's' },
+  run_waiting: {},
   run_failed_early: { issue: 1, job_status: 'failure', run: 'http://r', assignee: 'a' },
   run_no_outcome: { situation: 'no_result', issue: 1, job_status: 'cancelled', run: 'http://r', assignee: 'a' },
   queued_shared_files: { issue: 1, title: 'T', file: 'src/router.ts', other: 2, hours: 24 },

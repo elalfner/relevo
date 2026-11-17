@@ -14,6 +14,8 @@ import { countTasks } from './tasks-file.mjs';
 /** Hidden markers: the first finds the comment, the second says that it is closed and must not be written again. */
 export const PROGRESS_MARKER = '<!-- relevo:progress -->';
 export const CLOSED_MARKER = '<!-- relevo:progress:closed -->';
+/** A third marker, on the comment that the decision job opens: the build is claimed and no runner has taken it yet. */
+export const WAITING_MARKER = '<!-- relevo:progress:waiting -->';
 
 export const PHASES = ['planning', 'specification', 'development', 'qa', 'delivery'];
 
@@ -93,6 +95,13 @@ export function renderClosed({ minutes = null, runUrl = null, outcome = 'result'
 
 export const isClosed = (body) => String(body ?? '').includes(CLOSED_MARKER);
 
+/** The comment that says that the claimed build waits for a runner, with both markers. */
+export function renderWaiting({ language = 'en' }) {
+  return `${renderMessage('run_waiting', {}, language)}\n\n${PROGRESS_MARKER}\n${WAITING_MARKER}`;
+}
+
+export const isWaiting = (body) => String(body ?? '').includes(WAITING_MARKER);
+
 /** Whether a round has something to write: the text it would show is not the text already shown. */
 export const shouldWrite = (previous, next) => previous !== next;
 
@@ -139,6 +148,29 @@ export function writeProgress({ client, state, text }) {
   }
   state.lastText = text;
   return 'written';
+}
+
+/** The decision job claimed the issue: one comment says that the build waits for a runner. An open one is edited, never a second created. */
+export function markWaiting({ client, language = 'en' }) {
+  const text = renderWaiting({ language });
+  const found = client.find();
+  if (found) {
+    client.edit(found.id, text);
+    return 'edited';
+  }
+  client.create(text);
+  return 'created';
+}
+
+/**
+ * The build job started: the waiting marker is dropped with one direct edit, and the comment stays (the watch edits it from
+ * there). It is not the watch that does it, so a watch that cannot write never leaves a build that ran looking as if it did not.
+ */
+export function markStarted({ client, language = 'en' }) {
+  const found = client.find();
+  if (!found || !isWaiting(found.body)) return 'none';
+  client.edit(found.id, renderProgress({ phase: 'planning', tasks: null, minutes: 0, language }));
+  return 'edited';
 }
 
 /** Replaces the progress comment by the closing line. Returns `none` (there is no comment), `closed` (it already was) or `done`. */
