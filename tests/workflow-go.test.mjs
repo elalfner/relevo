@@ -590,7 +590,7 @@ test('a build that never started: the issue returns to queued, the comment says 
   assert.equal(t.r.status, 0, t.r.stderr);
   const st = t.state();
   assert.deepEqual(st.labels, ['relevo:queued']);
-  assert.ok(!st.labels.includes('relevo:qa-failed'));
+  assert.ok(!st.labels.includes('relevo:build-failed'));
   assert.equal(st.comments.length, 1, 'one comment, no second');
   assert.match(st.comments[0].body, /No runner took the build/);
   assert.match(st.comments[0].body, /<!-- relevo:progress:closed -->/);
