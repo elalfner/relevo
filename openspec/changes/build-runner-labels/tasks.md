@@ -2,9 +2,9 @@
 
 ## 1. The setting
 
-- [ ] 1.1 In the config tests, test `runner.build_labels`: absent (the build runner is `runner.labels`), a list, an empty list, a single string, a non-string entry, and the build key with no `runner.labels`; run them and see them fail
-- [ ] 1.2 `scripts/lib/config.mjs`: the setting and one helper that returns the effective labels of the build job and of the other jobs; `scripts/validate-config.mjs --effective` prints both; verify the tests pass
-- [ ] 1.3 `templates/relevo.yml`: the commented `runner.build_labels` example beside `runner.labels`; `docs/configuration.md` and `docs/configuration.es.md`: the key and its default; verify `tests/docs-claims.test.mjs` passes
+- [x] 1.1 In the config tests, test `runner.build_labels`: absent (the build runner is `runner.labels`), a list, an empty list, a single string, a non-string entry, and the build key with no `runner.labels`; run them and see them fail
+- [x] 1.2 `scripts/lib/config.mjs`: the setting and one helper that returns the effective labels of the build job and of the other jobs; `scripts/validate-config.mjs --effective` prints both; verify the tests pass
+- [x] 1.3 `templates/relevo.yml`: the commented `runner.build_labels` example beside `runner.labels`; `docs/configuration.md` and `docs/configuration.es.md`: the key and its default; verify `tests/docs-claims.test.mjs` passes
 
 ## 2. Init
 
