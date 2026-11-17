@@ -35,3 +35,7 @@ _Avoid_: small job, quick job, helper job
 **Build runner**:
 A runner that takes build jobs; how many of them a machine has is how many cloud builds it runs at once.
 _Avoid_: agent runner, build machine, heavy runner
+
+**Failed build**:
+A build that ended without a hand-off, whatever the reason: QA rejected the work, a limit stopped it, or it could not start or finish.
+_Avoid_: QA failure, rejected build, broken build
