@@ -96,16 +96,19 @@ Mostrar la versión de la app bajo el título de la pantalla de inicio, para que
 - Cualquier otro cambio en la pantalla de inicio.
 ```
 
-- **Deberías ver**: el borrador de arriba, una pregunta por el hito (un grupo de issues de GitHub; Relevo solo construye issues que pertenecen a uno) y la persona asignada (tú) y, cuando lo apruebas, el issue creado en GitHub con su enlace. Después, una pregunta aparte: ¿pongo `ready`? Di que sí en el paso 6.
+- **Deberías ver**: el borrador de arriba, una pregunta por el hito (un grupo de issues de GitHub; Relevo solo construye issues que pertenecen a uno) y la persona asignada (tú) y, cuando lo apruebas, el issue creado en GitHub con su enlace. Después, una pregunta aparte con tres respuestas: no poner nada, `ready` (la aprobación, que no inicia nada), o `ready` y `go` (la aprobación y la petición a la nube). Mira el paso 6.
 - **Si no**: si la comprobación dice que faltan escenarios o casos borde, responde a lo que pregunta; no la rodees editando. Lo que necesita un issue está en [Cómo escribir un issue que Relevo pueda construir](issue-format.es.md).
 
 ## 6. Deja que se construya
 
-Poner la etiqueta `relevo:ready` inicia la construcción. Responde que sí a la pregunta del paso 5, o, desde una terminal:
+`relevo:ready` aprueba el issue y no inicia nada. Para construirlo en la nube, pon también `relevo:go`: responde "`ready` y `go`" a la pregunta del paso 5, o, desde una terminal:
 
 ```bash
 gh issue edit 1 --add-label relevo:ready
+gh issue edit 1 --add-label relevo:go
 ```
+
+Para construirlo en tu máquina, ejecuta `/relevo:go 1` después de `ready`: no hace falta la etiqueta `go`.
 
 - **Deberías ver**: en menos de un minuto el issue recibe `relevo:building`. Después de unos minutos tiene un comentario que dice que el issue está construida ✅ (en el idioma de `language` de tu `relevo.yml`), con lo que pasó, la rama, qué probar y `Tu siguiente paso: /relevo:review 1`, y la etiqueta es `relevo:built`.
 - **Si no**: si no empieza nada, comprueba que los workflows están en la rama por defecto, que el secreto existe y que el issue tiene hito y persona asignada. Un comentario que dice que la nube no está configurada significa que falta el secreto. Si la construcción termina como `relevo:build-failed` (QA es el segundo agente, que intenta rechazar el trabajo antes de que lo veas), mira primero lo que instala el build: el toolchain de tu stack (Flutter, Laravel; Vue solo necesita Node), pero **no las dependencias de tu proyecto**. Flutter no necesita nada más. Para Vue, activa `npm ci --ignore-scripts` y para Laravel `composer install --no-scripts` en el job de build de `relevo-go.yml` (el archivo trae un ejemplo comentado), o QA no podrá ejecutar tus tests. Mira [Dónde corre `go`](execution.es.md) y la [Guía](guide.es.md).
@@ -148,8 +151,9 @@ Conecta el teléfono o inicia el emulador, e inicia la app (`flutter run`). El a
 | `/relevo:init` no encuentra el repositorio | no estás en un clon con un remoto de GitHub, o `gh` no tiene la sesión iniciada | ejecuta `gh auth login` e inicia Claude Code dentro del clon |
 | `/relevo:init` dice que no hay raíz de OpenSpec | el proyecto no tiene la carpeta `openspec/`, donde viven las especificaciones | ejecuta `openspec init` en el proyecto y vuelve a ejecutar `/relevo:init` (nunca crea esos archivos por sí mismo) |
 | `/relevo:init` dice que GitHub rechaza la protección de ramas | un repositorio privado gratuito no la ofrece | sigue: la confirmación escrita de `ship` es tu protección |
-| Poner `ready` no inicia nada | los workflows no están en la rama por defecto, o `RELEVO_CLOUD_GO` está en `off` | fusiona los archivos del paso 3 y revisa la variable del repositorio |
-| Un comentario dice que la nube no está configurada | no hay secreto del modelo | créalo como en el paso 4 y vuelve a poner `ready` |
+| Poner `ready` no inicia nada | es lo esperado: `ready` es la aprobación | pon también `relevo:go`, o ejecuta `/relevo:go <n>` |
+| Poner `go` no inicia nada | los workflows no están en la rama por defecto, o `RELEVO_CLOUD_GO` está en `off` (la etiqueta espera entonces a que la nube se reanude) | fusiona los archivos del paso 3 y revisa la variable del repositorio |
+| Un comentario dice que la nube no está configurada | no hay secreto del modelo | créalo como en el paso 4 y vuelve a poner `go` |
 | El issue volvió a `relevo:needs-spec` | está incompleto o tiene una pregunta abierta | lee el último comentario y ejecuta `/relevo:issue 1` |
 | La construcción terminó como `relevo:build-failed` | QA lo rechazó incluso después del reintento, el job de build no instaló ningún toolchain (el comentario dice que el SDK no está instalado), o no se instalaron las dependencias de un proyecto Vue o Laravel | ejecuta `/relevo:doctor` y activa el paso del toolchain de `relevo-go.yml`, activa ahí la instalación de tus dependencias, o ejecuta `/relevo:fix 1` y describe lo que encontró QA |
 | La revisión dice que el veredicto no es concluyente | el log no tenía ninguna línea de tu app | inicia la app de nuevo, repite los pasos y termina otra vez |

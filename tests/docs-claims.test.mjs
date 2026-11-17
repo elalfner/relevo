@@ -377,3 +377,19 @@ test('Scenario: The quota ran out - the guide says the issue stays recoverable a
   assert.match(read('docs/guide.md'), /The issue stays recoverable: the cloud retries it by itself until then, and afterwards you can request the build again later with the `go` label, or build it on your machine/);
   assert.match(read('docs/guide.es.md'), /El issue sigue siendo recuperable/);
 });
+
+test('no page says that applying ready starts a build, and the pause keeps a go label as a pending request', () => {
+  const pages = PAGES.flatMap((p) => [`docs/${p}.md`, `docs/${p}.es.md`]).concat(['README.md', 'README.es.md']).filter(exists);
+  const former = [
+    /(labell?ing|applying)(?:(?!go\b)[^.]){0,40}`?relevo:ready`?[^.]{0,20} starts? (the|a) (cloud )?build/i,
+    /a `ready` label (then )?starts/i,
+    /(poner|al poner)[^.]{0,40}`?relevo:ready`?[^.]{0,30} (inicia|arranca) (la construcción|el build)/i,
+    /una etiqueta `ready` (inicia|no inicia nada y la cola)/i,
+    /apply `?relevo:ready`? again to each issue/i,
+  ];
+  pages.forEach((f) => former.forEach((re) => assert.doesNotMatch(read(f), re, `${f}: ${re}`)));
+  assert.match(read('docs/execution.md'), /The label stays on the issue as a pending request/);
+  assert.match(read('docs/execution.es.md'), /La etiqueta queda en el issue como una petición pendiente/);
+  assert.match(read('docs/security.md'), /`lastEditedAt`/);
+  assert.match(read('docs/security.es.md'), /`lastEditedAt`/);
+});

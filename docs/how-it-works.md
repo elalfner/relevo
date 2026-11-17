@@ -24,7 +24,7 @@ A real run on the [sandbox](https://github.com/elalfner/relevo-sandbox), a small
 | Step | The person | Relevo | Time |
 |---|---|---|---|
 | 1 | thinks the idea through (the exploration and grilling that `/relevo:think` runs) and approves the issue text | explores the code, asks until every decision is made, and drafts the issue: scenarios, edge cases and the new vocabulary in a `Documentation` section | a conversation |
-| 2 | labels the issue `relevo:ready` | the light `decide` job runs the gates and claims the issue | 17 s |
+| 2 | labels the issue `relevo:ready` (the approval) and `relevo:go` (the build request) | the light `decide` job runs the gates and claims the issue | 17 s |
 | 3 | nothing | the `build` job writes the specification, the code and the tests, and QA checks them | 3 min 35 s |
 | 4 | reads the hand-off and runs `/relevo:review 5` on a phone | captures screens, audits the log, opens the [pull request](https://github.com/elalfner/relevo-sandbox/pull/16) | a few minutes |
 | 5 | runs `/relevo:ship 5` and confirms | merges, archives the specification, closes the issue | seconds |
