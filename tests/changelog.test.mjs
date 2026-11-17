@@ -35,8 +35,8 @@ test('each release lists what was added and what is known not to work yet', () =
   assert.doesNotMatch(first, /sk-ant-|ghp_|\/Users\//);
 });
 
-test('split-ready-and-go: the unreleased entry is breaking, names both new labels and gives the migration in its order with the warning', () => {
-  const unreleased = changelog.split(/^## \[/m).find((section) => section.startsWith('Unreleased')) ?? '';
+test('split-ready-and-go: the 0.16.0 entry is breaking, names both new labels and gives the migration in its order with the warning', () => {
+  const unreleased = changelog.split(/^## \[/m).find((section) => section.startsWith('0.16.0')) ?? '';
   assert.match(unreleased, /\*\*BREAKING: `ready` approves an issue and starts nothing; the new `go` label asks the cloud to build it\.\*\*/);
   assert.ok(unreleased.includes('`relevo:go`') && unreleased.includes('`relevo:local`'), 'both new labels are named');
   const migration = unreleased.slice(unreleased.indexOf('### Migration'));

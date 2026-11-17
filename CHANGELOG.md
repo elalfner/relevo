@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-17
+
 ### Added
 
 - **A build on a machine shows what a cloud build shows, and says what it used.** `go-local.mjs` gives its build a progress folder beside the worktrees (`.relevo-worktrees/.state/<repository>-<issue>/`, outside every working tree, kept when the worktree is removed) and prints a line when the phase, the group, the tasks or an agent change, in the language of `relevo.yml`, from the files the scripts write and with either agent. `go-local.mjs status <issue>` prints the progress of that build from another terminal (and how it ended and what it used, once it did), and `/relevo:status` lists the builds running on the machine. The budget guard now works in a local build and in an interactive one, which finds the same folder from its worktree. When a local build ends it prints one sentence with the turns, the estimated cost and the tokens, and nothing is posted on the issue. `/relevo:go <n> --local` starts the build in the background, prints the status command and ends its turn.
@@ -34,6 +36,15 @@ The two breaking changes above are migrated together, in each repository, in thi
 5. Run `/relevo:doctor`.
 
 **Until the workflow files are merged** (between steps 1 and 3), an installed `relevo-go.yml` still starts on `ready`: approving an issue in that window starts a cloud build. Do not approve issues then, or pause the cloud with the repository variable `RELEVO_CLOUD_GO` set to `off` until the merge. Rollback: the former plugin version and workflow files; the `go` and `local` labels can stay, nothing of the former version reads them.
+
+### Known limits
+
+- A self-hosted runner set apart for builds (`runner.build_labels`), the comment of a build that waits for a runner and the return to the queue of a build that never found one were checked with tests, not yet on a real self-hosted machine. GitHub's documentation gives how long a job waits for a runner; these pages do not repeat the figure.
+- The progress of an interactive build (`go-local.mjs status` from another terminal, the budget guard with no variable), the lines and totals of a terminal build with several groups, and the group in the progress comment of a cloud build were not tried end to end; the tests cover each script.
+- An interactive build declares no tool list: whether the desktop app and the editor extensions honour the tools a skill declares has not been checked, so a person allows them by hand (`docs/execution.md`).
+- A machine whose installed plugin is older than the workflows of its repository builds locally without the `relevo:local` mark, so the cloud counts that build against `limits.concurrent_agents`. The migration updates the plugin first, and `/relevo:doctor` warns when the installed plugin is older than the pinned version.
+- The integration of `ready` and `go` ran in the sandbox on 2026-11-17 (`docs/pilot-findings.md`). The case of a request served after a pause with the capacity of the person free from the start was not repeated: in the run, the queue served it once the capacity freed up.
+- `go-local.mjs` starts a new `claude -p`, which loads the installed plugin and not one given to the session with `--plugin-dir`. Trying a branch of Relevo in a local build needs that plugin installed, or a `claude` on the `PATH` that adds the flag.
 
 ## [0.15.0] - 2026-11-14
 
