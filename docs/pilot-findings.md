@@ -585,3 +585,46 @@ The same query with a person's `gh` (the local build), run on 2026-11-17 against
 - Issue 999999: `gh` exited with code 1, the response had `"issue":null` and an error of type `NOT_FOUND` ("Could not resolve to an Issue with the number of 999999."), so a failure is told apart from a never-edited issue (`null` without an error).
 
 All four match what D6 assumes: a person's `gh` behaves like the token of a workflow run.
+
+## Integration of split-ready-and-go (tasks 12.2–12.4)
+
+Run on 2026-11-17 in `elalfner/relevo-sandbox`, with the workflows of PR #159 (sandbox) and the published `@elalfner/relevo@0.16.0-rc.1` (tag `next`). The local part used `claude --plugin-dir` on a clone of the branch, because the sandbox had 0.14.4 installed. `limits.concurrent_agents` is 3 and `limits.built_unreviewed_per_person` is 2. Four issues, each a one-line text change, with the milestone "Pilot 1" and assigned to the person running the test: A (#160), B (#161), C (#162), D (#163). They were checked with `check-issue` and created with `gh issue create`, not through `/relevo:issue`, which asks questions and cannot be driven from a script.
+
+### Task 12.2
+
+| Step | Expected | Result |
+|---|---|---|
+| `ready` on A | no run builds A | one `issues` run of `relevo-go` (44130316083), `skipped`. As expected. |
+| `go` on A | a run starts, A goes `building`, ends `built`, `go` is gone | run 44130752802 built it in 5m23s; the last labels were `relevo:built`, with no `go`. As expected. |
+| local build of B (`ready`, then `/relevo:go 161 --local`) | `building` and `local`, no run for B | B was `building` from 16:54:15 and ended `built`; the only runs for B (44130936334, 44131032460) were `skipped`. **Differs: B never carried `relevo:local`.** |
+| `go` on C while B builds | C is not queued behind B | **Not shown.** C (run 44131754563) became `relevo:queued`, but because it names `lib/main.dart`, which #160 also names and had not been merged ("shared-wait"), not because of a limit. A had also finished by then, so nothing was running in the cloud. |
+
+The timeline of #161 has `ready` (16:53:43), then `building` and the removal of `ready` (16:54:15), and no `local` at any time. The session of the local build ran `go-plan.mjs --repo elalfner/relevo-sandbox --only 161 --apply --claim` **without `--place local`**, so it took the claim of a cloud build (`scripts/lib/plan.mjs` adds `local` only for `place` `local`). The cloud counts a `building` issue without `local`, so a local build like this one takes a place of `concurrent_agents`, which is what the `local` label is there to avoid. Not fixed here; it needs a change in `skills/go/SKILL.md` or in `go-local.mjs`, so that the build session claims with `--place local` (or does not claim again, as the claim of `go` already did it).
+
+12.2d is not shown, and should be repeated with issues that name different files, with the cloud build of one issue still running while the local build is on.
+
+### Task 12.3
+
+The first text of D named `lib/main.dart` like the others, so it was rewritten before the test to change only `test/greeting_test.dart` (no overlap).
+
+- **Edited after `ready`:** `ready` on D at 17:02:36, body edited at 17:03:44, `go` at 17:03:50. Run 44132800351 finished in 22 s without a build. D had no lifecycle label, and at 17:04:10 the comment said "was not built: its body changed after it was approved, so the approval was withdrawn and the issue is a draft again", with "Approved by: @elalfner" and the next step. As expected.
+- **Paused:** with `RELEVO_CLOUD_GO` at `off` (17:05), `ready` and then `go` gave runs 44132969597 and 44133037064, both `skipped`. D kept `relevo:ready` and `relevo:go`, with no comment. As expected.
+- **Resumed:** the variable was deleted at 17:06:36 and, once the `go` was older than 15 minutes, `relevo-queue.yml` was started by hand at 17:20:23 (run 44135883744). The queue took the request with nothing applied again: at 17:20:40 it removed `ready` and `go` and put `queued`. **D was not built then**: `elalfner` had 2 built issues waiting for review (#160, #161; the limit is 2), as the comment of the queue says. That is the capacity of the person filled by the test itself.
+- **After the capacity was freed:** #160 and #161 were closed as not planned at about 17:23. The queue ran twice (44136524072, 44136529690) and started two builds without any label from a person: run 44136561471 for C (#162) and run 44136750882 for D (#163), both `built`. A third run (44136799876) decided there was nothing to build.
+
+So the queue serves a request kept during a pause with nothing applied again, and the gate of the capacity of the person holds as designed. The request was served in two steps because of the capacity.
+
+### Cost of each build
+
+| Issue | Where | Turns | Cost |
+|---|---|---|---|
+| A #160 | cloud, run 44130752802 | 30 | $1.04 |
+| B #161 | local | 25 | $1.67 |
+| C #162 | cloud, run 44136561471 | 30 | $1.12 |
+| D #163 | cloud, run 44136750882 | 30 | $0.89 |
+
+Total $4.72, against a budget of $5 per run (`run_max_cost`).
+
+### Result
+
+12.2 does not pass: B carried no `local` label, and the case of C was not shown. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2 and 12.3 are left unmarked in `tasks.md`.
