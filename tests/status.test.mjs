@@ -538,3 +538,64 @@ test('Scenario: Share above half - the digest script prints the line and changes
   assert.equal(readFileSync(join(dir, 'relevo.yml'), 'utf8'), before, 'relevo.yml is not touched');
   assert.deepEqual(readdirSync(dir).sort(), ['bin', 'relevo.yml', 'state.json'], 'no file is written');
 });
+
+// ---------- the builds running on this machine (go-visibility)
+
+const LOCAL = (extra = {}) => ({ issue: 42, phase: { phase: 'development', attempt: null, of: null }, group: { group: 2, of: 3 }, tasks: { done: 3, total: 6 }, minutes: 12, lastChangeMinutes: 1, ...extra });
+
+test('Scenario: A build running here - a section shows the issue with its phase, "group 2 of 3", its tasks, its minutes and its last change', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(42, ['relevo:building'])], localBuilds: [LOCAL()] });
+  assert.equal(r.localBuilds.length, 1);
+  const text = renderStatus(r);
+  assert.match(text, /Building on this machine:\n  #42 \[12 min\] development · group 2 of 3 · tasks 3 of 6 \(last change 1 min ago\)/);
+  assert.doesNotMatch(text, /Building, no progress/);
+  assert.match(renderStatus(r, 'es'), /En construcción en esta máquina:\n  #42 \[12 min\] desarrollo · grupo 2 de 3 · tareas 3 de 6 \(último cambio hace 1 min\)/);
+});
+
+test('Scenario: Nothing running here - the section is not shown', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(1, ['relevo:built'])], localBuilds: [] });
+  assert.deepEqual(r.localBuilds, []);
+  assert.doesNotMatch(renderStatus(r), /Building on this machine|Building, no progress/);
+  const none = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(1, ['relevo:built'])] });
+  assert.doesNotMatch(renderStatus(none), /Building on this machine|Building, no progress/);
+});
+
+test('Scenario: A build on another machine - an issue `building` whose state is not here is listed without progress', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(42, ['relevo:building']), issue(43, ['relevo:building'])], localBuilds: [LOCAL()] });
+  assert.deepEqual(r.buildingElsewhere.map((e) => e.number), [43]);
+  const text = renderStatus(r);
+  assert.match(text, /Building, no progress on this machine:\n  #43 Issue 43/);
+  assert.doesNotMatch(text, /#43 .*min/);
+});
+
+test('the builds of this machine are read from the state folders beside the worktrees, and only the ones still running', async () => {
+  const { readLocalBuilds } = await import('../scripts/lib/status-local.mjs');
+  const { realState, writeBuildEnd, writeBuildStart } = await import('../scripts/lib/build-state.mjs');
+  const { realpathSync } = await import('node:fs');
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'relevo-st-')));
+  const repo = join(parent, 'shop');
+  mkdirSync(repo);
+  const states = join(parent, '.relevo-worktrees', '.state');
+  const T0 = Date.parse('2026-11-17T10:00:00Z');
+  const make = (name, { worktree = true, ended = false } = {}) => {
+    mkdirSync(join(states, name), { recursive: true });
+    if (worktree) mkdirSync(join(parent, '.relevo-worktrees', name), { recursive: true });
+    writeBuildStart(join(states, name), { issue: Number(name.split('-').pop()), changeId: null, now: T0 });
+    if (ended) writeBuildEnd(join(states, name), { status: 0, now: T0 + 1000 });
+  };
+  make('shop-42');
+  make('shop-43', { ended: true });
+  make('shop-44', { worktree: false });
+  make('other-45');
+  const builds = readLocalBuilds({ repoRoot: repo, state: realState, now: T0 + 5 * 60000 });
+  assert.deepEqual(builds.map((b) => b.issue), [42]);
+  assert.equal(builds[0].minutes, 5);
+  assert.deepEqual(readLocalBuilds({ repoRoot: join(parent, 'nowhere'), state: realState, now: T0 }), []);
+});
+
+test('the status skill says that it shows the builds of this machine, from the state beside the worktrees, and not those of other machines', () => {
+  const skill = readFileSync(`${root}skills/status/SKILL.md`, 'utf8');
+  assert.match(skill, /the builds running on this machine[^)]*the group, the tasks done, the minutes and when its progress last changed/);
+  assert.match(skill, /state beside the worktrees, only for this machine/);
+  assert.match(skill, /listed without progress/);
+});

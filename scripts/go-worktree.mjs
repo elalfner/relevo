@@ -12,6 +12,7 @@ import { loadConfig } from './lib/config.mjs';
 import { createWorktree, EXIT, removeWorktree } from './lib/go-worktree.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { resetStateDir } from './lib/worktree-path.mjs';
+import { writeBuildStart } from './lib/build-state.mjs';
 
 const args = process.argv.slice(2);
 const [command, issue] = args;
@@ -31,7 +32,8 @@ if (command === 'create') {
   if (!existsSync(configPath)) fail(`relevo.yml not found at ${configPath}. Run /relevo:init to create it.`);
   const loaded = loadConfig(readFileSync(configPath, 'utf8'));
   if (!loaded.ok) fail(loaded.errors.map((e) => `error: ${e.message}`).join('\n'));
-  result = createWorktree({ issue, config: loaded.config, runner, exists: existsSync, prepareState: resetStateDir });
+  result = createWorktree({ issue, config: loaded.config, runner, exists: existsSync, // The state folder of an interactive build starts here, with its issue and its start, as a local build's does.
+    prepareState: (dir) => resetStateDir(dir) && writeBuildStart(dir, { issue }) });
   if (result.status === EXIT.ok) console.log(JSON.stringify({ worktree: result.worktree, base: result.base, state: result.state }));
 } else if (command === 'remove') {
   result = removeWorktree({ issue, runner, exists: existsSync });

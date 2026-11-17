@@ -222,7 +222,7 @@ test('Scenario: Review stays in the main working tree - the go skill does not to
 
 test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does not build in the session', () => {
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--local`\*\*, do not build in this session: run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`/);
-  assert.match(body, /show what it prints, and stop/);
+  assert.match(body, /print `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs status <issue>`[^.]*progress[^]*end your turn/);
   assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
 });
 
@@ -655,4 +655,24 @@ test('Scenario: Unmarked tasks - step 4 reads `unmarked`: one relaunch when the 
   assert.match(step4, /open question/);
   // the check after the last group stays
   assert.match(body, /After the last group run the instructions command again: if `progress\.remaining` is above 0, take the failure path with the reason `tasks left unfinished`/);
+});
+
+// ---------- --local from a session, and the progress of an interactive build
+
+test('Scenario: Local flag - the skill starts go-local.mjs in the background, prints the status command, ends its turn without asking again, and reports the result when the command ends', () => {
+  const local = body.slice(body.indexOf('**When `$ARGUMENTS` has `--local`**'), body.indexOf('**In an interactive session**'));
+  assert.match(local, /run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`[^.]*as a background command of this session/);
+  assert.match(local, /print `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs status <issue>`[^.]*progress/);
+  assert.match(local, /end your turn/);
+  assert.match(local, /do not (ask|poll)[^.]*again/i);
+  assert.match(local, /when the command ends[^.]*(report|say)[^.]*(printed|result)/i);
+  assert.match(local, /do not build in this session/);
+});
+
+test('Scenario: Progress of an interactive build - the worktree has a state folder the scripts find, and the main agent has no limit of Relevo', () => {
+  const interactive = body.slice(body.indexOf('**In an interactive session**'), body.indexOf('## OpenSpec commands'));
+  assert.match(interactive, /`state`/);
+  assert.match(interactive, /another terminal with `node [^`]*go-local\.mjs status <issue>`/);
+  assert.match(interactive, /no turn or cost limit of Relevo/);
+  assert.match(body, /progress\.mjs change <change_id>/);
 });

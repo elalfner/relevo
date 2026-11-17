@@ -33,8 +33,8 @@
 
 ## 6. The session
 
-- [ ] 6.1 In `tests/skill-go.test.mjs`, test that `/relevo:go <n> --local` starts `go-local.mjs` in the background, prints the status command, ends its turn without asking again, and reports the result when the command ends; make it pass in `skills/go/SKILL.md`
-- [ ] 6.2 In `tests/status.test.mjs`, test the section of the builds running on this machine (issue, phase, group, tasks, minutes, last change), its absence when there is none, and an issue `building` elsewhere listed without progress; make it pass in `scripts/lib/status.mjs`, its data reader and `skills/status/SKILL.md`
+- [x] 6.1 In `tests/skill-go.test.mjs`, test that `/relevo:go <n> --local` starts `go-local.mjs` in the background, prints the status command, ends its turn without asking again, and reports the result when the command ends; make it pass in `skills/go/SKILL.md`
+- [x] 6.2 In `tests/status.test.mjs`, test the section of the builds running on this machine (issue, phase, group, tasks, minutes, last change), its absence when there is none, and an issue `building` elsewhere listed without progress; make it pass in `scripts/lib/status.mjs`, its data reader and `skills/status/SKILL.md`
 - [ ] 6.3 In an interactive build of a sandbox issue, verify that the resolver finds the state folder from the worktree: `go-local.mjs status <n>` from another terminal prints the phase and the tasks, and `run-budget.mjs check` reports numbers instead of "does not know"; record it in `docs/pilot-findings.md`
 
 ## 7. The tool list of an interactive build

@@ -2,6 +2,9 @@
 // The progress of a cloud build, for the comment on the issue. Implements the progress requirements of the go specification.
 //   node scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt n] [--of m]
 //       announces the phase that `go` enters; used by the go skill
+//   node scripts/progress.mjs change <change id>
+//       records the id of the change in the state of the build (an interactive build says it when it plans; the lines of a local
+//       build and `go-local.mjs status` count its tasks with it)
 //   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n] [--end]
 //       records that a QA lens starts now (or, with --end, that its report arrived), for the seconds of each lens in the usage
 //       record; lenses run together, so each has its own start and end. It does not change the phase
@@ -29,6 +32,7 @@ import {
 } from './lib/progress.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { groupInProgress, readGroups } from './lib/group-progress.mjs';
+import { writeChangeId } from './lib/build-state.mjs';
 import { LENSES, OUTCOME_CLASSES, recordLens, recordPhase, writeClass } from './lib/phase-log.mjs';
 
 const args = process.argv.slice(3);
@@ -86,6 +90,12 @@ async function main(command) {
     writeFileAtomic(join(dir, 'phase.json'), JSON.stringify({ phase, attempt: whole(arg('attempt')), of: whole(arg('of')) }));
     // The moment each phase begins, for the seconds of the usage record.
     recordPhase(dir, { phase, attempt: whole(arg('attempt')), of: whole(arg('of')) });
+    return;
+  }
+
+  if (command === 'change') {
+    if (!/^[A-Za-z0-9._-]+$/.test(String(args[0] ?? ''))) return fail(`not a change id "${args[0]}"`);
+    writeChangeId(dir, args[0]);
     return;
   }
 
