@@ -46,6 +46,10 @@ const REQUIRED = {
   ship_failed: ['issue', 'run'],
   run_progress: ['phase', 'minutes'],
   run_progress_closed: [],
+  local_progress: ['phase'],
+  local_status: ['phase'],
+  local_no_build: ['issue'],
+  local_progress_off: [],
   run_failed_early: ['issue', 'job_status', 'run'],
   run_no_outcome: ['situation', 'issue', 'run'],
   usage_limit_retry: ['issue', 'at', 'attempt', 'max', 'reason', 'run'],
@@ -251,6 +255,10 @@ export const CATALOG = {
       '{{summary_line}}',
       'Run: {{run_url}}',
     ],
+    local_progress: ['{{line}}'],
+    local_status: ['{{line}}', '{{change_line}}', '{{end_line}}', '{{usage_line}}'],
+    local_no_build: ['There is no local build of #{{issue}} on this machine.'],
+    local_progress_off: ['The progress of this build is not available (its folder could not be made or read); the build runs as usual.'],
     ship_failed: [
       '#{{issue}} was not shipped: the run ended without an outcome',
       '',
@@ -449,6 +457,10 @@ export const CATALOG = {
       '{{summary_line}}',
       'Ejecución: {{run_url}}',
     ],
+    local_progress: ['{{line}}'],
+    local_status: ['{{line}}', '{{change_line}}', '{{end_line}}', '{{usage_line}}'],
+    local_no_build: ['No hay una construcción local de #{{issue}} en esta máquina.'],
+    local_progress_off: ['El progreso de esta construcción no está disponible (no se pudo crear o leer su carpeta); la construcción sigue como siempre.'],
     ship_failed: [
       '#{{issue}} no se fusionó: la ejecución terminó sin resultado',
       '',
@@ -763,6 +775,28 @@ export function renderMessage(kind, data = {}, language = 'en') {
     values.summary_line = es
       ? `La construcción de Relevo terminó${none ? ' sin resultado' : ''}${after}. ${none ? 'El motivo está' : 'El resultado está'} en el último comentario de este issue.`
       : `The Relevo build ended${none ? ' without an outcome' : ''}${after}. ${none ? 'The reason is' : 'The result is'} in the latest comment of this issue.`;
+  }
+  if (kind === 'local_progress' || kind === 'local_status') {
+    const labels = es
+      ? { planning: 'planificación', specification: 'especificación', development: 'desarrollo', qa: 'QA', delivery: 'entrega' }
+      : { planning: 'planning', specification: 'specification', development: 'development', qa: 'QA', delivery: 'delivery' };
+    const of = present(values.of) ? ` ${es ? 'de' : 'of'} ${values.of}` : '';
+    const attempt = present(values.attempt) ? ` (${es ? 'intento' : 'attempt'} ${values.attempt}${of})` : '';
+    const parts = [`${labels[values.phase] ?? values.phase}${attempt}`];
+    if (present(values.group) && present(values.groups)) parts.push(es ? `grupo ${values.group} de ${values.groups}` : `group ${values.group} of ${values.groups}`);
+    if (present(values.tasks_done) && present(values.tasks_total)) parts.push(es ? `tareas ${values.tasks_done} de ${values.tasks_total}` : `tasks ${values.tasks_done} of ${values.tasks_total}`);
+    const name = present(values.event_name) ? String(values.event_name).replace(/[^A-Za-z0-9:._-]/g, '') : '';
+    if (values.event_kind === 'lens_start') parts.push(es ? `lente de QA ${name} empezó` : `QA lens ${name} started`);
+    if (values.event_kind === 'lens_end') parts.push(es ? `lente de QA ${name} terminó` : `QA lens ${name} finished`);
+    if (values.event_kind === 'agent') parts.push(es ? `agente ${name} terminó` : `agent ${name} finished`);
+    values.line = `${present(values.minutes) ? `[${values.minutes} min] ` : ''}${parts.join(' · ')}`;
+    if (present(values.last_change_minutes)) values.change_line = es ? `Último cambio: hace ${values.last_change_minutes} min` : `Last change: ${values.last_change_minutes} min ago`;
+    if (present(values.ended)) {
+      const outcome = present(values.outcome) ? values.outcome : null;
+      values.end_line = es
+        ? `Terminó${outcome ? `: ${outcome}` : ` con estado ${values.status}`}.`
+        : `Ended${outcome ? `: ${outcome}` : ` with status ${values.status}`}.`;
+    }
   }
   if (kind === 'built' && present(values.issue_hash)) values.issue_hash_short = shortHash(values.issue_hash);
   // Advisory notes of the QA lenses: how many, the lens of the first three, and all of them in a hidden marker for the review.

@@ -13,16 +13,16 @@
 
 ## 3. The state and the lines of a local build
 
-- [ ] 3.1 Test a function that builds the snapshot of a build from its state folder and its worktree: phase, group, tasks, start, last change, the lens and agent records, the outcome and the totals when present, tasks from the last written snapshot when the worktree is gone, and nothing for an issue with no folder; run and see it fail
-- [ ] 3.2 Write it in `scripts/lib/progress.mjs` or beside it, reusing `readTreeFacts` and `readAnnouncement`; verify the tests pass
-- [ ] 3.3 In `tests/go-local.test.mjs`, test with an injected runner and clock that `runLocal` prints a line when the phase, the group, the tasks or the newest lens or agent record changes, prints none when nothing changed, puts the minutes in each line, uses the language of `relevo.yml`, works for the Antigravity path, and builds as today when the folder cannot be created; run them and see them fail
-- [ ] 3.4 `scripts/lib/go-local.mjs` and `scripts/go-local.mjs`: run the agent without blocking, derive the change id from the title of the issue, print from the snapshot on an interval, and write the last snapshot at the end; the texts in `scripts/lib/messages.mjs`; verify the tests pass
-- [ ] 3.5 Test and write `go-local.mjs status <issue>`: a build in progress, a build that ended, and no build on this machine; it reads only; verify the tests pass
+- [x] 3.1 Test a function that builds the snapshot of a build from its state folder and its worktree: phase, group, tasks, start, last change, the lens and agent records, the outcome and the totals when present, tasks from the last written snapshot when the worktree is gone, and nothing for an issue with no folder; run and see it fail
+- [x] 3.2 Write it in `scripts/lib/progress.mjs` or beside it, reusing `readTreeFacts` and `readAnnouncement`; verify the tests pass
+- [x] 3.3 In `tests/go-local.test.mjs`, test with an injected runner and clock that `runLocal` prints a line when the phase, the group, the tasks or the newest lens or agent record changes, prints none when nothing changed, puts the minutes in each line, uses the language of `relevo.yml`, works for the Antigravity path, and builds as today when the folder cannot be created; run them and see them fail
+- [x] 3.4 `scripts/lib/go-local.mjs` and `scripts/go-local.mjs`: run the agent without blocking, derive the change id from the title of the issue, print from the snapshot on an interval, and write the last snapshot at the end; the texts in `scripts/lib/messages.mjs`; verify the tests pass
+- [x] 3.5 Test and write `go-local.mjs status <issue>`: a build in progress, a build that ended, and no build on this machine; it reads only; verify the tests pass
 
 ## 4. What a local build used
 
-- [ ] 4.1 Test that `runLocal` prints the answer of the agent and one sentence with the turns, the estimated cost and the tokens when the final answer of `claude -p --output-format json` has them, prints the raw output and nothing about usage when it is not that object, reads the summary of the guard on the Antigravity path, keeps the totals in the state folder, and posts nothing; run them and see them fail
-- [ ] 4.2 `scripts/lib/go-local.mjs`, `scripts/lib/run-flags.mjs` (the output format of a local run only; the test that compares the flags with the workflow still passes) and `scripts/lib/run-usage.mjs` (the sentence without the breakdown); verify the tests pass
+- [x] 4.1 Test that `runLocal` prints the answer of the agent and one sentence with the turns, the estimated cost and the tokens when the final answer of `claude -p --output-format json` has them, prints the raw output and nothing about usage when it is not that object, reads the summary of the guard on the Antigravity path, keeps the totals in the state folder, and posts nothing; run them and see them fail
+- [x] 4.2 `scripts/lib/go-local.mjs`, `scripts/lib/run-flags.mjs` (the output format of a local run only; the test that compares the flags with the workflow still passes) and `scripts/lib/run-usage.mjs` (the sentence without the breakdown); verify the tests pass
 
 ## 5. The developer launches and the unmarked tasks
 
