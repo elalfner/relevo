@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './lib/config.mjs';
+import { loadConfig, effectiveRunners } from './lib/config.mjs';
 import { profileLookups } from './lib/stack-profile.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
@@ -52,5 +52,5 @@ if (flags.has('--json')) {
   result.warnings.forEach((w) => console.error(`warning: ${w.message}`));
   if (result.ok) console.log(`${target} is valid`);
 }
-if (result.ok && flags.has('--effective')) console.log(JSON.stringify(result.config, null, 2));
+if (result.ok && flags.has('--effective')) console.log(JSON.stringify({ ...result.config, runners: effectiveRunners(result.config) }, null, 2));
 process.exit(result.ok ? 0 : 1);

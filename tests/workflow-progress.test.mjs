@@ -106,3 +106,14 @@ test('the Antigravity workflow keeps the progress report, because it lives outsi
   }
   assert.ok(out.indexOf('- name: Start the progress report') < out.indexOf('Install the Antigravity CLI'));
 });
+
+test('Scenario: The build job starts - the step that marks it comes before the toolchain check and the report, and the Antigravity build keeps it', () => {
+  assert.ok(at('Mark the build as started') > -1);
+  assert.ok(at('Mark the build as started') < at('Check the toolchain'));
+  assert.ok(at('Mark the build as started') < at('Start the progress report'));
+  const rendered = agentWorkflow(workflow, 'build', antigravity);
+  assert.ok(rendered.includes('- name: Mark the build as started'));
+  // The minutes of the comment still count from the watch, which starts in the build job: the wait is not in them.
+  assert.match(stepText('Start the progress report'), /watch --issue/);
+  assert.doesNotMatch(stepText('Mark the build as started'), /watch/);
+});

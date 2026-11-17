@@ -94,7 +94,7 @@ const upgrades = (file) => {
   try {
     const state = planUpgrades({
       files: [file], ours: current.workflows, templates: templates.workflows, agentBlocks: templates.agentBlocks,
-      labels: facts.config?.runner?.labels ?? answers.runnerLabels, credential: resolveCredential({ answer: answers.credential, secrets: facts.secrets, installed: current.workflows['relevo-go.yml'] }).credential, build: answers.agentBuild ?? 'claude', from: arg('from') ?? null, source, restricted: restrictedList(facts.config),
+      labels: facts.config?.runner?.labels ?? answers.runnerLabels, buildLabels: facts.config ? facts.config.runner?.build_labels ?? null : answers.runnerBuildLabels ?? null, credential: resolveCredential({ answer: answers.credential, secrets: facts.secrets, installed: current.workflows['relevo-go.yml'] }).credential, build: answers.agentBuild ?? 'claude', from: arg('from') ?? null, source, restricted: restrictedList(facts.config),
     })[file];
     return state.status === 'update' ? { ...state, diff: unifiedDiff(current.workflows[file], state.text) } : state;
   } catch (err) {

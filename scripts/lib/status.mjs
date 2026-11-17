@@ -47,6 +47,7 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
     needsReviewer: i.labels.includes(names['needs-reviewer']),
     updatedAt: i.updated_at ?? null,
+    waitingForRunner: i.waiting_for_runner === true,
     ...(externalBlocks[i.number] ? { blockedBy: externalBlocks[i.number] } : {}),
   })).filter((e) => e.state);
 
@@ -100,7 +101,9 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
   // A build that stopped reporting: nothing happened on the issue for longer than limits.building_alert_hours.
   entries.filter((e) => e.state === 'building' && e.updatedAt).forEach((e) => {
     const hours = Math.floor((new Date(now).getTime() - Date.parse(e.updatedAt)) / HOUR);
-    if (hours >= config.limits.building_alert_hours) alerts.push({ type: 'stuck-build', issue: e.number, hours, command: `/relevo:go ${e.number}` });
+    if (hours < config.limits.building_alert_hours) return;
+    // A claimed build whose job has not started waits for a runner: there is nothing to restart, only a runner to look at.
+    alerts.push({ type: e.waitingForRunner ? 'waiting-runner' : 'stuck-build', issue: e.number, hours, command: `/relevo:go ${e.number}` });
   });
   prs.forEach((p) => {
     if (!p.approved && p.reviewer && p.requested_at) {
@@ -148,26 +151,28 @@ const T = {
     unread: {
       variable: (u) => `the variable RELEVO_CLOUD_GO (${u.reason}): the issues you could build by hand may be missing`,
       workflow: (u) => `the workflow relevo-go.yml (${u.reason}): the cloud is assumed to build, so the issues you could build by hand may be missing`,
+      progress: (u) => `the progress comment of #${u.issue} (${u.reason}): a build that waits for a runner may be reported as one that stopped reporting`,
       compare: (u) => `the comparison of the branch of pull request #${u.pr} with the base (${u.reason}): a branch that is behind may not be reported`,
     }, onMe: 'Waiting on you', review: 'Pull requests to review', ship: 'Approved, ready to ship',
     others: 'Waiting on others', spec: 'Back with the spec writer', blocked: 'Blocked', needsReviewer: 'Need a reviewer', milestone: 'Milestone',
     noDue: 'has no due date, so no capacity warning is computed', merged: 'merged', inReview: 'in review', queued: 'queued', warn: 'capacity warning: more work than the team can review before the due date',
     alerts: 'Alerts', staleReview: 'review waiting', staleBranch: 'branch behind the base by',
     waitingFor: 'waiting for', open: 'open', closed: 'closed, not completed', unreadable: 'could not be read',
-    readyForMe: 'Ready, for you to build (the cloud is not building)', stuck: 'build with no activity for', restart: 'remove relevo:building and apply relevo:ready again, or run',
+    readyForMe: 'Ready, for you to build (the cloud is not building)', stuck: 'build with no activity for', restart: 'remove relevo:building and apply relevo:ready again, or run', waitingRunner: ['has waited', 'for a runner: look at the runners that take the build job (runner.build_labels), or build it on a machine with'],
   },
   es: {
     nothing: 'Nada espera por ti.', fromRead: '(con lo que se pudo leer)', unreadTitle: 'No se pudo leer, así que este informe puede estar incompleto',
     unread: {
       variable: (u) => `la variable RELEVO_CLOUD_GO (${u.reason}): pueden faltar los issues que podrías construir a mano`,
       workflow: (u) => `el workflow relevo-go.yml (${u.reason}): se supone que la nube construye, así que pueden faltar los issues que podrías construir a mano`,
+      progress: (u) => `el comentario de progreso de #${u.issue} (${u.reason}): puede que una construcción que espera un runner se avise como una que dejó de informar`,
       compare: (u) => `la comparación de la rama del pull request #${u.pr} con la base (${u.reason}): puede que no se avise de una rama atrasada`,
     }, onMe: 'Esperando por ti', review: 'Pull requests por revisar', ship: 'Aprobadas, listas para entregar',
     others: 'Esperando a otros', spec: 'De vuelta con quien escribe las specs', blocked: 'Bloqueadas', needsReviewer: 'Sin revisor', milestone: 'Milestone',
     noDue: 'no tiene fecha límite, así que no se calcula la advertencia de capacidad', merged: 'fusionadas', inReview: 'en revisión', queued: 'en cola', warn: 'advertencia de capacidad: hay más trabajo del que el equipo puede revisar antes de la fecha límite',
     alerts: 'Alertas', staleReview: 'revisión esperando', staleBranch: 'rama atrasada respecto a la base por',
     waitingFor: 'esperando', open: 'abierto', closed: 'cerrado, sin completar', unreadable: 'no se pudo leer',
-    readyForMe: 'Listas, para que las construyas (la nube no está construyendo)', stuck: 'construcción sin actividad desde hace', restart: 'quita relevo:building y vuelve a poner relevo:ready, o ejecuta',
+    readyForMe: 'Listas, para que las construyas (la nube no está construyendo)', stuck: 'construcción sin actividad desde hace', restart: 'quita relevo:building y vuelve a poner relevo:ready, o ejecuta', waitingRunner: ['espera un runner desde hace', ': mira los runners que toman el job de build (runner.build_labels), o constrúyelo en una máquina con'],
   },
 };
 
@@ -200,6 +205,7 @@ export function renderStatus(report, language = 'en') {
   });
   if (report.milestones.length) out.push('');
   section(t.alerts, report.alerts.map((a) => {
+    if (a.type === 'waiting-runner') return language === 'es' ? `#${a.issue} ${t.waitingRunner[0]} ${a.hours}h${t.waitingRunner[1]} ${a.command}` : `#${a.issue} ${t.waitingRunner[0]} ${a.hours}h ${t.waitingRunner[1]} ${a.command}`;
     if (a.type === 'stuck-build') return `#${a.issue} ${t.stuck} ${a.hours}h: ${t.restart} ${a.command}`;
     return a.type === 'stale-review'
       ? `#${a.issue} ${t.staleReview} ${a.hours}h (@${a.reviewer}) ${a.pr}`
@@ -292,7 +298,8 @@ export function renderDigest(report, language = 'en') {
   if (report.alerts.length) {
     lines.push('', `${es ? 'Alertas' : 'Alerts'}:`);
     report.alerts.forEach((a) => {
-      if (a.type === 'stuck-build') lines.push(`- #${a.issue} ${es ? 'construcción sin actividad desde hace' : 'build with no activity for'} ${a.hours}h`);
+      if (a.type === 'waiting-runner') lines.push(`- #${a.issue} ${es ? 'esperando un runner desde hace' : 'waiting for a runner for'} ${a.hours}h`);
+      else if (a.type === 'stuck-build') lines.push(`- #${a.issue} ${es ? 'construcción sin actividad desde hace' : 'build with no activity for'} ${a.hours}h`);
       else lines.push(a.type === 'stale-review'
         ? `- #${a.issue} ${es ? 'revisión esperando' : 'review waiting'} ${a.hours}h (@${a.reviewer})`
         : `- #${a.issue} ${es ? 'rama atrasada por' : 'branch behind the base by'} ${a.behind} (${mergeText(a, es ? 'es' : 'en')})`);

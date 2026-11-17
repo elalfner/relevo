@@ -8,6 +8,7 @@ import { cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { parseUsageMarker, USAGE_DAYS } from './run-usage.mjs';
 import { STAGE_DAYS, stagesOfIssue } from './stages.mjs';
 import { BEHIND_ALERT } from './status.mjs';
+import { CLOSED_MARKER, WAITING_MARKER } from './progress.mjs';
 
 const paged = (gh, path) => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
@@ -93,6 +94,16 @@ export function gatherStatus({ gh, ghLinks = gh, repo, config, withUsage = false
       }));
   });
   const issues = [...byNumber.values()];
+  // A claimed build past the alert time either waits for a runner or stopped reporting: only then is its progress comment read.
+  const alertMs = config.limits.building_alert_hours * 3600 * 1000;
+  issues.filter((i) => i.labels.includes(names.building) && i.updated_at && new Date(now).getTime() - Date.parse(i.updated_at) >= alertMs).forEach((i) => {
+    try {
+      i.waiting_for_runner = paged(gh, `repos/${repo}/issues/${i.number}/comments?per_page=100`)
+        .some((c) => c.user?.type === 'Bot' && String(c.body ?? '').includes('<!-- relevo:progress -->') && String(c.body).includes(WAITING_MARKER) && !String(c.body).includes(CLOSED_MARKER));
+    } catch (err) {
+      unread.push({ what: 'progress', issue: i.number, reason: reasonOf(err) });
+    }
+  });
 
   const wanted = new Set(issues.map((i) => i.milestone).filter(Boolean));
   const milestones = [...wanted].map((n) => {
