@@ -643,4 +643,4 @@ Total $4.72, against a budget of $5 per run (`run_max_cost`).
 
 ### Result
 
-12.2 behaves as expected once the local build runs the branch (the repeat above); the first attempt did not test it. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2 and 12.4 are marked in `tasks.md`; 12.3 is left unmarked on the decision of the person running the test.
+12.2 behaves as expected once the local build runs the branch (the repeat above); the first attempt did not test it. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2, 12.3 and 12.4 are marked in `tasks.md`. 12.3 is marked although 12.3c needed the capacity of the person freed first (#160 and #161 closed); that came from the test, not from the branch, and the case with the limit free from the start was not repeated.
