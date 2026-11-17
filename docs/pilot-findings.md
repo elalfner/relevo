@@ -596,10 +596,10 @@ Run on 2026-11-17 in `elalfner/relevo-sandbox`, with the workflows of PR #159 (s
 |---|---|---|
 | `ready` on A | no run builds A | one `issues` run of `relevo-go` (44130316083), `skipped`. As expected. |
 | `go` on A | a run starts, A goes `building`, ends `built`, `go` is gone | run 44130752802 built it in 5m23s; the last labels were `relevo:built`, with no `go`. As expected. |
-| local build of B (`ready`, then `/relevo:go 161 --local`) | `building` and `local`, no run for B | B was `building` from 16:54:15 and ended `built`; the only runs for B (44130936334, 44131032460) were `skipped`. **Differs: B never carried `relevo:local`.** |
+| local build of B (`ready`, then `/relevo:go 161 --local`) | `building` and `local`, no run for B | B was `building` from 16:54:15 and ended `built`; the only runs for B (44130936334, 44131032460) were `skipped`. **Not shown: B never carried `relevo:local`, but the build ran with the installed 0.14.4, not the branch (see below).** |
 | `go` on C while B builds | C is not queued behind B | **Not shown.** C (run 44131754563) became `relevo:queued`, but because it names `lib/main.dart`, which #160 also names and had not been merged ("shared-wait"), not because of a limit. A had also finished by then, so nothing was running in the cloud. |
 
-The timeline of #161 has `ready` (16:53:43), then `building` and the removal of `ready` (16:54:15), and no `local` at any time. The session of the local build ran `go-plan.mjs --repo elalfner/relevo-sandbox --only 161 --apply --claim` **without `--place local`**, so it took the claim of a cloud build (`scripts/lib/plan.mjs` adds `local` only for `place` `local`). The cloud counts a `building` issue without `local`, so a local build like this one takes a place of `concurrent_agents`, which is what the `local` label is there to avoid. Not fixed here; it needs a change in `skills/go/SKILL.md` or in `go-local.mjs`, so that the build session claims with `--place local` (or does not claim again, as the claim of `go` already did it).
+The timeline of #161 has `ready` (16:53:43), then `building` and the removal of `ready` (16:54:15), and no `local` at any time. The cause is in the test, not in the branch: the session that `go-local.mjs` starts is a new `claude -p` that does not inherit the `--plugin-dir` of the session that launched it, so it used the Relevo installed in the sandbox (0.14.4, see the paths of its transcript). That version claims with `go-plan.mjs --only 161 --apply --claim`, without `--place local`, and takes the claim of a cloud build; the 0.16 skill and `scripts/lib/plan.mjs` add `local` for `place` `local`, but they never ran. So 12.2c is **not shown** for the branch, and has to be repeated with the branch plugin in the inner session as well (for example a `claude` wrapper on the `PATH` that adds `--plugin-dir`, or the installed plugin at 0.16.0-rc.1).
 
 12.2d is not shown, and should be repeated with issues that name different files, with the cloud build of one issue still running while the local build is on.
 
@@ -627,4 +627,4 @@ Total $4.72, against a budget of $5 per run (`run_max_cost`).
 
 ### Result
 
-12.2 does not pass: B carried no `local` label, and the case of C was not shown. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2 and 12.3 are left unmarked in `tasks.md`.
+12.2 is not shown: the local build ran with the installed plugin (0.14.4) instead of the branch, so `local` was never tested, and the case of C was not shown either. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2 and 12.3 are left unmarked in `tasks.md`.
