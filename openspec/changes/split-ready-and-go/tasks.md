@@ -14,9 +14,9 @@
 
 ## 3. What the planner reads
 
-- [ ] 3.1 In `tests/github.test.mjs`, test that `gather` gives each candidate `go_by` and `go_at` from the last `labeled` event of `go`, `title_edited_at` from the last `renamed` event, `local_by` for a `building` issue with `local`, and that an issue named by `--only` that carries `go` is read whatever its state; run them and see them fail
-- [ ] 3.2 `scripts/lib/github.mjs`: read those fields from the timeline already fetched, and the issue of `--only`; a function that reads `lastEditedAt` of one issue and returns the time, `null` or a failure that the caller can tell apart; verify the tests pass
-- [ ] 3.3 Test the reader of `lastEditedAt` with an injected `gh`: a time, never edited, a failed request, a malformed answer; verify it never throws and never reports "not edited" for a failure
+- [x] 3.1 In `tests/github.test.mjs`, test that `gather` gives each candidate `go_by` and `go_at` from the last `labeled` event of `go`, `title_edited_at` from the last `renamed` event, `local_by` for a `building` issue with `local`, and that an issue named by `--only` that carries `go` is read whatever its state; run them and see them fail
+- [x] 3.2 `scripts/lib/github.mjs`: read those fields from the timeline already fetched, and the issue of `--only`; a function that reads `lastEditedAt` of one issue and returns the time, `null` or a failure that the caller can tell apart; verify the tests pass
+- [x] 3.3 Test the reader of `lastEditedAt` with an injected `gh`: a time, never edited, a failed request, a malformed answer; verify it never throws and never reports "not edited" for a failure
 
 ## 4. The planner in the cloud
 
