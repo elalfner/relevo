@@ -611,7 +611,7 @@ function gatherPlatforms(f, p, tryRun) {
         f.ios = {
           simctl: runtimes !== null,
           runtimes: runtimes ? (runtimes.runtimes ?? []).filter((r) => r.isAvailable !== false).length : 0,
-          booted: booted ? Object.values(booted.devices ?? {}).flat().filter((d) => d.state === 'Booted').length : 0,
+          booted: booted ? Object.values(booted.devices ?? {}).flat().filter((d) => d.state === 'Booted').length : null,
         };
       }
       // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
@@ -923,6 +923,7 @@ function platformChecks(f) {
         const key = `review.ios.${e.name}`;
         if (!f.ios.simctl) r.push(warn(`${key}.simctl`, `platform ${e.name}: \`xcrun simctl\` does not answer, so \`review\` cannot read a simulator`, 'install Xcode and run `sudo xcode-select -s /Applications/Xcode.app`'));
         else if (f.ios.runtimes === 0) r.push(warn(`${key}.runtime`, `platform ${e.name}: no iOS Simulator runtime is installed`, 'install one in Xcode (Settings > Components) or with `xcodebuild -downloadPlatform iOS`'));
+        else if (f.ios.booted === null) r.push(note(`${key}.booted`, `platform ${e.name}: the list of booted simulators could not be read`))
         else if (f.ios.booted === 0) r.push(note(`${key}.booted`, `platform ${e.name}: no simulator is booted; the iOS review needs one running the app (the review never boots it)`));
         else r.push(pass(`${key}.booted`, `platform ${e.name}: ${f.ios.booted} iOS simulator(s) booted`));
       }

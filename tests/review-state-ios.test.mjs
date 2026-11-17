@@ -40,3 +40,9 @@ test('a finding of an iOS audit can be waived like the others', () => {
   applyWaivers(state);
   assert.equal(state.audit.verdict, 'REVIEW PASSED (with waivers)');
 });
+
+test('a config error is not reported as a simulator that is not booted', () => {
+  const a = auditSimulatorSource({ ...source, process: 'a" OR 1' }, ({ processName }) => { throw new Error(`the process name of the app has characters that a log filter does not accept (${processName})`); });
+  assert.equal(a.verdict, 'REVIEW INCONCLUSIVE');
+  assert.doesNotMatch(a.reason, /boot the simulator/);
+});

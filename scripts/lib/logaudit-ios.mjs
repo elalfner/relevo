@@ -78,7 +78,8 @@ export function auditSimulatorSource(source, readLog) {
   try {
     text = readLog({ udid: source.udid, since: source.since, processName: source.process });
   } catch (err) {
-    return { verdict: 'REVIEW INCONCLUSIVE', reason: `${err.message}: boot the simulator again, start the app and repeat the steps`, findings: [], counts: {}, ignored: 0 };
+    const unreadable = /could not be read/.test(err.message);
+    return { verdict: 'REVIEW INCONCLUSIVE', reason: unreadable ? `${err.message}: boot the simulator again, start the app and repeat the steps` : `the review state cannot be audited: ${err.message}`, findings: [], counts: {}, ignored: 0 };
   }
   return iosReviewAudit(text);
 }

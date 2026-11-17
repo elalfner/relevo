@@ -65,6 +65,18 @@ const save = (state) => {
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
 };
 
+// The end of every audit: apply the waivers, keep the state, write the report and print the verdict.
+function finishAudit(state, audit, scope) {
+  applyWaivers(state);
+  audit.verdict = state.audit.verdict;
+  save(state);
+  writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
+  console.log(audit.verdict);
+  if (audit.reason) console.log(`  ${audit.reason}`);
+  if (audit.ignored) console.log(`  ${audit.ignored} Apple system error(s) ignored`);
+  audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+}
+
 try {
   switch (command) {
     case 'init': {
@@ -171,27 +183,14 @@ try {
         const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor });
         const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor === 'postgres' ? { flavor } : {}) };
         state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}) };
-        applyWaivers(state);
-        audit.verdict = state.audit.verdict;
-        save(state);
-        writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
-        console.log(audit.verdict);
-        if (audit.reason) console.log(`  ${audit.reason}`);
-        audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+        finishAudit(state, audit, scope);
         break;
       }
       if (state.source?.source === 'simulator') {
         const audit = auditSimulatorSource(state.source, readIosLog);
         const scope = { kind: 'ios', process: state.source.process, since: state.source.since };
         state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ignored: audit.ignored, ...(audit.reason ? { reason: audit.reason } : {}) };
-        applyWaivers(state);
-        audit.verdict = state.audit.verdict;
-        save(state);
-        writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
-        console.log(audit.verdict);
-        if (audit.reason) console.log(`  ${audit.reason}`);
-        if (audit.ignored) console.log(`  ${audit.ignored} Apple system error(s) ignored`);
-        audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+        finishAudit(state, audit, scope);
         break;
       }
       const pi = rest.indexOf('--package');
@@ -206,13 +205,7 @@ try {
       const { text: source, scope } = pkg ? filterByApp(raw, { package: pkg, pids }) : { text: raw, scope: null };
       const audit = auditLog(source, { scope });
       state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}) };
-      applyWaivers(state);
-      audit.verdict = state.audit.verdict;
-      save(state);
-      writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
-      console.log(audit.verdict);
-      if (audit.reason) console.log(`  ${audit.reason}`);
-      audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+      finishAudit(state, audit, scope);
       break;
     }
     case 'confirm-env': {

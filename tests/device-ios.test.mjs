@@ -93,6 +93,10 @@ test('the log arguments filter by process, read ndjson and start at a local time
   assert.throws(() => iosLogArgs({ udid: UDID, since: 'yesterday', processName: 'OMB' }), /start time/);
 });
 
+test('the start time rounds up to the next whole second', () => {
+  assert.equal(formatLogStart(new Date(2026, 10, 7, 9, 5, 3, 400)), '2026-11-07 09:05:04');
+});
+
 test('the start time is written in local time with two digits', () => {
   assert.equal(formatLogStart(new Date(2026, 10, 7, 9, 5, 3)), '2026-11-07 09:05:03');
 });

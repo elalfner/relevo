@@ -2456,6 +2456,7 @@ test('Scenario: iOS review needs - simctl, a runtime and a booted simulator are 
   assert.equal(byId(run({ simctl: true, runtimes: 0, booted: 0 }), 'review.ios.app.runtime').status, 'warn');
   assert.equal(byId(run({ simctl: true, runtimes: 1, booted: 0 }), 'review.ios.app.booted').status, 'note');
   assert.equal(byId(run({ simctl: true, runtimes: 1, booted: 1 }), 'review.ios.app.booted').status, 'pass');
+  assert.match(byId(run({ simctl: true, runtimes: 1, booted: null }), 'review.ios.app.booted').message, /could not be read/);
   const none = runChecks(healthy({ macos: true, platformFacts: [flutterPlatform()] }));
   assert.equal(none.some((r) => /^review\.ios\./.test(r.id)), false);
 });

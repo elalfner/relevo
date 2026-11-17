@@ -23,7 +23,7 @@ test('Scenario: Web - Vue and Flutter on web are a browser, and the review needs
 });
 
 test('Scenario: iOS simulator - Flutter and SwiftUI on ios use xcrun, observe-only, and do not need the autopilot', () => {
-  for (const stack of ['flutter', 'swiftui']) {
+  for (const stack of ['flutter', 'swiftui', 'swift-app']) {
     const ios = adapterFor({ stack, target: 'ios' });
     assert.equal(ios.supported, true);
     assert.equal(ios.kind, 'device');

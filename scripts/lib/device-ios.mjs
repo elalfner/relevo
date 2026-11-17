@@ -76,8 +76,12 @@ export function captureIos({ xcrun = realXcrun, name, dir = 'evidence', udid, mk
 // The process name goes into a log predicate: only plain executable names are accepted.
 const PROCESS_RE = /^[A-Za-z0-9][A-Za-z0-9_. -]{0,79}$/;
 
-/** `YYYY-MM-DD HH:MM:SS` in the local time of this machine, the form `log show --start` reads. */
+/**
+ * `YYYY-MM-DD HH:MM:SS` in the local time of this machine, the form `log show --start` reads. The time is rounded up to the
+ * next whole second, so an entry written just before the review started is never read as part of it.
+ */
 export function formatLogStart(date = new Date()) {
+  if (date.getMilliseconds() > 0) date = new Date(Math.ceil(date.getTime() / 1000) * 1000);
   const p = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}`;
 }
