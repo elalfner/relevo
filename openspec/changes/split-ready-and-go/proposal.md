@@ -20,7 +20,7 @@ The approval and the build request:
 The text that is built is the text that was approved:
 
 - Today the time between `ready` and the claim is seconds; now it can be days. Before an issue is claimed, in the cloud or on a machine, the last edit of its title and body is compared with the moment `ready` was applied, as GitHub reports them. Any later edit, also one by the person who approved, removes `ready` and leaves the issue a draft, with one comment that names who approved and asks for a new approval. It does not go to `needs-spec` (nothing is missing) or to `qa-failed` (nothing was built).
-- Where that cannot be read, nothing is built and the reason is said. The design starts with a spike that settles two facts: that the token of the workflow can read the last edit, and whether a Claude Code session on the web can. If a web session cannot, it says that it cannot check the approval; no shortcut is added for it.
+- Where that cannot be read, nothing is built and the reason is said. The design starts with a spike that settles one fact: that the token of the workflow, and the `gh` of a person's machine, can read the last edit. A session on the web is not asked, because it does not build (see below).
 - `issue` keeps refusing to edit a `ready` issue in place: it removes `ready`, edits, and offers the approval again.
 
 A local build:
@@ -30,6 +30,7 @@ A local build:
 - **It never joins the cloud queue.** A local build that cannot start (a dependency that is not merged, an approval that is not valid) reports why and leaves the labels as they were. Only a build request puts an issue in `queued` or `blocked`.
 - **It can take an issue that waits in the cloud.** `/relevo:go <n>` on a `queued` issue claims it and the queue no longer sees it; on a `blocked` issue it is refused, as always.
 - **It is marked.** A local build carries a new `local` label next to `building`, applied when the build is claimed and removed by the tool when the issue leaves `building`. The limit of concurrent agents counts only the `building` issues without it, so a local build takes no slot from the cloud. Who started it is read from the label event. A `local` label without `building` means nothing: the planner ignores it and `doctor` reports it.
+- **A session on the web does not build.** Its container has no toolchain of the project and no hard limits, and a build there would run on the model and the accumulated context of the conversation. In a Claude Code session on the web, `/relevo:go <n>` builds nothing: it says why and asks one yes/no question, whether to apply the `go` label so that the cloud builds the issue, with the permission check of `issue`. Where the cloud cannot build (no workflow, no credential, paused), it says that the issue needs a machine or the cloud, and applies nothing. There is no option that forces a build on the web.
 - **A local build that died is restarted by hand.** `status` reports a build with no activity as it does today, says that it is a local build and whose, and tells the person to return the issue to `ready`, which is now safe.
 
 The cloud when it cannot answer:
@@ -58,6 +59,7 @@ None.
 - `issue-lifecycle`: `ready` is the approval and starts nothing; `go` is a request label and `local` a mark next to `building`; a draft; what returns an issue to `ready` or to a draft; `local` leaves with `building`.
 - `go`: the trigger is the `go` label on a `ready` issue; both permissions are checked; the refusals of `go`; the request is consumed at the first decision and served after a pause; the queue acts on what a request left waiting; the capacity and agent gates apply to cloud builds only and the limit does not count local builds; the cloud rebuild of a `qa-failed` issue with no code; the labels the workflow removes.
 - `execution-modes`: a local build needs no label, skips the gates that ration, never moves an issue to `queued` or `blocked`, can take a `queued` issue and carries the `local` mark; what a paused, unconfigured or absent cloud does with the `go` label; the cloud warning of a local build.
+- `web-sessions`: `go` in a session on the web builds nothing and offers the build request instead.
 - `security`: the issue that is built is the issue that was approved, checked against the last edit across a wait of any length, in the cloud and on a machine; nothing is built where it cannot be checked; the trust level applies to both labels.
 - `issue`: applying `ready` no longer starts a build; the offer has three answers; editing a `ready` issue removes the approval first.
 - `status`: the `ready` issues of the person are listed with both ways to build them; a stuck build says whether it is local, whose it is and how to restart it.
@@ -69,6 +71,6 @@ None.
 
 - Code: `scripts/lib/labels.mjs`, `scripts/lib/plan.mjs`, `scripts/lib/github.mjs`, `scripts/go-plan.mjs`, `scripts/lib/requeue.mjs`, `scripts/lib/can-edit-issue.mjs`, `scripts/lib/next-step.mjs`, `scripts/lib/status.mjs`, `scripts/lib/doctor.mjs`, `scripts/lib/init.mjs`, `scripts/lib/messages.mjs` (English and Spanish), `scripts/lib/go-local.mjs`, `scripts/label-change.mjs`, and their tests.
 - Content: `templates/workflows/relevo-go.yml` and `relevo-queue.yml`, `templates/agents/antigravity-step.yml`, `templates/relevo.yml`, `skills/go`, `skills/issue` (and `references/update.md`), `skills/fix`, `skills/status`, `skills/doctor`, `skills/init`, `docs/` in both languages (`execution`, `guide`, `get-started`, `issue-format`, `security`).
-- GitHub: one more read per issue that is about to be claimed (its last edit). A session of Claude Code on the web may not be able to make it, and then cannot build.
+- GitHub: one more read per issue that is about to be claimed (its last edit). A session of Claude Code on the web never makes it, because it does not build.
 - Release: a breaking change to the label interface and to the workflow templates, so a new minor version with the migration in `CHANGELOG.md`: update the workflow files, create the `go` and `local` labels, and apply `go` to the issues that were `ready` and waiting for the cloud.
 - Users: a team that builds in the cloud applies one more label per issue, or answers "`ready` and `go`" in `issue`.
