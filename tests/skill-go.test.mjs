@@ -650,3 +650,40 @@ test('Scenario: Local build claimed - the claim of a local build is building and
   assert.match(step1, /`building` and `local` in one change/);
   assert.match(step1, /not the limit of agents or the capacity of the assignee/);
 });
+
+// --- split-ready-and-go: a remote session builds nothing and offers the build request
+
+const remote = body.slice(body.indexOf('## A session on the web'), body.indexOf('## Untrusted content'));
+
+test('Scenario: Approved issue, cloud available - in a remote session the skill builds nothing and asks one yes/no question', () => {
+  assert.ok(body.indexOf('## A session on the web') !== -1 && body.indexOf('## A session on the web') < body.indexOf('## Steps'), 'the branch comes before any step');
+  assert.match(remote, /scripts\/go-where\.mjs/);
+  assert.match(remote, /`remote` is `true`/);
+  assert.match(remote, /Build nothing and claim nothing/);
+  assert.match(remote, /one yes\/no question/);
+  assert.match(remote, /apply the `go` label to #<issue> so that the cloud builds it/);
+});
+
+test('the go label is applied only on a clear yes, to a ready issue, after the permission check, through the scripts', () => {
+  assert.match(remote, /only on a clear yes/);
+  assert.match(remote, /gh api repos\/\{owner\}\/\{repo\} --jq \.permissions/);
+  assert.match(remote, /label-change\.mjs --to go --current/);
+  assert.match(remote, /gh-web\.mjs issue edit <issue> --add-label/);
+});
+
+test('Scenario: The cloud cannot build - the skill applies nothing and says the issue needs a machine or the cloud', () => {
+  assert.match(remote, /`cloud\.builds` is `false`/);
+  assert.match(remote, /apply nothing/i);
+  assert.match(remote, /needs a machine or the cloud/);
+  ['no_workflow', 'no_credential', 'paused'].forEach((r) => assert.ok(remote.includes(`\`${r}\``), r));
+});
+
+test('Scenario: Draft - in a remote session an issue that is not ready gets nothing applied and is told it needs ready first', () => {
+  assert.match(remote, /not `ready`[^.]*needs `ready` first/);
+});
+
+test('Scenario: Local flag - the answer is the same with --local, and no option forces a build there; a run of the workflow is not a remote session', () => {
+  assert.match(remote, /also when `\$ARGUMENTS` has `--local`/);
+  assert.match(remote, /No option forces a build here/);
+  assert.match(remote, /When `\$ARGUMENTS` has `--decision <base64>`, skip this section/);
+});

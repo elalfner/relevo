@@ -48,8 +48,8 @@
 
 ## 8. A remote session
 
-- [ ] 8.1 In `tests/skill-go.test.mjs`, test that the skill, in a remote session and with no `--decision`, builds nothing, asks one yes/no question, applies `go` only on a yes to a `ready` issue with the permission check, applies nothing where the cloud cannot build or the issue is a draft, and answers the same with `--local`; run them and see them fail
-- [ ] 8.2 A script that says where the skill runs and whether the cloud can build, reusing `isRemote` and `cloudBuilds`, with its test; `skills/go/SKILL.md`: the branch of a remote session before any other step; verify the tests pass
+- [x] 8.1 In `tests/skill-go.test.mjs`, test that the skill, in a remote session and with no `--decision`, builds nothing, asks one yes/no question, applies `go` only on a yes to a `ready` issue with the permission check, applies nothing where the cloud cannot build or the issue is a draft, and answers the same with `--local`; run them and see them fail
+- [x] 8.2 A script that says where the skill runs and whether the cloud can build, reusing `isRemote` and `cloudBuilds`, with its test; `skills/go/SKILL.md`: the branch of a remote session before any other step; verify the tests pass
 
 ## 9. Issue
 
