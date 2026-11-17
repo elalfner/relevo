@@ -8,8 +8,8 @@
 
 ## 2. Init
 
-- [ ] 2.1 In `tests/init.test.mjs`, test that with `runner.build_labels` the build job of `relevo-go.yml` gets those labels and every other job of every workflow gets `runner.labels`, that without it nothing changes, that a rewrite keeps both, and that the question about the builds is asked only after the person says the runner is self-hosted; run them and see them fail
-- [ ] 2.2 `scripts/lib/init.mjs`: the answer, the key in `relevo.yml` and the `runs-on` per job; `skills/init/SKILL.md`: the question; verify the tests pass
+- [x] 2.1 In `tests/init.test.mjs`, test that with `runner.build_labels` the build job of `relevo-go.yml` gets those labels and every other job of every workflow gets `runner.labels`, that without it nothing changes, that a rewrite keeps both, and that the question about the builds is asked only after the person says the runner is self-hosted; run them and see them fail
+- [x] 2.2 `scripts/lib/init.mjs`: the answer, the key in `relevo.yml` and the `runs-on` per job; `skills/init/SKILL.md`: the question; verify the tests pass
 
 ## 3. Doctor
 
