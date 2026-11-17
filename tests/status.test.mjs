@@ -202,6 +202,58 @@ test('Scenario: Stuck build / Recent activity - an alert after limits.building_a
   assert.match(renderDigest(r, 'es'), /- #7 construcción sin actividad desde hace 7h/);
 });
 
+test('Scenario: Long wait - an issue past the alert time whose build has not started is reported as waiting for a runner, with the two ways forward and no restart hint', () => {
+  const waiting = { ...aged(7, ['relevo:building'], '2026-03-10T08:00:00Z'), waiting_for_runner: true };
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [waiting] });
+  assert.deepEqual(r.alerts, [{ type: 'waiting-runner', issue: 7, hours: 4, command: '/relevo:go 7' }]);
+  const text = renderStatus(r);
+  assert.match(text, /#7 has waited 4h for a runner: look at the runners that take the build job \(runner\.build_labels\), or build it on a machine with \/relevo:go 7/);
+  assert.doesNotMatch(text, /remove relevo:building|no activity/, 'there is nothing to restart');
+  assert.match(renderStatus(r, 'es'), /#7 espera un runner desde hace 4h: mira los runners que toman el job de build \(runner\.build_labels\), o constrúyelo en una máquina con \/relevo:go 7/);
+  assert.match(renderDigest(r), /- #7 waiting for a runner for 4h/);
+  assert.match(renderDigest(r, 'es'), /- #7 esperando un runner desde hace 4h/);
+});
+
+test('Scenario: A build that started and went silent - without the waiting marker the alert is the one of today', () => {
+  const started = aged(7, ['relevo:building'], '2026-03-10T08:00:00Z');
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [started] });
+  assert.equal(r.alerts[0].type, 'stuck-build');
+});
+
+test('Scenario: Short wait - before the alert time nothing is said', () => {
+  const waiting = { ...aged(7, ['relevo:building'], '2026-03-10T10:30:00Z'), waiting_for_runner: true };
+  assert.deepEqual(buildStatus({ config, me: 'ana', now: NOW, issues: [waiting] }).alerts, []);
+});
+
+const BOT = (body) => ({ id: 1, user: { type: 'Bot' }, body });
+function waitGh(comments, calls = []) {
+  return (args) => {
+    const path = args[args.length - 1];
+    calls.push(path);
+    if (path.includes('issues?') && path.includes('labels=relevo%3Abuilding')) {
+      return JSON.stringify([[{ number: 7, title: 'T', labels: [{ name: 'relevo:building' }], assignees: [], milestone: null, updated_at: '2026-03-10T08:00:00Z' }, { number: 8, title: 'U', labels: [{ name: 'relevo:building' }], assignees: [], milestone: null, updated_at: '2026-03-10T11:00:00Z' }]]);
+    }
+    if (path.includes('issues?') || path.includes('/pulls?')) return '[]';
+    if (/issues\/\d+\/comments/.test(path)) return JSON.stringify([comments]);
+    throw new Error('HTTP 404');
+  };
+}
+
+test('gatherStatus reads the progress comment only of the issues past the alert time, and marks the one that waits', () => {
+  const calls = [];
+  const data = gatherStatus({ gh: waitGh([BOT('waits\n<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->')], calls), repo: 'o/r', config, now: NOW });
+  assert.deepEqual(data.issues.map((i) => [i.number, i.waiting_for_runner ?? false]), [[7, true], [8, false]]);
+  assert.deepEqual(calls.filter((c) => /issues\/\d+\/comments/.test(c)).map((c) => c.match(/issues\/(\d+)\//)[1]), ['7'], 'issue 8 is before the alert time: no comment is read');
+});
+
+test('a comment without the marker, a closed one, or one typed by a person is not a wait', () => {
+  [BOT('Running for 5 min\n<!-- relevo:progress -->'), BOT('x\n<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->\n<!-- relevo:progress:closed -->'),
+    { id: 1, user: { type: 'User' }, body: '<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->' }].forEach((c) => {
+    const data = gatherStatus({ gh: waitGh([c]), repo: 'o/r', config, now: NOW });
+    assert.equal(data.issues.find((i) => i.number === 7).waiting_for_runner ?? false, false);
+  });
+});
+
 test('the alert threshold comes from the configuration, and an issue without a date is never reported', () => {
   const strict = loadConfig(tpl.replace('building_alert_hours: 3', 'building_alert_hours: 1')).config;
   const issues = [aged(8, ['relevo:building'], '2026-03-10T10:30:00Z')];
@@ -601,4 +653,67 @@ test('gatherStatus reads why the cloud does not build and who started a local bu
   assert.equal(data.cloudBuilds, false);
   assert.equal(data.cloudReason, 'no_credential');
   assert.equal(data.issues.find((i) => i.number === 7).local_by, 'ana');
+});
+
+// ---------- the builds running on this machine (go-visibility)
+
+const LOCAL = (extra = {}) => ({ issue: 42, phase: { phase: 'development', attempt: null, of: null }, group: { group: 2, of: 3 }, tasks: { done: 3, total: 6 }, minutes: 12, lastChangeMinutes: 1, ...extra });
+
+test('Scenario: A build running here - a section shows the issue with its phase, "group 2 of 3", its tasks, its minutes and its last change', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(42, ['relevo:building'])], localBuilds: [LOCAL()] });
+  assert.equal(r.localBuilds.length, 1);
+  const text = renderStatus(r);
+  assert.match(text, /Building on this machine:\n  #42 \[12 min\] development · group 2 of 3 · tasks 3 of 6 \(last change 1 min ago\)/);
+  assert.doesNotMatch(text, /Building, no progress/);
+  assert.match(renderStatus(r, 'es'), /En construcción en esta máquina:\n  #42 \[12 min\] desarrollo · grupo 2 de 3 · tareas 3 de 6 \(último cambio hace 1 min\)/);
+});
+
+test('Scenario: Nothing running here - the section is not shown', () => {
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(1, ['relevo:built'])], localBuilds: [] });
+  assert.deepEqual(r.localBuilds, []);
+  assert.doesNotMatch(renderStatus(r), /Building on this machine|Building, no progress/);
+  const none = buildStatus({ config, me: 'ana', now: NOW, issues: [issue(1, ['relevo:built'])] });
+  assert.doesNotMatch(renderStatus(none), /Building on this machine|Building, no progress/);
+});
+
+test('Scenario: A build on another machine - a local build (`building` with `local`) whose state is not here is listed without progress', () => {
+  const issues = [issue(42, ['relevo:building', 'relevo:local']), issue(43, ['relevo:building', 'relevo:local']), issue(44, ['relevo:building'])];
+  const r = buildStatus({ config, me: 'ana', now: NOW, issues, localBuilds: [LOCAL()] });
+  assert.deepEqual(r.buildingElsewhere.map((e) => e.number), [43], 'a cloud build (#44, no local label) has no state on any machine and is not listed');
+  const text = renderStatus(r);
+  assert.match(text, /Building on another machine, no progress here:\n  #43 Issue 43/);
+  assert.doesNotMatch(text, /#43 .*min/);
+  assert.match(renderStatus(r, 'es'), /En construcción en otra máquina, sin progreso aquí:\n  #43 Issue 43/);
+});
+
+test('the builds of this machine are read from the state folders beside the worktrees, and only the ones still running', async () => {
+  const { readLocalBuilds } = await import('../scripts/lib/status-local.mjs');
+  const { realState, writeBuildEnd, writeBuildStart } = await import('../scripts/lib/build-state.mjs');
+  const { realpathSync } = await import('node:fs');
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'relevo-st-')));
+  const repo = join(parent, 'shop');
+  mkdirSync(repo);
+  const states = join(parent, '.relevo-worktrees', '.state');
+  const T0 = Date.parse('2026-11-17T10:00:00Z');
+  const make = (name, { worktree = true, ended = false } = {}) => {
+    mkdirSync(join(states, name), { recursive: true });
+    if (worktree) mkdirSync(join(parent, '.relevo-worktrees', name), { recursive: true });
+    writeBuildStart(join(states, name), { issue: Number(name.split('-').pop()), changeId: null, now: T0 });
+    if (ended) writeBuildEnd(join(states, name), { status: 0, now: T0 + 1000 });
+  };
+  make('shop-42');
+  make('shop-43', { ended: true });
+  make('shop-44', { worktree: false });
+  make('other-45');
+  const builds = readLocalBuilds({ repoRoot: repo, state: realState, now: T0 + 5 * 60000 });
+  assert.deepEqual(builds.map((b) => b.issue), [42]);
+  assert.equal(builds[0].minutes, 5);
+  assert.deepEqual(readLocalBuilds({ repoRoot: join(parent, 'nowhere'), state: realState, now: T0 }), []);
+});
+
+test('the status skill says that it shows the builds of this machine, from the state beside the worktrees, and not those of other machines', () => {
+  const skill = readFileSync(`${root}skills/status/SKILL.md`, 'utf8');
+  assert.match(skill, /the builds running on this machine[^)]*the group, the tasks done, the minutes and when its progress last changed/);
+  assert.match(skill, /state beside the worktrees, only for this machine/);
+  assert.match(skill, /listed without progress/);
 });

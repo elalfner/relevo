@@ -11,7 +11,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { mergeRepositoryRules } from './interface-knowledge.mjs';
-import { QA_LENSES, loadConfig } from './config.mjs';
+import { QA_LENSES, effectiveRunners, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions, resolveLabelNames } from './labels.mjs';
 import { githubAccess } from './gh-web.mjs';
@@ -343,6 +343,9 @@ export function gatherFacts(p) {
   });
   let names = tryRun(() => p.listDir('.github/workflows'), []);
   f.workflowSource = 'working copy';
+  // The workflows that are not Relevo's (the checks of the project): only their text, for the advice about shared runners.
+  const projectWorkflows = (list, read) => Object.fromEntries(list.filter((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-')).map((n) => [n, { text: tryRun(() => read(n), '') }]));
+  f.otherWorkflows = projectWorkflows(names, (n) => p.read(`.github/workflows/${n}`) ?? '');
 
   if (f.repo && f.ghAuth) {
     const api = (path, paginate = false) => JSON.parse(p.gh(paginate ? ['api', '--paginate', '--slurp', path] : ['api', path]));
@@ -414,6 +417,7 @@ export function gatherFacts(p) {
     }
     if (remoteNames !== null) {
       names = remoteNames;
+      f.otherWorkflows = projectWorkflows(remoteNames, (n) => Buffer.from(api(`repos/${f.repo}/contents/.github/workflows/${n}?ref=${ref}`).content, 'base64').toString('utf8'));
       texts = {};
       WORKFLOW_FILES.forEach((file) => {
         const remote = remoteNames.includes(file);
@@ -1386,25 +1390,51 @@ function resolveVariableRunsOn(expression, variables) {
 
 const sameLabels = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
 
+/** The runner each job of a workflow text asks for: [{ job, value }] with `value` the text after `runs-on:`. A line outside any job has job null. */
+function jobRunsOn(text) {
+  const out = [];
+  let inJobs = false;
+  let job = null;
+  String(text).split('\n').forEach((line) => {
+    if (/^jobs:/.test(line)) inJobs = true;
+    const name = inJobs ? /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line) : null;
+    if (name) job = name[1];
+    const m = /^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/.exec(line);
+    if (m) out.push({ job, value: m[1] });
+  });
+  return out;
+}
+
+/** The labels the settings give the jobs: the build job of the go workflow (`build`) and every other job (`other`). */
+function wantedRunners(f) {
+  const { build, other } = effectiveRunners({ runner: { labels: f.config?.runner?.labels ?? HOSTED_RUNNER, build_labels: f.config?.runner?.build_labels ?? null } });
+  return { build, other, split: Boolean(f.config?.runner?.build_labels) };
+}
+const isBuildJob = (file, job) => file === 'relevo-go.yml' && job === 'build';
+const labelText = (labels) => `[${labels.join(', ')}]`;
+
 /**
  * The workflows whose `runs-on` reads a repository variable: { overrides, unread, unparsed }. `overrides` are those whose
- * effective runner differs from `runner.labels` (the variable wins); `unread` the variables that could not be read.
+ * effective runner differs from the setting of their job (the variable wins); `unread` the variables that could not be read.
  */
 export function variableRunners(f) {
-  const wanted = f.config?.runner?.labels ?? HOSTED_RUNNER;
+  const wantedBy = wantedRunners(f);
   const overrides = new Map();
   const unread = new Set();
   const unparsed = new Set();
   Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
     if (!w.present || typeof w.text !== 'string') return;
-    [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => m[1]).filter((l) => l.includes('${{') && /\bvars\./.test(l)).forEach((l) => {
+    jobRunsOn(w.text).filter(({ value }) => value.includes('${{') && /\bvars\./.test(value)).forEach(({ job, value: l }) => {
       const res = resolveVariableRunsOn(l, f.runnerVariables);
       if (!res) return;
+      const build = isBuildJob(file, job);
+      const wanted = build ? wantedBy.build : wantedBy.other;
       if (res.unreadable) unread.add(res.name);
       else if (!res.labels) unparsed.add(`${file} (${res.name})`);
       else if (!sameLabels(res.labels, wanted)) {
-        const key = `${res.name}\u0000${res.labels.join(', ')}\u0000${res.value ?? ''}`;
-        overrides.set(key, { name: res.name, labels: res.labels, value: res.value, wanted, files: [...(overrides.get(key)?.files ?? []), file] });
+        const setting = build && wantedBy.split ? 'runner.build_labels' : 'runner.labels';
+        const key = `${res.name}\u0000${res.labels.join(', ')}\u0000${res.value ?? ''}\u0000${setting}`;
+        overrides.set(key, { name: res.name, labels: res.labels, value: res.value, wanted, setting, files: [...(overrides.get(key)?.files ?? []), file] });
       }
     });
   });
@@ -1412,43 +1442,90 @@ export function variableRunners(f) {
 }
 
 /**
- * Does every Relevo workflow run on the runner that relevo.yml names (`runner.labels`, else ubuntu-latest)? A workflow
- * edited by hand to another runner is reported with the file, because the next copy of the template would undo it. A
- * workflow whose `runs-on` reads a repository variable runs on what the variable says: the variable wins over
- * `runner.labels`, so a difference prints both. A runner that is not GitHub's is only assumed to persist: Relevo cannot
- * tell, and says so instead of claiming.
+ * Does every job of every Relevo workflow run on the runner that relevo.yml names for it (`runner.build_labels` for the
+ * build job of `go` when it is set, else `runner.labels`, else ubuntu-latest)? A workflow edited by hand to another
+ * runner is reported with the file, because the next copy of the template would undo it. A workflow whose `runs-on` reads
+ * a repository variable runs on what the variable says: the variable wins over the setting, so a difference prints both.
+ * A runner that is not GitHub's is only assumed to persist: Relevo cannot tell, and says so instead of claiming.
  */
 function runnerChecks(f) {
-  const wanted = f.config?.runner?.labels ?? HOSTED_RUNNER;
-  const same = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
+  const wantedBy = wantedRunners(f);
   const r = [];
   let judged = 0;
-  // One result per cause: the files that run on the same other runner are one failure that names all of them.
+  // One result per cause: the files that run on the same other runner, where the same one is wanted, are one failure that names all of them.
   const differing = new Map();
   Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
     if (!w.present || typeof w.text !== 'string') return;
     judged += 1;
-    const literal = [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => parseRunsOn(m[1])).filter((l) => l !== null);
-    const other = literal.find((labels) => !same(labels, wanted));
-    if (!other) return;
-    const key = other.join(', ');
-    differing.set(key, [...(differing.get(key) ?? []), file]);
+    jobRunsOn(w.text).forEach(({ job, value }) => {
+      const labels = parseRunsOn(value);
+      if (labels === null) return;
+      const build = isBuildJob(file, job);
+      const wanted = build ? wantedBy.build : wantedBy.other;
+      if (sameLabels(labels, wanted)) return;
+      const key = `${labels.join(', ')}\u0000${wanted.join(', ')}`;
+      const entry = differing.get(key) ?? { labels: labels.join(', '), wanted, files: [], onlyBuild: true };
+      if (!entry.files.includes(file)) entry.files.push(file);
+      if (!build) entry.onlyBuild = false;
+      differing.set(key, entry);
+    });
   });
-  [...differing.entries()].forEach(([labels, files]) => {
+  const causes = [...differing.values()];
+  causes.forEach(({ labels, wanted, files, onlyBuild }) => {
     const names = files.join(', ');
-    const id = differing.size === 1 ? 'automation.runner' : `automation.runner.${labels}`;
-    r.push(fail(id, `${names} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says [${wanted.join(', ')}]`, same(wanted, HOSTED_RUNNER) ? `set runner.labels: [${labels}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${names}` : `change runs-on in ${names} to [${wanted.join(', ')}], or change runner.labels in relevo.yml`));
+    const id = causes.length === 1 ? 'automation.runner' : `automation.runner.${labels}${onlyBuild ? '.build' : ''}`;
+    const jobs = onlyBuild ? ' (the build job)' : '';
+    if (onlyBuild) {
+      const text = wantedBy.split
+        ? `change runs-on of the build job in ${names} to ${labelText(wanted)}, or change runner.build_labels in relevo.yml`
+        : `set runner.build_labels: [${labels}] in relevo.yml if that is the runner you want for the builds, or restore runs-on: ${wanted.length === 1 ? wanted[0] : labelText(wanted)} in the build job of ${names}`;
+      r.push(fail(id, `${names}${jobs} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says ${labelText(wanted)}`, text));
+    } else {
+      r.push(fail(id, `${names} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says ${labelText(wanted)}`, sameLabels(wanted, HOSTED_RUNNER) ? `set runner.labels: [${labels}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${names}` : `change runs-on in ${names} to ${labelText(wanted)}, or change runner.labels in relevo.yml`));
+    }
   });
   const { overrides, unread, unparsed } = variableRunners(f);
-  overrides.forEach(({ name, labels, value, files }) => {
+  overrides.forEach(({ name, labels, value, files, wanted, setting }) => {
     const where = value === null ? `the repository variable ${name} is not set, so the fallback in the workflow applies` : `the repository variable ${name} is ${JSON.stringify(value)}`;
-    r.push(warn(`automation.runner.variable.${name}`, `${files.join(', ')} ${files.length === 1 ? 'runs' : 'run'} on [${labels.join(', ')}] (${where}), but relevo.yml runner.labels says [${wanted.join(', ')}]: the variable wins, so the file describes a runner that is not used`, `set the variable ${name} to match runner.labels [${wanted.join(', ')}], delete it if the workflow default is right, or change runner.labels in relevo.yml to [${labels.join(', ')}]`));
+    r.push(warn(`automation.runner.variable.${name}`, `${files.join(', ')} ${files.length === 1 ? 'runs' : 'run'} on [${labels.join(', ')}] (${where}), but relevo.yml ${setting} says ${labelText(wanted)}: the variable wins, so the file describes a runner that is not used`, `set the variable ${name} to match ${setting} ${labelText(wanted)}, delete it if the workflow default is right, or change ${setting} in relevo.yml to [${labels.join(', ')}]`));
   });
   if (unread.size > 0) r.push(note('automation.runner.variable', `the repository variable ${[...unread].join(', ')} that the runner of the workflows is read from could not be read, so the effective runner was not checked`));
   if (unparsed.size > 0) r.push(note('automation.runner.unparsed', `the runner of ${[...unparsed].join(', ')} comes from a variable that has no usable runner (unset with no fallback, or not a runner name or a list of them), so it was not judged`));
-  if (r.some((x) => x.status === 'fail' || x.status === 'warn')) return r;
-  if (judged > 0 && unread.size === 0 && unparsed.size === 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
-  if (!same(wanted, HOSTED_RUNNER)) r.push(warn('automation.runner.persistence', `the runner [${wanted.join(', ')}] is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
+  if (r.some((x) => x.status === 'fail' || x.status === 'warn')) return [...r, ...buildRunnerAdvice(f)];
+  const apart = !sameLabels(wantedBy.build, wantedBy.other);
+  if (judged > 0 && unread.size === 0 && unparsed.size === 0) {
+    r.push(pass('automation.runner', apart
+      ? `the build job of the go workflow runs on ${labelText(wantedBy.build)} and every other job of the Relevo workflows on ${labelText(wantedBy.other)}`
+      : `the Relevo workflows run on ${labelText(wantedBy.other)}`));
+  }
+  const unhosted = [wantedBy.other, ...(apart ? [wantedBy.build] : [])].filter((l) => !sameLabels(l, HOSTED_RUNNER));
+  if (unhosted.length > 0) r.push(warn('automation.runner.persistence', `the runner ${unhosted.map(labelText).join(' and ')} is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
+  return [...r, ...buildRunnerAdvice(f)];
+}
+
+const HOSTED_IMAGE = /^(ubuntu|windows|macos)-(latest|\d[\w.-]*)$/;
+const isSelfHosted = (labels) => !labels.every((l) => HOSTED_IMAGE.test(l));
+
+/**
+ * Advice, never a failure and never a change: builds that run on self-hosted runners that other work also uses. Once when the
+ * builds have no runner of their own (`runner.build_labels` absent) and the runners of the workflows are self-hosted, and once
+ * listing the workflows of the project (not Relevo's) that run on the labels of the build job. On the runners of GitHub every
+ * job gets its own machine, so there is nothing to say.
+ */
+function buildRunnerAdvice(f) {
+  const wantedBy = wantedRunners(f);
+  const r = [];
+  const machine = 'limits.concurrent_agents limits the builds of one repository, not of a machine: a machine is limited by the runners that can take a build job';
+  if (!wantedBy.split && isSelfHosted(wantedBy.other)) {
+    r.push(note('automation.runner.build-shared', `the builds run on ${labelText(wantedBy.other)}, the same runners as the other jobs of the Relevo workflows, so a build that lasts an hour can hold a runner that the others need. Give the builds runners of their own with runner.build_labels (the number of build runners is the number of cloud builds the machine runs at once); ${machine}`));
+  }
+  if (isSelfHosted(wantedBy.build)) {
+    const sharing = Object.entries(f.otherWorkflows ?? {}).filter(([, w]) => typeof w?.text === 'string'
+      && jobRunsOn(w.text).some(({ value }) => { const l = parseRunsOn(value); return l !== null && sameLabels(l, wantedBy.build); })).map(([name]) => name);
+    if (sharing.length > 0) {
+      r.push(note('automation.runner.build-project', `${sharing.join(', ')} ${sharing.length === 1 ? 'is a workflow' : 'are workflows'} of the project, not Relevo's, and ${sharing.length === 1 ? 'runs' : 'run'} on the labels of the build job ${labelText(wantedBy.build)}, so a build can hold the runner its checks need. Relevo does not write or change them: to keep the checks from waiting behind a build, give them labels the build job does not use. ${machine}`));
+    }
+  }
   return r;
 }
 

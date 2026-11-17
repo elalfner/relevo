@@ -12,6 +12,7 @@
 // `auto` gets the default model of the role) with the reason; when even the configuration cannot be read it prints
 // { "failed": true, "reason": ... } and `go` goes on with the configuration.
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -28,7 +29,7 @@ const arg = (name) => {
 
 function emit(plan) {
   console.log(JSON.stringify(plan));
-  const dir = process.env.RELEVO_PROGRESS_DIR;
+  const dir = progressDir();
   if (!dir) return;
   try {
     mkdirSync(dir, { recursive: true });
@@ -41,7 +42,7 @@ function escalate(config) {
   const from = arg('from') ?? '';
   const result = escalateDev({ config, from, attempt: Number(arg('attempt')) || 0, reason: arg('reason') ?? '' });
   console.log(JSON.stringify({ model: result.model, escalated: result.escalated, why: result.why }));
-  const dir = process.env.RELEVO_PROGRESS_DIR;
+  const dir = progressDir();
   if (!dir || !result.escalated) return;
   try {
     const file = join(dir, 'model-plan.json');

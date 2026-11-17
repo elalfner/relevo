@@ -678,6 +678,84 @@ test('a runner with one label is written as that label, and an invalid list is r
   assert.throws(() => renderConfig(template, { ...ANSWERS, runnerLabels: [] }), /needs at least one label|runner example/);
 });
 
+const BUILD_ANSWERS = { ...ANSWERS, runnerLabels: ['self-hosted', 'linux'], runnerBuildLabels: ['self-hosted', 'relevo-build'] };
+const jobsRunsOn = (text) => {
+  const out = {};
+  let inJobs = false;
+  let job = null;
+  text.split('\n').forEach((line) => {
+    if (/^jobs:/.test(line)) { inJobs = true; return; }
+    if (!inJobs) return;
+    const m = /^  ([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (m) job = m[1];
+    const r = /^    runs-on: (.*)$/.exec(line);
+    if (r && job) out[job] = r[1];
+  });
+  return out;
+};
+
+test('Scenario: Builds with their own runner - the build job gets the build labels and every other job runner.labels', () => {
+  const items = planInit({ facts: bare(), answers: BUILD_ANSWERS, templates, current: empty(), admin: true });
+  const config = loadConfig(get(items, 'config').content);
+  assert.ok(config.ok);
+  assert.deepEqual(config.config.runner.labels, ['self-hosted', 'linux']);
+  assert.deepEqual(config.config.runner.build_labels, ['self-hosted', 'relevo-build']);
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.equal(go.build, '[self-hosted, relevo-build]');
+  assert.equal(go.decide, '[self-hosted, linux]');
+  assert.equal(go.requeue, '[self-hosted, linux]');
+  WORKFLOW_FILES.filter((f) => f !== 'relevo-go.yml').forEach((f) => {
+    const text = get(items, `workflow.${f}`).content;
+    assert.ok(!/relevo-build/.test(text), `${f} has no build runner`);
+    assert.ok(/runs-on: \[self-hosted, linux\]/.test(text), f);
+    assert.ok(!/runs-on: ubuntu-latest/.test(text), f);
+  });
+});
+
+test('Scenario: No separate runner - without the key nothing changes', () => {
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['self-hosted', 'linux'] }, templates, current: empty(), admin: true });
+  assert.ok(!/build_labels/.test(get(items, 'config').content.replace(/^#.*$/gm, '')));
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.deepEqual(Object.values(go), ['[self-hosted, linux]', '[self-hosted, linux]', '[self-hosted, linux]']);
+});
+
+test('Scenario: Light jobs on the runners of GitHub - only the build job is self-hosted', () => {
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerBuildLabels: ['self-hosted', 'relevo-build'] }, templates, current: empty(), admin: true });
+  const config = loadConfig(get(items, 'config').content);
+  assert.ok(config.ok);
+  assert.deepEqual(config.config.runner.labels, ['ubuntu-latest']);
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.equal(go.build, '[self-hosted, relevo-build]');
+  assert.equal(go.decide, 'ubuntu-latest');
+  assert.equal(go.requeue, 'ubuntu-latest');
+});
+
+test('Scenario: Regenerating the go workflow - a repository that sets runner.build_labels keeps both', () => {
+  const config = loadConfig(renderConfig(template, BUILD_ANSWERS)).config;
+  const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current: empty(), admin: true });
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.equal(go.build, '[self-hosted, relevo-build]');
+  assert.equal(go.decide, '[self-hosted, linux]');
+  // a rewrite of the file already written for both settings is up to date
+  const current = empty();
+  current.workflows['relevo-go.yml'] = get(items, 'workflow.relevo-go.yml').content;
+  const again = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
+  assert.equal(get(again, 'workflow.relevo-go.yml').status, 'ok');
+});
+
+test('only the go workflow has a build job', () => {
+  WORKFLOW_FILES.filter((f) => f !== 'relevo-go.yml').forEach((f) => assert.ok(!('build' in jobsRunsOn(workflows[f])), f));
+});
+
+test('the skill asks about the build runner only after the person says the runner is self-hosted', () => {
+  const skill = readFileSync(`${root}skills/init/SKILL.md`, 'utf8');
+  const line = skill.split('\n').find((l) => /self-hosted runner/.test(l) && /runnerLabels|runner\.labels/.test(l));
+  assert.ok(line, 'the self-hosted question exists');
+  assert.match(line, /Ask nothing more when the answer is no/);
+  assert.ok(line.indexOf('runner.build_labels') > line.indexOf('On a yes'), 'the build question is inside the yes branch');
+  assert.match(skill, /runnerBuildLabels/);
+});
+
 // ---------- updating a workflow that differs
 
 const withOneFile = (file, text) => { const c = empty(); c.workflows[file] = text; return c; };

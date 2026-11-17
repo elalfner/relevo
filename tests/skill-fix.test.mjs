@@ -133,3 +133,9 @@ test('Scenario: fix launches the developer with the model plan, as go does', () 
   assert.match(body, /with the `model` and `effort` of `dev` in that plan/);
   assert.doesNotMatch(body, /`effort` of `agents\.dev`/, 'it no longer reads agents directly');
 });
+
+test('Scenario: Corrections of an iteration - the developer is launched once, in the foreground, with a description that names the iteration', () => {
+  assert.match(body, /one Agent call in the foreground, never in the background, and your turn does not end while it runs/);
+  assert.match(body, /`description` `fix iteration <k>` \(for example `fix iteration 2`/);
+  assert.match(body, /goes back to `relevo:dev` in \*\*fix\*\* mode with the end of its output/);
+});

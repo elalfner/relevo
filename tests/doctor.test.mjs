@@ -1513,7 +1513,7 @@ test('Scenario: A workflow edited by hand - doctor fails, names the file and say
 });
 
 test('Scenario: Workflows and setting agree - the runner check passes and one warning explains the persistence assumption', () => {
-  const res = runner({ ...withGo(BUILD_GO), config: BUILD_CONFIG });
+  const res = runner({ ...withGo(BUILD_GO), config: BUILD_CONFIG }).filter((r) => r.id !== 'automation.runner.build-shared');
   assert.deepEqual(res.map((r) => [r.id, r.status]), [['automation.runner', 'pass'], ['automation.runner.persistence', 'warn']]);
   assert.match(res[1].message, /assumes it keeps its files between jobs/);
   assert.match(res[1].message, /permissions of the runner's user/);
@@ -1541,6 +1541,134 @@ test('the order of the labels does not matter, and an expression in runs-on is n
 
 test('a repository with no workflow text read and the default runner gets no runner result at all', () => {
   assert.deepEqual(runner(healthy()), []);
+});
+
+// ---------- the build runner
+
+// The go template with the runs-on of each job set: { build, other } are labels (a list) or null to leave the job on ubuntu-latest.
+function goOn({ build = null, other = null }) {
+  const value = (l) => (l === null ? 'ubuntu-latest' : l.length === 1 ? l[0] : `[${l.join(', ')}]`);
+  let job = null;
+  let inJobs = false;
+  return GO_TEMPLATE.split('\n').map((line) => {
+    if (/^jobs:/.test(line)) inJobs = true;
+    const m = inJobs ? /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line) : null;
+    if (m) job = m[1];
+    return inJobs && /^\s*runs-on: ubuntu-latest$/.test(line) ? line.replace('ubuntu-latest', value(job === 'build' ? build : other)) : line;
+  }).join('\n');
+}
+const SH_LINUX = ['self-hosted', 'linux'];
+const SH_BUILD = ['self-hosted', 'relevo-build'];
+const configWith = (runner) => loadConfig(`${CONFIG_TEXT}runner:\n${runner}`).config;
+const SPLIT_CONFIG = configWith('  labels: [self-hosted, linux]\n  build_labels: [self-hosted, relevo-build]\n');
+
+test('Scenario: Build job on its own runner - the check passes with the key and the report gives both runners', () => {
+  const res = runner({ ...withGo(goOn({ build: SH_BUILD, other: SH_LINUX })), config: SPLIT_CONFIG });
+  const pass = res.find((r) => r.id === 'automation.runner');
+  assert.equal(pass.status, 'pass');
+  assert.match(pass.message, /build job of the go workflow runs on \[self-hosted, relevo-build\]/);
+  assert.match(pass.message, /\[self-hosted, linux\]/);
+  assert.deepEqual(res.filter((r) => r.status === 'fail'), []);
+});
+
+test('Scenario: Build job edited by hand - without the key the check fails, names the file and says to set runner.build_labels', () => {
+  const cfg = configWith('  labels: [self-hosted, linux]\n');
+  const res = runner({ ...withGo(goOn({ build: SH_BUILD, other: SH_LINUX })), config: cfg });
+  const [r] = res.filter((x) => x.status === 'fail');
+  assert.match(r.message, /relevo-go\.yml/);
+  assert.match(r.message, /\[self-hosted, relevo-build\]/);
+  assert.match(r.fix, /set runner\.build_labels: \[self-hosted, relevo-build\]/);
+});
+
+test('the other jobs are compared with runner.labels, not with the build labels', () => {
+  const res = runner({ ...withGo(goOn({ build: SH_BUILD, other: SH_BUILD })), config: SPLIT_CONFIG });
+  const [r] = res.filter((x) => x.status === 'fail');
+  assert.match(r.message, /relevo-go\.yml runs on \[self-hosted, relevo-build\] and relevo\.yml says \[self-hosted, linux\]/);
+  assert.match(r.fix, /runner\.labels/);
+});
+
+test('with the key set, a build job left on ubuntu-latest fails', () => {
+  const res = runner({ ...withGo(goOn({ build: null, other: SH_LINUX })), config: SPLIT_CONFIG });
+  const [r] = res.filter((x) => x.status === 'fail');
+  assert.match(r.message, /relevo-go\.yml/);
+  assert.match(r.message, /\[ubuntu-latest\].*\[self-hosted, relevo-build\]/);
+});
+
+test('the persistence warning still appears when the build runner is self-hosted and the light jobs are GitHub\'s', () => {
+  const cfg = configWith('  build_labels: [self-hosted, relevo-build]\n');
+  const res = runner({ ...withGo(goOn({ build: SH_BUILD, other: null })), config: cfg });
+  assert.equal(res.find((r) => r.id === 'automation.runner').status, 'pass');
+  const w = res.find((r) => r.id === 'automation.runner.persistence');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /self-hosted, relevo-build/);
+});
+
+test('a runs-on taken from a repository variable is resolved for each job', () => {
+  const text = goOn({ build: SH_BUILD, other: SH_LINUX })
+    .replace('[self-hosted, relevo-build]', "${{ vars.RELEVO_BUILD_RUNNER || 'ubuntu-latest' }}")
+    .replace(/runs-on: \[self-hosted, linux\]/, "runs-on: ${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}");
+  const res = runner({ ...withGo(text), config: SPLIT_CONFIG, runnerVariables: { RELEVO_BUILD_RUNNER: { value: '["self-hosted","relevo-build"]' }, RELEVO_RUNNER: { value: '["self-hosted","linux"]' } } });
+  assert.deepEqual(res.filter((r) => r.id.startsWith('automation.runner.variable')), [], 'both variables match their own job');
+  const off = runner({ ...withGo(text), config: SPLIT_CONFIG, runnerVariables: { RELEVO_BUILD_RUNNER: { value: '["self-hosted","linux"]' }, RELEVO_RUNNER: { value: '["self-hosted","linux"]' } } });
+  const w = off.filter((r) => r.id.startsWith('automation.runner.variable'));
+  assert.deepEqual(w.map((r) => r.id), ['automation.runner.variable.RELEVO_BUILD_RUNNER'], 'only the build job differs from its own setting');
+  assert.match(w[0].message, /runner\.build_labels/);
+});
+
+// ---------- the advice about builds that share runners
+
+const advice = (over) => runChecks(over).filter((r) => r.id.startsWith('automation.runner.build'));
+const ciOn = (labels) => ({ 'ci.yml': { text: `jobs:\n  test:\n    runs-on: [${labels.join(', ')}]\n` } });
+
+test('Scenario: Builds share the runners of the light jobs - advice that names runner.build_labels and the limit of the machine', () => {
+  const cfg = configWith('  labels: [self-hosted, linux]\n');
+  const res = advice({ ...withGo(goOn({ build: SH_LINUX, other: SH_LINUX })), config: cfg });
+  const a = res.find((r) => r.id === 'automation.runner.build-shared');
+  assert.equal(a.status, 'note');
+  assert.match(a.message, /runner\.build_labels/);
+  assert.match(a.message, /limits\.concurrent_agents/);
+  assert.match(a.message, /repository/);
+  assert.match(a.message, /build runners/);
+});
+
+test('Scenario: The checks of the project share the build runner - advice that names ci.yml and changes nothing', () => {
+  const res = advice({ ...withGo(goOn({ build: SH_BUILD, other: SH_LINUX })), config: SPLIT_CONFIG, otherWorkflows: ciOn(SH_BUILD) });
+  const a = res.find((r) => r.id === 'automation.runner.build-project');
+  assert.equal(a.status, 'note');
+  assert.match(a.message, /ci\.yml/);
+  assert.match(a.message, /of the project/);
+  assert.ok(!/ci\.yml.*(will be changed|rewrit)/.test(a.message));
+});
+
+test('the labels are compared as sets, and a workflow on other labels is not named', () => {
+  const same = advice({ ...withGo(goOn({ build: SH_BUILD, other: SH_LINUX })), config: SPLIT_CONFIG, otherWorkflows: ciOn(['relevo-build', 'self-hosted']) });
+  assert.ok(same.some((r) => r.id === 'automation.runner.build-project'));
+  const other = advice({ ...withGo(goOn({ build: SH_BUILD, other: SH_LINUX })), config: SPLIT_CONFIG, otherWorkflows: ciOn(SH_LINUX) });
+  assert.deepEqual(other, []);
+});
+
+test('Scenario: Builds apart - no advice', () => {
+  assert.deepEqual(advice({ ...withGo(goOn({ build: SH_BUILD, other: SH_LINUX })), config: SPLIT_CONFIG, otherWorkflows: ciOn(['ubuntu-latest']) }), []);
+});
+
+test('Scenario: Runners of GitHub - no advice, even if the checks run on the same image', () => {
+  assert.deepEqual(advice({ ...withGo(HOSTED_GO), otherWorkflows: ciOn(['ubuntu-latest']) }), []);
+  assert.deepEqual(advice(healthy()), []);
+});
+
+test('the advice never fails the check and is not a warning', () => {
+  const cfg = configWith('  labels: [self-hosted, linux]\n');
+  const all = runChecks({ ...withGo(goOn({ build: SH_LINUX, other: SH_LINUX })), config: cfg, otherWorkflows: ciOn(SH_LINUX) });
+  const adv = all.filter((r) => r.id.startsWith('automation.runner.build'));
+  assert.equal(adv.length, 2);
+  adv.forEach((r) => { assert.equal(r.status, 'note'); assert.equal(r.fix, undefined); });
+  assert.deepEqual(failing(all), []);
+});
+
+test('gatherFacts reads the workflows that are not Relevo\'s from the default branch', () => {
+  const f = gatherFacts(probes({ localFiles: { 'relevo-go.yml': 'x: 1\n' }, remote: { 'relevo-go.yml': 'x: 1\n', 'ci.yml': 'jobs:\n  t:\n    runs-on: [self-hosted, linux]\n' } }));
+  assert.deepEqual(Object.keys(f.otherWorkflows), ['ci.yml']);
+  assert.match(f.otherWorkflows['ci.yml'].text, /self-hosted/);
 });
 
 // ---------- the note level

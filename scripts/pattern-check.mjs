@@ -7,6 +7,7 @@
 //   exit 0: no pattern, or merged, or unknown (the lookup failed: the build goes on and lists it as unverified)
 //   exit 1: the pattern is not merged, does not exist, or the line is wrong   exit 2: bad arguments
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,7 +40,7 @@ if (parsed.pattern === null) {
 const result = findPatternChange({ repo: arg('repo'), number: parsed.pattern, base: arg('base'), gh: realGh });
 let diffFile = null;
 if (result.state === 'merged') {
-  const dir = arg('out') ?? process.env.RELEVO_PROGRESS_DIR ?? join(tmpdir(), 'relevo-pattern');
+  const dir = arg('out') ?? progressDir() ?? join(tmpdir(), 'relevo-pattern');
   mkdirSync(dir, { recursive: true });
   diffFile = join(dir, `pattern-${parsed.pattern}.diff`);
   writeFileSync(diffFile, result.diff);

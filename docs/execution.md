@@ -109,10 +109,32 @@ Each runner process runs one job at a time, so several runners on one machine ar
 
 A runner registered under your own user also shares `~/.claude` with your interactive Claude Code sessions. Concurrent writes to a shared cache or settings file can collide; this was not tried here. Registering each runner under its own user of the machine, or in its own container, removes the shared home and caches. It does not remove the Docker daemon or the ports.
 
-- **Builds that can run at once** are at most the smaller of `limits.concurrent_agents` and the free runners. Every Relevo workflow (`go`, `review`, `ship`, `queue`, `sla`, `digest`) runs on the same labels, so register more runners than `limits.concurrent_agents`: with three runners and a limit of 3, three builds take every runner and hold up the checks of your pull requests and the other workflows.
+- **Builds that can run at once** are at most the smaller of `limits.concurrent_agents` and the free runners that can take a build job. Every job of the Relevo workflows runs on `runner.labels`, except the build job of `go`, which runs on `runner.build_labels` when it is set. When the builds share the runners of the other jobs, register more runners than `limits.concurrent_agents`: with three runners and a limit of 3, three builds take every runner and hold up the checks of your pull requests and the other workflows.
 - **The Supabase stack does not parallelise on one machine.** Its checks start containers on the machine (see [Stacks](stacks.md)), and two such builds at the same time can collide on the ports and the containers. Do not let two builds for a Supabase platform run together on one machine, or give each runner its own machine.
 - **`limits.concurrent_agents` is not exact when gates overlap.** The gate of an issue counts the issues labelled `relevo:building`, and the gate of one issue does not wait for another's. With a single runner the gates queue behind the running job and the limit holds. With two or more runners, or on the runners of GitHub, two issues labelled together can both find a free slot and start, so the limit can be exceeded by the number of gates that overlap. The next evaluation of the queue sees the real count and starts nothing more until a slot frees. This is a known limit, not a setting to tune.
 - **The queue starts when a build ends.** The labels that a run sets use the workflow token, and GitHub starts no workflow from an event made with it, so `go` has a last job, `requeue`, that starts `relevo-queue` once the build ended (built, failed or cut) and when the light job fails after claiming the issue. It is a job of its own so that only it holds `actions: write`; the job that runs the agent does not. If the repository has no `relevo-queue.yml`, it warns and the schedule is the only path.
+
+### Giving the builds their own runners
+
+Only one job of Relevo is heavy: the build job of `go`, which installs a toolchain, runs the agents and can last an hour. The others (the decision of an issue, the queue, the label sync of a review, `ship`, the reminders and the digest) last seconds or only wait. `limits.concurrent_agents` limits the builds of **one repository**; nothing limits builds across repositories except the number of runners that can take a build job. If four runners on one server are shared by every repository, four builds can start there at once, and each one holds a runner that the pull request checks and the light jobs need.
+
+To keep builds on their own runners, label some runners for them and name the label in `relevo.yml`:
+
+```yaml
+runner:
+  labels: [self-hosted, linux]            # the light jobs
+  build_labels: [self-hosted, relevo-build]   # only the build job of go
+```
+
+`/relevo:init` asks, after you say that the repository uses a self-hosted runner, whether the builds have runners of their own, and writes the labels into `runner.build_labels` and into the `runs-on` of the build job and of no other job. `/relevo:doctor` compares each job with its own setting and reports both runners. Without the key nothing changes: every job runs on `runner.labels`.
+
+- **The number of build runners is the limit of the machine.** If one runner carries the build labels, one cloud build runs at once on it, across every repository that uses those labels; the others wait in GitHub's queue of the job. Relevo's own queue is not changed: it still dispatches up to `limits.concurrent_agents` and does not look at which runners are free (that needs administration permissions that the workflow does not have). A claimed issue counts as `building` while it waits.
+- **The light jobs can stay on the runners of GitHub.** To make your server do nothing but build, leave `runner.labels` unset and name the server only in `runner.build_labels`: the light jobs run on `ubuntu-latest` and the machine runs builds only.
+- **The checks of your project are yours.** The workflows of your project (its CI) are not Relevo's and there is no setting for them. If they run on the labels of the build job, a build can hold the runner that a pull request check needs: give them labels that the build job does not use. `/relevo:doctor` names the workflows that share the labels, as advice, and changes nothing.
+- **Runners on one machine share its memory and processors** whatever their labels. Separate labels decide which job takes which runner; they do not reserve capacity, so size the number of build runners to what the machine can build at once.
+- **A build that waits says so.** When the issue is claimed, the progress comment says that the build waits for a runner; when a runner takes the job, that same comment shows the phase, and the minutes count from that start, so the wait does not count against `limits.run_max_minutes`. After `limits.building_alert_hours`, `/relevo:status` reports the issue as waiting for a runner, for how long, and the two ways forward: look at the build runners, or build the issue on a machine.
+- **A build that no runner took returns to the queue.** GitHub cancels a job that waits too long for a self-hosted runner: a job can be in the queue for 24 hours before it is automatically cancelled ([usage limits of GitHub Actions](https://docs.github.com/en/actions/reference/limits), "Job queue time", self-hosted; read on 2026-11-17). The `requeue` job then returns the issue to `queued` with a line that says that no runner took it, instead of ending it as a failed build, and the queue tries again. A build that started and was then cut is reported as before.
+- **Antigravity** replaces blocks inside the build job, so it runs where that job runs: its build runner must be Linux x86-64, as its step already requires.
 
 The agent's code runs with the permissions of the runner's user, which on your own machine can reach your network. An ephemeral runner, or a container, is the barrier; see [Security](security.md#what-it-does-not-protect). Checked on one self-hosted runner: `$RUNNER_TEMP` is emptied between jobs, but `claude-code-action` keeps its state in the home of the runner's user (settings, caches and the transcripts of its sessions under `~/.claude/projects`), which Relevo does not remove; clean it yourself if the transcripts, which hold what the agent read and wrote, should not stay.
 
@@ -227,15 +249,17 @@ While a cloud build runs, one comment on the issue shows how far it is. It is ed
 ```text
 Relevo build in progress: QA (attempt 2 of 3)
 Tasks: 6 of 9
+Group 2 of 3
 Running for 7 min
 ```
 
 - **The phase** is planning, specification, development, QA or delivery. The `go` skill announces it when it enters each step, with the attempt number out of the allowed retries (`qa_retries`) when QA rejects the work and development starts again. If it announces nothing, the phase is deduced from the working tree, which cannot tell QA from a new attempt of development.
 - **The tasks** are the checked boxes of `tasks.md` out of all of them. The workflow counts them itself every 30 seconds, so they do not depend on the agent.
+- **The group** is the one in progress, out of the groups of the run (`Group 2 of 3`), shown while the phase is development. `go` builds the pending tasks one group at a time; the script that splits them records how many there are and the script that commits each checkpoint records the one it committed, so the group costs no turn. The developer marks its tasks when its launch of a group ends, so a build of several groups shows the tasks rising group by group, and a build small enough to be one group shows `Group 1 of 1` while its tasks stay at 0. A resumed run counts only the groups it still has to build.
 - **The minutes** are whole minutes since the run started. A run whose minutes keep growing while its tasks and phase stay the same is stuck, or in a long step: open the run to read its log. The comment is edited only when its text changes, about once a minute.
 - **When the run ends**, whatever the outcome, the comment is replaced by one line that points to the result (or, for a run that left none, says so) and links the run. The result itself is the comment that was always posted.
 
-It shows the phase and the attempt, not what a subagent is doing inside them. A local run (`go --local`) has no such comment: you are watching the session. To get it in a project that already has the workflow, take the new `relevo-go.yml` through `/relevo:init`, which merges it with your changes, and raise `RELEVO_VERSION`; until then the runs build as before without it. The report never fails a run: if GitHub refuses an edit, the build goes on.
+It shows the phase and the attempt, not what a subagent is doing inside them. A build on a machine posts no comment on the issue; it shows the same facts on that machine, as [the next section](#building-on-your-machine) says. To get the cloud comment in a project that already has the workflow, take the new `relevo-go.yml` through `/relevo:init`, which merges it with your changes, and raise `RELEVO_VERSION`; until then the runs build as before without it. The report never fails a run: if GitHub refuses an edit, the build goes on.
 
 ## Building on your machine
 
@@ -256,6 +280,28 @@ In Antigravity interactive chat sessions, running `/relevo:go <issue>` automatic
 A session on the web does not build: its container has no toolchain of the project and no hard limits, and a build there would run on the model and the context of the conversation. `/relevo:go <n>` there (with or without `--local`) builds nothing, says why, and asks one question: whether to apply the `go` label so that the cloud builds the issue. It applies it only on a yes, to a `ready` issue, with the permission of `ready`. Where the cloud cannot build (no workflow, no credential, paused), it says that the issue needs a machine or the cloud and applies nothing.
 
 `/relevo:review`, `/relevo:ship` and `/relevo:fix` run where you start them, in your main checkout or in a worktree you opened (for example with the Worktree button of Claude Code). In a worktree, `review` and `ship` do not switch back to the base branch afterwards, and `ship` does not delete the local branch: the worktree stays on its branch and the report says so. If another worktree holds the branch of the issue (a failed `go` keeps its worktree), they stop before changing anything and name that worktree and its path.
+
+### What each way to build shows, limits and spends
+
+| | Cloud build | Local build (`--local`) | Interactive build (`/relevo:go <n>` in a session) |
+|---|---|---|---|
+| Where it runs | A runner of the repository | A child process on your machine, in its own worktree | Your session, in a worktree of its own |
+| What you see while it runs | One progress comment on the issue (phase, tasks, group, minutes) | A line in the terminal when the phase, the group, the tasks or an agent changes, and the command `go-local.mjs status <issue>` | The subagents in your session, and the same status command from another terminal |
+| Limits | The turn and cost limits of the runner, and the guard of the subagents and of the minutes | The same limits and the same closed tool lists | The guard of the subagents and of the minutes; **no turn or cost limit on the main agent**, which runs on the model and the accumulated context of your session |
+| What it spends | The account of the repository's secret; the usage comment says what | Your own account; the build prints one sentence with the turns, the estimated cost and the tokens, and keeps them in its state | Your own session; nothing says what the build used |
+| What others see | The progress comment and the usage comment | Only the `building` label | Only the `building` label |
+
+Choose the local build when you want to watch a build and bound what it spends: it has the limits of the cloud and prints what it used. The interactive build is the one to use when you want to watch the agents work and steer, and it has no hard limit.
+
+**Reading the progress of a build on your machine.** A local build prints a line like `[12 min] development · group 2 of 3 · tasks 3 of 6` each time something changes, in the language of `relevo.yml`, from the files its scripts write and not from the model, with either agent. Its state lives in `.relevo-worktrees/.state/<repository>-<issue>/`, beside the worktrees and outside every working tree, so a commit never picks it up. It stays when the worktree is removed and is replaced when the same issue is built again on that machine. From another terminal:
+
+```bash
+node scripts/go-local.mjs status 42
+```
+
+It prints the phase, the group, the tasks, the minutes, when the progress last changed and, once the build ended, how it ended and what it used. It only reads. `/relevo:status` shows the builds running on this machine in one section, and lists without progress a local build (`building` with `local`) that has no state here, which runs on another machine; a cloud build is not in that list, its progress is the comment on the issue; the state of other machines is not visible to it. The same folder serves an interactive build: its scripts find it from the worktree, so `go-local.mjs status` and the budget guard work for it without a variable. `--local` from a session starts the build in the background, prints that command and ends its turn; you are told when it ends.
+
+**Permission prompts in an interactive build.** A session with the default permissions asks before each command and each edit, and a build makes hundreds. The `go` skill does not declare a tool list of its own: it is not yet recorded that a session honours one, and a list nobody checked could allow a tool that the unattended run refuses. Until a check is recorded in `docs/pilot-findings.md`, allow the tools by hand, with the same list as the workflow (`Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Task`) in `.claude/settings.local.json`, or build with `--local`, which asks for nothing. Do not allow the web tools or the download commands, which the workflow refuses.
 
 ### Worktrees from your base branch
 
