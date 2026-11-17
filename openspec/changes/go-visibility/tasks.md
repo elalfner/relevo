@@ -40,15 +40,15 @@
 ## 7. The tool list of an interactive build
 
 - [ ] 7.1 Spike: in the desktop app and in an editor extension, run a skill whose frontmatter declares the allowed tools of the workflow; record in `docs/pilot-findings.md` whether the session stops asking for those tools and whether a tool outside the list is still asked for
-- [ ] 7.2 If 7.1 shows that the list is honoured: add it to the frontmatter of `skills/go/SKILL.md` and a test that compares it with `ALLOWED_TOOLS` of `scripts/lib/run-flags.mjs` and fails on a tool the workflow refuses. If it does not: change nothing in the frontmatter and add a test that the skill declares no tool list; verify the test of the case that applies passes
+- [x] 7.2 If 7.1 shows that the list is honoured: add it to the frontmatter of `skills/go/SKILL.md` and a test that compares it with `ALLOWED_TOOLS` of `scripts/lib/run-flags.mjs` and fails on a tool the workflow refuses. If it does not: change nothing in the frontmatter and add a test that the skill declares no tool list; verify the test of the case that applies passes
 
 ## 8. The documentation
 
-- [ ] 8.1 `docs/execution.md` and `docs/execution.es.md`: the comparison of the cloud build, the local build and the interactive build (what each shows, its limits, what it spends), the status command, the group in the progress comment, and the result of 7.1 with the way to allow the tools by hand if needed; verify `tests/docs-claims.test.mjs` passes
-- [ ] 8.2 `CHANGELOG.md`: an entry under Unreleased, Added; verify it names the status command
+- [x] 8.1 `docs/execution.md` and `docs/execution.es.md`: the comparison of the cloud build, the local build and the interactive build (what each shows, its limits, what it spends), the status command, the group in the progress comment, and the result of 7.1 with the way to allow the tools by hand if needed; verify `tests/docs-claims.test.mjs` passes
+- [x] 8.2 `CHANGELOG.md`: an entry under Unreleased, Added; verify it names the status command
 
 ## 9. Integration
 
-- [ ] 9.1 Run the whole suite (`node --test`) and `openspec validate --all`; verify both pass
+- [x] 9.1 Run the whole suite (`node --test`) and `openspec validate --all`; verify both pass
 - [ ] 9.2 Run `go-local.mjs` for a sandbox issue with at least two groups in a terminal: verify the lines for each phase and group, the totals at the end, `go-local.mjs status` during and after the build, and that nothing about progress or usage was posted on the issue; record it in `docs/pilot-findings.md`
 - [ ] 9.3 Build a sandbox issue in the cloud and verify that the progress comment shows the group, and that the usage comment tells the launches of the developer apart

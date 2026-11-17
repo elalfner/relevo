@@ -227,15 +227,17 @@ While a cloud build runs, one comment on the issue shows how far it is. It is ed
 ```text
 Relevo build in progress: QA (attempt 2 of 3)
 Tasks: 6 of 9
+Group 2 of 3
 Running for 7 min
 ```
 
 - **The phase** is planning, specification, development, QA or delivery. The `go` skill announces it when it enters each step, with the attempt number out of the allowed retries (`qa_retries`) when QA rejects the work and development starts again. If it announces nothing, the phase is deduced from the working tree, which cannot tell QA from a new attempt of development.
 - **The tasks** are the checked boxes of `tasks.md` out of all of them. The workflow counts them itself every 30 seconds, so they do not depend on the agent.
+- **The group** is the one in progress, out of the groups of the run (`Group 2 of 3`), shown while the phase is development. `go` builds the pending tasks one group at a time; the script that splits them records how many there are and the script that commits each checkpoint records the one it committed, so the group costs no turn. The developer marks its tasks when its launch of a group ends, so a build of several groups shows the tasks rising group by group, and a build small enough to be one group shows `Group 1 of 1` while its tasks stay at 0. A resumed run counts only the groups it still has to build.
 - **The minutes** are whole minutes since the run started. A run whose minutes keep growing while its tasks and phase stay the same is stuck, or in a long step: open the run to read its log. The comment is edited only when its text changes, about once a minute.
 - **When the run ends**, whatever the outcome, the comment is replaced by one line that points to the result (or, for a run that left none, says so) and links the run. The result itself is the comment that was always posted.
 
-It shows the phase and the attempt, not what a subagent is doing inside them. A local run (`go --local`) has no such comment: you are watching the session. To get it in a project that already has the workflow, take the new `relevo-go.yml` through `/relevo:init`, which merges it with your changes, and raise `RELEVO_VERSION`; until then the runs build as before without it. The report never fails a run: if GitHub refuses an edit, the build goes on.
+It shows the phase and the attempt, not what a subagent is doing inside them. A build on a machine posts no comment on the issue; it shows the same facts on that machine, as [the next section](#building-on-your-machine) says. To get the cloud comment in a project that already has the workflow, take the new `relevo-go.yml` through `/relevo:init`, which merges it with your changes, and raise `RELEVO_VERSION`; until then the runs build as before without it. The report never fails a run: if GitHub refuses an edit, the build goes on.
 
 ## Building on your machine
 
@@ -252,6 +254,28 @@ In Antigravity interactive chat sessions, running `/relevo:go <issue>` automatic
 `/relevo:status` lists the `ready` issues assigned to you with the command to run when the cloud is not building, and alerts about an issue that has been `building` with no activity for `limits.building_alert_hours` hours, with how to restart it.
 
 `/relevo:review`, `/relevo:ship` and `/relevo:fix` run where you start them, in your main checkout or in a worktree you opened (for example with the Worktree button of Claude Code). In a worktree, `review` and `ship` do not switch back to the base branch afterwards, and `ship` does not delete the local branch: the worktree stays on its branch and the report says so. If another worktree holds the branch of the issue (a failed `go` keeps its worktree), they stop before changing anything and name that worktree and its path.
+
+### What each way to build shows, limits and spends
+
+| | Cloud build | Local build (`--local`) | Interactive build (`/relevo:go <n>` in a session) |
+|---|---|---|---|
+| Where it runs | A runner of the repository | A child process on your machine, in its own worktree | Your session, in a worktree of its own |
+| What you see while it runs | One progress comment on the issue (phase, tasks, group, minutes) | A line in the terminal when the phase, the group, the tasks or an agent changes, and the command `go-local.mjs status <issue>` | The subagents in your session, and the same status command from another terminal |
+| Limits | The turn and cost limits of the runner, and the guard of the subagents and of the minutes | The same limits and the same closed tool lists | The guard of the subagents and of the minutes; **no turn or cost limit on the main agent**, which runs on the model and the accumulated context of your session |
+| What it spends | The account of the repository's secret; the usage comment says what | Your own account; the build prints one sentence with the turns, the estimated cost and the tokens, and keeps them in its state | Your own session; nothing says what the build used |
+| What others see | The progress comment and the usage comment | Only the `building` label | Only the `building` label |
+
+Choose the local build when you want to watch a build and bound what it spends: it has the limits of the cloud and prints what it used. The interactive build is the one to use when you want to watch the agents work and steer, and it has no hard limit.
+
+**Reading the progress of a build on your machine.** A local build prints a line like `[12 min] development · group 2 of 3 · tasks 3 of 6` each time something changes, in the language of `relevo.yml`, from the files its scripts write and not from the model, with either agent. Its state lives in `.relevo-worktrees/.state/<repository>-<issue>/`, beside the worktrees and outside every working tree, so a commit never picks it up. It stays when the worktree is removed and is replaced when the same issue is built again on that machine. From another terminal:
+
+```bash
+node scripts/go-local.mjs status 42
+```
+
+It prints the phase, the group, the tasks, the minutes, when the progress last changed and, once the build ended, how it ended and what it used. It only reads. `/relevo:status` shows the builds running on this machine in one section, and lists an issue that is `building` with no state here (another machine, or the cloud) without progress; the state of other machines is not visible to it. The same folder serves an interactive build: its scripts find it from the worktree, so `go-local.mjs status` and the budget guard work for it without a variable. `--local` from a session starts the build in the background, prints that command and ends its turn; you are told when it ends.
+
+**Permission prompts in an interactive build.** A session with the default permissions asks before each command and each edit, and a build makes hundreds. The `go` skill does not declare a tool list of its own: it is not yet recorded that a session honours one, and a list nobody checked could allow a tool that the unattended run refuses. Until a check is recorded in `docs/pilot-findings.md`, allow the tools by hand, with the same list as the workflow (`Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Task`) in `.claude/settings.local.json`, or build with `--local`, which asks for nothing. Do not allow the web tools or the download commands, which the workflow refuses.
 
 ### Worktrees from your base branch
 

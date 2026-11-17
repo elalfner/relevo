@@ -676,3 +676,14 @@ test('Scenario: Progress of an interactive build - the worktree has a state fold
   assert.match(interactive, /no turn or cost limit of Relevo/);
   assert.match(body, /progress\.mjs change <change_id>/);
 });
+
+// ---------- the tool list of an interactive build (go-visibility 7.2)
+// The spike of 7.1 (does a session honour the tools that a skill declares?) has not been run, so the skill declares none: a skill
+// that declared a tool list nobody checked could gain a tool the unattended run refuses. When the spike shows that a list is honoured,
+// this test is replaced by one that compares the list with ALLOWED_TOOLS and DISALLOWED_TOOLS of scripts/lib/run-flags.mjs.
+
+test('Scenario: A session does not honour it (until a recorded check says it does) - the skill declares no tool list', () => {
+  assert.equal(meta['allowed-tools'], undefined);
+  assert.equal(meta['disallowed-tools'], undefined);
+  assert.doesNotMatch(front, /allowed-tools|allowedTools/i);
+});
