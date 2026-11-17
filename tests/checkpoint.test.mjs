@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,4 +111,30 @@ test('a replica that leaks a credential is refused too', () => {
   const { code, out } = checkpoint(f, 2, 3);
   assert.equal(code, 1);
   assert.equal(out.state, 'unsafe');
+});
+
+const checkpointIn = (f, k, n, env) => {
+  const r = spawnSync(process.execPath, [CLI, '--decision', b64(DECISION), '--k', String(k), '--of', String(n)], { cwd: f.work, encoding: 'utf8', env: { ...process.env, ...env } });
+  return { code: r.status, out: r.stdout.trim() };
+};
+
+test('Scenario: Second group of three - the checkpoint records the group it committed when there is a progress folder, and its output does not change', () => {
+  const f = fixture();
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-cp-progress-'));
+  put(f.work, 'src/a.js', 'one\n');
+  const withDir = checkpointIn(f, 1, 3, { RELEVO_PROGRESS_DIR: dir });
+  assert.equal(withDir.code, 0);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'groups.json'), 'utf8')), { of: 3, done: 1 });
+  const g = fixture();
+  put(g.work, 'src/a.js', 'one\n');
+  const without = checkpointIn(g, 1, 3, { RELEVO_PROGRESS_DIR: '' });
+  assert.deepEqual(Object.keys(JSON.parse(withDir.out)), Object.keys(JSON.parse(without.out)));
+});
+
+test('Scenario: The numbers cannot be recorded - the checkpoint is made as today', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  const r = checkpointIn(f, 1, 3, { RELEVO_PROGRESS_DIR: join(tmpdir(), 'relevo-missing-folder', 'deep') });
+  assert.equal(r.code, 0);
+  assert.equal(JSON.parse(r.out).state, 'kept');
 });

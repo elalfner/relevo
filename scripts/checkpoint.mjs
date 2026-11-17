@@ -16,6 +16,8 @@
 import { checkpointSubject, cleanTaskIds } from './lib/wip-commit.mjs';
 import { readDecision } from './lib/rescue-work.mjs';
 import { runRescue } from './lib/rescue-run.mjs';
+import { recordCheckpointed } from './lib/group-progress.mjs';
+import { progressDir } from './lib/worktree-path.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -36,5 +38,7 @@ try {
 } catch (error) {
   result = { state: 'not_pushed', branch: decision.branch, files: 0, commit: null, detail: `the checkpoint failed: ${String(error.message).slice(0, 200)}` };
 }
+// The progress shows the group in progress: the one after this. Best effort, and the output does not change.
+if (result.state !== 'unsafe') recordCheckpointed(progressDir(), k, n);
 console.log(JSON.stringify(result));
 process.exit(result.state === 'unsafe' ? 1 : 0);

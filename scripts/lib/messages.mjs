@@ -242,6 +242,7 @@ export const CATALOG = {
     run_progress: [
       'Relevo build in progress: {{phase_label}}{{attempt_suffix}}',
       'Tasks: {{tasks_done}} of {{tasks_total}}',
+      'Group {{group}} of {{groups}}',
       'Running for {{minutes}} min',
       '',
       'This comment is updated while the run lasts and is closed when it ends.',
@@ -439,6 +440,7 @@ export const CATALOG = {
     run_progress: [
       'Construcción de Relevo en curso: {{phase_label}}{{attempt_suffix}}',
       'Tareas: {{tasks_done}} de {{tasks_total}}',
+      'Grupo {{group}} de {{groups}}',
       'Lleva {{minutes}} min',
       '',
       'Este comentario se actualiza mientras dura la ejecución y se cierra al terminar.',

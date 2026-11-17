@@ -8,8 +8,8 @@
 
 ## 2. The group in progress
 
-- [ ] 2.1 In `tests/progress.test.mjs` and the tests of the two scripts, test that `task-groups.mjs` records the number of groups and `checkpoint.mjs` the group it committed when there is a progress folder, that neither fails or changes its output without one or when it cannot write, and that the progress text shows "group 2 of 3" after the first checkpoint of three, "group 1 of 1" for one group and no group when nothing was recorded; run them and see them fail
-- [ ] 2.2 `scripts/task-groups.mjs`, `scripts/checkpoint.mjs`, `scripts/lib/progress.mjs` and the `run_progress` text of `scripts/lib/messages.mjs`, in English and Spanish; verify the tests pass and `tests/workflow-progress.test.mjs` still passes
+- [x] 2.1 In `tests/progress.test.mjs` and the tests of the two scripts, test that `task-groups.mjs` records the number of groups and `checkpoint.mjs` the group it committed when there is a progress folder, that neither fails or changes its output without one or when it cannot write, and that the progress text shows "group 2 of 3" after the first checkpoint of three, "group 1 of 1" for one group and no group when nothing was recorded; run them and see them fail
+- [x] 2.2 `scripts/task-groups.mjs`, `scripts/checkpoint.mjs`, `scripts/lib/progress.mjs` and the `run_progress` text of `scripts/lib/messages.mjs`, in English and Spanish; verify the tests pass and `tests/workflow-progress.test.mjs` still passes
 
 ## 3. The state and the lines of a local build
 

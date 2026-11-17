@@ -28,6 +28,7 @@ import {
   INTERVAL_MS, PHASES, closeProgress, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
 } from './lib/progress.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { groupInProgress, readGroups } from './lib/group-progress.mjs';
 import { LENSES, OUTCOME_CLASSES, recordLens, recordPhase, writeClass } from './lib/phase-log.mjs';
 
 const args = process.argv.slice(3);
@@ -132,6 +133,7 @@ async function main(command) {
       intervalMs: arg('interval') ? Number(arg('interval')) * 1000 : INTERVAL_MS,
       readFacts: () => readTreeFacts({ cwd: process.cwd(), changeId, base, branch, git: (a) => execFileSync('git', a, { encoding: 'utf8' }) }),
       readAnnounced: () => readAnnouncement(dir),
+      readGroup: () => groupInProgress(readGroups(dir)),
       stopRequested: () => existsSync(join(dir, 'stop')),
       stillBuilding: () => JSON.parse(realGh(['api', `repos/${repo}/issues/${issue}`])).labels
         .some((l) => (typeof l === 'string' ? l : l.name) === building),
