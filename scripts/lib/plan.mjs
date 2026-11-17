@@ -7,7 +7,14 @@
 //                 milestone: { number, due_on } | null,
 //                 ready_at: ISO | null,   // when the ready label was last applied
 //                 ready_by: login | null, // who applied it
-//                 urgent_by: login | null // who applied the urgent label, when the issue carries it }]
+//                 urgent_by: login | null // who applied the urgent label, when the issue carries it
+//                 go_at, go_by           // when and by whom the go label was last applied, when the issue carries it
+//                 has_branch: bool|null  // a `build-failed` issue with `go`: whether its branch exists (null: it could not be looked for)
+//               }]
+//   place      'cloud' (the default) or 'local': where the build would run. In the cloud a `ready` issue is a candidate only with
+//              the `go` label, and the build needs both `ready_by` and `go_by` to have the permission of `ready`; every decision
+//              about an issue that carries `go` removes it. On a machine (`local`) see "A local build" below.
+//   person     place `local`: the login of the person who runs the build
 //   completed  issue numbers closed as completed (their pull request merged)
 //   running    issue numbers with an agent run in progress
 //   permissions  { login: 'admin' | 'maintain' | 'write' | 'triage' | 'read' | 'none' }
@@ -56,7 +63,9 @@ export function withoutCredential(decisions, issues = []) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now() }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now(), place = 'cloud', person = null }) {
+  if (place !== 'cloud' && place !== 'local') throw new Error(`unknown place "${place}": expected cloud or local`);
+  const cloud = place === 'cloud';
   const names = resolveLabelNames(config.labels);
   const has = (issue, key) => issue.labels.includes(names[key]);
   const open = issues.filter((i) => i.state === 'open');
@@ -74,7 +83,9 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
   const runningSet = new Set(running);
   open.filter((i) => has(i, 'building')).forEach((i) => runningSet.add(i.number));
-  let freeSlots = Math.max(0, config.limits.concurrent_agents - runningSet.size);
+  // The limit of agents is for the cloud: a `building` issue with the `local` mark runs on a machine and takes no slot.
+  const cloudRunning = new Set([...runningSet].filter((n) => !open.some((i) => i.number === n && has(i, 'local'))));
+  let freeSlots = Math.max(0, config.limits.concurrent_agents - cloudRunning.size);
 
   const builtBy = new Map();
   const builtIssues = new Map();
@@ -112,8 +123,17 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   // Valid urgent issues are considered first, so they take the free agent slots before the others; inside each group
   // the order is the time `ready` was applied.
   // A retry stands in for `ready`: the issue is `build-failed`, the person who runs it takes the place of who applied the label.
-  const isRetry = (issue) => Boolean(retry) && retry.issue === issue.number && has(issue, 'build-failed');
-  const startedBy = (issue) => (isRetry(issue) ? retry.by : issue.ready_by);
+  // In the cloud the `go` label on a `build-failed` issue that left no branch is that retry, with `go_by` in place of the person.
+  const isGoRetry = (issue) => cloud && has(issue, 'go') && has(issue, 'build-failed') && issue.has_branch === false;
+  const isRetry = (issue) => (Boolean(retry) && retry.issue === issue.number && has(issue, 'build-failed')) || isGoRetry(issue);
+  const startedBy = (issue) => {
+    if (isGoRetry(issue)) return issue.go_by;
+    return isRetry(issue) ? retry.by : issue.ready_by;
+  };
+  // A request of the cloud: an approved issue with the `go` label.
+  const isRequest = (issue) => cloud && has(issue, 'ready') && has(issue, 'go');
+  // A `go` label that the issue cannot take: it is refused by the state of the issue (see refusal() below).
+  const isRefusal = (issue) => cloud && has(issue, 'go') && !has(issue, 'ready') && !has(issue, 'queued') && !has(issue, 'blocked') && !isRetry(issue);
 
   // An issue that waits for a usage limit to reset: `queued` with a retry time that has not come. It is held: it takes no slot and says nothing.
   const holdsForLimit = (issue) => has(issue, 'queued') && Boolean(issue.limit_retry) && issue.limit_retry.at > now;
@@ -122,7 +142,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   let probeBusy = open.some((i) => has(i, 'building') && i.limit_retry && now - i.limit_retry.at <= EPISODE_MS);
 
   const candidates = open
-    .filter((i) => has(i, 'ready') || has(i, 'queued') || has(i, 'blocked') || isRetry(i))
+    .filter((i) => (cloud ? isRequest(i) : has(i, 'ready')) || has(i, 'queued') || has(i, 'blocked') || isRetry(i) || isRefusal(i))
     .sort((a, b) => Number(isUrgent(b)) - Number(isUrgent(a)) || byReadyAt(a, b));
 
   const decisions = [];
@@ -161,14 +181,43 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         data: { issue: issue.number, ...(issue.urgent_by ? { actor: issue.urgent_by } : {}) },
       };
     }
+    // The build request is consumed by the first decision of the cloud, whatever it is. An issue whose run is in progress is left alone.
+    if (cloud && action !== 'skip' && has(issue, 'go') && !out.labels.remove.includes(names.go)) {
+      out.labels = { add: out.labels.add, remove: [...out.labels.remove, names.go] };
+    }
     if (action === 'start') Object.assign(out, extra.start);
     decisions.push(out);
   }
+
+  // What a `go` label on an issue that cannot take it says, by the state of the issue. `go` never stands in for the approval.
+  const refusal = (issue) => {
+    if (has(issue, 'building')) return 'go_building';
+    if (['built', 'in-review', 'pr-open', 'changes-requested'].some((k) => has(issue, k))) return 'go_already_built';
+    if (has(issue, 'build-failed')) return issue.has_branch === true ? 'go_use_fix' : null;
+    return 'go_needs_ready';
+  };
 
   const moveTo = (issue, key) => transition(issue.labels, key, config.labels);
   const dropReady = (issue) => ({ add: [], remove: issue.labels.filter((l) => l === names.ready) });
 
   candidates.forEach((issue) => {
+    if (isRefusal(issue)) {
+      const kind = refusal(issue);
+      if (kind === null) {
+        // A `build-failed` issue whose branch could not be looked for: nothing is built and nothing changes.
+        decision(issue, 'report', 'could not look for the branch of the issue on the remote, so it cannot tell a rebuild from a fix', {
+          labels: { add: [], remove: [] },
+        });
+        // A report changes nothing: not even the request is consumed.
+        decisions[decisions.length - 1].labels = { add: [], remove: [] };
+        return;
+      }
+      decision(issue, 'refuse', `the go label cannot be taken by this issue (${kind})`, {
+        comment: { kind, data: { issue: issue.number, ...(issue.go_by ? { actor: issue.go_by } : {}) } },
+      });
+      return;
+    }
+
     if (runningSet.has(issue.number)) {
       decision(issue, 'skip', 'an agent is already running for this issue');
       return;
@@ -217,15 +266,28 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
     };
 
     if (has(issue, 'ready') || isRetry(issue)) {
-      // Trigger: only people with write access may start work.
+      // Trigger: only people with write access may start work. In the cloud the build needs two of them: who approved (`ready_by`)
+      // and who requested it (`go_by`); a rebuild of a `build-failed` issue asked with `go` needs only the request, `go_by`.
       const by = startedBy(issue);
-      const permission = by ? permissions[by] : undefined;
       const isPublic = config.trust === 'public';
-      if (!by || !(isPublic ? MAY_TRIGGER_PUBLIC : MAY_TRIGGER).has(permission)) {
+      const allowed = (login) => Boolean(login) && (isPublic ? MAY_TRIGGER_PUBLIC : MAY_TRIGGER).has(permissions[login]);
+      const goDenied = () => decision(issue, 'denied', isPublic ? 'the go label was not applied by a maintainer (trust is public)' : 'the go label was not applied by someone with write access', {
+        comment: { kind: isPublic ? 'go_denied_maintainer' : 'go_denied', data: { issue: issue.number, actor: issue.go_by ?? undefined } },
+      });
+      if (isGoRetry(issue)) {
+        if (!allowed(issue.go_by)) {
+          goDenied();
+          return;
+        }
+      } else if (!allowed(by)) {
         decision(issue, 'denied', isPublic ? 'the ready label was not applied by a maintainer (trust is public)' : 'the ready label was not applied by someone with write access', {
           labels: dropReady(issue),
           comment: { kind: isPublic ? 'ready_denied_maintainer' : 'ready_denied', data: { issue: issue.number, actor: by ?? undefined } },
         });
+        return;
+      } else if (isRequest(issue) && !allowed(issue.go_by)) {
+        // An invalid request is removed and the issue stays `ready`.
+        goDenied();
         return;
       }
       if (!issue.milestone) {
@@ -323,7 +385,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
     // Global limit on concurrent agents.
     if (freeSlots <= 0) {
-      const active = [...runningSet].sort((a, b) => a - b);
+      const active = [...cloudRunning].sort((a, b) => a - b);
       const typical = has(issue, 'queued') ? null : typicalBuild();
       decision(issue, 'queue', 'the limit of concurrent agents is reached', {
         labels: moveTo(issue, 'queued'),
@@ -353,6 +415,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
 
     freeSlots -= 1;
     runningSet.add(issue.number);
+    cloudRunning.add(issue.number);
     if (retrying(issue)) probeBusy = true;
     decision(issue, 'start', 'all gates passed', {
       labels: moveTo(issue, 'building'),

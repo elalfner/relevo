@@ -12,8 +12,8 @@ const config = join(dir, 'relevo.yml');
 writeFileSync(config, 'limits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b]\n');
 const state = (over = {}) => ({
   issues: [{
-    number: 7, title: 'Show the version', body: BODY, state: 'open', labels: ['relevo:ready'], assignees: ['persona-b'],
-    milestone: { number: 1, due_on: null }, ready_at: '2026-10-15T10:00:00Z', ready_by: 'persona-a', ...over,
+    number: 7, title: 'Show the version', body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: ['persona-b'],
+    milestone: { number: 1, due_on: null }, ready_at: '2026-10-15T10:00:00Z', ready_by: 'persona-a', go_by: 'persona-a', ...over,
   }],
   completed: [], running: [], permissions: { 'persona-a': 'write' },
 });
@@ -166,4 +166,18 @@ test('go-plan --retry needs --only, and a person without permission is denied', 
   assert.equal(noOnly.status, 2);
   assert.match(noOnly.stderr, /--retry needs --only/);
   assert.equal(JSON.parse(retryPlan({}, 'stranger').stdout).decisions[0].action, 'denied');
+});
+
+test('go-plan --place: the cloud is the default and ignores an approved issue with no request; another place is refused', () => {
+  assert.equal(parse(plan({ labels: ['relevo:ready'], go_by: null }).out).action, 'none');
+  const input = join(dir, 'place.json');
+  writeFileSync(input, JSON.stringify(state()));
+  const bad = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--place', 'moon'], { encoding: 'utf8' });
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /--place must be cloud or local/);
+});
+
+test('go-plan: a go label on a build-failed issue is a rebuild without a branch and a refusal with one', () => {
+  assert.equal(parse(plan({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: false }).out).action, 'start');
+  assert.equal(parse(plan({ labels: ['relevo:build-failed', 'relevo:go'], has_branch: true }).out).action, 'refuse');
 });

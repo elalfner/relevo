@@ -37,8 +37,8 @@ test('after its time the issue starts as any other', () => {
   assert.equal(actionOf(plan([waiting(1, NOW)]), 1).action, 'start');
 });
 
-test('Scenario: A person applies ready - the hold applies to queued issues only', () => {
-  const ready = issue(1, ['relevo:ready'], { limit_retry: { at: NOW + HOUR, attempt: 2, reason: 'reset' } });
+test('Scenario: A person requests the build - the hold applies to queued issues only', () => {
+  const ready = issue(1, ['relevo:ready', 'relevo:go'], { go_by: 'persona-a', limit_retry: { at: NOW + HOUR, attempt: 2, reason: 'reset' } });
   assert.equal(actionOf(plan([ready]), 1).action, 'start');
 });
 

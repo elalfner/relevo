@@ -138,8 +138,8 @@ test('an unmerged dependency is not reported as completed', () => {
 
 test('end to end: gathered state flows through the planner', () => {
   const world = {
-    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready'])] },
-    timeline: { 1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z')] },
+    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready', 'relevo:go'])] },
+    timeline: { 1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z'), labeled('relevo:go', 'persona-a', '2026-10-14T08:05:00Z')] },
     permissions: { 'persona-a': 'maintain' },
     issueDetails: {},
   };
@@ -199,7 +199,7 @@ const CLI = (name) => new URL(`../scripts/${name}`, import.meta.url).pathname;
 test('go-plan CLI: plans from a state file and rejects a missing configuration', () => {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
   writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\n');
-  const state = { issues: [{ number: 31, title: 'Summary screen', body: BODY, state: 'open', labels: ['relevo:ready'], assignees: ['persona-b'], milestone: { number: 1 }, ready_at: '2026-10-14T08:00:00Z', ready_by: 'persona-a' }], permissions: { 'persona-a': 'write' } };
+  const state = { issues: [{ number: 31, title: 'Summary screen', body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: ['persona-b'], milestone: { number: 1 }, ready_at: '2026-10-14T08:00:00Z', ready_by: 'persona-a', go_by: 'persona-a' }], permissions: { 'persona-a': 'write' } };
   writeFileSync(join(dir, 'state.json'), JSON.stringify(state));
   const out = JSON.parse(execFileSync('node', [CLI('go-plan.mjs'), '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' }));
   assert.equal(out.decisions[0].action, 'start');
@@ -236,7 +236,7 @@ test('applyDecisions marks only the claimed start decision when includeStart is 
 test('go-plan CLI: --only keeps one decision and --claim needs --only', () => {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
   writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\n');
-  const mk = (n, at) => ({ number: n, title: `T${n}`, body: BODY, state: 'open', labels: ['relevo:ready'], assignees: [`p${n}`], milestone: { number: 1 }, ready_at: at, ready_by: 'persona-a' });
+  const mk = (n, at) => ({ number: n, title: `T${n}`, body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: [`p${n}`], milestone: { number: 1 }, ready_at: at, ready_by: 'persona-a', go_by: 'persona-a' });
   writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [mk(1, '2026-10-14T08:00:00Z'), mk(2, '2026-10-14T09:00:00Z')], permissions: { 'persona-a': 'write' } }));
   const base = [CLI('go-plan.mjs'), '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')];
   const out = JSON.parse(execFileSync('node', [...base, '--only', '2'], { encoding: 'utf8' }));

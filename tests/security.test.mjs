@@ -17,8 +17,8 @@ const config = (extra = '') => {
   return r.config;
 };
 const issue = (readyBy) => ({
-  number: 7, title: 'Task', body: BODY, state: 'open', labels: ['relevo:ready'], assignees: ['persona-b'],
-  milestone: { number: 1, due_on: null }, ready_at: '2026-10-14T10:00:00Z', ready_by: readyBy,
+  number: 7, title: 'Task', body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: ['persona-b'],
+  milestone: { number: 1, due_on: null }, ready_at: '2026-10-14T10:00:00Z', ready_by: readyBy, go_by: readyBy,
 });
 const decide = (cfg, by, permission) => planGo({ config: cfg, issues: [issue(by)], permissions: { [by]: permission } }).decisions[0];
 
@@ -28,7 +28,7 @@ test('Scenario: Public repository - a non-maintainer applying ready starts no ru
   const pub = config('trust: public\nreview:\n  mode: peer\n');
   const d = decide(pub, 'contributor', 'write');
   assert.equal(d.action, 'denied');
-  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready'] });
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:ready', 'relevo:go'] });
   assert.equal(d.comment.kind, 'ready_denied_maintainer');
   assert.match(renderMessage('ready_denied_maintainer', d.comment.data, 'en'), /public, so only maintainers/);
   assert.match(renderMessage('ready_denied_maintainer', d.comment.data, 'es'), /público/);

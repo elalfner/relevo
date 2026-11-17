@@ -557,10 +557,10 @@ const RUN = { issue: 12, run: 'https://example.test/run/1', assignee: 'persona-b
 
 test('run_failed_early: the run failed before it decided, in both languages, with the labels of the English text', () => {
   const en = renderMessage('run_failed_early', { ...RUN, job_status: 'failure' }, 'en');
-  assert.equal(en, '@persona-b The run failed before it could decide what to do (job status: failure), so nothing was built. Read the log to see why: https://example.test/run/1. When the cause is fixed, remove `relevo:build-failed` and apply `relevo:ready` again.');
+  assert.equal(en, '@persona-b The run failed before it could decide what to do (job status: failure), so nothing was built. Read the log to see why: https://example.test/run/1. When the cause is fixed, apply `relevo:go` so that the cloud builds it again, or run `/relevo:go 12 --retry` on your machine.');
   const es = renderMessage('run_failed_early', { ...RUN, job_status: 'failure' }, 'es');
   assert.match(es, /^@persona-b La ejecución falló antes de poder decidir/);
-  assert.match(es, /`relevo:build-failed`.*`relevo:ready`/);
+  assert.match(es, /`relevo:go`.*`\/relevo:go 12 --retry`/);
   assert.doesNotMatch(renderMessage('run_failed_early', { issue: 12, job_status: 'failure', run: 'u' }, 'en'), /@/, 'nobody is mentioned when there is no assignee');
 });
 
@@ -624,8 +624,8 @@ test('Scenario: The branch holds a checkpoint / no checkpoint - kept says that r
   const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
   const fromStart = /from the start|desde el principio/;
   const withCheckpoints = renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'en');
-  assert.match(withCheckpoints, /apply `relevo:ready` again to resume from the last checkpoint \(2 saved\) and build only the pending tasks/);
-  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /pon `relevo:ready` otra vez para reanudar desde el último checkpoint \(2 guardados\) y construir solo las tareas pendientes/);
+  assert.match(withCheckpoints, /apply `relevo:ready` again and then `relevo:go` \(or run `\/relevo:go 12` on your machine\) to resume from the last checkpoint \(2 saved\) and build only the pending tasks/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /pon `relevo:ready` otra vez y luego `relevo:go` \(o ejecuta `\/relevo:go 12` en tu máquina\) para reanudar desde el último checkpoint \(2 guardados\) y construir solo las tareas pendientes/);
   const none = renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'en');
   assert.match(none, /resume from the work kept on the branch \(no checkpoint was saved yet\)/);
   assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'es'), /reanudar desde el trabajo guardado en la rama \(todavía no hay ningún checkpoint\)/);
@@ -721,4 +721,75 @@ test('Scenario: One checkpoint is saved / Several checkpoints are saved - the Sp
   // The other wordings do not change.
   assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'es'), /todavía no hay ningún checkpoint/);
   assert.match(renderMessage('run_no_outcome', kept, 'es'), /reanudar desde el último punto guardado en la rama/);
+});
+
+// --- split-ready-and-go: the refusals of the go label and the texts that said ready starts a build
+
+const GO = { issue: 42, actor: 'ana' };
+
+test('Scenario: Request by someone without write access - go_denied says go needs the permission of ready, names who applied it', () => {
+  const en = renderMessage('go_denied', GO, 'en');
+  assert.match(en, /only people with write access can request a build/);
+  assert.match(en, /The issue stays ready/);
+  assert.match(en, /Applied by: @ana/);
+  assert.match(renderMessage('go_denied', GO, 'es'), /solo quienes tienen acceso de escritura pueden pedir un build/);
+});
+
+test('Scenario: Public repository - go_denied_maintainer says only a maintainer may request a build', () => {
+  assert.match(renderMessage('go_denied_maintainer', GO, 'en'), /only maintainers can request a build/);
+  assert.match(renderMessage('go_denied_maintainer', GO, 'es'), /solo quienes mantienen el proyecto pueden pedir un build/);
+});
+
+test('Scenario: Draft - go_needs_ready says the issue needs ready first and gives the local command', () => {
+  const en = renderMessage('go_needs_ready', GO, 'en');
+  assert.match(en, /not ready/);
+  assert.match(en, /approve it with the ready label/);
+  assert.match(en, /\/relevo:go 42/);
+  assert.match(renderMessage('go_needs_ready', GO, 'es'), /apruébalo con la etiqueta ready/);
+});
+
+test('Scenario: Already building - go_building says it is being built and the build was not touched', () => {
+  assert.match(renderMessage('go_building', GO, 'en'), /being built already.*not touched/);
+  assert.match(renderMessage('go_building', GO, 'es'), /ya se está construyendo.*no se tocó/);
+});
+
+test('Scenario: Already built - go_already_built says so', () => {
+  assert.match(renderMessage('go_already_built', GO, 'en'), /already built/);
+  assert.match(renderMessage('go_already_built', GO, 'es'), /ya está construido/);
+});
+
+test('Scenario: Failed build with code - go_use_fix says to run /relevo:fix', () => {
+  assert.match(renderMessage('go_use_fix', GO, 'en'), /run `\/relevo:fix 42`/);
+  assert.match(renderMessage('go_use_fix', GO, 'es'), /ejecuta `\/relevo:fix 42`/);
+});
+
+test('the refusals name nobody when the applier is unknown', () => {
+  ['go_denied', 'go_needs_ready', 'go_building', 'go_already_built', 'go_use_fix'].forEach((kind) => {
+    assert.doesNotMatch(renderMessage(kind, { issue: 42 }, 'en'), /@/, kind);
+  });
+});
+
+test('ready_denied says that ready approves and that both labels were removed', () => {
+  assert.match(renderMessage('ready_denied', GO, 'en'), /approve an issue with ready, so the ready and go labels were removed/);
+  assert.match(renderMessage('ready_denied', GO, 'es'), /se quitaron las etiquetas ready y go/);
+});
+
+test('no message tells a person that applying ready alone builds an issue', () => {
+  const samples = {
+    no_milestone: { issue: 42, actor: 'ana' },
+    no_assignee: { issue: 42, actor: 'ana' },
+    run_failed_early: { ...RUN, job_status: 'failure' },
+    run_no_outcome: { ...RUN, situation: 'usage_limit' },
+  };
+  Object.entries(samples).forEach(([kind, data]) => {
+    ['en', 'es'].forEach((language) => {
+      const text = renderMessage(kind, data, language);
+      assert.match(text, /relevo:go|\bgo\b/, `${kind}/${language} names the request`);
+      assert.doesNotMatch(text, /(label it|márcalo como) ready (again|otra vez)\./, `${kind}/${language}`);
+    });
+  });
+  ['usage_limit_stopped', 'no_result'].forEach((situation) => {
+    const text = renderMessage('run_no_outcome', { ...RUN, situation, job_status: 'failure' }, 'en');
+    assert.match(text, /apply `relevo:go` so that the cloud builds it again, or run `\/relevo:go 12 --retry` on your machine/, situation);
+  });
 });

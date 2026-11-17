@@ -20,10 +20,10 @@
 
 ## 4. The planner in the cloud
 
-- [ ] 4.1 In `tests/plan.test.mjs`, write the scenarios of the `go` delta for `place: cloud`: `ready` alone is not a candidate; `ready` with a valid `go` passes the gates; `go` by someone without permission, by a non-maintainer when `trust` is `public`, and by a bot; `ready` applied without permission; each refusal of `go` by state; `build-failed` with no branch rebuilt and with a branch refused; `go` removed by every decision; `queued` and `blocked` built later with no label; run them and see them fail
-- [ ] 4.2 `scripts/lib/plan.mjs`: `place`, the candidates of the cloud, the pair of permissions, the `refuse` decisions and the removal of `go` in every decision; `scripts/go-plan.mjs`: `--place`, and the retry entered by the `go` label; verify the tests of 4.1 and the existing planner tests pass
-- [ ] 4.3 In `tests/plan.test.mjs`, test that the limit of agents counts the `building` issues without `local`, and that the issues that hold shared files still include the local builds; make it pass in `plan.mjs`
-- [ ] 4.4 `scripts/lib/messages.mjs`, in English and Spanish: the messages of the refusals (`go` needs `ready`, being built, already built, use `fix`, `go` needs the permission of `ready`, only a maintainer), and the texts that said that `ready` starts a build; `tests/messages.test.mjs` and `tests/messages-language.test.mjs` cover each; verify they pass
+- [x] 4.1 In `tests/plan.test.mjs`, write the scenarios of the `go` delta for `place: cloud`: `ready` alone is not a candidate; `ready` with a valid `go` passes the gates; `go` by someone without permission, by a non-maintainer when `trust` is `public`, and by a bot; `ready` applied without permission; each refusal of `go` by state; `build-failed` with no branch rebuilt and with a branch refused; `go` removed by every decision; `queued` and `blocked` built later with no label; run them and see them fail
+- [x] 4.2 `scripts/lib/plan.mjs`: `place`, the candidates of the cloud, the pair of permissions, the `refuse` decisions and the removal of `go` in every decision; `scripts/go-plan.mjs`: `--place`, and the retry entered by the `go` label; verify the tests of 4.1 and the existing planner tests pass
+- [x] 4.3 In `tests/plan.test.mjs`, test that the limit of agents counts the `building` issues without `local`, and that the issues that hold shared files still include the local builds; make it pass in `plan.mjs`
+- [x] 4.4 `scripts/lib/messages.mjs`, in English and Spanish: the messages of the refusals (`go` needs `ready`, being built, already built, use `fix`, `go` needs the permission of `ready`, only a maintainer), and the texts that said that `ready` starts a build; `tests/messages.test.mjs` and `tests/messages-language.test.mjs` cover each; verify they pass
 
 ## 5. The approval check
 

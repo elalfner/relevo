@@ -86,7 +86,7 @@ function run(which, { language = 'en', env = {}, renderAt = which === 0 ? '.rele
 test('Scenario: A run ends without a result, in Spanish - the comment of the decide job is in Spanish, with the same commands and labels', () => {
   const es = run(0, { language: 'es' });
   assert.match(es.body, /^@ana La ejecución falló antes de poder decidir qué hacer \(estado del job: failure\)/);
-  assert.match(es.body, /quita `relevo:build-failed` y pon `relevo:ready`/);
+  assert.match(es.body, /pon `relevo:go` para que la nube lo construya de nuevo, o ejecuta `\/relevo:go 12 --retry`/);
   assert.match(es.edits, /--add-label relevo:build-failed/);
   const en = run(0, { language: 'en' });
   assert.match(en.body, /^@ana The run failed before it could decide what to do \(job status: failure\), so nothing was built\./);
