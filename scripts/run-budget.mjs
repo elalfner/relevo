@@ -10,6 +10,7 @@
 // does nothing and `check` says it does not know and exits 0.
 // The guard never stops a run on a figure it cannot read, and an error of its own exits 0: it must not fail a build.
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
@@ -21,7 +22,7 @@ const arg = (name) => {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? undefined : args[i + 1];
 };
-const dir = process.env.RELEVO_PROGRESS_DIR;
+const dir = progressDir();
 
 // The limits, and notes about anything the guard could not use. The guard still fails open (a limit it cannot read
 // stops nothing), but it says why, so a relevo.yml that does not validate does not switch the limits off in silence.

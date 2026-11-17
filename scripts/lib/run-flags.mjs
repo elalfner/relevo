@@ -5,9 +5,13 @@
 export const ALLOWED_TOOLS = 'Bash,Read,Write,Edit,Glob,Grep,Task';
 export const DISALLOWED_TOOLS = 'WebFetch,WebSearch,Bash(curl:*),Bash(wget:*)';
 
-/** The `claude -p` arguments that bound a run: turns, cost, and the closed lists of tools. */
-export function runFlags(config) {
+/**
+ * The `claude -p` arguments that bound a run: turns, cost, and the closed lists of tools. `json` asks for the final answer as
+ * one JSON object, which a local run reads for what it used; the workflow does not ask for it, so its flags do not change.
+ */
+export function runFlags(config, { json = false } = {}) {
   return [
+    ...(json ? ['--output-format', 'json'] : []),
     '--max-turns', String(config.limits.run_max_turns),
     '--max-budget-usd', String(config.limits.run_max_cost),
     '--allowedTools', ALLOWED_TOOLS,

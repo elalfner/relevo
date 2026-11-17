@@ -4,8 +4,10 @@
 // prs     [{ number, issue, url, author, reviewer, requested_at, approved, behind_by }]          open feature pull requests
 // milestones [{ number, title, due_on, closed_issues }]
 // me      login of the person asking (null for the team-level view)
+// localBuilds [{ issue, phase, group, tasks, minutes, lastChangeMinutes }]   builds running on this machine (see status-local.mjs); undefined when not read
 
 import { resolveLabelNames } from './labels.mjs';
+import { renderMessage } from './messages.mjs';
 import { mainAgentShare, sumUsage, summarizeOutcomes, USAGE_DAYS } from './run-usage.mjs';
 import { STAGE_DAYS, formatDuration, summarizeStages } from './stages.mjs';
 
@@ -41,7 +43,7 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], usage = [], stages = [], me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, unread = [], usage = [], stages = [], localBuilds, me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
@@ -133,6 +135,8 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     me, view: isSpecWriter ? 'spec-writer' : 'person',
     onMe, toReview, toShip, readyForMe, waitingOnOthers, specWriter: specWriterView,
     milestones: summaries, alerts, waiting, unread,
+    // The builds running on this machine, and the issues `building` that have no state here (another machine, or the cloud): listed without progress.
+    ...(Array.isArray(localBuilds) ? { localBuilds, buildingElsewhere: entries.filter((e) => e.state === 'building' && !localBuilds.some((b) => b.issue === e.number)).map((e) => ({ number: e.number, title: e.title })) } : {}),
     // The runs of the last seven days added up, or null when none left a usage marker. Only the digest shows it.
     usage: usage.length ? sumUsage(usage) : null,
     // The share of the cost and of the turns that the main agent used, over the runs of those that have the detail of their agents.
@@ -158,6 +162,7 @@ const T = {
     noDue: 'has no due date, so no capacity warning is computed', merged: 'merged', inReview: 'in review', queued: 'queued', warn: 'capacity warning: more work than the team can review before the due date',
     alerts: 'Alerts', staleReview: 'review waiting', staleBranch: 'branch behind the base by',
     waitingFor: 'waiting for', open: 'open', closed: 'closed, not completed', unreadable: 'could not be read',
+    localBuilds: 'Building on this machine', lastChange: (n) => `last change ${n} min ago`, elsewhere: 'Building, no progress on this machine',
     readyForMe: 'Ready, for you to build (the cloud is not building)', stuck: 'build with no activity for', restart: 'remove relevo:building and apply relevo:ready again, or run', waitingRunner: ['has waited', 'for a runner: look at the runners that take the build job (runner.build_labels), or build it on a machine with'],
   },
   es: {
@@ -172,6 +177,7 @@ const T = {
     noDue: 'no tiene fecha límite, así que no se calcula la advertencia de capacidad', merged: 'fusionadas', inReview: 'en revisión', queued: 'en cola', warn: 'advertencia de capacidad: hay más trabajo del que el equipo puede revisar antes de la fecha límite',
     alerts: 'Alertas', staleReview: 'revisión esperando', staleBranch: 'rama atrasada respecto a la base por',
     waitingFor: 'esperando', open: 'abierto', closed: 'cerrado, sin completar', unreadable: 'no se pudo leer',
+    localBuilds: 'En construcción en esta máquina', lastChange: (n) => `último cambio hace ${n} min`, elsewhere: 'En construcción, sin progreso en esta máquina',
     readyForMe: 'Listas, para que las construyas (la nube no está construyendo)', stuck: 'construcción sin actividad desde hace', restart: 'quita relevo:building y vuelve a poner relevo:ready, o ejecuta', waitingRunner: ['espera un runner desde hace', ': mira los runners que toman el job de build (runner.build_labels), o constrúyelo en una máquina con'],
   },
 };
@@ -192,6 +198,14 @@ export function renderStatus(report, language = 'en') {
     section(t.needsReviewer, sw.needsReviewer.map((e) => `#${e.number} ${e.title}`));
   }
   section(t.onMe, report.onMe.map((e) => `#${e.number} ${e.title} → ${e.command}`));
+  section(t.localBuilds, (report.localBuilds ?? []).map((b) => {
+    const line = renderMessage('local_progress', {
+      phase: b.phase.phase, attempt: b.phase.attempt, of: b.phase.of, minutes: b.minutes,
+      group: b.group?.group, groups: b.group?.of, tasks_done: b.tasks?.done, tasks_total: b.tasks?.total,
+    }, language);
+    return `#${b.issue} ${line}${b.lastChangeMinutes === null || b.lastChangeMinutes === undefined ? '' : ` (${t.lastChange(b.lastChangeMinutes)})`}`;
+  }));
+  section(t.elsewhere, (report.buildingElsewhere ?? []).map((e) => `#${e.number} ${e.title}`));
   section(t.readyForMe, report.readyForMe.map((e) => `#${e.number} ${e.title} → ${e.command}`));
   section(t.review, report.toReview.map((r) => `#${r.number} ${r.pr}`));
   section(t.ship, report.toShip.map((r) => `#${r.number} → ${r.command}`));

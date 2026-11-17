@@ -17,6 +17,7 @@
 //       the same for the checkpoint `wip: checkpoint k/n (#issue)`, for a caller that has the numbers.
 //       exit 0; exit 1 when no such checkpoint exists (a checkpoint made before the trailer existed has no tasks to find it by); exit 2 bad arguments.
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -52,7 +53,7 @@ if (mode === 'check') {
   const answer = (result) => {
     console.log(JSON.stringify(result));
     const task = arg('task');
-    const folder = process.env.RELEVO_PROGRESS_DIR;
+    const folder = progressDir();
     if (!task || !folder) return;
     try {
       mkdirSync(folder, { recursive: true });

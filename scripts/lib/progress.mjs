@@ -79,9 +79,10 @@ export function currentPhase({ announced, facts }) {
 }
 
 /** The text of the progress comment, with its marker. The time is in whole minutes, so the text changes about once a minute. */
-export function renderProgress({ phase, attempt = null, of = null, tasks = null, minutes, language = 'en' }) {
+export function renderProgress({ phase, attempt = null, of = null, tasks = null, minutes, group = null, language = 'en' }) {
   const text = renderMessage('run_progress', {
     phase, attempt, of, minutes,
+    group: phase === 'development' && group ? group.group : null, groups: phase === 'development' && group ? group.of : null,
     tasks_done: tasks ? tasks.done : null, tasks_total: tasks ? tasks.total : null,
   }, language);
   return `${text}\n\n${PROGRESS_MARKER}`;
@@ -191,7 +192,7 @@ export function closeProgress({ client, state, text }) {
  * Returns why it ended: `stop`, `not-building`, `closed` or `limit`.
  */
 export async function watch({
-  client, state, language = 'en', readFacts, readAnnounced, stopRequested, stillBuilding,
+  client, state, language = 'en', readFacts, readAnnounced, readGroup = () => null, stopRequested, stillBuilding,
   now = Date.now, sleep, intervalMs = INTERVAL_MS, maxMs, save = () => {}, log = () => {},
 }) {
   if (state.startedAt == null) state.startedAt = now();
@@ -202,7 +203,7 @@ export async function watch({
       if (round > 0 && round % LABEL_CHECK_EVERY === 0 && !stillBuilding()) return 'not-building';
       const facts = readFacts();
       const { phase, attempt, of } = currentPhase({ announced: readAnnounced(), facts });
-      const text = renderProgress({ phase, attempt, of, tasks: facts.tasks, minutes: minutesSince(state.startedAt, now()), language });
+      const text = renderProgress({ phase, attempt, of, tasks: facts.tasks, minutes: minutesSince(state.startedAt, now()), group: readGroup(), language });
       const result = writeProgress({ client, state, text });
       save(state);
       if (result === 'closed') return 'closed';

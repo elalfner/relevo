@@ -11,6 +11,8 @@ import { loadConfig } from './lib/config.mjs';
 import { realGh, realGhLinks } from './lib/github.mjs';
 import { buildStatus, renderStatus } from './lib/status.mjs';
 import { gatherStatus } from './lib/status-data.mjs';
+import { realState } from './lib/build-state.mjs';
+import { readLocalBuilds } from './lib/status-local.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -44,6 +46,13 @@ if (arg('input')) {
     }
   };
   data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config, withUsage: true, mergeProbe });
+  // The builds running on this machine come from the state beside the worktrees; outside a repository there are none to show.
+  try {
+    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+    if (top.status === 0) data = { ...data, localBuilds: readLocalBuilds({ repoRoot: top.stdout.trim(), state: realState }) };
+  } catch {
+    // the section is an addition: without it the report is the same as before
+  }
 }
 let me = arg('me') ?? null;
 if (!me && !arg('input')) {

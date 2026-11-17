@@ -2,6 +2,9 @@
 // The progress of a cloud build, for the comment on the issue. Implements the progress requirements of the go specification.
 //   node scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt n] [--of m]
 //       announces the phase that `go` enters; used by the go skill
+//   node scripts/progress.mjs change <change id>
+//       records the id of the change in the state of the build (an interactive build says it when it plans; the lines of a local
+//       build and `go-local.mjs status` count its tasks with it)
 //   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n] [--end]
 //       records that a QA lens starts now (or, with --end, that its report arrived), for the seconds of each lens in the usage
 //       record; lenses run together, so each has its own start and end. It does not change the phase
@@ -21,6 +24,7 @@
 // variable every command does nothing, which is also what a local run gets.
 // It never fails: exit 0 always, so a step that reports progress cannot fail a run. Errors go to stderr.
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -31,6 +35,8 @@ import {
   INTERVAL_MS, PHASES, closeProgress, markStarted, markWaiting, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
 } from './lib/progress.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { groupInProgress, readGroups } from './lib/group-progress.mjs';
+import { writeChangeId } from './lib/build-state.mjs';
 import { LENSES, OUTCOME_CLASSES, recordLens, recordPhase, writeClass } from './lib/phase-log.mjs';
 
 const args = process.argv.slice(3);
@@ -40,7 +46,7 @@ const arg = (name) => {
 };
 const fail = (message) => process.stderr.write(`progress: ${message}\n`);
 
-const dir = process.env.RELEVO_PROGRESS_DIR;
+const dir = progressDir();
 const statePath = dir ? join(dir, 'state.json') : null;
 
 function writeFileAtomic(path, text) {
@@ -101,6 +107,12 @@ async function main(command) {
     return;
   }
 
+  if (command === 'change') {
+    if (!/^[A-Za-z0-9._-]+$/.test(String(args[0] ?? ''))) return fail(`not a change id "${args[0]}"`);
+    writeChangeId(dir, args[0]);
+    return;
+  }
+
   if (command === 'lens') {
     if (!LENSES.includes(args[0])) return fail(`unknown lens "${args[0]}"`);
     const attempt = Number(arg('attempt'));
@@ -145,6 +157,7 @@ async function main(command) {
       intervalMs: arg('interval') ? Number(arg('interval')) * 1000 : INTERVAL_MS,
       readFacts: () => readTreeFacts({ cwd: process.cwd(), changeId, base, branch, git: (a) => execFileSync('git', a, { encoding: 'utf8' }) }),
       readAnnounced: () => readAnnouncement(dir),
+      readGroup: () => groupInProgress(readGroups(dir)),
       stopRequested: () => existsSync(join(dir, 'stop')),
       stillBuilding: () => JSON.parse(realGh(['api', `repos/${repo}/issues/${issue}`])).labels
         .some((l) => (typeof l === 'string' ? l : l.name) === building),

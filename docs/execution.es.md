@@ -249,15 +249,17 @@ Mientras una construcción en la nube corre, un comentario del issue muestra cu�
 ```text
 Construcción de Relevo en curso: QA (intento 2 de 3)
 Tareas: 6 de 9
+Grupo 2 de 3
 Lleva 7 min
 ```
 
 - **La fase** es planificación, especificación, desarrollo, QA o entrega. El skill `go` la anuncia al entrar en cada paso, con el número de intento sobre los reintentos permitidos (`qa_retries`) cuando QA rechaza el trabajo y el desarrollo empieza de nuevo. Si no anuncia nada, la fase se deduce del árbol de trabajo, que no distingue QA de un nuevo intento de desarrollo.
 - **Las tareas** son las casillas marcadas de `tasks.md` sobre el total. El workflow las cuenta él mismo cada 30 segundos, así que no dependen del agente.
+- **El grupo** es el que está en curso, sobre los grupos de la ejecución (`Grupo 2 de 3`), y se muestra mientras la fase es desarrollo. `go` construye las tareas pendientes de a un grupo; el script que las reparte registra cuántos hay y el script que hace el checkpoint de cada uno registra el que acaba de confirmar, así que el grupo no cuesta ningún turno. El desarrollador marca sus tareas cuando termina su lanzamiento de un grupo, de modo que en una construcción de varios grupos las tareas suben grupo a grupo, y una construcción tan pequeña que es un solo grupo muestra `Grupo 1 de 1` mientras sus tareas siguen en 0. Una ejecución reanudada cuenta solo los grupos que le faltan.
 - **Los minutos** son minutos enteros desde que empezó la ejecución. Una ejecución cuyos minutos siguen creciendo mientras sus tareas y su fase no cambian está atascada, o en un paso largo: abre la ejecución para leer su log. El comentario solo se edita cuando cambia su texto, más o menos una vez por minuto.
 - **Cuando la ejecución termina**, sea cual sea el resultado, el comentario se sustituye por una línea que apunta al resultado (o, si la ejecución no dejó ninguno, lo dice) y enlaza la ejecución. El resultado es el comentario que siempre se publicó.
 
-Muestra la fase y el intento, no lo que hace un subagente dentro de ellos. Una ejecución local (`go --local`) no tiene este comentario: tú estás viendo la sesión. Para tenerlo en un proyecto que ya tiene el workflow, pasa el nuevo `relevo-go.yml` por `/relevo:init`, que lo fusiona con tus cambios, y sube `RELEVO_VERSION`; hasta entonces las ejecuciones construyen como antes, sin él. El informe nunca hace fallar una ejecución: si GitHub rechaza una edición, la construcción sigue.
+Muestra la fase y el intento, no lo que hace un subagente dentro de ellos. Una construcción en una máquina no publica ningún comentario en el issue; muestra los mismos datos en esa máquina, como dice [la sección siguiente](#construir-en-tu-máquina). Para tener el comentario de la nube en un proyecto que ya tiene el workflow, pasa el nuevo `relevo-go.yml` por `/relevo:init`, que lo fusiona con tus cambios, y sube `RELEVO_VERSION`; hasta entonces las ejecuciones construyen como antes, sin él. El informe nunca hace fallar una ejecución: si GitHub rechaza una edición, la construcción sigue.
 
 ## Construir en tu máquina
 
@@ -274,6 +276,28 @@ En sesiones interactivas de chat de Antigravity, ejecutar `/relevo:go <issue>` e
 `/relevo:status` lista los issues `ready` asignados a ti con el comando a ejecutar cuando la nube no está construyendo, y alerta de un issue que lleva `building` sin actividad `limits.building_alert_hours` horas, con cómo reiniciarlo.
 
 `/relevo:review`, `/relevo:ship` y `/relevo:fix` corren donde los inicias, en tu checkout principal o en un worktree que abriste (por ejemplo con el botón Worktree de Claude Code). En un worktree, `review` y `ship` no vuelven después a la rama base, y `ship` no borra la rama local: el worktree se queda en su rama y el informe lo dice. Si otro worktree tiene la rama del issue (un `go` fallido conserva su worktree), se detienen antes de cambiar nada y nombran ese worktree y su ruta.
+
+### Qué muestra, limita y gasta cada forma de construir
+
+| | Construcción en la nube | Construcción local (`--local`) | Construcción interactiva (`/relevo:go <n>` en una sesión) |
+|---|---|---|---|
+| Dónde corre | Un runner del repositorio | Un proceso hijo en tu máquina, en su propio worktree | Tu sesión, en un worktree propio |
+| Qué ves mientras corre | Un comentario de progreso en el issue (fase, tareas, grupo, minutos) | Una línea en la terminal cuando cambia la fase, el grupo, las tareas o un agente, y el comando `go-local.mjs status <issue>` | Los subagentes en tu sesión, y el mismo comando de estado desde otra terminal |
+| Límites | Los límites de turnos y costo del runner, y la guardia de los subagentes y de los minutos | Los mismos límites y las mismas listas cerradas de herramientas | La guardia de los subagentes y de los minutos; **ningún límite de turnos ni de costo para el agente principal**, que corre con el modelo y el contexto acumulado de tu sesión |
+| Qué gasta | La cuenta del secreto del repositorio; el comentario de uso lo dice | Tu propia cuenta; la construcción imprime una frase con los turnos, el costo estimado y los tokens, y los guarda en su estado | Tu propia sesión; nada dice lo que usó la construcción |
+| Qué ven los demás | El comentario de progreso y el de uso | Solo la etiqueta `building` | Solo la etiqueta `building` |
+
+Elige la construcción local cuando quieras verla avanzar y acotar lo que gasta: tiene los límites de la nube e imprime lo que usó. La interactiva es la que conviene cuando quieres ver trabajar a los agentes y dirigirlos, y no tiene ningún límite duro.
+
+**Leer el progreso de una construcción en tu máquina.** Una construcción local imprime una línea como `[12 min] desarrollo · grupo 2 de 3 · tareas 3 de 6` cada vez que algo cambia, en el idioma de `relevo.yml`, a partir de los archivos que escriben sus scripts y no del modelo, con cualquiera de los dos agentes. Su estado vive en `.relevo-worktrees/.state/<repositorio>-<issue>/`, junto a los worktrees y fuera de cualquier árbol de trabajo, así que ningún commit lo recoge. Se queda cuando se elimina el worktree y se reemplaza cuando se vuelve a construir el mismo issue en esa máquina. Desde otra terminal:
+
+```bash
+node scripts/go-local.mjs status 42
+```
+
+Imprime la fase, el grupo, las tareas, los minutos, cuándo cambió el progreso por última vez y, cuando la construcción terminó, cómo terminó y qué usó. Solo lee. `/relevo:status` muestra en una sección las construcciones que corren en esta máquina, y lista sin progreso un issue que está `building` y no tiene estado aquí (otra máquina, o la nube); el estado de otras máquinas no lo ve. La misma carpeta sirve a una construcción interactiva: sus scripts la encuentran desde el worktree, así que `go-local.mjs status` y la guardia del presupuesto funcionan sin ninguna variable. `--local` desde una sesión inicia la construcción en segundo plano, imprime ese comando y termina su turno; la sesión recibe el aviso cuando termina.
+
+**Permisos en una construcción interactiva.** Una sesión con los permisos por defecto pregunta antes de cada comando y cada edición, y una construcción hace cientos. El skill `go` no declara una lista de herramientas propia: aún no está registrado que una sesión la respete, y una lista que nadie comprobó podría permitir una herramienta que la ejecución desatendida rechaza. Hasta que haya una comprobación registrada en `docs/pilot-findings.md`, permite las herramientas a mano, con la misma lista que el workflow (`Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Task`) en `.claude/settings.local.json`, o construye con `--local`, que no pide nada. No permitas las herramientas web ni los comandos de descarga, que el workflow rechaza.
 
 ### Worktrees desde tu rama base
 

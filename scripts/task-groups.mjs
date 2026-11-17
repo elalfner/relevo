@@ -7,6 +7,8 @@
 
 import { taskGroups } from './lib/task-groups.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { recordGroups } from './lib/group-progress.mjs';
+import { progressDir } from './lib/worktree-path.mjs';
 
 const file = process.argv[2];
 if (!file) {
@@ -20,4 +22,7 @@ try {
   console.error(`task-groups: ${error.message}`);
   process.exit(2);
 }
-console.log(JSON.stringify(taskGroups(text)));
+const result = taskGroups(text);
+// The progress shows the group in progress out of these; without a progress folder, or when it cannot be written, nothing changes.
+recordGroups(progressDir(), result.groups.length);
+console.log(JSON.stringify(result));
