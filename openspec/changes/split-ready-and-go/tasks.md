@@ -40,11 +40,11 @@
 
 ## 7. The queue and the workflows
 
-- [ ] 7.1 In `tests/requeue.test.mjs`, test that the queue owns `queued` and `blocked` issues, a `ready` issue whose `go` label is older than 15 minutes, and not a `ready` issue with a newer `go` or with none; run them and see them fail
-- [ ] 7.2 `scripts/lib/requeue.mjs` and `scripts/requeue.mjs`: the unanswered request; verify the tests pass
-- [ ] 7.3 In `tests/workflow-go.test.mjs`, test that the template starts on `relevo:go`, that each failure step removes `relevo:go` where it removes `relevo:ready`, and that the note about renamed labels names both; run them and see them fail
-- [ ] 7.4 `templates/workflows/relevo-go.yml` and `relevo-queue.yml`, and `templates/agents/antigravity-step.yml` if it names the labels: the trigger, the removals, `--place cloud` in the planner calls and the comments of the file; verify the workflow tests pass
-- [ ] 7.5 Test the planner with `--credential false`: the issue stays `ready`, loses `go`, and the comment is the one of a cloud that is not configured; make it pass
+- [x] 7.1 In `tests/requeue.test.mjs`, test that the queue owns `queued` and `blocked` issues, a `ready` issue whose `go` label is older than 15 minutes, and not a `ready` issue with a newer `go` or with none; run them and see them fail
+- [x] 7.2 `scripts/lib/requeue.mjs` and `scripts/requeue.mjs`: the unanswered request; verify the tests pass
+- [x] 7.3 In `tests/workflow-go.test.mjs`, test that the template starts on `relevo:go`, that each failure step removes `relevo:go` where it removes `relevo:ready`, and that the note about renamed labels names both; run them and see them fail
+- [x] 7.4 `templates/workflows/relevo-go.yml` and `relevo-queue.yml`, and `templates/agents/antigravity-step.yml` if it names the labels: the trigger, the removals, `--place cloud` in the planner calls and the comments of the file; verify the workflow tests pass
+- [x] 7.5 Test the planner with `--credential false`: the issue stays `ready`, loses `go`, and the comment is the one of a cloud that is not configured; make it pass
 
 ## 8. A remote session
 

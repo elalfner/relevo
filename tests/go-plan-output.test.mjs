@@ -134,7 +134,7 @@ test('Scenario: No credential - a start becomes local: nothing claimed, the issu
   const without = run(['--credential', 'false']);
   assert.equal(without.out.action, 'local');
   const d = without.printed.decisions[0];
-  assert.deepEqual(d.labels, { add: [], remove: [] });
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] }, 'the issue keeps ready and loses the request');
   assert.equal(d.comment.kind, 'cloud_not_configured');
   assert.equal(d.comment.data.actor, 'persona-a');
   assert.deepEqual([without.out.platform, without.out.stack, without.out.path], ['', '', ''], 'the build job gets nothing to start');
@@ -208,4 +208,15 @@ test('go-plan --place local: a ready issue with no request starts for the person
   assert.deepEqual(started.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready'] });
   assert.equal(local({ labels: ['bug'] }).report, 'needs_ready');
   assert.equal(local({ labels: ['relevo:ready'] }, { person: 'nobody' }).report, 'no_permission');
+});
+
+test('Scenario: No credential - with --credential false the issue stays ready, loses go, and the comment is the one of a cloud not configured', () => {
+  const input = join(dir, 'nocred.json');
+  writeFileSync(input, JSON.stringify(state()));
+  const out = JSON.parse(execFileSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7', '--credential', 'false'], { encoding: 'utf8' }));
+  const d = out.decisions[0];
+  assert.equal(d.action, 'local');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+  assert.equal(d.comment.kind, 'cloud_not_configured');
+  assert.equal(d.comment.data.actor, 'persona-a');
 });

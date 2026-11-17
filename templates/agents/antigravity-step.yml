@@ -19,7 +19,7 @@
 #                          https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json
 
 # relevo:credential begin
-          # Without a model credential the cloud cannot build: the issue stays ready and a comment says to run it locally.
+          # Without a model credential the cloud cannot build: the issue stays ready, loses the go label, and a comment says to run it locally.
           HAS_CREDENTIAL: ${{ secrets.GEMINI_API_KEY != '' }}
 # relevo:credential end
 

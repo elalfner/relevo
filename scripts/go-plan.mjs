@@ -113,7 +113,7 @@ const edits = state.last_edited ?? null;
 const result = planGo({ config, repo, ...state, retry, place, person, edits, only: place === 'local' && Number.isInteger(onlyArg) ? onlyArg : null });
 // `--credential false`: the workflow found no model credential, so nothing may be claimed for a cloud build.
 if (arg('credential') === 'false') {
-  result.decisions = withoutCredential(result.decisions, state.issues);
+  result.decisions = withoutCredential(result.decisions, state.issues, config.labels);
   result.summary = {};
   result.decisions.forEach((d) => { result.summary[d.action] = (result.summary[d.action] ?? 0) + 1; });
 }

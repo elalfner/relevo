@@ -11,9 +11,10 @@ const root = new URL('../', import.meta.url).pathname;
 const workflow = readFileSync(`${root}templates/workflows/relevo-go.yml`, 'utf8');
 const { config } = loadConfig(readFileSync(`${root}templates/relevo.yml`, 'utf8'));
 
-test('Scenario: Authorised label - the workflow starts only on the ready label applied by a person', () => {
-  const ready = resolveLabelNames({}).ready;
-  assert.ok(workflow.includes(`github.event.label.name == '${ready}'`));
+test('Scenario: Authorised label - the workflow starts only on the go label applied by a person, never on ready', () => {
+  const { ready, go } = resolveLabelNames({});
+  assert.ok(workflow.includes(`github.event.label.name == '${go}'`));
+  assert.ok(!workflow.includes(`github.event.label.name == '${ready}'`), 'approving an issue starts nothing');
   assert.match(workflow, /github\.event\.sender\.type == 'User'/);
   assert.match(workflow, /types: \[labeled\]/);
 });
@@ -68,7 +69,7 @@ test('Scenario: Run ends without an outcome - a final step always runs and moves
   assert.match(workflow, /if: always\(\)/);
   assert.ok(workflow.indexOf('anthropics/claude-code-action') < workflow.lastIndexOf('Report a run that ended without an outcome'), 'the build job reports after the agent step');
   assert.match(workflow, /grep -qxE 'relevo:\(ready\|building\)'/);
-  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
+  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
   assert.match(workflow, /RUN_URL: \$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/);
   assert.match(workflow, /gh issue comment "\$ISSUE"/);
 });
@@ -119,7 +120,7 @@ const jobText = (name) => {
 test('Scenario: Issue not ready to build - only the light decide job runs, and it never installs a toolchain or starts the agent', () => {
   const decide = jobText('decide');
   assert.ok(!/flutter-action|install --global|claude-code-action/.test(decide.replace(/^\s*#.*$/gm, '')), 'decide must stay light');
-  assert.match(decide, /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --apply --claim --credential "\$HAS_CREDENTIAL" --github-output "\$GITHUB_OUTPUT"/);
+  assert.match(decide, /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --place cloud --apply --claim --credential "\$HAS_CREDENTIAL" --github-output "\$GITHUB_OUTPUT"/);
   assert.match(decide, /timeout-minutes: 10/);
   assert.match(decide, /action: \$\{\{ steps\.plan\.outputs\.action \}\}/);
   assert.match(decide, /decision_b64: \$\{\{ steps\.plan\.outputs\.decision_b64 \}\}/);
@@ -136,7 +137,7 @@ test('Scenario: Gates pass - the build job runs only when the decision is start 
 
 test('the event gate is on decide, so build is skipped with it', () => {
   const decide = jobText('decide');
-  assert.match(decide, /if: vars\.RELEVO_CLOUD_GO != 'off' && \(github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.label\.name == 'relevo:ready' && github\.event\.sender\.type == 'User'\)\)/);
+  assert.match(decide, /if: vars\.RELEVO_CLOUD_GO != 'off' && \(github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.label\.name == 'relevo:go' && github\.event\.sender\.type == 'User'\)\)/);
   assert.ok(!/^\s+if: github\.event_name/m.test(jobText('build')));
 });
 
@@ -278,7 +279,7 @@ test('Scenario: A runner without the toolchain - the check stops the job before 
   assert.doesNotMatch(text.replace(/^\s*#.*$/gm, ''), /\.relevo-plugin/, 'nothing is written in the workspace: the agent needs a clean tree');
   assert.match(text, /toolchain-check\.mjs" --platform "\$PLATFORM" --plugin-root "\$RUNNER_TEMP\/relevo"/);
   assert.match(text, /render-message\.mjs" toolchain_missing --config relevo\.yml/);
-  assert.match(text, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
+  assert.match(text, /--remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
   assert.match(text, /gh issue comment "\$ISSUE" --body "\$body"/);
   assert.match(text, /exit 1\s*$/, 'the job fails after it commented');
 });
@@ -514,4 +515,32 @@ test('Scenario: A limit of the runner - the report names the turn limit or the c
   assert.match(report, /CUT="\$cut"/, 'the limit that cut the run goes to the catalog, which names it in both situations');
   assert.match(report, /cut: e\.CUT/);
   assert.match(stepOf('Install the Relevo scripts for the reports'), /scripts\/run-cut\.mjs/);
+});
+
+// --- split-ready-and-go: the workflow starts on the go label
+
+test('every step that removes relevo:ready also removes relevo:go, in the same command', () => {
+  const lines = workflow.split('\n').filter((l) => l.includes('--remove-label relevo:ready'));
+  assert.ok(lines.length >= 4, 'the failure steps, the queue step and the needs-spec step');
+  lines.forEach((l) => assert.match(l, /--remove-label relevo:go\b/, l.trim()));
+});
+
+test('the note about renamed labels names both ready and go', () => {
+  const header = workflow.split('\n').slice(0, 12).join('\n');
+  assert.match(header, /starts when someone with write access applies `relevo:go` to an issue that is `relevo:ready`/);
+  assert.match(header, /If you renamed the ready or go label in relevo\.yml, change them below too/);
+  workflow.split('\n').filter((l) => /renamed the labels in relevo\.yml/.test(l)).forEach((l) => assert.ok(l.length > 0));
+});
+
+test('the planner of the workflow plans for the cloud', () => {
+  assert.match(jobText('decide'), /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --place cloud --apply --claim/);
+});
+
+test('Scenario: Paused - the comment of the decide job says that a go label waits as a pending request', () => {
+  assert.match(jobText('decide'), /a go label starts nothing and stays on the issue as a pending\s+#\s+request/);
+});
+
+test('no comment of the workflow tells a person to apply ready again to build', () => {
+  assert.doesNotMatch(workflow, /apply \\`relevo:ready\\` again\./);
+  assert.match(workflow, /apply \\`relevo:go\\` so that the cloud builds it again, or run \\`\/relevo:go \$ISSUE --retry\\` on your machine/);
 });

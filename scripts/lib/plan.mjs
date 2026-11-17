@@ -55,10 +55,11 @@ function byReadyAt(a, b) {
 
 /**
  * Without a model credential in the repository the cloud cannot build: a `start` decision becomes `local`, which
- * claims nothing and moves no label, and says to run `go` on a machine or to add the secret.
- * Every other decision is returned as it is.
+ * claims nothing and keeps the issue `ready`, removes the build request (`go`, consumed like by any decision of the
+ * cloud), and says to run `go` on a machine or to add the secret. Every other decision is returned as it is.
  */
-export function withoutCredential(decisions, issues = []) {
+export function withoutCredential(decisions, issues = [], labelOverrides = {}) {
+  const goName = resolveLabelNames(labelOverrides).go;
   return decisions.map((d) => {
     if (d.action !== 'start') return d;
     const issue = issues.find((i) => i.number === d.issue);
@@ -66,8 +67,8 @@ export function withoutCredential(decisions, issues = []) {
       issue: d.issue,
       action: 'local',
       reason: 'the repository has no model credential, so the cloud cannot build it',
-      labels: { add: [], remove: [] },
-      comment: { kind: 'cloud_not_configured', data: { issue: d.issue, actor: issue?.ready_by ?? d.assignee } },
+      labels: { add: [], remove: issue?.labels?.includes(goName) ? [goName] : [] },
+      comment: { kind: 'cloud_not_configured', data: { issue: d.issue, actor: issue?.go_by ?? issue?.ready_by ?? d.assignee } },
       assign: null,
     };
   });

@@ -175,3 +175,53 @@ test('Scenario: The first issue merges - the queue starts the issue that waited 
   const released = requeueFrom([waiting]);
   assert.deepEqual(released.start, [2]);
 });
+
+// ---------- split-ready-and-go: the queue acts on waiting issues and on unanswered requests
+
+const NOW = Date.parse('2026-10-14T12:00:00Z');
+const minutesAgo = (m) => new Date(NOW - m * 60000).toISOString();
+
+test('Scenario: Request made while the cloud was paused - a ready issue whose go label is older than 15 minutes belongs to the queue', () => {
+  const issues = [
+    issue(1, ['relevo:ready', 'relevo:go'], { go_by: 'luz', go_at: minutesAgo(16) }),
+    issue(2, ['relevo:ready', 'relevo:go'], { go_by: 'luz', go_at: minutesAgo(5) }),
+    issue(3, ['relevo:ready']),
+    issue(4, ['relevo:queued']),
+    issue(5, ['relevo:blocked'], { body: `${BODY}\nDepends-on: #99\n` }),
+  ];
+  const { decisions } = planGo({ config, issues, permissions: { luz: 'write' }, now: NOW });
+  const mine = ownedByQueue(decisions, issues, names, NOW);
+  assert.deepEqual(mine.map((d) => d.issue).sort(), [1, 4, 5]);
+});
+
+test('Scenario: Request just made - a go label younger than 15 minutes, or with no known time, is left to its own run', () => {
+  const issues = [issue(1, ['relevo:ready', 'relevo:go'], { go_by: 'luz', go_at: minutesAgo(14) }), issue(2, ['relevo:ready', 'relevo:go'], { go_by: 'luz', go_at: null })];
+  const { decisions } = planGo({ config, issues, permissions: { luz: 'write' }, now: NOW });
+  assert.deepEqual(ownedByQueue(decisions, issues, names, NOW), []);
+});
+
+test('Scenario: Approved issue with no request - the queue does not look at it', () => {
+  const issues = [issue(1, ['relevo:ready'])];
+  const { decisions } = planGo({ config, issues, permissions: { luz: 'write' }, now: NOW });
+  assert.deepEqual(ownedByQueue(decisions, issues, names, NOW), []);
+});
+
+test('the unanswered request is served: the queue dispatches its build', () => {
+  const complete = '## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c\n';
+  const issues = [issue(1, ['relevo:ready', 'relevo:go'], { go_by: 'luz', go_at: minutesAgo(60), body: complete })];
+  const { decisions } = planGo({ config, issues, permissions: { luz: 'write' }, now: NOW });
+  assert.deepEqual(startable(ownedByQueue(decisions, issues, names, NOW)), [1]);
+});
+
+test('without a credential the queue answers an unanswered request with the local-run comment and dispatches nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'requeue-nocred-'));
+  writeFileSync(join(dir, 'relevo.yml'), template.replace('[]          # GitHub', '[ana]       # GitHub'));
+  const complete = '## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c\n';
+  const old = new Date(Date.now() - 60 * 60000).toISOString();
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [issue(1, ['relevo:ready', 'relevo:go'], { go_by: 'luz', go_at: old, body: complete })], completed: [], running: [], permissions: { luz: 'write' } }));
+  const r = spawnSync('node', [`${root}scripts/requeue.mjs`, '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json'), '--credential', 'false'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.start, []);
+  assert.deepEqual(out.summary, { local: 1 });
+});
