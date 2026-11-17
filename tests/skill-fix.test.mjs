@@ -106,7 +106,8 @@ test('Scenario: Nothing the developer can fix - fix does not retry, stashes the 
 
 test('Scenario: Branch with only the specification - fix stops and says to start again', () => {
   assert.match(body, /branch-work\.mjs --base <base> --change <change>/);
-  assert.match(body, /delete the remote branch and apply the label relevo:ready again/);
+  assert.match(body, /delete the remote branch and then build the issue again, with the label relevo:go where the cloud builds or with `\/relevo:go <issue> --retry` on a machine/);
+  assert.match(body, /never by applying relevo:ready again/);
 });
 
 test('the task list is checked before the developer and before the commit', () => {

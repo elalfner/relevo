@@ -211,10 +211,10 @@ test('Scenario: Failed because the branch already exists with implementation com
   assert.match(text, /Your next step: \/relevo:fix 31/);
 });
 
-test('Scenario: Failed because the branch already exists with only the specification - delete it and apply ready again', () => {
+test('Scenario: Failed because the branch already exists with only the specification - delete it and build again with go', () => {
   const text = renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' });
   assert.match(text, /already existed on the remote/);
-  assert.match(text, /Your next step: the branch holds only the specification: delete the remote branch and label the issue ready again\./);
+  assert.match(text, /Your next step: the branch holds only the specification: delete the remote branch, then apply relevo:go so that the cloud builds it again, or run \/relevo:go 31 --retry on your machine\./);
   assert.doesNotMatch(text, /\/relevo:fix/);
 });
 
@@ -222,7 +222,7 @@ test('the same recoveries in Spanish', () => {
   const fix = renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }, 'es');
   assert.match(fix, /ya existía en el remoto, así que no se tocó/);
   assert.match(fix, /Tu siguiente paso: \/relevo:fix 31/);
-  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' }, 'es'), /borra la rama remota y vuelve a ponerle ready al issue/);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' }, 'es'), /borra la rama remota, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta \/relevo:go 31 --retry en tu máquina/);
 });
 
 test('branch_state unsafe is the same as the older pushed: false, and now names a protected path too', () => {
@@ -247,13 +247,13 @@ test('build_failed rejects an unknown branch state and an existing branch withou
 test('Scenario: Spec returned with a reason - missing gives /relevo:issue', () => {
   const text = renderMessage('needs_spec', BACK);
   assert.match(text, /What is missing: edge cases/);
-  assert.match(text, /Your next step: \/relevo:issue 31: complete what is missing, then label it ready again\./);
+  assert.match(text, /Your next step: \/relevo:issue 31: complete what is missing, then approve it with ready again and request the build: relevo:go, or \/relevo:go 31 on your machine\./);
   assert.equal(renderMessage('needs_spec', { ...BACK, reason: 'missing' }), text, 'missing is the default');
 });
 
 test('Scenario: Spec returned with a reason - ambiguous asks for a decision and mentions /relevo:think', () => {
   const text = renderMessage('needs_spec', { ...BACK, missing: 'what happens when the list is empty?', reason: 'ambiguous' });
-  assert.match(text, /Your next step: \/relevo:issue 31: decide the open question \(run \/relevo:think #31 first if you need to explore it\), then label it ready again\./);
+  assert.match(text, /Your next step: \/relevo:issue 31: decide the open question \(run \/relevo:think #31 first if you need to explore it\), then approve it with ready again and request the build: relevo:go, or \/relevo:go 31 on your machine\./);
   assert.match(renderMessage('needs_spec', { ...BACK, reason: 'ambiguous' }, 'es'), /Tu siguiente paso: \/relevo:issue 31: decide la pregunta abierta \(ejecuta antes \/relevo:think #31/);
   assert.throws(() => renderMessage('needs_spec', { ...BACK, reason: 'whim' }), /unknown reason "whim"/);
 });
@@ -284,7 +284,7 @@ test('Scenario: Issue changed after ready - the branch was not pushed, for a rea
 test('Scenario: nothing pushed - unsafe and not_pushed end with the rebuild step, never /relevo:fix', () => {
   ['unsafe', 'not_pushed'].forEach((branch_state) => {
     const en = renderMessage('build_failed', { ...FAILED, branch_state });
-    assert.match(en, /Your next step: nothing was pushed, so there is no branch to fix: .*relevo:ready again\./);
+    assert.match(en, /Your next step: nothing was pushed, so there is no branch to fix: .*\/relevo:go 31 --retry, or apply relevo:go so that the cloud builds it again\./);
     assert.doesNotMatch(en, /\/relevo:fix/);
     const es = renderMessage('build_failed', { ...FAILED, branch_state }, 'es');
     assert.match(es, /Tu siguiente paso: no se subió nada/);

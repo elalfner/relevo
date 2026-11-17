@@ -49,21 +49,22 @@ test('build-failed goes to fix, or says to delete the branch when it holds only 
   const spec = nextStep({ state: 'build-failed', reason: 'delete-branch', issue: 9 });
   assert.equal(spec.command, null);
   assert.match(spec.line, /delete the remote branch/);
-  assert.match(spec.line, /ready again/);
+  assert.match(spec.line, /apply relevo:go so that the cloud builds it again, or run \/relevo:go 9 --retry on your machine/);
 });
 
-test('Scenario: Rebuild variant - build-failed with nothing pushed has no command and says to relabel ready', () => {
+test('Scenario: Rebuild variant - build-failed with nothing pushed has no command and names the go label and --retry', () => {
   const step = nextStep({ state: 'build-failed', reason: 'rebuild', issue: 37 });
   assert.equal(step.command, null);
   assert.equal(step.who, 'assignee');
   assert.match(step.hint, /nothing was pushed/);
-  assert.match(step.hint, /remove relevo:build-failed and label the issue relevo:ready again/);
-  assert.match(step.hint, /\/relevo:go 37 --local --retry \(the cloud does not start\)/);
+  assert.match(step.hint, /apply relevo:go so that the cloud builds it again/);
+  assert.match(step.hint, /\/relevo:go 37 --retry/);
+  assert.doesNotMatch(step.hint, /relevo:ready/);
   assert.doesNotMatch(step.line, /\/relevo:fix/);
   const es = nextStep({ state: 'build-failed', reason: 'rebuild', issue: 37, language: 'es' });
   assert.match(es.hint, /no se subió nada/);
-  assert.match(es.hint, /quita relevo:build-failed y vuelve a poner relevo:ready/);
-  assert.match(es.hint, /\/relevo:go 37 --local --retry \(la nube no arranca\)/);
+  assert.match(es.hint, /ponle relevo:go para que la nube lo construya de nuevo/);
+  assert.match(es.hint, /\/relevo:go 37 --retry/);
 });
 
 test('pr-open waits for an approval and then goes to ship; changes-requested goes to fix', () => {
@@ -73,7 +74,7 @@ test('pr-open waits for an approval and then goes to ship; changes-requested goe
 });
 
 test('the states in which nobody acts yet say to wait and name no command', () => {
-  ['ready', 'queued', 'building', 'blocked'].forEach((state) => {
+  ['queued', 'building', 'blocked'].forEach((state) => {
     const step = nextStep({ state });
     assert.equal(step.command, null, state);
     assert.match(step.line, /^Nothing to do now: /, state);
@@ -106,11 +107,11 @@ test('the command prints the line, the JSON on request, and exits 2 on bad input
   assert.match(run().stderr, /usage: next-step\.mjs/);
 });
 
-test('a restricted file versioned on the base branch has no command: it says to remove the file and label ready again', () => {
+test('a restricted file versioned on the base branch has no command: it says to remove the file and build again with go', () => {
   const step = nextStep({ state: 'build-failed', reason: 'restricted', issue: 9 });
   assert.equal(step.command, null);
   assert.match(step.line, /git rm --cached/);
-  assert.match(step.line, /ready again/);
+  assert.match(step.line, /relevo:go/);
   assert.doesNotMatch(step.line, /relevo:fix/);
 });
 
@@ -164,4 +165,26 @@ test('Scenario: The next step for a protected path refused by the commit guard -
 
 test('the policy hint does not offer Allow-paths for a protected path that is not a manifest', () => {
   assert.match(nextStep({ state: 'needs-spec', reason: 'policy', issue: 47 }).hint, /only a dependency manifest can be allowed/);
+});
+
+// --- split-ready-and-go: no next step says that ready alone builds an issue
+
+test('Scenario: Approved and waiting for a decision - ready names /relevo:go and the go label, and says nothing starts by itself', () => {
+  const step = nextStep({ state: 'ready', issue: 42 });
+  assert.equal(step.command, '/relevo:go 42');
+  assert.match(step.hint, /nothing starts by itself/);
+  assert.match(step.hint, /relevo:go/);
+  assert.match(nextStep({ state: 'ready', issue: 42, language: 'es' }).hint, /nada empieza sola/);
+});
+
+test('every text that used to say "apply ready again" names the go label or --retry', () => {
+  NEXT_STEP_STATES.forEach((state) => {
+    (NEXT_STEP_REASONS[state] ?? [null]).forEach((reason) => {
+      ['en', 'es'].forEach((language) => {
+        const { line } = nextStep({ state, reason, issue: 7, language });
+        if (/ready/.test(line)) assert.match(line, /relevo:go|\/relevo:go 7/, `${state}/${reason}/${language}`);
+        assert.doesNotMatch(line, /(label it|label the issue relevo:)ready again|ponerle ready|poner relevo:ready/, `${state}/${reason}/${language}`);
+      });
+    });
+  });
 });
