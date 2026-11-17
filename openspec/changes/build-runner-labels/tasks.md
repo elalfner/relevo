@@ -37,6 +37,6 @@
 
 ## 7. Integration
 
-- [ ] 7.1 Run the whole suite (`node --test`) and `openspec validate --all`; verify both pass
+- [x] 7.1 Run the whole suite (`node --test`) and `openspec validate --all`; verify both pass
 - [ ] 7.2 On a self-hosted machine with one runner labelled for builds and others for the rest: request two builds at once and verify that one runs and the other shows that it waits for a runner in its progress comment, that a review event is handled while the build runs, and that `doctor` passes with both runners reported
 - [ ] 7.3 Cancel a build job while it waits for a runner and verify that the issue returns to `queued` with the comment, and is not `build-failed`; record 7.2 and 7.3 in `docs/pilot-findings.md`
