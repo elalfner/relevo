@@ -72,7 +72,7 @@
 
 ## 12. Integration
 
-- [ ] 12.1 Run the whole suite (`node --test`) and `openspec validate --all`; verify both pass
+- [x] 12.1 Run the whole suite (`node --test`) and `openspec validate --all`; verify both pass
 - [ ] 12.2 In a sandbox repository with the new workflows: approve an issue and verify that no run starts; apply `go` and verify that the cloud builds it and the label is gone; start a local build of a second approved issue and verify that it carries `building` and `local`, that no run starts, and that a third issue with `go` is not queued behind it
 - [ ] 12.3 In the same repository: edit the body of an approved issue, apply `go`, and verify that nothing is built, the issue has no lifecycle label and the comment names the approver; pause the cloud, apply `go`, resume, and verify that the queue serves the request
 - [ ] 12.4 Record the results of 12.2 and 12.3 in `docs/pilot-findings.md`
