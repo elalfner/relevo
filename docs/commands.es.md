@@ -52,7 +52,7 @@ Claude: Revisé ambas. Vista A: pasa. Vista B: falla (el botón mide 40 dp, nece
 
 ### `/relevo:issue [what to build, the path of a saved agreement, or the number of an issue to update]`
 
-Qué construir, la ruta de un acuerdo guardado, o el número de un issue que reescribir. Pregunta solo lo que falta, comprueba cada borrador, los muestra, los crea cuando los apruebas y después pregunta, como una pregunta aparte, si pone `ready`.
+Qué construir, la ruta de un acuerdo guardado, o el número de un issue que reescribir. Pregunta solo lo que falta, comprueba cada borrador, los muestra, los crea cuando los apruebas y después pregunta, como una pregunta aparte, si no poner nada, `ready` (la aprobación, que no inicia nada), o `ready` y `go` (`go` se ofrece solo donde la nube puede construir). Dado un issue `ready` que reescribir, ofrece retirar antes la aprobación y darla otra vez después de editar.
 
 ```text
 /relevo:issue un botón de reinicio en la pantalla del contador
@@ -61,13 +61,13 @@ Qué construir, la ruta de un acuerdo guardado, o el número de un issue que ree
 
 ### `/relevo:go [issue-number] [--local] [--retry] [--decision <base64>]`
 
-El número de un issue `ready`. En la nube corre solo cuando se pone `ready`; a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina en un worktree propio (así pueden correr dos a la vez), y `--local` construye en un proceso aparte con las listas cerradas de herramientas y los límites del workflow (el worktree es el mismo; el resto difiere, ver abajo). `--decision` lo pasa el workflow, no se escribe. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `qa-failed` y el comentario dice que es código que QA no aprobó ([Falló QA](guide.es.md#falló-qa)).
+El número de un issue `ready`. En la nube corre cuando alguien pone la etiqueta `go` a un issue aprobado (`ready` sola no inicia nada); a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina sin etiqueta, reclamándolo con `building` y `local`, en un worktree propio (así pueden correr dos a la vez), y `--local` construye en un proceso aparte con las listas cerradas de herramientas y los límites del workflow (el worktree es el mismo; el resto difiere, ver abajo). `--decision` lo pasa el workflow, no se escribe. En una sesión de Claude Code en la web no construye nada: ofrece poner la etiqueta `go` en su lugar. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `build-failed` y el comentario dice que es código que QA no aprobó ([La construcción falló](guide.es.md#la-construcción-falló)).
 
 ```text
 /relevo:go 42 --local
 ```
 
-`--retry` vuelve a construir un issue que está en `qa-failed` y no tiene rama en el remoto (una construcción que no subió nada, por ejemplo porque el commit seguro rechazó el trabajo), sin ponerle `ready`, lo que arrancaría la nube. Ejecútalo cuando hayas resuelto la causa que indica el comentario: `/relevo:go 42 --local --retry`. Aplica los mismos gates que un inicio normal, contigo en el lugar de quien puso `ready` (permiso de escritura, o maintainer si `trust` es `public`). Si el issue tiene rama, lo rechaza y te manda a `/relevo:fix 42`.
+`--retry` vuelve a construir un issue que está en `build-failed` y no tiene rama en el remoto (una construcción que no subió nada, por ejemplo porque el commit seguro rechazó el trabajo), sin aprobarlo otra vez. Ejecútalo cuando hayas resuelto la causa que indica el comentario: `/relevo:go 42 --local --retry`. La etiqueta `go` hace lo mismo en la nube. Aplica los mismos gates que un inicio normal, contigo en el lugar de quien pidió el build (permiso de escritura, o maintainer si `trust` es `public`). Si el issue tiene rama, lo rechaza y te manda a `/relevo:fix 42`.
 
 #### En la sesión o por separado
 
@@ -110,7 +110,7 @@ El número de un issue `pr-open` cuyo pull request aprobó alguien que no es el 
 
 ### `/relevo:status`
 
-Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti y cualquier construcción que dejó de reportar. Cuando falla una lectura de GitHub (por ejemplo un 403 en la variable del repositorio que pausa la nube), el informe dice cuál en "No se pudo leer" y que puede estar incompleto, y una respuesta vacía dice "Nada espera por ti. (con lo que se pudo leer)".
+Sin argumentos. Quién espera a quién, los issues `ready` asignados a ti con las formas de construirlos, las etiquetas `go` que nada atiende, y cualquier construcción que dejó de reportar (una local nombra a quien la inició). Cuando falla una lectura de GitHub (por ejemplo un 403 en la variable del repositorio que pausa la nube), el informe dice cuál en "No se pudo leer" y que puede estar incompleto, y una respuesta vacía dice "Nada espera por ti. (con lo que se pudo leer)".
 
 El resumen diario que publica el workflow del resumen tiene el mismo contenido para el equipo, más una línea con el uso de las ejecuciones en la nube de los últimos siete días cuando dejaron un marcador de uso ([qué cuenta](execution.es.md#qué-reporta-una-ejecución-en-la-nube)). `/relevo:status` en sí no la muestra.
 
@@ -144,7 +144,7 @@ Un caso que la pila no puede sembrar se omite y el informe dice por qué: la his
 
 - `/relevo:think` escribe lo que dejó decidido con ids antes de pedirte que ejecutes la entrevista, y `/relevo:issue` muestra una tabla de qué id fue a qué sección; un id solo se descarta si tú lo dices.
 - `/relevo:think #42` parte de un issue que volvió con una pregunta abierta.
-- Tras crear los issues, `/relevo:issue` hace una pregunta aparte: ¿pongo `ready` ahora? Nada empieza sin tu sí.
+- Tras crear los issues, `/relevo:issue` hace una pregunta aparte: ¿no pongo nada, `ready`, o `ready` y `go`? `ready` sola no inicia nada; no se pone nada sin tu respuesta.
 - Antes de redactar, `/relevo:issue` busca issues abiertos parecidos.
 - `/relevo:review` empieza con un resumen corto (qué se pidió, el resultado, qué revisar primero) calculado a partir del issue.
 
@@ -200,7 +200,7 @@ Por defecto la persona lo hace todo en `review` y el agente solo observa. Con `r
 `fix` y `ship` cambian una rama después de que una persona la miró, así que las reglas que no deben variar están en scripts.
 
 - **Una corrección que QA rechaza se guarda, no se pierde.** Tras los reintentos, `fix` guarda el trabajo en un stash llamado `relevo-fix #<n> iteration <k>` y deja el árbol limpio. El siguiente `/relevo:fix <n>` te lo ofrece de vuelta (el stash existe solo en esa copia del repositorio). Un conflicto al restaurar se detiene y conserva el stash; descartarlo necesita tu confirmación escrita.
-- **Una rama que solo tiene la especificación no se "corrige".** `fix` dice que borres la rama remota y vuelvas a aplicar `relevo:ready`.
+- **Una rama que solo tiene la especificación no se "corrige".** `fix` dice que borres la rama remota y vuelvas a construir el issue con `relevo:go` o `/relevo:go <n> --retry`.
 - **La lista de tareas se comprueba.** Antes del desarrollador, las únicas tareas abiertas son las correcciones; una empieza por `Test:` (un test de regresión), salvo que todas las correcciones terminen con `(device only)`. Tras QA, no queda ninguna abierta.
 - **`ship` se puede ejecutar otra vez.** Si el cambio ya está archivado en la rama, `ship` sigue desde el merge. Si el archivo deja conflictos solo dentro de `openspec/`, revierte el commit de archivo, trae la rama base y archiva de nuevo, con pushes normales. Un conflicto en código lo detiene.
 - **Una aprobación vale para el código que vio.** Una aprobación dada sobre un commit anterior no cuenta; tras el commit de archivo, sigue contando la dada sobre la cabeza registrada al empezar. También sus checks, cuando el commit de archivo no tiene checks propios y solo cambia `openspec/`.

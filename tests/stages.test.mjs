@@ -41,11 +41,11 @@ test('events are put in order of their id, not of the order they arrive in', () 
   assert.deepEqual(run([c, a, b]), [['gate', 10 * S], ['build', 5 * M]]);
 });
 
-test('Scenario: A build rejected by QA - a run that ends in qa-failed is not a build', () => {
+test('Scenario: A build rejected by QA - a run that ends in build-failed is not a build', () => {
   const events = [
     ev('2026-10-21T16:24:11Z', 'labeled', 'queued'),
     ev('2026-10-21T16:24:25Z', 'labeled', 'building'),
-    ev('2026-10-21T16:24:43Z', 'labeled', 'qa-failed'),
+    ev('2026-10-21T16:24:43Z', 'labeled', 'build-failed'),
   ];
   assert.deepEqual(run(events), [['gate', 14 * S]], 'the gate was passed, the build never ended');
 });
@@ -54,9 +54,9 @@ test('Scenario: Built again after a failure - only the run that reaches built co
   const events = [
     ev('2026-10-21T16:24:11Z', 'labeled', 'queued'),
     ev('2026-10-21T16:24:25Z', 'labeled', 'building'),
-    ev('2026-10-21T16:24:43Z', 'labeled', 'qa-failed'),
+    ev('2026-10-21T16:24:43Z', 'labeled', 'build-failed'),
     ev('2026-10-28T05:36:53Z', 'labeled', 'ready'),
-    ev('2026-10-28T05:37:06Z', 'labeled', 'qa-failed'),
+    ev('2026-10-28T05:37:06Z', 'labeled', 'build-failed'),
     ev('2026-10-28T05:39:15Z', 'labeled', 'ready'),
     ev('2026-10-28T05:39:29Z', 'labeled', 'building'),
     ev('2026-10-28T05:48:07Z', 'labeled', 'built'),

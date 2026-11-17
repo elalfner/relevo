@@ -1,6 +1,7 @@
 // What the command-line wrappers of the rescue and of the checkpoint share: the real git, the identity of the workflow
 // when the repository has none, and the rules of relevo.yml that the safe commit applies.
 
+import { progressDir } from './worktree-path.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -34,5 +35,5 @@ export function runRescue({ decision, configPath = 'relevo.yml', subject = null,
     }
   }
   // The list is read from the text, so a relevo.yml that does not validate still restricts what it lists.
-  return rescueWork({ git, decision, rulesFile, platformPaths, restricted: restrictedListFromText(text), subject, tasks, baseline: loadBaseline(process.env.RELEVO_PROGRESS_DIR) });
+  return rescueWork({ git, decision, rulesFile, platformPaths, restricted: restrictedListFromText(text), subject, tasks, baseline: loadBaseline(progressDir()) });
 }

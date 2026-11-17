@@ -168,14 +168,14 @@ export function publishedTemplates({ exec, tmp = mkdtempSync(join(tmpdir(), 'rel
 
 /**
  * The state of each workflow of the repository that exists and differs from what `init` would write. `ours` and
- * `templates` map a file name to its text; `credential` is the credential in force (`api_key` or `subscription`; null leaves the template's); `repo` brings `runnerLabels` and `build`; `restricted` is the list of restricted files (`restrictedList(config)`); `source` is `publishedTemplates`.
+ * `templates` map a file name to its text; `credential` is the credential in force (`api_key` or `subscription`; null leaves the template's); `repo` brings `runnerLabels`, `runnerBuildLabels` and `build`; `restricted` is the list of restricted files (`restrictedList(config)`); `source` is `publishedTemplates`.
  */
-export function planUpgrades({ files, ours, templates, agentBlocks, labels, build, credential = null, from = null, source, merge, restricted = BASE_PATTERNS }) {
+export function planUpgrades({ files, ours, templates, agentBlocks, labels, buildLabels = null, build, credential = null, from = null, source, merge, restricted = BASE_PATTERNS }) {
   // The bases carry the credential line the file has today, and the current template the credential in force: a
   // difference between the two is then a change the merge applies, and a line the person switched by hand is kept. The
   // choice of the base does not depend on the credential. A text with no credential lines (an older base, another file) is left as it is.
   const switched = (template, mode) => (mode !== null && hasCredentialLines(template) ? credentialLine(template, mode) : template);
-  const render = (template, blocks) => runnerLine(withRestricted(agentWorkflow(template, build, blocks), restricted), labels);
+  const render = (template, blocks) => runnerLine(withRestricted(agentWorkflow(template, build, blocks), restricted), labels, buildLabels);
   const versions = files.some((f) => ours[f] != null) ? source.versions() : [];
   const out = {};
   files.filter((f) => ours[f] != null).forEach((file) => {

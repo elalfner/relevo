@@ -14,7 +14,7 @@ export const STAGES = ['gate', 'build', 'wait', 'device', 'peer'];
 
 // The labels that say where an issue is, and the one that follows each on the normal path. `ready` and `queued` are one
 // stage: an issue that waits for capacity is still at the gate, and its time began when it became ready.
-const LIFECYCLE = ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open', 'needs-spec', 'blocked', 'qa-failed', 'changes-requested'];
+const LIFECYCLE = ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open', 'needs-spec', 'blocked', 'build-failed', 'changes-requested'];
 const GATE = new Set(['ready', 'queued']);
 const NEXT = { building: ['built', 'build'], built: ['in-review', 'wait'], 'in-review': ['pr-open', 'device'] };
 

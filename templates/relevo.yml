@@ -43,6 +43,7 @@ limits:
 
 # runner:                            # where the Relevo workflows run; leave it out for GitHub-hosted (ubuntu-latest)
 #   labels: [self-hosted, linux-build]     # a self-hosted runner is assumed to persist between jobs (docs/execution.md)
+#   build_labels: [self-hosted, relevo-build]   # optional: only the build job of go runs on these; every other job stays on labels
 
 qa:
   retries: 1                       # developer attempts after QA rejects
@@ -80,5 +81,7 @@ trust: private-team                # private-team | public
 
 # Rename any label here; keys are fixed, names are yours.
 # labels:
-#   ready: relevo:ready
+#   ready: relevo:ready             # the approval: the text is what should be built; starts nothing
+#   go: relevo:go                   # the build request: the cloud builds a ready issue
+#   local: relevo:local             # marks a build on a machine, next to building
 #   built: relevo:built

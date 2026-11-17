@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,4 +111,62 @@ test('a replica that leaks a credential is refused too', () => {
   const { code, out } = checkpoint(f, 2, 3);
   assert.equal(code, 1);
   assert.equal(out.state, 'unsafe');
+});
+
+const checkpointIn = (f, k, n, env) => {
+  const r = spawnSync(process.execPath, [CLI, '--decision', b64(DECISION), '--k', String(k), '--of', String(n)], { cwd: f.work, encoding: 'utf8', env: { ...process.env, ...env } });
+  return { code: r.status, out: r.stdout.trim() };
+};
+
+test('Scenario: Second group of three - the checkpoint records the group it committed when there is a progress folder, and its output does not change', () => {
+  const f = fixture();
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-cp-progress-'));
+  put(f.work, 'src/a.js', 'one\n');
+  const withDir = checkpointIn(f, 1, 3, { RELEVO_PROGRESS_DIR: dir });
+  assert.equal(withDir.code, 0);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'groups.json'), 'utf8')), { of: 3, done: 1 });
+  const g = fixture();
+  put(g.work, 'src/a.js', 'one\n');
+  const without = checkpointIn(g, 1, 3, { RELEVO_PROGRESS_DIR: '' });
+  assert.deepEqual(Object.keys(JSON.parse(withDir.out)), Object.keys(JSON.parse(without.out)));
+});
+
+test('Scenario: The numbers cannot be recorded - the checkpoint is made as today', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  const r = checkpointIn(f, 1, 3, { RELEVO_PROGRESS_DIR: join(tmpdir(), 'relevo-missing-folder', 'deep') });
+  assert.equal(r.code, 0);
+  assert.equal(JSON.parse(r.out).state, 'kept');
+});
+
+const checkpointTasks = (f, tasks, k = 1, n = 2) => {
+  const r = spawnSync(process.execPath, [CLI, '--decision', b64(DECISION), '--k', String(k), '--of', String(n), ...(tasks === undefined ? [] : ['--tasks', tasks])], { cwd: f.work, encoding: 'utf8' });
+  return { code: r.status, out: JSON.parse(r.stdout.trim().split('\n').pop()) };
+};
+
+test('Scenario: Unmarked tasks - the output lists the tasks of the group that are still unchecked in the tasks.md of the change', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  put(f.work, 'openspec/changes/7-x/tasks.md', '## 1. A\n\n- [x] 1.1 a\n- [ ] 1.2 b\n\n## 2. B\n\n- [ ] 2.1 c\n');
+  const { code, out } = checkpointTasks(f, '1.1,1.2');
+  assert.equal(code, 0);
+  assert.deepEqual(out.unmarked, ['1.2']);
+});
+
+test('Scenario: Every task marked - the list is empty', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  put(f.work, 'openspec/changes/7-x/tasks.md', '- [x] 1.1 a\n- [X] 1.2 b\n- [ ] 2.1 c\n');
+  assert.deepEqual(checkpointTasks(f, '1.1,1.2').out.unmarked, []);
+});
+
+test('no list when no task numbers are given, or when what is given is not a task number, or when the file is not there', () => {
+  const f = fixture();
+  put(f.work, 'src/a.js', 'one\n');
+  put(f.work, 'openspec/changes/7-x/tasks.md', '- [ ] 1.1 a\n');
+  assert.ok(!('unmarked' in checkpointTasks(f, undefined).out));
+  assert.ok(!('unmarked' in checkpointTasks(f, 'abc,;rm').out));
+  const g = fixture();
+  put(g.work, 'src/a.js', 'one\n');
+  assert.ok(!('unmarked' in checkpointTasks(g, '1.1').out));
 });

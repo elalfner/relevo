@@ -97,7 +97,7 @@ test('Scenario: The log names the reset - the comment says when, in UTC, and car
   assert.match(text, /^@ana The run stopped because the usage limit/);
   assert.match(text, /resets at 2026-11-12 13:01 UTC/);
   assert.match(text, /retry 1 of 3/);
-  assert.doesNotMatch(text, /qa-failed/);
+  assert.doesNotMatch(text, /build-failed/);
   const marker = text.match(/<!-- relevo:retry .* -->/)[0];
   assert.deepEqual(parseRetryMarker({ user: { type: 'Bot' }, body: marker }), { at: Date.parse(data.at), attempt: 1, reason: 'reset', created: null });
 });
@@ -135,7 +135,7 @@ test('Scenario: Retries used up - the stopped situation asks a person, in both l
   const base = { situation: 'usage_limit_stopped', issue: 7, run: 'https://x/run/1', assignee: 'ana', max: 3 };
   const en = renderMessage('run_no_outcome', base, 'en');
   assert.match(en, /after 3 automatic retries/);
-  assert.match(en, /remove `relevo:qa-failed` and apply `relevo:ready`/);
+  assert.match(en, /apply `relevo:go` so that the cloud builds it again, or run `\/relevo:go 7 --retry` on your machine/);
   assert.match(renderMessage('run_no_outcome', base, 'es'), /tras 3 reintentos automáticos/);
   assert.match(renderMessage('run_no_outcome', { ...base, rescue_state: 'kept', rescue_branch: 'feature/7-x' }, 'en'), /on the branch `feature\/7-x`/);
 });

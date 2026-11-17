@@ -55,7 +55,7 @@ It writes only under `.github/workflows/`, and it needs `npm` and a network conn
 
 ## Files that no agent may read
 
-A repository that versions a file on the restricted list stops every run once it moves to a version with [restricted files](security.md). `go` ends in `qa-failed` with "restricted file in the diff", even when the file is not part of the change, because the check also reads what the base branch versions, and `/relevo:doctor` fails for it.
+A repository that versions a file on the restricted list stops every run once it moves to a version with [restricted files](security.md). `go` ends in `build-failed` with "restricted file in the diff", even when the file is not part of the change, because the check also reads what the base branch versions, and `/relevo:doctor` fails for it.
 
 The list matches by name, so the cases that surprise are not only secrets: a `.env.production` or `.env.testing` with values that are not secret, a `.pem` or `.key` kept as a test fixture, and mobile configuration (`google-services.json`, `GoogleService-Info.plist`, `key.properties`). Only the example files `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are exempt.
 

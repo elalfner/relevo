@@ -39,6 +39,8 @@ export const SETTINGS = [
   { path: 'agent.build', type: 'enum', allowed: ['claude', 'antigravity'], default: 'claude' },
   // The runner of every Relevo workflow: runs-on is read before any step, so init writes these labels into the files.
   { path: 'runner.labels', type: 'label-list', default: ['ubuntu-latest'] },
+  // Only the build job of the go workflow runs on these when they are set; there is no default (absent, it runs on runner.labels).
+  { path: 'runner.build_labels', type: 'label-list', default: null },
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'path-list', default: [] },
   // Files no agent or script reads, added to the base list of restricted-paths.mjs; it can never take an entry away.
@@ -404,7 +406,9 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
       errors.push({ path: 'labels', message: 'labels must be a map of label key to label name' });
     } else {
       Object.entries(labels).forEach(([key, name]) => {
-        if (!LABEL_KEYS.includes(key)) {
+        if (key === 'qa-failed') {
+          errors.push({ path: `labels.${key}`, message: `the label key "qa-failed" is now "build-failed"; rename it under labels` });
+        } else if (!LABEL_KEYS.includes(key)) {
           errors.push({ path: `labels.${key}`, message: `unknown label key "${key}"; allowed keys: ${describeAllowed(LABEL_KEYS)}` });
         } else if (typeof name !== 'string' || name.trim() === '' || name.length > GITHUB_LABEL_MAX) {
           errors.push({ path: `labels.${key}`, message: `labels.${key} must be a non-empty string of at most ${GITHUB_LABEL_MAX} characters` });
@@ -485,6 +489,12 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
   });
 
   return { ok: errors.length === 0, errors, warnings, config };
+}
+
+/** The runner labels of the build job of `go` and of every other job: `build` is runner.build_labels when set, else runner.labels. */
+export function effectiveRunners(config) {
+  const other = [...config.runner.labels];
+  return { build: config.runner.build_labels ? [...config.runner.build_labels] : [...other], other };
 }
 
 /** Parse relevo.yml text and validate it. Parse errors are returned as errors. */

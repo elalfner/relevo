@@ -236,7 +236,7 @@ El agente y QA ejecutan los comandos del perfil, y necesitan que existan las dep
 ```
 
 - Instala sin los scripts de los paquetes donde la herramienta lo permita (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` no ejecuta ninguno.
-- El paso "Check the toolchain" busca, cuando las herramientas están, cada ruta que el perfil lista en `installed`. Cuando falta alguna el issue pasa a `relevo:qa-failed`, el comentario nombra la ruta y dice que se active el paso de instalación, y no se gasta ningún turno del modelo.
+- El paso "Check the toolchain" busca, cuando las herramientas están, cada ruta que el perfil lista en `installed`. Cuando falta alguna el issue pasa a `relevo:build-failed`, el comentario nombra la ruta y dice que se active el paso de instalación, y no se gasta ningún turno del modelo.
 - `/relevo:doctor` avisa, por cada plataforma cuyo perfil lista `installed`, cuando el workflow de go no tiene un paso activo que instale sus dependencias. Un ejemplo comentado, y una instalación en otra carpeta (los pasos que instalan OpenSpec y los scripts de Relevo), no cuentan.
 
 ## Skills extra por rol
@@ -251,7 +251,7 @@ El agente y QA ejecutan los comandos del perfil, y necesitan que existan las dep
 
 ## Lo que una ejecución sin supervisión no puede cambiar
 
-- `relevo.yml`, todo lo que está en `.relevo/`, las carpetas de skills y `skills-lock.json` (también dentro de la carpeta de cada plataforma), porque deciden las verificaciones a las que se somete el trabajo. Una ejecución que los toca termina en `qa-failed`.
+- `relevo.yml`, todo lo que está en `.relevo/`, las carpetas de skills y `skills-lock.json` (también dentro de la carpeta de cada plataforma), porque deciden las verificaciones a las que se somete el trabajo. Una ejecución que los toca termina en `build-failed`.
 - Los archivos que listas en `qa.rules_from`.
 - Los archivos fuera de la carpeta de la plataforma del issue (salvo la spec del propio cambio, `GLOSSARY.md` y `docs/adr/`), a menos que el issue los liste en `Allow-paths:`.
 - El comando de una verificación, desde un perfil: solo `relevo.yml` puede reemplazarlo.

@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { applyDecisions, commandsFor, gather, labelEvent, readyEvent, realGhLinks } from '../scripts/lib/github.mjs';
+import { applyDecisions, commandsFor, gather, labelEvent, readLastEdited, readyEvent, realGhLinks, titleEditedAt } from '../scripts/lib/github.mjs';
 import { planGo } from '../scripts/lib/plan.mjs';
 
 const BODY = '## Scenarios\n- **WHEN** a\n- **THEN** b\n\n## Edge cases\n- c\n';
@@ -138,8 +138,8 @@ test('an unmerged dependency is not reported as completed', () => {
 
 test('end to end: gathered state flows through the planner', () => {
   const world = {
-    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready'])] },
-    timeline: { 1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z')] },
+    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready', 'relevo:go'])] },
+    timeline: { 1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z'), labeled('relevo:go', 'persona-a', '2026-10-14T08:05:00Z')] },
     permissions: { 'persona-a': 'maintain' },
     issueDetails: {},
   };
@@ -199,7 +199,7 @@ const CLI = (name) => new URL(`../scripts/${name}`, import.meta.url).pathname;
 test('go-plan CLI: plans from a state file and rejects a missing configuration', () => {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
   writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\n');
-  const state = { issues: [{ number: 31, title: 'Summary screen', body: BODY, state: 'open', labels: ['relevo:ready'], assignees: ['persona-b'], milestone: { number: 1 }, ready_at: '2026-10-14T08:00:00Z', ready_by: 'persona-a' }], permissions: { 'persona-a': 'write' } };
+  const state = { issues: [{ number: 31, title: 'Summary screen', body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: ['persona-b'], milestone: { number: 1 }, ready_at: '2026-10-14T08:00:00Z', ready_by: 'persona-a', go_by: 'persona-a' }], permissions: { 'persona-a': 'write' } };
   writeFileSync(join(dir, 'state.json'), JSON.stringify(state));
   const out = JSON.parse(execFileSync('node', [CLI('go-plan.mjs'), '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')], { encoding: 'utf8' }));
   assert.equal(out.decisions[0].action, 'start');
@@ -236,7 +236,7 @@ test('applyDecisions marks only the claimed start decision when includeStart is 
 test('go-plan CLI: --only keeps one decision and --claim needs --only', () => {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-'));
   writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\n');
-  const mk = (n, at) => ({ number: n, title: `T${n}`, body: BODY, state: 'open', labels: ['relevo:ready'], assignees: [`p${n}`], milestone: { number: 1 }, ready_at: at, ready_by: 'persona-a' });
+  const mk = (n, at) => ({ number: n, title: `T${n}`, body: BODY, state: 'open', labels: ['relevo:ready', 'relevo:go'], assignees: [`p${n}`], milestone: { number: 1 }, ready_at: at, ready_by: 'persona-a', go_by: 'persona-a' });
   writeFileSync(join(dir, 'state.json'), JSON.stringify({ issues: [mk(1, '2026-10-14T08:00:00Z'), mk(2, '2026-10-14T09:00:00Z')], permissions: { 'persona-a': 'write' } }));
   const base = [CLI('go-plan.mjs'), '--config', join(dir, 'relevo.yml'), '--input', join(dir, 'state.json')];
   const out = JSON.parse(execFileSync('node', [...base, '--only', '2'], { encoding: 'utf8' }));
@@ -338,21 +338,21 @@ test('the client for linked repositories uses GH_LINKS_TOKEN as the token, and t
   assert.equal(seen[0].cmd, 'gh');
 });
 
-test('Scenario: gather reads a qa-failed issue only for a retry, only the retried one, and the permission of the person', () => {
+test('Scenario: gather reads a build-failed issue only for a retry, only the retried one, and the permission of the person', () => {
   const world = {
-    issuesByLabel: { 'relevo:qa-failed': [rawIssue(67, ['relevo:qa-failed']), rawIssue(68, ['relevo:qa-failed'])] },
+    issuesByLabel: { 'relevo:build-failed': [rawIssue(67, ['relevo:build-failed']), rawIssue(68, ['relevo:build-failed'])] },
     timeline: {},
     permissions: { 'persona-a': 'write' },
     issueDetails: {},
   };
   const without = gather({ gh: fakeGh(world), repo: REPO, config });
-  assert.deepEqual(without.issues, [], 'without a retry qa-failed is not read');
+  assert.deepEqual(without.issues, [], 'without a retry build-failed is not read');
   const state = gather({ gh: fakeGh(world), repo: REPO, config, retry: { issue: 67, by: 'persona-a' } });
   assert.deepEqual(state.issues.map((i) => i.number), [67]);
   assert.equal(state.permissions['persona-a'], 'write');
   const decision = planGo({ config, repo: REPO, ...state, retry: { issue: 67, by: 'persona-a' } }).decisions[0];
   assert.equal(decision.action, 'start');
-  assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:qa-failed'] });
+  assert.deepEqual(decision.labels, { add: ['relevo:building'], remove: ['relevo:build-failed'] });
 });
 
 test('gather reads the states after built as issues that are not candidates, and the marker of the wait for a shared file', () => {
@@ -459,4 +459,153 @@ test('gather hands the plan a reader of the recent builds that makes no request 
   const state = gather({ gh, repo: REPO, config });
   assert.equal(typeof state.recentBuilds, 'function');
   assert.ok(!gh.calls.some((c) => c.join(' ').includes('/actions/')), 'nothing is read from the workflow runs while gathering');
+});
+
+// --- split-ready-and-go: what the planner reads ---
+
+const renamed = (at, by = 'persona-a') => ({ event: 'renamed', actor: { login: by }, created_at: at, rename: { from: 'a', to: 'b' } });
+
+test('gather gives each candidate go_by and go_at from the last labeled event of go, and its author permission', () => {
+  const world = {
+    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready', 'relevo:go']), rawIssue(2, ['relevo:ready'])] },
+    timeline: {
+      1: [
+        labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z'),
+        labeled('relevo:go', 'stranger', '2026-10-14T08:30:00Z'),
+        labeled('relevo:go', 'persona-d', '2026-10-14T09:00:00Z'),
+      ],
+      2: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z')],
+    },
+    permissions: { 'persona-a': 'write', 'persona-d': 'write' },
+    issueDetails: {},
+  };
+  const state = gather({ gh: fakeGh(world), repo: REPO, config });
+  const one = state.issues.find((i) => i.number === 1);
+  assert.equal(one.go_by, 'persona-d');
+  assert.equal(one.go_at, '2026-10-14T09:00:00Z');
+  const two = state.issues.find((i) => i.number === 2);
+  assert.equal(two.go_by, null);
+  assert.equal(two.go_at, null);
+  assert.equal(state.permissions['persona-d'], 'write');
+});
+
+test('gather gives title_edited_at from the last renamed event, and null when the title never changed', () => {
+  const world = {
+    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready']), rawIssue(2, ['relevo:ready'])] },
+    timeline: {
+      1: [renamed('2026-10-13T08:00:00Z'), labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z'), renamed('2026-10-15T08:00:00Z')],
+      2: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z')],
+    },
+    permissions: { 'persona-a': 'write' },
+    issueDetails: {},
+  };
+  const state = gather({ gh: fakeGh(world), repo: REPO, config });
+  assert.equal(state.issues.find((i) => i.number === 1).title_edited_at, '2026-10-15T08:00:00Z');
+  assert.equal(state.issues.find((i) => i.number === 2).title_edited_at, null);
+});
+
+test('gather gives local_by for a building issue with local, and nothing for a cloud build', () => {
+  const world = {
+    issuesByLabel: { 'relevo:building': [rawIssue(1, ['relevo:building', 'relevo:local']), rawIssue(2, ['relevo:building'])] },
+    timeline: { 1: [labeled('relevo:building', 'persona-c', '2026-10-14T08:00:00Z'), labeled('relevo:local', 'persona-c', '2026-10-14T08:00:01Z')] },
+    permissions: {},
+    issueDetails: {},
+  };
+  const gh = fakeGh(world);
+  const state = gather({ gh, repo: REPO, config });
+  assert.equal(state.issues.find((i) => i.number === 1).local_by, 'persona-c');
+  assert.equal(state.issues.find((i) => i.number === 2).local_by, null);
+  assert.ok(!gh.calls.some((c) => c.join(' ').includes('/issues/2/timeline')), 'a cloud build needs no timeline');
+});
+
+test('an issue named by --only that carries go is read whatever its state', () => {
+  const world = {
+    issuesByLabel: {},
+    timeline: { 5: [labeled('relevo:go', 'persona-a', '2026-10-14T08:00:00Z')] },
+    permissions: { 'persona-a': 'write' },
+    issueDetails: { 5: rawIssue(5, ['relevo:build-failed', 'relevo:go']) },
+  };
+  const state = gather({ gh: fakeGh(world), repo: REPO, config, only: 5 });
+  const five = state.issues.find((i) => i.number === 5);
+  assert.ok(five, 'the issue of --only is read');
+  assert.deepEqual(five.labels, ['relevo:build-failed', 'relevo:go']);
+  assert.equal(five.go_by, 'persona-a');
+  assert.equal(state.permissions['persona-a'], 'write');
+});
+
+test('an issue named by --only with no lifecycle label (a draft) is read too', () => {
+  const world = { issuesByLabel: {}, timeline: {}, permissions: {}, issueDetails: { 6: rawIssue(6, ['relevo:go']) } };
+  const state = gather({ gh: fakeGh(world), repo: REPO, config, only: 6 });
+  assert.deepEqual(state.issues.find((i) => i.number === 6).labels, ['relevo:go']);
+});
+
+test('the person who runs a local build is looked up with the others', () => {
+  const world = {
+    issuesByLabel: { 'relevo:ready': [rawIssue(1, ['relevo:ready'])] },
+    timeline: { 1: [labeled('relevo:ready', 'persona-a', '2026-10-14T08:00:00Z')] },
+    permissions: { 'persona-a': 'write', 'persona-e': 'read' },
+    issueDetails: {},
+  };
+  const state = gather({ gh: fakeGh(world), repo: REPO, config, only: 1, person: 'persona-e' });
+  assert.equal(state.permissions['persona-e'], 'read');
+});
+
+test('readLastEdited: a body edited gives its time, and asks GitHub with one GraphQL query for that issue', () => {
+  const calls = [];
+  const gh = (args) => { calls.push(args); return JSON.stringify({ data: { repository: { issue: { lastEditedAt: '2026-10-15T08:00:00Z' } } } }); };
+  assert.deepEqual(readLastEdited({ gh, repo: REPO, number: 42 }), { ok: true, at: '2026-10-15T08:00:00Z' });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].slice(0, 2), ['api', 'graphql']);
+  assert.ok(calls[0].includes('owner=acme') && calls[0].includes('name=app') && calls[0].includes('number=42'));
+  assert.ok(calls[0].some((a) => a.includes('lastEditedAt')));
+});
+
+test('readLastEdited: an issue never edited gives null, which is not a failure', () => {
+  const gh = () => JSON.stringify({ data: { repository: { issue: { lastEditedAt: null } } } });
+  assert.deepEqual(readLastEdited({ gh, repo: REPO, number: 42 }), { ok: true, at: null });
+});
+
+test('readLastEdited: a failed request is a failure, never "not edited", and it does not throw', () => {
+  const gh = () => { throw new Error('HTTP 403: Resource not accessible by integration\nmore'); };
+  const r = readLastEdited({ gh, repo: REPO, number: 42 });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /HTTP 403/);
+  assert.equal('at' in r, false);
+});
+
+test('readLastEdited: a malformed answer is a failure, never "not edited"', () => {
+  const answers = [
+    'not json',
+    JSON.stringify({}),
+    JSON.stringify({ data: { repository: null } }),
+    JSON.stringify({ data: { repository: { issue: {} } } }),
+    JSON.stringify({ data: { repository: { issue: { lastEditedAt: 'yesterday' } } } }),
+    JSON.stringify({ data: { repository: { issue: { lastEditedAt: 12 } } } }),
+    JSON.stringify({ errors: [{ message: 'Could not resolve to an Issue' }] }),
+  ];
+  answers.forEach((answer) => {
+    const r = readLastEdited({ gh: () => answer, repo: REPO, number: 42 });
+    assert.equal(r.ok, false, answer);
+    assert.ok(r.reason.length > 0);
+  });
+  assert.equal(readLastEdited({ gh: () => '{}', repo: 'nope', number: 42 }).ok, false, 'a repository without owner');
+});
+
+test('titleEditedAt takes the last renamed event', () => {
+  assert.equal(titleEditedAt([renamed('2026-10-13T08:00:00Z'), renamed('2026-10-14T08:00:00Z')]), '2026-10-14T08:00:00Z');
+  assert.equal(titleEditedAt([labeled('relevo:ready', 'a', '2026-10-13T08:00:00Z')]), null);
+});
+
+test('applyDecisions applies nothing for a report, even with --claim', () => {
+  const calls = [];
+  const report = { issue: 42, action: 'report', report: 'blocked', reason: 'waiting for #12', labels: { add: ['relevo:blocked'], remove: [] }, comment: { kind: 'blocked_notice', data: {} }, assign: null };
+  assert.deepEqual(applyDecisions([report], { gh: (a) => calls.push(a), repo: REPO, config, includeStart: true }), []);
+  assert.equal(calls.length, 0);
+});
+
+test('applyDecisions carries out the claim of a local build: building and local in one edit', () => {
+  const calls = [];
+  const start = { issue: 42, action: 'start', labels: { add: ['relevo:building', 'relevo:local'], remove: ['relevo:ready'] }, comment: null, assign: null };
+  applyDecisions([start], { gh: (a) => calls.push(a), repo: REPO, config, includeStart: true });
+  assert.deepEqual(calls, [['issue', 'edit', '42', '--repo', REPO, '--add-label', 'relevo:building', '--add-label', 'relevo:local', '--remove-label', 'relevo:ready']]);
 });

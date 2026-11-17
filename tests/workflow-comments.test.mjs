@@ -86,8 +86,8 @@ function run(which, { language = 'en', env = {}, renderAt = which === 0 ? '.rele
 test('Scenario: A run ends without a result, in Spanish - the comment of the decide job is in Spanish, with the same commands and labels', () => {
   const es = run(0, { language: 'es' });
   assert.match(es.body, /^@ana La ejecución falló antes de poder decidir qué hacer \(estado del job: failure\)/);
-  assert.match(es.body, /quita `relevo:qa-failed` y pon `relevo:ready`/);
-  assert.match(es.edits, /--add-label relevo:qa-failed/);
+  assert.match(es.body, /pon `relevo:go` para que la nube lo construya de nuevo, o ejecuta `\/relevo:go 12 --retry`/);
+  assert.match(es.edits, /--add-label relevo:build-failed/);
   const en = run(0, { language: 'en' });
   assert.match(en.body, /^@ana The run failed before it could decide what to do \(job status: failure\), so nothing was built\./);
 });
@@ -95,7 +95,7 @@ test('Scenario: A run ends without a result, in Spanish - the comment of the dec
 test('Scenario: The scripts cannot be run - the decide job posts the English sentence it carries and still tells the issue', () => {
   const none = run(0, { language: 'es', renderAt: 'none' });
   assert.match(none.body, /^@ana The run failed before it could decide what to do \(job status: failure\)/);
-  assert.match(none.body, /remove `relevo:qa-failed` and apply `relevo:ready` again\.$/);
+  assert.match(none.body, /apply `relevo:go` so that the cloud builds it again, or run `\/relevo:go 12 --retry` on your machine\.$/);
   assert.doesNotMatch(run(0, { renderAt: 'none', env: { STUB_ASSIGNEE: '' } }).body, /^@/, 'nobody is mentioned without an assignee');
 });
 
@@ -105,7 +105,7 @@ test('Scenario: A run ends without a result, in both languages - the build job r
   const es = run(1, { language: 'es', env: { JOB_STATUS: 'cancelled' } });
   assert.match(es.body, /^@ana La ejecución terminó sin resultado \(estado del job: cancelled\), así que no se construyó ni se informó nada\./);
   assert.match(es.body, /Lee el log para ver por qué: https:\/\/example\.test\/run\/9\./);
-  assert.match(es.edits, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(es.edits, /--remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
   assert.match(es.out, /reported=true/);
   const en = run(1, { language: 'en', env: { JOB_STATUS: 'cancelled' } });
   assert.match(en.body, /^@ana The run ended without a result \(job status: cancelled\), so nothing was built or reported\./);

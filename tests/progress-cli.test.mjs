@@ -8,6 +8,7 @@ import { join } from 'node:path';
 const SCRIPT = new URL('../scripts/progress.mjs', import.meta.url).pathname;
 const MARKER = '<!-- relevo:progress -->';
 const CLOSED = '<!-- relevo:progress:closed -->';
+const WAITING = '<!-- relevo:progress:waiting -->';
 
 // A `gh` that keeps the comments of one issue (o/r#7) in a JSON file: just enough of the API for the script.
 const FAKE_GH = `#!/usr/bin/env node
@@ -158,4 +159,52 @@ test('Scenario: GitHub refuses the edit / The announcement cannot be written - n
   const none = spawnSync(process.execPath, [SCRIPT, 'close', '--issue', '7'], { cwd: s.cwd, env: { ...s.env, PATH: '/nonexistent' }, encoding: 'utf8' });
   assert.equal(none.status, 0);
   assert.equal(s.run('unknown').status, 0);
+});
+
+test('Scenario: First report - waiting creates the one comment with both markers, even with no progress folder, and a second call edits it', () => {
+  const s = setup();
+  const env = { ...s.env };
+  delete env.RELEVO_PROGRESS_DIR;
+  const run = (...argv) => spawnSync(process.execPath, [SCRIPT, ...argv], { cwd: s.cwd, env, encoding: 'utf8' });
+  const first = run('waiting', '--issue', '7');
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(s.comments().length, 1);
+  assert.ok(s.comments()[0].body.includes(MARKER) && s.comments()[0].body.includes(WAITING));
+  assert.match(s.comments()[0].body, /waits for a runner/);
+  assert.equal(run('waiting', '--issue', '7').status, 0);
+  assert.equal(s.comments().length, 1, 'an open comment is edited, not repeated');
+});
+
+test('Scenario: The build job starts - started drops the waiting marker with one edit, keeps the comment, and the watch continues in it', () => {
+  const s = setup();
+  s.run('waiting', '--issue', '7');
+  const id = s.comments()[0].id;
+  const started = s.run('started', '--issue', '7');
+  assert.equal(started.status, 0, started.stderr);
+  assert.equal(s.comments().length, 1);
+  assert.equal(s.comments()[0].id, id);
+  assert.ok(s.comments()[0].body.includes(MARKER));
+  assert.ok(!s.comments()[0].body.includes(WAITING));
+  // the watch never wrote: the comment already says that the build runs
+  assert.doesNotMatch(s.comments()[0].body, /waits for a runner/);
+  s.run('watch', '--issue', '7', '--decision', s.decision, '--max-minutes', '0.01', '--interval', '0.1');
+  assert.equal(s.comments().length, 1, 'the watch edits the same comment');
+  assert.ok(!s.comments()[0].body.includes(WAITING));
+});
+
+test('waiting and started never fail the run: no repository, GitHub refusing, no gh at all', () => {
+  const s = setup({ broken: true });
+  ['waiting', 'started'].forEach((cmd) => {
+    assert.equal(s.run(cmd, '--issue', '7').status, 0, cmd);
+    assert.equal(s.run(cmd).status, 0, `${cmd} with no issue`);
+    const none = spawnSync(process.execPath, [SCRIPT, cmd, '--issue', '7'], { cwd: s.cwd, env: { ...s.env, PATH: '/nonexistent' }, encoding: 'utf8' });
+    assert.equal(none.status, 0, `${cmd} with no gh`);
+  });
+});
+
+test('the language of relevo.yml decides the waiting text', () => {
+  const s = setup();
+  writeFileSync(join(s.cwd, 'relevo.yml'), 'language: es\nlimits:\n  run_max_cost: 5\n');
+  s.run('waiting', '--issue', '7');
+  assert.match(s.comments()[0].body, /espera un runner/);
 });

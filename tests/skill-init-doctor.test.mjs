@@ -115,7 +115,8 @@ test('Scenario: Front and back - init asks for the linked repositories and write
 
 test('Scenario: init asks where go runs and with which credential, and says what decides it', () => {
   const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
-  assert.match(init, /where `go` builds: in the cloud, on each person's machine, or both \(the default\)/);
+  assert.match(init, /where `go` builds: in the cloud \(a person approves an issue with `ready` and asks the cloud to build it with the `go` label\), on each person's machine \(`\/relevo:go <n>` on an approved issue, with no label\), or both \(the default\)/);
+  assert.match(init, /creates the `relevo:go` label \(the build request\) and the `relevo:local` label/);
   assert.match(init, /with an API key from the Anthropic Console \(the default\) or with a subscription token/);
   assert.match(init, /`limits\.concurrent_agents` to 1/);
   assert.match(init, /repository variable `RELEVO_CLOUD_GO` \(`off` pauses the cloud at once, with no pull request\)/);

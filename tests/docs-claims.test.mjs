@@ -119,8 +119,8 @@ test('Scenario: the life of an issue in the guide says what the hand-off message
 
 test('the guide answers the situations the plan listed, with the command of each', () => {
   const need = {
-    'docs/guide.md': [/review found/i, /asks for changes|requested changes/i, /QA fail|qa-failed/i, /quota|usage limit/i, /do not know|don't know/i, /fix or a new issue/i, /cloud, local or both/i, /public/i],
-    'docs/guide.es.md': [/revisi[oó]n encontr/i, /pidi[oó] cambios|pide cambios/i, /fall[oó] QA|qa-failed/i, /cuota|l[ií]mite de uso/i, /no s[eé]/i, /fix o un issue nuevo/i, /nube, local o ambos/i, /p[uú]blic/i],
+    'docs/guide.md': [/review found/i, /asks for changes|requested changes/i, /QA fail|build-failed/i, /quota|usage limit/i, /do not know|don't know/i, /fix or a new issue/i, /cloud, local or both/i, /public/i],
+    'docs/guide.es.md': [/revisi[oó]n encontr/i, /pidi[oó] cambios|pide cambios/i, /fall[oó] QA|build-failed/i, /cuota|l[ií]mite de uso/i, /no s[eé]/i, /fix o un issue nuevo/i, /nube, local o ambos/i, /p[uú]blic/i],
   };
   Object.entries(need).filter(([f]) => exists(f)).forEach(([f, patterns]) => {
     const page = read(f);
@@ -294,7 +294,7 @@ test('Get started says the build does not install the dependencies of a Vue or L
     assert.ok(step6.includes('npm ci --ignore-scripts'), `${file} step 6 names the Vue command`);
     assert.ok(step6.includes('composer install --no-scripts'), `${file} step 6 names the Laravel command`);
     assert.ok(step6.includes('relevo-go.yml'), file);
-    assert.match(text, /\| .*relevo:qa-failed.*(dependencies|dependencias)/, `${file} table row mentions the dependencies`);
+    assert.match(text, /\| .*relevo:build-failed.*(dependencies|dependencias)/, `${file} table row mentions the dependencies`);
   });
 });
 
@@ -352,4 +352,44 @@ test('Scenario: The stacks page explains the Laravel and Vue skills, with the sa
     assert.ok(page.includes('skills_when_installed'), `${f}: the key`);
     assert.ok(page.includes('.claude/skills/'), `${f}: the folder to commit`);
   });
+});
+
+// ---------- split-ready-and-go: the guide tells the approval from the build request
+
+test('Scenario: One person / Machines only / Upgrading - the guide describes the two labels, the local mark and the three kinds of user', () => {
+  const en = read('docs/guide.md');
+  assert.match(en, /`ready` approves the issue\.\*\* It says that the text is complete and is what should be built\. It starts nothing\./);
+  assert.match(en, /The `go` label asks the cloud to build an approved issue/);
+  assert.match(en, /`\/relevo:go <n>` builds an approved issue on your machine/);
+  assert.match(en, /`relevo:local` next to `building`/);
+  assert.match(en, /is a \*\*draft\*\*/);
+  assert.match(en, /`\/relevo:think` explores it and `\/relevo:issue <n>` fills it in/);
+  assert.match(en, /\*\*One person who writes and builds\.\*\* Answer "`ready` and `go`" in `issue`, or approve with `ready` and run `\/relevo:go <n>` yourself\. One step is enough\./);
+  assert.match(en, /\*\*A team with machines only\*\*[^\n]*The `go` label has no effect there: approved issues are built with `\/relevo:go <n>`/);
+  assert.match(en, /\*\*Upgrading from an earlier version\*\*[^\n]*`ready` no longer starts a build/);
+  const es = read('docs/guide.es.md');
+  assert.match(es, /`ready` aprueba el issue\.\*\*[^\n]*No inicia nada\./);
+  assert.match(es, /\*\*Un equipo solo con máquinas\*\*/);
+  assert.match(es, /`ready` ya no inicia un build/);
+});
+
+test('Scenario: The quota ran out - the guide says the issue stays recoverable and the build can be requested again with go, or run locally', () => {
+  assert.match(read('docs/guide.md'), /The issue stays recoverable: the cloud retries it by itself until then, and afterwards you can request the build again later with the `go` label, or build it on your machine/);
+  assert.match(read('docs/guide.es.md'), /El issue sigue siendo recuperable/);
+});
+
+test('no page says that applying ready starts a build, and the pause keeps a go label as a pending request', () => {
+  const pages = PAGES.flatMap((p) => [`docs/${p}.md`, `docs/${p}.es.md`]).concat(['README.md', 'README.es.md']).filter(exists);
+  const former = [
+    /(labell?ing|applying)(?:(?!go\b)[^.]){0,40}`?relevo:ready`?[^.]{0,20} starts? (the|a) (cloud )?build/i,
+    /a `ready` label (then )?starts/i,
+    /(poner|al poner)[^.]{0,40}`?relevo:ready`?[^.]{0,30} (inicia|arranca) (la construcción|el build)/i,
+    /una etiqueta `ready` (inicia|no inicia nada y la cola)/i,
+    /apply `?relevo:ready`? again to each issue/i,
+  ];
+  pages.forEach((f) => former.forEach((re) => assert.doesNotMatch(read(f), re, `${f}: ${re}`)));
+  assert.match(read('docs/execution.md'), /The label stays on the issue as a pending request/);
+  assert.match(read('docs/execution.es.md'), /La etiqueta queda en el issue como una petición pendiente/);
+  assert.match(read('docs/security.md'), /`lastEditedAt`/);
+  assert.match(read('docs/security.es.md'), /`lastEditedAt`/);
 });

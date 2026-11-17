@@ -62,7 +62,7 @@ test('a usage phrase that a language lacks is English; an unknown phrase is an e
 // Sample data for each kind, so that a kind added later without a sample fails here and is not left untested.
 const SAMPLE = {
   built: { assignee: 'a', issue: 1, title: 't', tasks_done: 1, tasks_total: 1, branch: 'b', scenarios: 1, checklist: '- [ ] x' },
-  qa_failed: { assignee: 'a', issue: 1, title: 't', finding: 'f', branch: 'b' },
+  build_failed: { assignee: 'a', issue: 1, title: 't', finding: 'f', branch: 'b' },
   toolchain_missing: { assignee: 'a', issue: 1, title: 't', tools: 'php', platform: 'back' },
   installed_missing: { assignee: 'a', issue: 1, title: 't', paths: 'vendor', platform: 'back' },
   needs_spec: { spec_writer: 'a', issue: 1, title: 't', missing: 'm' },
@@ -76,6 +76,13 @@ const SAMPLE = {
   no_assignee: { actor: 'a', issue: 1 },
   ready_denied: { issue: 1, actor: 'a' },
   ready_denied_maintainer: { issue: 1, actor: 'a' },
+  go_denied: { issue: 1, actor: 'a' },
+  go_denied_maintainer: { issue: 1, actor: 'a' },
+  go_needs_ready: { issue: 1, actor: 'a' },
+  go_building: { issue: 1, actor: 'a' },
+  go_already_built: { issue: 1, actor: 'a' },
+  go_use_fix: { issue: 1, actor: 'a' },
+  approval_withdrawn: { issue: 1, edited: 'body', approver: 'a' },
   urgent_denied: { issue: 1, actor: 'a' },
   urgent_denied_maintainer: { issue: 1, actor: 'a' },
   blocked_notice: { issue: 1, title: 't', blockers: '#2' },
@@ -89,7 +96,12 @@ const SAMPLE = {
   ship_done: { issue: 1, pr: '#2', base: 'dev', commit: 'c', actor: 'a' },
   ship_failed: { issue: 1, run: 'http://r', actor: 'a' },
   run_progress: { phase: 'qa', minutes: 3, tasks_done: 1, tasks_total: 2 },
+  local_progress: { phase: 'development', minutes: 3, group: 2, groups: 3, tasks_done: 1, tasks_total: 2 },
+  local_status: { phase: 'qa', minutes: 3, last_change_minutes: 1, ended: 'yes', status: 0, usage_line: 'u' },
+  local_no_build: { issue: 1 },
+  local_progress_off: {},
   run_progress_closed: { run_url: 'http://r', summary_line: 's' },
+  run_waiting: {},
   run_failed_early: { issue: 1, job_status: 'failure', run: 'http://r', assignee: 'a' },
   run_no_outcome: { situation: 'no_result', issue: 1, job_status: 'cancelled', run: 'http://r', assignee: 'a' },
   queued_shared_files: { issue: 1, title: 'T', file: 'src/router.ts', other: 2, hours: 24 },
@@ -124,7 +136,7 @@ test('the phrase that gives the reason of a replica is in English and Spanish, a
   assert.ok(USAGE_TEXT.en.replica_why && USAGE_TEXT.es.replica_why);
 });
 
-test('the qa_failed comment renders in every language with no placeholder left, for a QA rejection and for each kind of stop', () => {
+test('the build_failed comment renders in every language with no placeholder left, for a QA rejection and for each kind of stop', () => {
   const base = { assignee: 'a', issue: 1, title: 't', finding: 'f', branch: 'b' };
   [
     {},
@@ -134,7 +146,7 @@ test('the qa_failed comment renders in every language with no placeholder left, 
     { reason: 'protected path in the diff', branch_state: 'unsafe' },
     { reason: 'a reason added to the skill later' },
   ].forEach((extra) => SUPPORTED_LANGUAGES.forEach((language) => {
-    const text = renderMessage('qa_failed', { ...base, ...extra }, language);
+    const text = renderMessage('build_failed', { ...base, ...extra }, language);
     assert.doesNotMatch(text, /\{\{|undefined/, `${language} ${JSON.stringify(extra)} left a placeholder`);
     const stop = extra.reason && extra.reason !== 'QA rejected after the retries';
     assert.equal(/QA still rejected|QA la rechazó/.test(text), !stop, `${language} ${JSON.stringify(extra)}`);

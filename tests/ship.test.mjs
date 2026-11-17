@@ -226,7 +226,7 @@ test('label-change --clear removes every Relevo label and leaves the others', ()
 const HEAD = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
 const approvedOn = (oid, login = 'persona-c') => ({ ...review(login, 'APPROVED', '2026-10-14T10:00:00Z'), commit: { oid } });
-const LABELS = { 'pr-open': ['relevo:pr-open'], built: ['relevo:built'], 'qa-failed': ['relevo:qa-failed'] };
+const LABELS = { 'pr-open': ['relevo:pr-open'], built: ['relevo:built'], 'build-failed': ['relevo:build-failed'] };
 
 test('Scenario: Approval on an older commit - ship stops and asks for a new approval on the current code', () => {
   const d = shipDecision({ config: peer, pr: pr({ headRefOid: HEAD, reviews: [approvedOn(OLD)] }), invoker: 'persona-c' });
@@ -255,7 +255,7 @@ test('Scenario: Issue not reviewed yet - ship names the command that is missing'
   const built = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS.built, issue: '31' });
   assert.equal(built.allowed, false);
   assert.match(built.reasons.join(' '), /"built", not "pr-open": run \/relevo:review 31 first/);
-  const failed = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS['qa-failed'], issue: '31' });
+  const failed = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS['build-failed'], issue: '31' });
   assert.match(failed.reasons.join(' '), /run \/relevo:fix 31 first/);
   const none = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: [], issue: '31' });
   assert.match(none.reasons.join(' '), /not in a Relevo state.*\/relevo:review 31/);

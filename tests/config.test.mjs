@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadConfig } from '../scripts/lib/config.mjs';
+import { loadConfig, effectiveRunners } from '../scripts/lib/config.mjs';
 import { resolveProfile } from '../scripts/lib/stack-profile.mjs';
 import { restrictedList } from '../scripts/lib/restricted-paths.mjs';
 
@@ -336,6 +336,43 @@ test('a runner label that is not a string is rejected', () => {
   assert.ok(errors.some((e) => e.path === 'runner.labels' && /non-empty strings/.test(e.message)));
 });
 
+test('runner.build_labels: absent, the build runner is runner.labels', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}runner:\n  labels: [self-hosted, linux]\n`);
+  assert.equal(ok, true);
+  assert.equal(config.runner.build_labels, null);
+  assert.deepEqual(effectiveRunners(config), { build: ['self-hosted', 'linux'], other: ['self-hosted', 'linux'] });
+});
+
+test('runner.build_labels: a list names the build runner and leaves the others on runner.labels', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}runner:\n  labels: [self-hosted, linux]\n  build_labels: [self-hosted, relevo-build]\n`);
+  assert.equal(ok, true);
+  assert.deepEqual(effectiveRunners(config), { build: ['self-hosted', 'relevo-build'], other: ['self-hosted', 'linux'] });
+});
+
+test('runner.build_labels: with no runner.labels the light jobs stay on ubuntu-latest', () => {
+  const { ok, config } = loadConfig(`${MINIMAL}runner:\n  build_labels: [self-hosted, relevo-build]\n`);
+  assert.equal(ok, true);
+  assert.deepEqual(effectiveRunners(config), { build: ['self-hosted', 'relevo-build'], other: ['ubuntu-latest'] });
+});
+
+test('runner.build_labels: an empty list is rejected', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  build_labels: []\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'runner.build_labels' && /at least one label/.test(e.message)));
+});
+
+test('runner.build_labels: a single string is rejected', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  build_labels: self-hosted\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'runner.build_labels' && /list of runner labels/.test(e.message)));
+});
+
+test('runner.build_labels: an entry that is not a string is rejected', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  build_labels: [self-hosted, 3]\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'runner.build_labels' && /non-empty strings/.test(e.message)));
+});
+
 test('Scenario: A persistence key - runner.ephemeral does not exist and the message says why', () => {
   const { ok, errors } = loadConfig(`${MINIMAL}runner:\n  ephemeral: true\n`);
   assert.equal(ok, false);
@@ -622,4 +659,11 @@ test('Scenario: Full agent output setting - off by default, a boolean, and refus
   assert.ok(pub.errors.some((e) => e.path === 'run.full_output' && /public/.test(e.message)));
   assert.equal(loadConfig(`trust: public\n${base}run:\n  full_output: false\n`).ok, true);
   assert.equal(loadConfig(`trust: private-team\n${base}run:\n  full_output: true\n`).ok, true);
+});
+
+test('Scenario: the former key qa-failed of labels is refused and the message names build-failed', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}labels:\n  qa-failed: x\n`);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.path === 'labels.qa-failed' && /build-failed/.test(e.message)));
+  assert.equal(loadConfig(`${MINIMAL}labels:\n  build-failed: x\n`).ok, true);
 });

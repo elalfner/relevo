@@ -24,14 +24,14 @@ function stepScript(text, id) {
   return out.join('\n');
 }
 
-test('the final step asks limit-retry before it marks qa-failed, and the retry path never adds qa-failed', () => {
+test('the final step asks limit-retry before it marks build-failed, and the retry path never adds build-failed', () => {
   const script = stepScript(go, 'no_outcome');
   assert.match(script, /limit-retry\.mjs --file "\$EXECUTION_FILE" --rescue-state "\$RESCUE_STATE" --repo "\$GITHUB_REPOSITORY" --issue "\$ISSUE"/);
   const retryEdit = script.indexOf('--add-label relevo:queued');
-  const failedEdit = script.indexOf('--add-label relevo:qa-failed');
+  const failedEdit = script.indexOf('--add-label relevo:build-failed');
   assert.ok(retryEdit > 0 && failedEdit > retryEdit, 'the retry path comes first');
   const retryBlock = script.slice(script.lastIndexOf('if [ -n "$retry_body" ]', retryEdit), failedEdit);
-  assert.doesNotMatch(retryBlock, /qa-failed/);
+  assert.doesNotMatch(retryBlock, /build-failed/);
   assert.match(retryBlock, /exit 0/);
   assert.match(go, /scripts\/usage-limit\.mjs scripts\/limit-retry\.mjs scripts\/run-cut\.mjs/, 'the package install checks for the script');
 });
@@ -94,12 +94,12 @@ function runStep(dir, { log, rescue = 'nothing', branch = '', script = stepScrip
 }
 const botComment = (attempt, minutesAgo = 20) => ({ user: { type: 'Bot' }, created_at: new Date(Date.now() - minutesAgo * 60000).toISOString(), body: `x\n${retryMarker({ at: Date.now(), attempt, reason: 'backoff' })}` });
 
-test('Scenario: The log names the reset - the issue is queued, not qa-failed, and the comment says when', { skip: !hasJq && 'jq is not installed' }, () => {
+test('Scenario: The log names the reset - the issue is queued, not build-failed, and the comment says when', { skip: !hasJq && 'jq is not installed' }, () => {
   const dir = world();
   const r = runStep(dir, { log: limitLog(dir, future) });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.gh, /issue edit 7 .*--add-label relevo:queued/);
-  assert.doesNotMatch(r.gh, /qa-failed/);
+  assert.doesNotMatch(r.gh, /build-failed/);
   assert.match(r.comment, /^@ana The run stopped because the usage limit/);
   assert.match(r.comment, new RegExp(new Date(future * 1000 + 60000).toISOString().slice(0, 16).replace('T', ' ')));
   assert.match(r.comment, /retry 1 of 3/);
@@ -121,33 +121,33 @@ test('Scenario: Work was kept - the comment names the branch and the issue is qu
   assert.match(r.comment, /on the branch `feature\/7-x` and the retry continues from it/);
 });
 
-test('Scenario: Work could not be kept - qa-failed and the comment says so', { skip: !hasJq && 'jq is not installed' }, () => {
+test('Scenario: Work could not be kept - build-failed and the comment says so', { skip: !hasJq && 'jq is not installed' }, () => {
   const dir = world();
   const r = runStep(dir, { log: limitLog(dir, future), rescue: 'unsafe' });
-  assert.match(r.gh, /--add-label relevo:qa-failed/);
+  assert.match(r.gh, /--add-label relevo:build-failed/);
   assert.doesNotMatch(r.gh, /--add-label relevo:queued/);
   assert.match(r.comment, /usage limit/);
 });
 
-test('Scenario: The limit is hit again and again - the fourth stop is qa-failed and asks a person', { skip: !hasJq && 'jq is not installed' }, () => {
+test('Scenario: The limit is hit again and again - the fourth stop is build-failed and asks a person', { skip: !hasJq && 'jq is not installed' }, () => {
   const dir = world({ comments: [botComment(1, 300), botComment(2, 200), botComment(3, 20)] });
   const r = runStep(dir, { log: limitLog(dir, future) });
-  assert.match(r.gh, /--add-label relevo:qa-failed/);
+  assert.match(r.gh, /--add-label relevo:build-failed/);
   assert.doesNotMatch(r.gh, /--add-label relevo:queued/);
   assert.match(r.comment, /after 3 automatic retries/);
 });
 
-test('Scenario: Another failure - a log without a limit keeps the generic comment and qa-failed', { skip: !hasJq && 'jq is not installed' }, () => {
+test('Scenario: Another failure - a log without a limit keeps the generic comment and build-failed', { skip: !hasJq && 'jq is not installed' }, () => {
   const dir = world();
   const file = join(dir, 'plain.json');
   writeFileSync(file, JSON.stringify([{ type: 'result', is_error: true, result: 'the shell failed' }]));
   const r = runStep(dir, { log: file });
-  assert.match(r.gh, /--add-label relevo:qa-failed/);
+  assert.match(r.gh, /--add-label relevo:build-failed/);
   assert.match(r.comment, /ended without a result/);
 });
 
 // A requirement of `usage-limit-retry`: an issue returned to the queue ends with the queued label and no other lifecycle label.
-test('Scenario: The issue was building - it ends with queued and none of ready, building or qa-failed', { skip: !hasJq && 'jq is not installed' }, () => {
+test('Scenario: The issue was building - it ends with queued and none of ready, building or build-failed', { skip: !hasJq && 'jq is not installed' }, () => {
   const dir = world({ labels: 'relevo:building' });
   const r = runStep(dir, { log: limitLog(dir, future) });
   assert.equal(r.status, 0, r.stderr);
@@ -168,8 +168,8 @@ test('Scenario: The labels were renamed - the renamed queued label is what the i
   // pattern such as `relevo:(ready|building)`) to the renamed ones.
   const renamed = stepScript(go, 'no_outcome')
     .replace(/relevo:\(/g, 'team:(')
-    .replace(/relevo:(ready|queued|building|qa-failed|needs-spec)\b/g, 'team:$1');
-  assert.doesNotMatch(renamed, /relevo:(ready|queued|building|qa-failed|needs-spec)\b/);
+    .replace(/relevo:(ready|queued|building|build-failed|needs-spec)\b/g, 'team:$1');
+  assert.doesNotMatch(renamed, /relevo:(ready|queued|building|build-failed|needs-spec)\b/);
   const dir = world({ labels: 'team:building,bug' });
   const r = runStep(dir, { log: limitLog(dir, future), script: renamed });
   assert.equal(r.status, 0, r.stderr);

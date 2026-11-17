@@ -5,6 +5,7 @@
 // commands that need it. Prints one block per failure with its fix.
 //   exit 0: all passed   exit 1: something failed   exit 2: unknown check
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { DEFAULT_CHECKS, formatPreflight, runPreflight } from './lib/preflight.mjs';
@@ -23,7 +24,7 @@ const run = (command, args) => {
 
 // The files that the install step of the cloud job left changed before the agent started, as recorded by
 // tree-baseline.mjs: they do not count as uncommitted work. Without a baseline (a local run) every change counts.
-const baseline = loadBaseline(process.env.RELEVO_PROGRESS_DIR);
+const baseline = loadBaseline(progressDir());
 const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const installed = (path) => Boolean(baseline[path]) && fingerprint(git, path) === baseline[path];
 

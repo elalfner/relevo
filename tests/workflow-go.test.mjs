@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,9 +11,10 @@ const root = new URL('../', import.meta.url).pathname;
 const workflow = readFileSync(`${root}templates/workflows/relevo-go.yml`, 'utf8');
 const { config } = loadConfig(readFileSync(`${root}templates/relevo.yml`, 'utf8'));
 
-test('Scenario: Authorised label - the workflow starts only on the ready label applied by a person', () => {
-  const ready = resolveLabelNames({}).ready;
-  assert.ok(workflow.includes(`github.event.label.name == '${ready}'`));
+test('Scenario: Authorised label - the workflow starts only on the go label applied by a person, never on ready', () => {
+  const { ready, go } = resolveLabelNames({});
+  assert.ok(workflow.includes(`github.event.label.name == '${go}'`));
+  assert.ok(!workflow.includes(`github.event.label.name == '${ready}'`), 'approving an issue starts nothing');
   assert.match(workflow, /github\.event\.sender\.type == 'User'/);
   assert.match(workflow, /types: \[labeled\]/);
 });
@@ -64,23 +65,23 @@ test('Scenario: Subagent in the background - the unattended run keeps subagents 
   assert.match(workflow, /CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'/);
 });
 
-test('Scenario: Run ends without an outcome - a final step always runs and moves the issue to qa-failed with the run link', () => {
+test('Scenario: Run ends without an outcome - a final step always runs and moves the issue to build-failed with the run link', () => {
   assert.match(workflow, /if: always\(\)/);
   assert.ok(workflow.indexOf('anthropics/claude-code-action') < workflow.lastIndexOf('Report a run that ended without an outcome'), 'the build job reports after the agent step');
   assert.match(workflow, /grep -qxE 'relevo:\(ready\|building\)'/);
-  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(workflow, /--remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
   assert.match(workflow, /RUN_URL: \$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/);
   assert.match(workflow, /gh issue comment "\$ISSUE"/);
 });
 
 test('Scenario: Run ends with an outcome - the final step leaves the issue alone', () => {
   const guard = workflow.indexOf("grep -qxE 'relevo:(ready|building)'");
-  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed', guard));
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:build-failed', guard));
 });
 
 test('the final step uses the default labels of the template', () => {
   const names = resolveLabelNames({});
-  for (const key of ['ready', 'building', 'qa-failed']) assert.ok(workflow.includes(names[key]), `${names[key]} must appear`);
+  for (const key of ['ready', 'building', 'build-failed']) assert.ok(workflow.includes(names[key]), `${names[key]} must appear`);
 });
 
 test('Scenario: Subscription - the template shows the token as a ready-to-use alternative to the API key', () => {
@@ -103,7 +104,7 @@ test('Scenario: Dispatched run fails before claiming the issue - it is reported,
 
 test('Scenario: Run ends normally with the issue queued - nothing is reported', () => {
   const guard = workflow.indexOf('JOB_STATUS" != "success"');
-  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:qa-failed', guard));
+  assert.ok(guard !== -1 && workflow.indexOf('exit 0', guard) < workflow.indexOf('--add-label relevo:build-failed', guard));
 });
 
 // ---------- two jobs: a light gate and a heavy build
@@ -119,7 +120,7 @@ const jobText = (name) => {
 test('Scenario: Issue not ready to build - only the light decide job runs, and it never installs a toolchain or starts the agent', () => {
   const decide = jobText('decide');
   assert.ok(!/flutter-action|install --global|claude-code-action/.test(decide.replace(/^\s*#.*$/gm, '')), 'decide must stay light');
-  assert.match(decide, /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --apply --claim --credential "\$HAS_CREDENTIAL" --github-output "\$GITHUB_OUTPUT"/);
+  assert.match(decide, /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --place cloud --apply --claim --credential "\$HAS_CREDENTIAL" --github-output "\$GITHUB_OUTPUT"/);
   assert.match(decide, /timeout-minutes: 10/);
   assert.match(decide, /action: \$\{\{ steps\.plan\.outputs\.action \}\}/);
   assert.match(decide, /decision_b64: \$\{\{ steps\.plan\.outputs\.decision_b64 \}\}/);
@@ -136,7 +137,7 @@ test('Scenario: Gates pass - the build job runs only when the decision is start 
 
 test('the event gate is on decide, so build is skipped with it', () => {
   const decide = jobText('decide');
-  assert.match(decide, /if: vars\.RELEVO_CLOUD_GO != 'off' && \(github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.label\.name == 'relevo:ready' && github\.event\.sender\.type == 'User'\)\)/);
+  assert.match(decide, /if: vars\.RELEVO_CLOUD_GO != 'off' && \(github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.label\.name == 'relevo:go' && github\.event\.sender\.type == 'User'\)\)/);
   assert.ok(!/^\s+if: github\.event_name/m.test(jobText('build')));
 });
 
@@ -278,7 +279,7 @@ test('Scenario: A runner without the toolchain - the check stops the job before 
   assert.doesNotMatch(text.replace(/^\s*#.*$/gm, ''), /\.relevo-plugin/, 'nothing is written in the workspace: the agent needs a clean tree');
   assert.match(text, /toolchain-check\.mjs" --platform "\$PLATFORM" --plugin-root "\$RUNNER_TEMP\/relevo"/);
   assert.match(text, /render-message\.mjs" toolchain_missing --config relevo\.yml/);
-  assert.match(text, /--remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed/);
+  assert.match(text, /--remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed/);
   assert.match(text, /gh issue comment "\$ISSUE" --body "\$body"/);
   assert.match(text, /exit 1\s*$/, 'the job fails after it commented');
 });
@@ -399,8 +400,8 @@ test('Scenario: A finished build starts the queue - a job of its own, after the 
   assert.match(requeue, /gh workflow run relevo-queue\.yml --repo "\$GITHUB_REPOSITORY"/);
   assert.match(requeue, /continue-on-error: true/);
   assert.match(requeue, /::warning::The queue was not started/);
-  assert.match(requeue, /permissions:\n {6}actions: write\n/);
-  assert.doesNotMatch(requeue, /uses:|contents:|issues:|pull-requests:/, 'no checkout, no other permission');
+  assert.match(requeue, /permissions:\n {6}actions: write\n {6}issues: write\n/);
+  assert.doesNotMatch(requeue, /uses:|contents:|pull-requests:/, 'no checkout, no other permission: issues: write is only for the build that no runner took');
 });
 
 test('Scenario: Permissions of the jobs - only the job that starts the queue can write actions, never the one that runs the agent', () => {
@@ -514,4 +515,135 @@ test('Scenario: A limit of the runner - the report names the turn limit or the c
   assert.match(report, /CUT="\$cut"/, 'the limit that cut the run goes to the catalog, which names it in both situations');
   assert.match(report, /cut: e\.CUT/);
   assert.match(stepOf('Install the Relevo scripts for the reports'), /scripts\/run-cut\.mjs/);
+});
+
+// --- split-ready-and-go: the workflow starts on the go label
+
+test('every step that removes relevo:ready also removes relevo:go, in the same command', () => {
+  const lines = workflow.split('\n').filter((l) => l.includes('--remove-label relevo:ready'));
+  assert.ok(lines.length >= 4, 'the failure steps, the queue step and the needs-spec step');
+  lines.forEach((l) => assert.match(l, /--remove-label relevo:go\b/, l.trim()));
+});
+
+test('the note about renamed labels names both ready and go', () => {
+  const header = workflow.split('\n').slice(0, 12).join('\n');
+  assert.match(header, /starts when someone with write access applies `relevo:go` to an issue that is `relevo:ready`/);
+  assert.match(header, /If you renamed the ready or go label in relevo\.yml, change them below too/);
+  workflow.split('\n').filter((l) => /renamed the labels in relevo\.yml/.test(l)).forEach((l) => assert.ok(l.length > 0));
+});
+
+test('the planner of the workflow plans for the cloud', () => {
+  assert.match(jobText('decide'), /go-plan\.mjs --repo "\$GITHUB_REPOSITORY" --only "\$ISSUE" --place cloud --apply --claim/);
+});
+
+test('Scenario: Paused - the comment of the decide job says that a go label waits as a pending request', () => {
+  assert.match(jobText('decide'), /a go label starts nothing and stays on the issue as a pending\s+#\s+request/);
+});
+
+test('no comment of the workflow tells a person to apply ready again to build', () => {
+  assert.doesNotMatch(workflow, /apply \\`relevo:ready\\` again\./);
+  assert.match(workflow, /apply \\`relevo:go\\` so that the cloud builds it again, or run \\`\/relevo:go \$ISSUE --retry\\` on your machine/);
+});
+
+// ---------- a build that waits for a runner
+
+const stubGh = (state) => {
+  const dir = mkdtempSync(join(tmpdir(), 'requeue-'));
+  mkdirSync(join(dir, 'bin'));
+  writeFileSync(join(dir, 'state.json'), JSON.stringify(state));
+  writeFileSync(join(dir, 'bin', 'gh'), `#!/usr/bin/env node
+const fs = require('node:fs');
+const file = ${JSON.stringify(join(dir, 'state.json'))};
+const st = JSON.parse(fs.readFileSync(file, 'utf8'));
+const a = process.argv.slice(2);
+st.calls.push(a);
+const save = () => fs.writeFileSync(file, JSON.stringify(st));
+const jq = (a.includes('--jq') ? a[a.indexOf('--jq') + 1] : '');
+if (a[0] === 'issue' && a[1] === 'view') { save(); console.log(st.labels.join('\\n')); }
+else if (a[0] === 'issue' && a[1] === 'edit') {
+  a.forEach((x, i) => { if (x === '--remove-label') st.labels = st.labels.filter((l) => l !== a[i + 1]); });
+  a.forEach((x, i) => { if (x === '--add-label') st.labels.push(a[i + 1]); });
+  save();
+} else if (a[0] === 'api' && a.includes('-X')) {
+  const body = a.find((x) => x.startsWith('body=')).slice(5);
+  st.comments.find((c) => a.some((x) => x.endsWith('/' + c.id))).body = body; save();
+} else if (a[0] === 'api' && a.some((x) => x.includes('/comments'))) {
+  save();
+  const ok = (c) => c.user.type === 'Bot' && c.body.includes('<!-- relevo:progress -->') && c.body.includes('<!-- relevo:progress:waiting -->') && !c.body.includes('<!-- relevo:progress:closed -->');
+  console.log(st.comments.filter(ok).map((c) => c.id).join('\\n'));
+} else if (a[0] === 'api' && a.some((x) => x.includes('contents/relevo.yml'))) { save(); console.log(st.language ? Buffer.from('language: ' + st.language + '\\n').toString('base64') : ''); }
+else { save(); }
+`);
+  chmodSync(join(dir, 'bin', 'gh'), 0o755);
+  return { dir, state: () => JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8')) };
+};
+const runUnstarted = (state, result, extra = {}) => {
+  const step = stepOf('Return a build that no runner took to the queue', jobText('requeue'));
+  const script = /run: \|\n([\s\S]*)$/.exec(step)[1].split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const gh = stubGh({ labels: ['relevo:building'], language: null, comments: [{ id: 5, user: { type: 'Bot' }, body: 'waits\n<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->' }], calls: [], ...state });
+  const r = spawnSync('bash', ['-e', '-c', script], { encoding: 'utf8', env: { ...process.env, PATH: `${join(gh.dir, 'bin')}:${process.env.PATH}`, BUILD_RESULT: result, ISSUE: '42', GITHUB_REPOSITORY: 'o/r', ...extra } });
+  return { ...gh, r };
+};
+
+test('Scenario: Decision job claims - after the claim, and only for a start decision, the decide job says that the build waits for a runner', () => {
+  const decide = jobText('decide');
+  const step = stepOf('Say that the build waits for a runner', decide);
+  assert.ok(decide.indexOf('- name: Say that the build waits for a runner') > decide.indexOf('- name: Gates and claim'), 'after the claim');
+  assert.match(step, /if: steps\.plan\.outputs\.action == 'start'/);
+  assert.match(step, /continue-on-error: true/);
+  assert.match(step, /"\$script" waiting --issue "\$ISSUE"/);
+  assert.match(step, /\[ -f "\$script" \] \|\| exit 0/, 'a package without the script shows nothing and builds as before');
+});
+
+test('Scenario: The build job starts - the build job runs progress.mjs started before any tool is installed and before the checks', () => {
+  const build = jobText('build');
+  const steps = build.split('\n      - ').slice(1);
+  const first = steps.findIndex((t) => /\brun: /.test(t));
+  assert.match(steps[first], /^name: Mark the build as started/, 'the first step that runs a command');
+  assert.ok(steps.slice(0, first).every((t) => /^uses: actions\/(checkout|setup-node)@/.test(t)), 'only the checkout and Node, which the script needs, come before it');
+  assert.match(steps[first], /"\$script" started --issue "\$ISSUE"/);
+  assert.match(steps[first], /continue-on-error: true/);
+});
+
+test('Scenario: GitHub cancels a job that waited too long - the requeue job has a step before it starts the queue', () => {
+  const requeue = jobText('requeue');
+  assert.ok(requeue.indexOf('- name: Return a build that no runner took to the queue') > -1);
+  assert.ok(requeue.indexOf('- name: Return a build that no runner took to the queue') < requeue.indexOf('- name: Start the queue'));
+  const step = stepOf('Return a build that no runner took to the queue', requeue);
+  assert.match(step, /BUILD_RESULT: \$\{\{ needs\.build\.result \}\}/);
+  assert.match(step, /continue-on-error: true/);
+});
+
+test('a build that never started: the issue returns to queued, the comment says so, and it is not a failed build', () => {
+  const t = runUnstarted({}, 'cancelled');
+  assert.equal(t.r.status, 0, t.r.stderr);
+  const st = t.state();
+  assert.deepEqual(st.labels, ['relevo:queued']);
+  assert.ok(!st.labels.includes('relevo:build-failed'));
+  assert.equal(st.comments.length, 1, 'one comment, no second');
+  assert.match(st.comments[0].body, /No runner took the build/);
+  assert.match(st.comments[0].body, /<!-- relevo:progress:closed -->/);
+  assert.doesNotMatch(st.comments[0].body, /waiting/);
+});
+
+test('the line is in the language of relevo.yml', () => {
+  const t = runUnstarted({ language: 'es' }, 'cancelled');
+  assert.match(t.state().comments[0].body, /Ningún runner tomó la construcción/);
+});
+
+test('a build that ended in success or failure is left alone, as is an issue in another state or one whose comment does not wait', () => {
+  ['success', 'failure'].forEach((result) => {
+    const t = runUnstarted({}, result);
+    assert.deepEqual(t.state().labels, ['relevo:building'], result);
+    assert.match(t.state().comments[0].body, /waiting/);
+  });
+  const built = runUnstarted({ labels: ['relevo:built'] }, 'cancelled');
+  assert.deepEqual(built.state().labels, ['relevo:built']);
+  const started = runUnstarted({ comments: [{ id: 5, user: { type: 'Bot' }, body: 'Running for 3 min\n<!-- relevo:progress -->' }] }, 'cancelled');
+  assert.deepEqual(started.state().labels, ['relevo:building'], 'a build that started is left to the reports that exist');
+  assert.equal(started.state().comments[0].body.startsWith('Running'), true);
+  const person = runUnstarted({ comments: [{ id: 5, user: { type: 'User' }, body: '<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->' }] }, 'cancelled');
+  assert.deepEqual(person.state().labels, ['relevo:building'], 'a comment typed by a person is not read as the marker');
+  const closed = runUnstarted({ comments: [{ id: 5, user: { type: 'Bot' }, body: '<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->\n<!-- relevo:progress:closed -->' }] }, 'cancelled');
+  assert.deepEqual(closed.state().labels, ['relevo:building']);
 });

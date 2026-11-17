@@ -52,7 +52,7 @@ Claude: Checked both. Preview A: pass. Preview B: fail (the button is 40 dp, nee
 
 ### `/relevo:issue [what to build, the path of a saved agreement, or the number of an issue to update]`
 
-What to build, the path of a saved agreement, or the number of an issue to rewrite. It asks only what is missing, checks every draft, shows them, creates them after you approve and then asks, as a separate question, whether to apply `ready`.
+What to build, the path of a saved agreement, or the number of an issue to rewrite. It asks only what is missing, checks every draft, shows them, creates them after you approve and then asks, as a separate question, whether to apply nothing, `ready` (the approval, which starts nothing), or `ready` and `go` (`go` is offered only where the cloud can build). Given a `ready` issue to rewrite, it offers to withdraw the approval first and to give it again after the edit.
 
 ```text
 /relevo:issue a reset button on the counter screen
@@ -61,13 +61,13 @@ What to build, the path of a saved agreement, or the number of an issue to rewri
 
 ### `/relevo:go [issue-number] [--local] [--retry] [--decision <base64>]`
 
-The number of a `ready` issue. In the cloud it runs by itself when `ready` is applied; by hand, `/relevo:go` in a Claude Code session builds it on your machine in a worktree of its own (so two can run at once), and `--local` builds in a separate process with the closed tool lists and the limits of the workflow (the worktree is the same; the rest differs, see below). `--decision` is passed by the workflow, not typed. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `qa-failed`, and the comment says it is code QA did not approve ([QA failed](guide.md#qa-failed)).
+The number of a `ready` issue. In the cloud it runs when someone applies the `go` label to an approved issue (`ready` alone starts nothing); by hand, `/relevo:go` in a Claude Code session builds it on your machine with no label, claiming it with `building` and `local`, in a worktree of its own (so two can run at once), and `--local` builds in a separate process with the closed tool lists and the limits of the workflow (the worktree is the same; the rest differs, see below). `--decision` is passed by the workflow, not typed. In a session of Claude Code on the web it builds nothing: it offers to apply the `go` label instead. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `build-failed`, and the comment says it is code QA did not approve ([Failed build](guide.md#failed-build)).
 
 ```text
 /relevo:go 42 --local
 ```
 
-`--retry` builds again an issue that is `qa-failed` and has no branch on the remote (a build that pushed nothing, for example because the safe commit refused the work), without labelling it `ready`, which would start the cloud. Run it after you resolve the cause the comment names: `/relevo:go 42 --local --retry`. It applies the same gates as a normal start, with you in the place of whoever applied `ready` (write access, or maintainer when `trust` is `public`). If the issue has a branch it refuses and sends you to `/relevo:fix 42`.
+`--retry` builds again an issue that is `build-failed` and has no branch on the remote (a build that pushed nothing, for example because the safe commit refused the work), without approving it again. Run it after you resolve the cause the comment names: `/relevo:go 42 --local --retry`. The `go` label does the same in the cloud. It applies the same gates as a normal start, with you in the place of whoever requested the build (write access, or maintainer when `trust` is `public`). If the issue has a branch it refuses and sends you to `/relevo:fix 42`.
 
 #### In the session or on its own
 
@@ -110,7 +110,7 @@ The number of a `pr-open` issue whose pull request someone other than the author
 
 ### `/relevo:status`
 
-No arguments. Who is waiting on what, the `ready` issues assigned to you and any build that has stopped reporting. When a read from GitHub fails (for example a 403 on the repository variable that pauses the cloud), the report says which one under "Could not read" and that it may be incomplete, and an empty answer reads "Nothing is waiting on you. (from what could be read)".
+No arguments. Who is waiting on what, the `ready` issues assigned to you with the ways to build them, the `go` labels that nothing answers, and any build that has stopped reporting (a local one names who started it). When a read from GitHub fails (for example a 403 on the repository variable that pauses the cloud), the report says which one under "Could not read" and that it may be incomplete, and an empty answer reads "Nothing is waiting on you. (from what could be read)".
 
 The daily digest posted by the digest workflow has the same content for the team, plus one line with the usage of the cloud runs of the last seven days when they left a usage marker ([what it counts](execution.md#what-a-cloud-run-reports)). `/relevo:status` itself does not show that line.
 
@@ -146,7 +146,7 @@ A case that the stack cannot seed is skipped and the report says why: the browse
 
 - `/relevo:think` writes what it settled with ids before it asks you to run the interview, and `/relevo:issue` shows a table of which id went to which section; an id is dropped only if you say so.
 - `/relevo:think #42` starts from an issue that came back with an open question.
-- After creating issues, `/relevo:issue` asks one separate question: apply `ready` now? Nothing starts without your yes.
+- After creating issues, `/relevo:issue` asks one separate question: apply nothing, `ready`, or `ready` and `go`? `ready` alone starts nothing; nothing is applied without your answer.
 - Before drafting, `/relevo:issue` searches the open issues for similar ones.
 - `/relevo:review` begins with a short brief (what was asked, the outcome, what to check first) computed from the issue.
 
@@ -202,7 +202,7 @@ By default the person does everything in `review` and the agent only observes. W
 `fix` and `ship` change a branch after a person has looked at it, so scripts hold what must not vary.
 
 - **A fix that QA rejects is saved, not lost.** After the retries `fix` stashes the work under `relevo-fix #<n> iteration <k>` and leaves the tree clean. The next `/relevo:fix <n>` offers it back (the stash lives in that clone only). A conflict on restore stops and keeps the stash; discarding it needs your written confirmation.
-- **A branch with only the specification is not "fixed".** `fix` says to delete the remote branch and apply `relevo:ready` again.
+- **A branch with only the specification is not "fixed".** `fix` says to delete the remote branch and build the issue again with `relevo:go` or `/relevo:go <n> --retry`.
 - **The task list is checked.** Before the developer runs, the only open tasks are the corrections; one of them starts with `Test:` (a regression test) unless every correction ends with `(device only)`. After QA, none is open.
 - **`ship` can be run again.** If the change is already archived on the branch, `ship` goes on from the merge. If the archive leaves conflicts only inside `openspec/`, it reverts the archive commit, brings in the base branch and archives again, with normal pushes. A conflict in code stops it.
 - **An approval counts for the code it saw.** An approval given on an older commit does not count; after the archive commit, the approval on the head recorded at the start still does. So do its checks, when the archive commit has none of its own and changes only `openspec/`.

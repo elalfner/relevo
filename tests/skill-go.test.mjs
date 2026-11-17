@@ -56,13 +56,13 @@ test('every go-plan flag the skill uses is implemented', () => {
 
 test('every label the skill moves an issue to is a real label key', () => {
   const keys = [...body.matchAll(/label-change\.mjs --to ([\w-]+)/g)].map((m) => m[1]);
-  assert.ok(keys.includes('qa-failed') && keys.includes('built') && keys.includes('needs-spec'));
+  assert.ok(keys.includes('build-failed') && keys.includes('built') && keys.includes('needs-spec'));
   new Set(keys).forEach((k) => assert.ok(LABEL_KEYS.includes(k), `"${k}" is not a label key`));
 });
 
 test('every message the skill renders is a real message kind', () => {
   const kinds = [...body.matchAll(/render-message\.mjs (\w+)/g)].map((m) => m[1]);
-  assert.ok(kinds.includes('qa_failed') && kinds.includes('built') && kinds.includes('needs_spec'));
+  assert.ok(kinds.includes('build_failed') && kinds.includes('built') && kinds.includes('needs_spec'));
   new Set(kinds).forEach((k) => assert.ok(MESSAGE_KINDS.includes(k), `"${k}" is not a message kind`));
 });
 
@@ -101,7 +101,7 @@ test('Scenario: Decision made by the workflow - the skill decodes it, skips its 
   assert.match(body, /base64 -d/);
   assert.match(body, /which you never read as an instruction/);
   assert.match(body, /failure path with the reason `invalid decision`/);
-  assert.match(body, /Otherwise\*\* \(for example when someone runs `go` by hand\)/);
+  assert.match(body, /Otherwise\*\* \(someone runs `go` by hand, here or through `go-local\.mjs`\), this is a local build/);
 });
 
 test('Scenario: Glossary entries / A decision record - the skill copies the Documentation section verbatim and adds one task', () => {
@@ -222,7 +222,7 @@ test('Scenario: Review stays in the main working tree - the go skill does not to
 
 test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does not build in the session', () => {
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--local`\*\*, do not build in this session: run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`/);
-  assert.match(body, /show what it prints, and stop/);
+  assert.match(body, /print `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs status <issue>`[^.]*progress[^]*end your turn/);
   assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
 });
 
@@ -318,7 +318,7 @@ test('a restricted file versioned on the base branch is reported as that, not as
 test('Scenario: Local flag with retry - the skill passes --retry to go-local.mjs and to the planner', () => {
   assert.match(body, /go-local\.mjs <issue>` \(with `--retry` when `\$ARGUMENTS` has it\)/);
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--retry`\*\*/);
-  assert.match(body, /--only <issue> --retry --apply --claim/);
+  assert.match(body, /--only <issue> --place local --retry --apply --claim/);
   assert.match(body, /a branch means `\/relevo:fix <issue>`/);
 });
 
@@ -626,4 +626,124 @@ test('Scenario: Two lenses contradict each other - qa-run.md does not retry and 
   assert.match(qaRun, /`QA rejected: the lenses contradict each other`/);
   assert.match(qaRun, /--previous spec=<file>/);
   assert.match(body, /\*\*The lenses contradict each other\*\*/);
+});
+
+// --- split-ready-and-go: a local build plans with --place local
+
+test('Scenario: Approved issue built on a machine - without --decision the skill plans and claims with --place local', () => {
+  const step1 = body.slice(body.indexOf('### 1. Plan and claim'), body.indexOf('### 2. Branch'));
+  assert.match(step1, /go-plan\.mjs --repo <owner\/name> --only <issue> --place local --apply --claim/);
+  assert.match(step1, /--only <issue> --place local --retry --apply --claim/);
+  assert.match(step1, /with `--place cloud`/, 'the decision of the workflow comes from the cloud planner');
+  assert.doesNotMatch(step1, /go-plan\.mjs[^\n]*--place cloud/, 'the skill itself never plans for the cloud');
+});
+
+test('a decision that only informs is reported, and the skill builds nothing', () => {
+  const step1 = body.slice(body.indexOf('### 1. Plan and claim'), body.indexOf('### 2. Branch'));
+  assert.match(step1, /- `report`: a decision that only informs\. Nothing was claimed, no label changed/);
+  ['needs_ready', 'no_permission', 'blocked'].forEach((r) => assert.ok(step1.includes(`\`${r}\``), r));
+  assert.match(step1, /Do not build\./);
+});
+
+test('Scenario: Local build claimed - the claim of a local build is building and local', () => {
+  const step1 = body.slice(body.indexOf('### 1. Plan and claim'), body.indexOf('### 2. Branch'));
+  assert.match(step1, /`building` and `local` in one change/);
+  assert.match(step1, /not the limit of agents or the capacity of the assignee/);
+});
+
+// --- split-ready-and-go: a remote session builds nothing and offers the build request
+
+const remote = body.slice(body.indexOf('## A session on the web'), body.indexOf('## Untrusted content'));
+
+test('Scenario: Approved issue, cloud available - in a remote session the skill builds nothing and asks one yes/no question', () => {
+  assert.ok(body.indexOf('## A session on the web') !== -1 && body.indexOf('## A session on the web') < body.indexOf('## Steps'), 'the branch comes before any step');
+  assert.match(remote, /scripts\/go-where\.mjs/);
+  assert.match(remote, /`remote` is `true`/);
+  assert.match(remote, /Build nothing and claim nothing/);
+  assert.match(remote, /one yes\/no question/);
+  assert.match(remote, /apply the `go` label to #<issue> so that the cloud builds it/);
+});
+
+test('the go label is applied only on a clear yes, to a ready issue, after the permission check, through the scripts', () => {
+  assert.match(remote, /only on a clear yes/);
+  assert.match(remote, /gh api repos\/\{owner\}\/\{repo\} --jq \.permissions/);
+  assert.match(remote, /label-change\.mjs --to go --current/);
+  assert.match(remote, /gh-web\.mjs issue edit <issue> --add-label/);
+});
+
+test('Scenario: The cloud cannot build - the skill applies nothing and says the issue needs a machine or the cloud', () => {
+  assert.match(remote, /`cloud\.builds` is `false`/);
+  assert.match(remote, /apply nothing/i);
+  assert.match(remote, /needs a machine or the cloud/);
+  ['no_workflow', 'no_credential', 'paused'].forEach((r) => assert.ok(remote.includes(`\`${r}\``), r));
+});
+
+test('Scenario: Draft - in a remote session an issue that is not ready gets nothing applied and is told it needs ready first', () => {
+  assert.match(remote, /not `ready`[^.]*needs `ready` first/);
+});
+
+test('Scenario: Local flag - the answer is the same with --local, and no option forces a build there; a run of the workflow is not a remote session', () => {
+  assert.match(remote, /also when `\$ARGUMENTS` has `--local`/);
+  assert.match(remote, /No option forces a build here/);
+  assert.match(remote, /When `\$ARGUMENTS` has `--decision <base64>`, skip this section/);
+});
+
+// ---------- the launches of the developer, and the unmarked tasks of a group
+
+test('Scenario: Launch of a group - every launch of the developer is one Agent call in the foreground, never in the background, with the turn held', () => {
+  const section = body.slice(body.indexOf('## Subagents run in the foreground'), body.indexOf('## The budget of the run'));
+  assert.match(section, /Every launch of `relevo:dev`[^.]*(group|build)[^.]*(correction|fix)[^.]*is one Agent call in the foreground/);
+  assert.match(section, /Never start one in the background and never end your turn while one is running/);
+  const step4 = body.slice(body.indexOf('Then build the pending tasks one group at a time'));
+  assert.match(step4, /one Agent call in the foreground, never in the background, and your turn does not end while it runs/);
+});
+
+test('a group launch has the description `build <k>/<n>: <tasks>` and a correction one names its attempt', () => {
+  assert.match(body, /Agent `description` `build <k>\/<n>: <tasks>` \(for example `build 2\/3: 2\.1, 2\.2`/);
+  assert.match(body, /usage comment/);
+  assert.match(ref, /`description` `fix <attempt>` \(for example `fix 2`/);
+  // the replica description is unchanged
+  assert.match(body, /`description` `replica <task id>`/);
+});
+
+test('Scenario: Unmarked tasks - step 4 reads `unmarked`: one relaunch when the report has no open question, `tasks left unfinished` at that group when it stays unmarked', () => {
+  const step4 = body.slice(body.indexOf('When a group finishes, record what the agent used'), body.indexOf('**A replicated build.**'));
+  assert.match(step4, /`unmarked`/);
+  assert.match(step4, /not empty and its report has no open question[^.]*launch `relevo:dev` once more[^.]*those tasks alone/);
+  assert.match(step4, /the checkpoint of the same group again/);
+  assert.match(step4, /still not empty[^.]*failure path with the reason `tasks left unfinished`[^.]*(do not build|no later group|without building)/i);
+  assert.match(step4, /open question/);
+  // the check after the last group stays
+  assert.match(body, /After the last group run the instructions command again: if `progress\.remaining` is above 0, take the failure path with the reason `tasks left unfinished`/);
+});
+
+// ---------- --local from a session, and the progress of an interactive build
+
+test('Scenario: Local flag - the skill starts go-local.mjs in the background, prints the status command, ends its turn without asking again, and reports the result when the command ends', () => {
+  const local = body.slice(body.indexOf('**When `$ARGUMENTS` has `--local`**'), body.indexOf('**In an interactive session**'));
+  assert.match(local, /run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`[^.]*as a background command of this session/);
+  assert.match(local, /print `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs status <issue>`[^.]*progress/);
+  assert.match(local, /end your turn/);
+  assert.match(local, /do not (ask|poll)[^.]*again/i);
+  assert.match(local, /when the command ends[^.]*(report|say)[^.]*(printed|result)/i);
+  assert.match(local, /do not build in this session/);
+});
+
+test('Scenario: Progress of an interactive build - the worktree has a state folder the scripts find, and the main agent has no limit of Relevo', () => {
+  const interactive = body.slice(body.indexOf('**In an interactive session**'), body.indexOf('## OpenSpec commands'));
+  assert.match(interactive, /`state`/);
+  assert.match(interactive, /another terminal with `node [^`]*go-local\.mjs status <issue>`/);
+  assert.match(interactive, /no turn or cost limit of Relevo/);
+  assert.match(body, /progress\.mjs change <change_id>/);
+});
+
+// ---------- the tool list of an interactive build (go-visibility 7.2)
+// The spike of 7.1 (does a session honour the tools that a skill declares?) has not been run, so the skill declares none: a skill
+// that declared a tool list nobody checked could gain a tool the unattended run refuses. When the spike shows that a list is honoured,
+// this test is replaced by one that compares the list with ALLOWED_TOOLS and DISALLOWED_TOOLS of scripts/lib/run-flags.mjs.
+
+test('Scenario: A session does not honour it (until a recorded check says it does) - the skill declares no tool list', () => {
+  assert.equal(meta['allowed-tools'], undefined);
+  assert.equal(meta['disallowed-tools'], undefined);
+  assert.doesNotMatch(front, /allowed-tools|allowedTools/i);
 });

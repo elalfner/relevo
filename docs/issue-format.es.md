@@ -72,7 +72,7 @@ Una ejecución sin supervisión nunca cambia los workflows (`.github/`), `relevo
 Allow-paths: pubspec.yaml, pubspec.lock
 ```
 
-Cada entrada es una ruta o un patrón (`*` se queda dentro de una carpeta, `**` cruza carpetas; un nombre sin barra coincide a cualquier profundidad). El primer grupo nunca puede permitirse: listar `.github/workflows/ci.yml` o `**` hace que el issue falle su comprobación. Sin la línea, una ejecución que toca un archivo de dependencias termina en `qa-failed` con el motivo "protected path in the diff".
+Cada entrada es una ruta o un patrón (`*` se queda dentro de una carpeta, `**` cruza carpetas; un nombre sin barra coincide a cualquier profundidad). El primer grupo nunca puede permitirse: listar `.github/workflows/ci.yml` o `**` hace que el issue falle su comprobación. Sin la línea, una ejecución que toca un archivo de dependencias termina en `build-failed` con el motivo "protected path in the diff".
 
 ### 6. Plataforma (cuando el repositorio tiene varias)
 
@@ -212,7 +212,7 @@ La línea sola no cambia cómo se construyen las tareas. Lo que vuelve *replicad
 
 - **Un hito.** El hito es el lote al que pertenece el issue.
 - **Una persona asignada.** Esa persona recibe el trabajo construido y lo revisa en un dispositivo.
-- **La etiqueta ready**, aplicada por alguien con permiso de escritura en el repositorio, cuando la spec está terminada.
+- **La etiqueta ready**, aplicada por alguien con permiso de escritura en el repositorio, cuando la spec está terminada. Es la aprobación y no inicia nada: el build se pide con la etiqueta `go` o se inicia con `/relevo:go <n>`. Editar el título o la descripción después de `ready` retira la aprobación, y el issue hay que aprobarlo otra vez.
 
 Si falta alguno de estos, no se construye nada y un comentario dice cuál.
 
@@ -231,4 +231,4 @@ Model: haiku
 QA-model: sonnet
 ```
 
-`Model:` es para el desarrollador y `QA-model:` para todas las lentes de QA. El valor es un solo nombre de modelo de `agents.ladder`. Puede elegir cualquier modelo entre el piso (`floor`) y el techo (`ceiling`) del rol: un valor por encima del techo se baja hasta él y uno por debajo del piso se sube hasta él, y el plan lo dice (cada lente de QA con su propio rango); un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Un rol que no es `auto` conserva el modelo escrito en `relevo.yml`. La comprobación del issue acepta las líneas y solo avisa de una que no se puede leer. Son parte del texto, así que editar una después de `ready` cambia el hash del issue. Mira [Elegir el modelo de cada issue](configuration.es.md#elegir-el-modelo-de-cada-issue-auto).
+`Model:` es para el desarrollador y `QA-model:` para todas las lentes de QA. El valor es un solo nombre de modelo de `agents.ladder`. Puede elegir cualquier modelo entre el piso (`floor`) y el techo (`ceiling`) del rol: un valor por encima del techo se baja hasta él y uno por debajo del piso se sube hasta él, y el plan lo dice (cada lente de QA con su propio rango); un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Un rol que no es `auto` conserva el modelo escrito en `relevo.yml`. La comprobación del issue acepta las líneas y solo avisa de una que no se puede leer. Son parte del texto, así que editar una después de `ready` retira la aprobación. Mira [Elegir el modelo de cada issue](configuration.es.md#elegir-el-modelo-de-cada-issue-auto).

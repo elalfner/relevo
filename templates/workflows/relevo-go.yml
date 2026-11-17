@@ -1,6 +1,7 @@
-# relevo-template: 0.15.0
-# Relevo: builds an issue when someone with write access labels it `relevo:ready`.
-# Copy to .github/workflows/relevo-go.yml. If you renamed the ready label in relevo.yml, change it below too.
+# relevo-template: 0.16.0
+# Relevo: builds an issue in the cloud. It starts when someone with write access applies `relevo:go` to an issue that is `relevo:ready`
+# (`ready` approves the text and starts nothing; `go` requests the build). A build on a machine (/relevo:go <n>) never starts it.
+# Copy to .github/workflows/relevo-go.yml. If you renamed the ready or go label in relevo.yml, change them below too.
 #
 # Two jobs. `decide` is light (Node and the plugin's scripts, about half a minute): it runs the gates, claims the
 # issue and comments when there is nothing to build. Only when the decision is `start` does `build` install the
@@ -11,7 +12,9 @@
 # Keep the numbers in claude_args in line with limits.run_max_turns and limits.run_max_cost.
 # Where the numbers disagree the lower one wins, so this file can only make a run cheaper than relevo.yml says.
 
-# Runner: `runs-on` comes from `runner.labels` in relevo.yml (`/relevo:init` writes it into this file, `/relevo:doctor` checks it).
+# Runner: `runs-on` comes from `runner.labels` in relevo.yml (`/relevo:init` writes it into this file, `/relevo:doctor` checks it),
+# except the `build` job, which takes `runner.build_labels` when that is set: it is the only heavy job, so the runners that carry
+# its labels are how many cloud builds a machine runs at once. The other jobs are light and stay on `runner.labels`.
 # The runner needs git, gh and jq; Node and the tools of the job are installed per job. A self-hosted runner is assumed to
 # persist between jobs, so the job puts its tools under $RUNNER_TEMP and removes what it adds to the workspace.
 
@@ -20,7 +23,7 @@ name: relevo-go
 # The version of @elalfner/relevo whose scripts this workflow runs. The plugin's templates carry the version they
 # were released with, and `/relevo:init` reports this file as different when it is older; change it by hand to update.
 env:
-  RELEVO_VERSION: '0.15.0'
+  RELEVO_VERSION: '0.16.0'
   # The version of OpenSpec that the job installs for itself.
   OPENSPEC_VERSION: '1.14.3'
   # The version of Bun that the build job installs, caches and hands to the agent action. It is the one claude-code-action
@@ -56,9 +59,10 @@ permissions:
 
 jobs:
   decide:
-    # The repository variable RELEVO_CLOUD_GO set to `off` pauses the cloud: a ready label starts nothing and the issue
-    # stays ready for a local run (/relevo:go <n>). It is read at run time, so changing it needs no pull request.
-    if: vars.RELEVO_CLOUD_GO != 'off' && (github.event_name == 'workflow_dispatch' || (github.event.label.name == 'relevo:ready' && github.event.sender.type == 'User'))
+    # The repository variable RELEVO_CLOUD_GO set to `off` pauses the cloud: a go label starts nothing and stays on the issue as a pending
+    # request, which a local run (/relevo:go <n>) can still take and the queue serves when the cloud resumes. It is read at run time,
+    # so changing it needs no pull request. The label is the go label: approving an issue with ready starts nothing.
+    if: vars.RELEVO_CLOUD_GO != 'off' && (github.event_name == 'workflow_dispatch' || (github.event.label.name == 'relevo:go' && github.event.sender.type == 'User'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # The same permissions as the workflow plus `actions: read`, to read how long the recent builds took for the comment of a queued
@@ -109,10 +113,27 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
           # relevo:credential begin
-          # Without a model credential the cloud cannot build: the issue stays ready and a comment says to run it locally.
+          # Without a model credential the cloud cannot build: the issue stays ready, loses the go label, and a comment says to run it locally.
           HAS_CREDENTIAL: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
           # relevo:credential end
-        run: node .relevo-plugin/scripts/go-plan.mjs --repo "$GITHUB_REPOSITORY" --only "$ISSUE" --apply --claim --credential "$HAS_CREDENTIAL" --github-output "$GITHUB_OUTPUT"
+        run: node .relevo-plugin/scripts/go-plan.mjs --repo "$GITHUB_REPOSITORY" --only "$ISSUE" --place cloud --apply --claim --credential "$HAS_CREDENTIAL" --github-output "$GITHUB_OUTPUT"
+
+      # The issue is claimed: say now that the build waits for a runner, so the minute or more (or the hours, on a busy
+      # machine) between the label and the start of the build is not silent. The first step of `build` edits this same
+      # comment, and the `requeue` job tells a build that no runner took by the marker that this comment carries. It never
+      # fails the job, and a package without the script simply shows nothing.
+      - name: Say that the build waits for a runner
+        if: steps.plan.outputs.action == 'start'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: |
+          script=.relevo-plugin/scripts/progress.mjs
+          [ -f "$script" ] || exit 0
+          node "$script" waiting --issue "$ISSUE" --config relevo.yml
+          exit 0
 
       # See the same step in `build`. A failure before the issue is claimed (the plugin cannot be cloned, the
       # scripts fail) leaves it ready or queued with nobody told.
@@ -132,7 +153,7 @@ jobs:
             exit 0
           fi
           assignee=$(gh issue view "$ISSUE" --json assignees --jq '.assignees[0].login // empty')
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed
           # The words come from the message catalog, in the language of relevo.yml. This step runs because a step before it failed,
           # possibly the one that installs the scripts: then the English sentence below is posted, so the issue is still told.
           body=""
@@ -140,7 +161,7 @@ jobs:
             body=$(ASSIGNEE="$assignee" node -e 'const e = process.env; console.log(JSON.stringify({assignee: e.ASSIGNEE, issue: e.ISSUE, job_status: e.JOB_STATUS, run: e.RUN_URL}))' \
               | node .relevo-plugin/scripts/render-message.mjs run_failed_early --config relevo.yml) || body=""
           fi
-          [ -n "$body" ] || body="${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+          [ -n "$body" ] || body="${assignee:+@$assignee }The run failed before it could decide what to do (job status: $JOB_STATUS), so nothing was built. Read the log to see why: $RUN_URL. When the cause is fixed, apply \`relevo:go\` so that the cloud builds it again, or run \`/relevo:go $ISSUE --retry\` on your machine."
           gh issue comment "$ISSUE" --body "$body"
 
       # A runner may keep its workspace between jobs (a self-hosted one does): remove what this job added to it.
@@ -151,6 +172,7 @@ jobs:
   build:
     needs: decide
     if: needs.decide.outputs.action == 'start'
+    # The heavy job: `/relevo:init` writes `runner.build_labels` here when relevo.yml sets it, and `runner.labels` otherwise.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -166,6 +188,25 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
+
+      # The first thing this job does once a runner has taken it: the comment that the `decide` job opened says that the build
+      # waits for a runner, and this edit (one direct edit, not the progress report below) says that it started, which is also
+      # how the `requeue` job knows that a build ran. Only the checkout (relevo.yml, for the language) and Node (for the script)
+      # come before it. It never fails the job.
+      - name: Mark the build as started
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/relevo"
+          npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null || exit 0
+          tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo" || exit 0
+          script="$RUNNER_TEMP/relevo/scripts/progress.mjs"
+          [ -f "$script" ] || exit 0
+          node "$script" started --issue "$ISSUE" --config relevo.yml
+          exit 0
 
       # The agent runs the project's own checks (QA runs them), so the toolchain of the stack of the platform of the
       # issue is installed here. The `decide` job tells which one (`needs.decide.outputs.stack`) and where it lives
@@ -324,7 +365,7 @@ jobs:
               | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" installed_missing --config relevo.yml)
             what="The dependencies are not installed ($paths is missing), so nothing was built"
           fi
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed
           gh issue comment "$ISSUE" --body "$body"
           echo "::error::$what"
           exit 1
@@ -424,7 +465,7 @@ jobs:
           to="${writer:-${assignee:-$GITHUB_ACTOR}}"
           body=$(WRITER="$to" TITLE="$title" MISSING="$missing" REASON="$reason" node -e 'const e = process.env; console.log(JSON.stringify({spec_writer: e.WRITER, issue: Number(process.env.ISSUE), title: e.TITLE, missing: e.MISSING, reason: e.REASON}))' \
             | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" needs_spec --config relevo.yml)
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:needs-spec
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:needs-spec
           [ -z "$writer" ] || gh issue edit "$ISSUE" --add-assignee "$writer" || true
           gh issue comment "$ISSUE" --body "$body"
           echo "::error::The issue went back to needs-spec ($reason) before the agent started: $missing"
@@ -723,7 +764,7 @@ jobs:
             if [ -f "$candidate" ]; then render="$candidate"; break; fi
           done
           # A usage limit is not a failure of the code: the issue goes back to the queue with a retry time and one comment says when,
-          # instead of `qa-failed`. It is bounded (3 retries), it never retries when the work done was not kept (the rescue step says),
+          # instead of `build-failed`. It is bounded (3 retries), it never retries when the work done was not kept (the rescue step says),
           # and it needs the comment of the catalog (the hidden retry time is in it): without that comment the path below runs.
           retry_body=""
           limit_stop=""
@@ -739,12 +780,12 @@ jobs:
           fi
           if [ -n "$retry_body" ]; then
             # `queued` is only added here: a label that one command both adds and removes is gone afterwards, and the issue would be in no queue.
-            gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:building --add-label relevo:queued
+            gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:go --remove-label relevo:building --add-label relevo:queued
             gh issue comment "$ISSUE" --body "$retry_body"
             echo "reported=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:queued --remove-label relevo:building --add-label relevo:qa-failed
+          gh issue edit "$ISSUE" --remove-label relevo:ready --remove-label relevo:go --remove-label relevo:queued --remove-label relevo:building --add-label relevo:build-failed
           # What happened decides the text: the rescue step kept the work, or the model account reached its usage limit (a
           # quota or an empty credit balance is not a failure of the code; after the retries were used up it says so), or the run
           # simply ended without a result.
@@ -766,7 +807,7 @@ jobs:
           if [ -z "$body" ]; then
             kept=""
             [ "$RESCUE_STATE" = "kept" ] && kept=" The work done before the stop was kept on the branch \`$RESCUE_BRANCH\`."
-            body="${assignee:+@$assignee }The run ended without an outcome (job status: $JOB_STATUS), so nothing was built or reported.$kept Read the log to see why: $RUN_URL. When the cause is fixed, remove \`relevo:qa-failed\` and apply \`relevo:ready\` again."
+            body="${assignee:+@$assignee }The run ended without an outcome (job status: $JOB_STATUS), so nothing was built or reported.$kept Read the log to see why: $RUN_URL. When the cause is fixed, apply \`relevo:go\` so that the cloud builds it again, or run \`/relevo:go $ISSUE --retry\` on your machine."
           fi
           # Where to look: the summary of the run page holds the trimmed transcript (it needs read access to the repository).
           if [ "$TRANSCRIPT_SAVED" = "true" ]; then
@@ -835,9 +876,37 @@ jobs:
     if: always() && vars.RELEVO_CLOUD_GO != 'off' && (needs.build.result != 'skipped' || needs.decide.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # `issues: write` is for the one step that returns a build that no runner took to the queue (labels and its own comment).
     permissions:
       actions: write
+      issues: write
     steps:
+      # GitHub cancels a job that waited too long for a runner: none of its steps ran, so the issue would stay `building` with
+      # nothing said. The comment that the `decide` job opened still says that the build waits, and the first step of `build`
+      # drops that marker, so a build that started is never mistaken for one that did not. A build that ended in success or
+      # failure is left to the reports of the build job, and any other issue is left alone. The line replaces that comment, so
+      # no comment is added; the queue below tries the issue again.
+      - name: Return a build that no runner took to the queue
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          case "$BUILD_RESULT" in success|failure) exit 0 ;; esac
+          gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx 'relevo:building' || exit 0
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments?per_page=100" --jq '.[] | select(.user.type == "Bot" and (.body | contains("<!-- relevo:progress -->")) and (.body | contains("<!-- relevo:progress:waiting -->")) and ((.body | contains("<!-- relevo:progress:closed -->")) | not)) | .id' | tail -n 1)
+          [ -n "$id" ] || exit 0
+          lang=$(gh api "repos/$GITHUB_REPOSITORY/contents/relevo.yml" --jq .content 2>/dev/null | base64 -d 2>/dev/null | sed -n 's/^language:[[:space:]]*\([a-z][a-z]*\).*/\1/p' | head -n 1)
+          line="No runner took the build of this issue, so nothing was built and nothing failed. It is back in the queue, which tries it again."
+          [ "$lang" = "es" ] && line="Ningún runner tomó la construcción de este issue, así que no se construyó nada y nada falló. Vuelve a la cola, que lo intenta de nuevo."
+          gh issue edit "$ISSUE" --remove-label relevo:building --add-label relevo:queued
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$line
+
+          <!-- relevo:progress -->
+          <!-- relevo:progress:closed -->" > /dev/null
+
       - name: Start the queue
         continue-on-error: true
         env:
