@@ -2,10 +2,10 @@
 
 ## 1. Check what the design leaves unverified
 
-- [ ] 1.1 On a Mac whose simulator works, boot an iPhone, install and launch an app, and find the form of `xcrun simctl io <udid> screenshot` that writes a PNG (with and without `--type`, to a file and to `-`); on 2026-11-17 it failed with `Invalid argument` on the only device type available. Record the working form in `docs/pilot-findings.md` and fix `captureIos` if it differs.
-- [ ] 1.2 Crash the app on purpose and note where the evidence is (the process log does not hold it; look at `~/Library/Logs/DiagnosticReports/` and the simulator's own folder), how the file is named, and whether its time can be compared with the review start; keep a sanitized fixture.
-- [ ] 1.3 Make SwiftUI report a runtime issue on purpose (for example, change state inside `body`) and keep the `log show --style ndjson` entry as a fixture to confirm that it is a `Fault` under `com.apple.runtime-issues`; if the type or subsystem differs, change `auditIosLog` and the scenario.
-- [ ] 1.4 Confirm how to get the process name of the app from the installed bundle (`CFBundleExecutable` in its `Info.plist`, found with `xcrun simctl get_app_container <udid> <bundle-id> app`) and that `process == "<name>"` matches the app and nothing else.
+- [x] 1.1 On a Mac whose simulator works, boot an iPhone, install and launch an app, and find the form of `xcrun simctl io <udid> screenshot` that writes a PNG (with and without `--type`, to a file and to `-`); on 2026-11-17 it failed with `Invalid argument` on the only device type available. Record the working form in `docs/pilot-findings.md` and fix `captureIos` if it differs.
+- [x] 1.2 Crash the app on purpose and note where the evidence is (the process log does not hold it; look at `~/Library/Logs/DiagnosticReports/` and the simulator's own folder), how the file is named, and whether its time can be compared with the review start; keep a sanitized fixture.
+- [x] 1.3 Make SwiftUI report a runtime issue on purpose (for example, change state inside `body`) and keep the `log show --style ndjson` entry as a fixture to confirm that it is a `Fault` under `com.apple.runtime-issues`; if the type or subsystem differs, change `auditIosLog` and the scenario.
+- [x] 1.4 Confirm how to get the process name of the app from the installed bundle (`CFBundleExecutable` in its `Info.plist`, found with `xcrun simctl get_app_container <udid> <bundle-id> app`) and that `process == "<name>"` matches the app and nothing else.
 
 ## 2. Simulator detection and capture
 
@@ -16,7 +16,7 @@
 
 - [x] 3.1 Add `scripts/lib/logaudit-ios.mjs`: read ndjson skipping what is not an entry, report `Fault` and non-Apple `Error` as findings folded by message, count Apple `Error` as system noise, and call an empty log inconclusive; verify with `tests/logaudit-ios.test.mjs` and the sanitized fixture of a real launch in `tests/fixtures/ios-log/`.
 - [x] 3.2 In `scripts/lib/review-state.mjs` and `scripts/review-state.mjs`, record the simulator source at `init` (`{ source: 'simulator', udid, process, since }`, with `since` in local time), take a new start on `reset-log`, add an `audit` input that reads the simulator log through `readIosLog` and `auditIosLog`, and keep the rule that a recorded passing run does not make an empty log conclusive; verify with tests using a fake runner for a clean slice, a slice with findings, an empty slice and a simulator that is no longer booted.
-- [ ] 3.3 List the crash reports of the app that are newer than the review start as findings (design of task 1.2); verify with a folder of fixtures.
+- [x] 3.3 List the crash reports of the app that are newer than the review start as findings (design of task 1.2); verify with a folder of fixtures (`tests/logaudit-ios.test.mjs`).
 - [x] 3.4 Keep `ignored` (the system noise count) in the report the audit prints and in the pull request body, and make the finding waivable like the others; verify with `tests/review-waivers.test.mjs` cases for a finding of an iOS audit.
 
 ## 4. The autopilot has no iOS driver
@@ -37,7 +37,7 @@
 
 ## 7. Whole change
 
-- [ ] 7.1 Run the review by hand on an iOS app in a simulator (the mock `maqueta-ios` of the OMB project is one), calling the scripts in the order the skill gives, and record in `docs/pilot-findings.md` what was caught and what was not tried; if the simulator does not work on the machine, record that this is a follow-up.
+- [x] 7.1 Run the review by hand on an iOS app in a simulator (the mock `maqueta-ios` of the OMB project is one), calling the scripts in the order the skill gives, and record in `docs/pilot-findings.md` what was caught and what was not tried; if the simulator does not work on the machine, record that this is a follow-up.
 - [x] 7.2 Run `npm test` and `openspec validate --all` and verify both pass (the `playwrightFacts` test in `tests/doctor.test.mjs` fails without this change).
 
 ## Workflow follow-up

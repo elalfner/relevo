@@ -61,3 +61,56 @@ test('identical findings are folded into one with a count, and long messages are
   assert.equal(r.findings[0].count, 2);
   assert.equal(r.findings[1].message.length, 200);
 });
+
+// The crash reports of the app: a real report of a simulator app that ended in `fatalError` (trimmed to the fields the audit reads).
+import { mkdtempSync, copyFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
+import { findCrashReports, auditSimulatorSource as auditSource } from '../scripts/lib/logaudit-ios.mjs';
+
+const crashFixture = new URL('./fixtures/ios-log/crash-report.ips', import.meta.url);
+const UDID = '94E35096-C3C1-4FB7-A807-DFD9020E7E00';
+const crashDir = (name = 'ProbeExec-2026-11-19-105845.ips') => {
+  const dir = mkdtempSync(joinPath(tmpdir(), 'crash-'));
+  copyFileSync(crashFixture, joinPath(dir, name));
+  return dir;
+};
+
+test('a crash report captured after the review started is a finding', () => {
+  const found = findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: '2026-11-19 10:58:00', udid: UDID });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].class, 'crash');
+  assert.match(found[0].excerpt, /ProbeExec Trace\/BPT trap: 5 at 2026-11-19 10:58:33/);
+});
+
+test('a crash report from before the start, of another app, or of another simulator is not a finding', () => {
+  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: '2026-11-19 10:59:00', udid: UDID }), []);
+  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'Other', since: '2026-11-19 10:58:00', udid: UDID }), []);
+  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: '2026-11-19 10:58:00', udid: 'OTHER-UDID' }), []);
+});
+
+test('a folder that cannot be read, or a file that is not a report, gives no finding', () => {
+  assert.deepEqual(findCrashReports({ dir: '/nonexistent-crash-dir', processName: 'ProbeExec', since: '2026-11-19 10:58:00' }), []);
+  const dir = mkdtempSync(joinPath(tmpdir(), 'crash-'));
+  writeFileSync(joinPath(dir, 'ProbeExec-2026-11-19-105845.ips'), 'not a report');
+  assert.deepEqual(findCrashReports({ dir, processName: 'ProbeExec', since: '2026-11-19 10:58:00' }), []);
+});
+
+test('a crash makes the audit reject even when the log of the app is empty', () => {
+  const src = { source: 'simulator', udid: UDID, process: 'ProbeExec', since: '2026-11-19 10:58:00' };
+  const crashes = (args) => findCrashReports({ ...args, dir: crashDir() });
+  const a = auditSource(src, () => '', crashes);
+  assert.equal(a.verdict, 'REVIEW REJECTED');
+  assert.equal(a.findings[0].class, 'crash');
+  assert.equal(a.counts.crash, 1);
+  assert.equal(auditSource(src, () => '', () => []).verdict, 'REVIEW INCONCLUSIVE');
+});
+
+test('a real SwiftUI runtime issue (state changed inside body, seen on iOS 27.0) is a Fault of com.apple.runtime-issues and a finding', () => {
+  const text = readFileSync(new URL('./fixtures/ios-log/swiftui-runtime-issue.ndjson', import.meta.url), 'utf8');
+  const a = auditIosLog(text);
+  assert.equal(a.status, 'findings');
+  assert.equal(a.findings[0].level, 'fault');
+  assert.equal(a.findings[0].subsystem, 'com.apple.runtime-issues');
+  assert.match(a.findings[0].message, /Modifying state during view update/);
+});

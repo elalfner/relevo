@@ -9,14 +9,14 @@ const source = { source: 'simulator', udid: 'U1', process: 'OMB', since: '2026-1
 const scope = { kind: 'ios', process: 'OMB', since: source.since };
 
 test('a clean slice passes and counts the system noise', () => {
-  const a = auditSimulatorSource(source, () => [e('Default', 'com.urban.omb', 'ok'), e('Error', 'com.apple.x', 'noise')].join('\n'));
+  const a = auditSimulatorSource(source, () => [e('Default', 'com.urban.omb', 'ok'), e('Error', 'com.apple.x', 'noise')].join('\n'), () => []);
   assert.equal(a.verdict, 'REVIEW PASSED');
   assert.equal(a.ignored, 1);
   assert.match(auditReport(a, { scope }), /1 error\(s\) written by Apple frameworks/);
 });
 
 test('a slice with findings is rejected and folded with a count', () => {
-  const a = auditSimulatorSource(source, () => [e('Fault', 'com.apple.runtime-issues', 'bad'), e('Fault', 'com.apple.runtime-issues', 'bad')].join('\n'));
+  const a = auditSimulatorSource(source, () => [e('Fault', 'com.apple.runtime-issues', 'bad'), e('Fault', 'com.apple.runtime-issues', 'bad')].join('\n'), () => []);
   assert.equal(a.verdict, 'REVIEW REJECTED');
   assert.equal(a.findings[0].count, 2);
   assert.equal(a.findings[0].class, 'fault');
@@ -24,11 +24,11 @@ test('a slice with findings is rejected and folded with a count', () => {
 });
 
 test('an empty slice is inconclusive', () => {
-  assert.equal(auditSimulatorSource(source, () => '').verdict, 'REVIEW INCONCLUSIVE');
+  assert.equal(auditSimulatorSource(source, () => '', () => []).verdict, 'REVIEW INCONCLUSIVE');
 });
 
 test('a simulator that is no longer booted is inconclusive, never a pass', () => {
-  const a = auditSimulatorSource(source, () => { throw new Error('the log of the simulator could not be read: No devices are booted.'); });
+  const a = auditSimulatorSource(source, () => { throw new Error('the log of the simulator could not be read: No devices are booted.'); }, () => []);
   assert.equal(a.verdict, 'REVIEW INCONCLUSIVE');
   assert.match(a.reason, /No devices are booted/);
 });

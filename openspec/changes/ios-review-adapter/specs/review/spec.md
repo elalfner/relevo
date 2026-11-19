@@ -74,7 +74,7 @@ An iOS review SHALL take a capture with `xcrun simctl io <udid> screenshot <file
 - **THEN** the review says that no image was produced and what the error was, and records no evidence
 
 ### Requirement: The audit of an iOS review separates faults and the app's errors from system noise
-For an iOS review the audit SHALL read only the log of the app under review since the review started, as `simctl spawn <udid> log show --style ndjson --start <time> --predicate 'process == "<app>"'`, and SHALL ignore a line that is not a log entry. Every entry of type `Fault` SHALL be a finding, including the runtime issues that SwiftUI reports. An entry of type `Error` SHALL be counted and reported as system noise when its subsystem begins with `com.apple.`, and SHALL be a finding otherwise (the app itself, an empty subsystem, or a library that is not Apple's). Entries of other types SHALL NOT be findings. Identical findings SHALL be reported once with a count. A log with no entry from the app SHALL be inconclusive, as for the other adapters.
+For an iOS review the audit SHALL read only the log of the app under review since the review started, as `simctl spawn <udid> log show --style ndjson --start <time> --predicate 'process == "<app>"'`, and SHALL ignore a line that is not a log entry. Every entry of type `Fault` SHALL be a finding, including the runtime issues that SwiftUI reports. An entry of type `Error` SHALL be counted and reported as system noise when its subsystem begins with `com.apple.`, and SHALL be a finding otherwise (the app itself, an empty subsystem, or a library that is not Apple's). Entries of other types SHALL NOT be findings. Identical findings SHALL be reported once with a count. A log with no entry from the app SHALL be inconclusive, as for the other adapters. A crash report of the app captured after the review started (a `.ips` file under `~/Library/Logs/DiagnosticReports/` named after the executable, whose `captureTime` is after the start time and whose path holds the UDID of the simulator) SHALL be a finding of class `crash`, even when the log is empty, because the log of an app that crashed does not show the crash.
 
 #### Scenario: A SwiftUI runtime issue
 - **WHEN** the log holds a `Fault` from the subsystem `com.apple.runtime-issues`
@@ -95,6 +95,14 @@ For an iOS review the audit SHALL read only the log of the app under review sinc
 #### Scenario: Entries from before the review
 - **WHEN** an `Error` of the app was written before the start time
 - **THEN** it is not read
+
+#### Scenario: A crash of the app
+- **WHEN** the app crashed after the review started and its crash report is in the folder of reports
+- **THEN** the audit is `REVIEW REJECTED` with a `crash` finding, even if the log of the app is empty
+
+#### Scenario: A crash from before the review or of another app
+- **WHEN** a crash report was captured before the start time, or belongs to another executable or another simulator
+- **THEN** it is not read as a finding
 
 #### Scenario: An empty log
 - **WHEN** the filter matches no entry

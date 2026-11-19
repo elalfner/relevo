@@ -2,6 +2,10 @@
 // Implements "The audit of an iOS review separates faults and the app's errors from system noise" of
 // openspec/changes/ios-review-adapter/specs/review/spec.md. Pure functions: they read text and return data.
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
 const MESSAGE_MAX = 200;
 
 /** The entries of an ndjson text. A line that is not a JSON object with a message, or a type, is skipped. */
@@ -72,14 +76,64 @@ export function iosReviewAudit(text) {
   return { verdict: findings.length === 0 ? 'REVIEW PASSED' : 'REVIEW REJECTED', findings, counts, ignored: r.ignored };
 }
 
-/** Read the simulator log of a review source `{ source: 'simulator', udid, process, since }` and audit it. A simulator that cannot be read is inconclusive, never a pass. */
-export function auditSimulatorSource(source, readLog) {
-  let text;
+export const defaultCrashDir = () => join(homedir(), 'Library', 'Logs', 'DiagnosticReports');
+
+/** `2026-11-19 10:58:33.2326 -0600` (the `captureTime` of a crash report) as a Date, or null. */
+function parseCaptureTime(text) {
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(\.\d+)? ([+-]\d{2})(\d{2})$/.exec(String(text ?? ''));
+  const d = m ? new Date(`${m[1]}T${m[2]}${m[3] ?? ''}${m[4]}:${m[5]}`) : null;
+  return d && !Number.isNaN(d.getTime()) ? d : null;
+}
+
+/**
+ * The crash reports of the app that were captured after the review started, as findings of class `crash`.
+ * A report is a `.ips` file under `~/Library/Logs/DiagnosticReports/` named `<executable>-<YYYY-MM-DD-HHMMSS>.ips`: its first
+ * line is a JSON header and the rest a JSON body. The body's `captureTime` is when the app crashed (the file name is when the
+ * report was written, some seconds later) and its `procPath` holds the UDID of the simulator that ran the app. A folder that
+ * cannot be read gives no findings; the log audit still decides the verdict.
+ */
+export function findCrashReports({ dir = defaultCrashDir(), processName, since, udid, readDir = readdirSync, readFile = readFileSync }) {
+  let names;
   try {
-    text = readLog({ udid: source.udid, since: source.since, processName: source.process });
+    names = readDir(dir);
+  } catch {
+    return [];
+  }
+  const start = new Date(String(since ?? '').replace(' ', 'T'));
+  const found = [];
+  for (const name of names) {
+    if (!name.startsWith(`${processName}-`) || !name.endsWith('.ips')) continue;
+    let body;
+    try {
+      body = JSON.parse(String(readFile(join(dir, name), 'utf8')).split('\n').slice(1).join('\n'));
+    } catch {
+      continue;
+    }
+    const at = parseCaptureTime(body.captureTime);
+    if (!at || at < start) continue;
+    if (udid && !String(body.procPath ?? '').includes(udid)) continue;
+    const how = body.termination?.indicator || body.exception?.type || 'crashed';
+    found.push({ class: 'crash', line: 0, excerpt: `[crash report] ${processName} ${how} at ${body.captureTime} (${name})`.slice(0, 200), count: 1, at });
+  }
+  return found.sort((a, b) => a.at - b.at).map(({ at, ...f }) => f);
+}
+
+/**
+ * Read the simulator log of a review source `{ source: 'simulator', udid, process, since }` and audit it, then add the crash
+ * reports of the app since the review started. A simulator that cannot be read is inconclusive, never a pass; a crash report
+ * is a finding even when the log is empty, because an app that crashed leaves a quiet log.
+ */
+export function auditSimulatorSource(source, readLog, readCrashes = findCrashReports) {
+  let audit;
+  try {
+    audit = iosReviewAudit(readLog({ udid: source.udid, since: source.since, processName: source.process }));
   } catch (err) {
     const unreadable = /could not be read/.test(err.message);
-    return { verdict: 'REVIEW INCONCLUSIVE', reason: unreadable ? `${err.message}: boot the simulator again, start the app and repeat the steps` : `the review state cannot be audited: ${err.message}`, findings: [], counts: {}, ignored: 0 };
+    audit = { verdict: 'REVIEW INCONCLUSIVE', reason: unreadable ? `${err.message}: boot the simulator again, start the app and repeat the steps` : `the review state cannot be audited: ${err.message}`, findings: [], counts: {}, ignored: 0 };
   }
-  return iosReviewAudit(text);
+  const crashes = readCrashes({ processName: source.process, since: source.since, udid: source.udid });
+  if (crashes.length === 0) return audit;
+  const counts = { ...audit.counts, crash: crashes.length };
+  const { reason, ...rest } = audit;
+  return { ...rest, verdict: 'REVIEW REJECTED', findings: [...audit.findings, ...crashes], counts };
 }

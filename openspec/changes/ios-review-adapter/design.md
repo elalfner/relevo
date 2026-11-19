@@ -12,11 +12,11 @@ What was checked on a Mac with Xcode 27.2 on 2026-11-17 (a throwaway simulator c
 - The three `Error` entries came from Apple frameworks inside the app's own process (for example the subsystem `com.apple.app_launch_measurement`, "Failed to send CA Event for app launch measurements"). They are the reason the audit separates system noise from the app's errors.
 - `--start "YYYY-MM-DD HH:MM:SS"` works and is read in the **host's local time**. `log show` exits 0 when nothing matches. Some output lines are not JSON (a `getpwuid_r` notice appeared), so the parser has to skip them.
 
-What could not be checked on that machine, and is left to task 1:
+What could not be checked on that machine, and was checked on 2026-11-19 on a Mac whose simulator works (iOS 27.0, Xcode 27.2; results in `docs/pilot-findings.md`):
 
 - `simctl io <udid> screenshot <file>` failed with `Invalid argument` on the only device type available, with or without `--type`, and `-` (stdout) wrote 0 bytes. `Simulator.app` could not be opened by name either, so the cause could be the device type or the install, and the working form of the command is not confirmed.
-- How a crash of the app shows up: it is not in the process's log, and the crash report is a file under `~/Library/Logs/DiagnosticReports/`. This is not verified.
-- A runtime issue reported by SwiftUI (for example "Publishing changes from within view updates") as a `Fault` with the subsystem `com.apple.runtime-issues`: assumed from Apple's documentation of runtime issues, not seen here.
+- How a crash of the app shows up: it is not in the process's log, and the crash report is a file under `~/Library/Logs/DiagnosticReports/`. Verified: the report is a `.ips` file named `<executable>-<YYYY-MM-DD-HHMMSS>.ips`, with a `captureTime` in its body.
+- A runtime issue reported by SwiftUI (for example "Publishing changes from within view updates") as a `Fault` with the subsystem `com.apple.runtime-issues`: seen on a real run (state changed inside `body`).
 
 ## Goals / Non-Goals
 
@@ -49,7 +49,7 @@ What could not be checked on that machine, and is left to task 1:
 ## Risks / Trade-offs
 
 - The screenshot command was not confirmed on a simulator (see above). The fallback is `simctl io <udid> recordVideo` or the Simulator app's own screenshot, neither verified; task 1.1 decides.
-- Crashes are not in the process log. Until task 1.2 is done, an app that crashed mid-review leaves a quiet log, which the audit would call inconclusive only if the log is empty. The mitigation is to list crash reports newer than the review start.
+- Crashes are not in the process log. An app that crashed mid-review leaves a quiet log (a `fatalError` leaves one `Default` line, not a `Fault`), so the audit also lists the crash reports newer than the review start.
 - The host's local time is used for `--start`. A review that crosses a change of the clock could read a wrong window; the risk is accepted as the Supabase adapter accepts the same kind of timestamp rule.
 - Apple changes `log show` output and the runtime-issue subsystem between releases. The audit relies on `messageType` and `subsystem`, which are the stable parts; the tests carry a fixture captured from a run.
 - The iOS review runs only on macOS. The cloud workflow uses `ubuntu-latest` unless `runner.labels` names a Mac, and `review` is a local step anyway.
