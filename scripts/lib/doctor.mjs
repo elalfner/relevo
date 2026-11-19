@@ -22,6 +22,7 @@ import { restrictedBlockState } from './agent-workflow.mjs';
 import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
+import { onPath } from './on-path.mjs';
 import { testDatabase } from './api-preflight.mjs';
 import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
@@ -652,8 +653,23 @@ function gatherPlatforms(f, p, tryRun) {
         return { target, tool, ok: tool === '' ? true : available(tool) };
       });
       // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
-      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
-      if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
+      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform), review: resolved.profile.review });
+      if (adapter.declared) {
+        // A declared adapter (the repository's own stack): the tools of review.needs are looked for on the PATH, never run, and the
+        // Docker daemon is asked when docker is listed. Nothing is started, and the log and the test command are not run.
+        const found = (tool) => (p.onPath ? tryRun(() => Boolean(p.onPath(tool)), false) : available(tool));
+        entry.declared = {
+          needs: adapter.needs.map((tool) => {
+            if (tool === 'docker') {
+              const cliOk = found('docker');
+              const daemonOk = cliOk ? tryRun(() => Boolean(p.tool('docker', ['info'])), false) : false;
+              return { tool, ok: daemonOk, cliOk };
+            }
+            return { tool, ok: found(tool) };
+          }),
+          filter: String(adapter.test ?? '').includes('{filter}'),
+        };
+      } else if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
         // A Supabase review runs pgTAP against the local containers: the config, whether the stack runs, and its log container.
         const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
         const hasConfig = p.exists(at('supabase/config.toml'));
@@ -743,7 +759,7 @@ function gatherPlatforms(f, p, tryRun) {
     f.autopilot = {
       mode,
       platforms: Object.entries(f.config.platforms).map(([name, platform]) => {
-        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets };
+        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets, review: f.platformFacts.find((x) => x.name === name)?.profile?.review };
         if (platform.stack === 'flutter') {
           entry.driverEntry = p.exists(join(platform.path, 'lib/main_driver.dart'));
           const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
@@ -917,7 +933,8 @@ function platformChecks(f) {
       if (missing.length > 0) r.push(warn(`platform.${e.name}.commands`, `platform ${e.name}: the profile of ${e.stack} defines no ${missing.join(' and no ')}, so QA has no command to run for it`, `write ${missing.join(' and ')} in .relevo/stacks/${e.stack}.md, or set platforms.${e.name}.checks in relevo.yml`));
     }
     (e.profile.ignored ?? []).forEach((x) => {
-      r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
+      const reviewAdapterKey = x.key === 'review.adapter' || x.key === 'review.needs';
+      r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, reviewAdapterKey ? `remove ${x.key} from .relevo/stacks/${e.stack}.md: only a stack the plugin has no review adapter for can declare one` : `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
     // What an api review needs, and what the review block of the profile says.
     if (e.api) {
@@ -936,6 +953,14 @@ function platformChecks(f) {
       if (sb.config && sb.running === false) r.push(note(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is not running; the review asks before it runs \`supabase start\``));
       else if (sb.running) r.push(pass(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is running`));
       if (sb.logContainerFound === false) r.push(warn(`review.log.${e.name}`, `platform ${e.name}: review.log names the container ${sb.logContainer}, which does not exist while the local stack is running, so the audit would read no log`, 'check review.log in the profile; the database container is supabase_db_<project_id>'));
+    }
+    if (e.declared) {
+      e.declared.needs.forEach(({ tool, ok, cliOk }) => {
+        const id = `review.needs.${e.name}.${tool}`;
+        if (tool === 'docker' && !ok && cliOk) r.push(warn(id, `platform ${e.name}: review.needs lists docker and the engine is stopped, so the review cannot run its tests`, 'start Docker Desktop or OrbStack'));
+        else if (!ok) r.push(warn(id, `platform ${e.name}: review.needs lists ${tool}, which is not installed, so the review cannot run its tests`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+      });
+      if (e.declared.needs.every((n) => n.ok)) r.push(pass(`review.declared.${e.name}`, `platform ${e.name}: the review is declared by .relevo/stacks/${e.stack}.md (adapter api)${e.declared.needs.length > 0 ? `, and ${e.declared.needs.map((n) => n.tool).join(', ')} ${e.declared.needs.length === 1 ? 'is' : 'are'} available` : ''}`));
     }
     (e.profile.reviewReplaced ?? []).forEach((key) => {
       r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));
@@ -1018,8 +1043,13 @@ function platformChecks(f) {
     } else if (e.stack === 'vue') {
       if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, `run /relevo:init, which offers it, or \`${e.path && e.path !== '.' ? `cd ${e.path} && ` : ''}npm install -D playwright && npx playwright install chromium\` and commit package.json and the lock file`));
       else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
-    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }) }).kind === 'api') {
-      r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
+    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }), review: e.review }).kind === 'api') {
+      const adapter = adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }), review: e.review });
+      if (adapter.declared && !String(adapter.test ?? '').includes('{filter}')) {
+        r.push(note(`autopilot.${e.name}.filter`, `platform ${e.name}: review.test has no {filter}, so with autopilot ${f.autopilot.mode} the agent marks no line by itself: it runs the whole suite once at the end and you confirm every line`));
+      } else {
+        r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
+      }
     } else {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
     }
