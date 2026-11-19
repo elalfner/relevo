@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
-import { adapterFor, autopilotAdvice, hasShippedAdapter, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
+import { adapterFor, autopilotAdvice, hasShippedAdapter, isGenericApi, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
@@ -34,7 +34,7 @@ if (!platform) fail(`there is no platform "${name}" in relevo.yml (platforms: ${
 
 const target = arg('target') ?? targetOf(platform);
 let adapter;
-if (hasShippedAdapter(platform.stack)) adapter = adapterFor({ stack: platform.stack, target });
+if (hasShippedAdapter(platform.stack) && !isGenericApi(platform.stack)) adapter = adapterFor({ stack: platform.stack, target });
 else {
   const pluginRoot = resolve(arg('plugin-root') ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));
   const base = dirname(configPath);
@@ -45,7 +45,7 @@ else {
   const resolved = resolveProfile({ platform, pluginRoot, read });
   adapter = adapterFor({ stack: platform.stack, target, review: resolved.ok ? resolved.profile.review : undefined });
   // With no profile of the repository there is nothing declared: the stack just has no adapter.
-  if (!resolved.ok && read(`.relevo/stacks/${platform.stack}.md`) !== null) {
+  if (!resolved.ok && (isGenericApi(platform.stack) || read(`.relevo/stacks/${platform.stack}.md`) !== null)) {
     adapter = { ...adapter, supported: false, reason: `the profile of the stack "${platform.stack}" cannot be resolved, so its review cannot start:\n${resolved.errors.map((e) => `  ${e}`).join('\n')}\nFix the profile and run the review again. The issue stays built.` };
   }
 }

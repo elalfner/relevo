@@ -228,7 +228,7 @@ function declaredReview({ autopilot = 'off', dockerFails = false } = {}) {
   const state = join(dir, 'evidence', 'review-state.json');
   const env = { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}` };
   const run = (...args) => spawnSync('node', [CLI, ...args, '--state', state], { encoding: 'utf8', env });
-  const init = run('init', join(dir, 'change'), '--adapter', 'api', '--stack', 'nhost', '--declared', '--log', 'compose:postgres,auth', '--cwd', join(dir, 'backend'), '--autopilot', autopilot);
+  const init = run('init', join(dir, 'change'), '--adapter', 'api', '--stack', 'pocketbase', '--declared', '--log', 'compose:postgres,auth', '--cwd', join(dir, 'backend'), '--autopilot', autopilot);
   return { dir, run, init, show: () => JSON.parse(readFileSync(state, 'utf8')), add: (line) => appendFileSync(fixture, `${line}\n`), calls: () => readFileSync(join(dir, 'docker.calls'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) };
 }
 const LATER = '2999-01-01T00:00:00.000Z';
@@ -238,7 +238,7 @@ test('a declared review records declared in the state, and init describes the se
   assert.equal(r.init.status, 0, r.init.stderr);
   assert.match(r.init.stdout, /the log of the services postgres, auth of the Compose project is read from \d{4}-/);
   const state = r.show();
-  assert.deepEqual([state.kind, state.declared, state.stack, state.log.source, state.log.services], ['api', true, 'nhost', 'compose', ['postgres', 'auth']]);
+  assert.deepEqual([state.kind, state.declared, state.stack, state.log.source, state.log.services], ['api', true, 'pocketbase', 'compose', ['postgres', 'auth']]);
   assert.equal(declaredReview().run('init', 'x', '--declared').status, 2, '--declared needs an api review');
 });
 

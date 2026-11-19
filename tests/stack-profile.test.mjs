@@ -535,10 +535,10 @@ test('Scenario: Defaults of Supabase / Remote database in test - a container log
 
 // ---- a repository profile declares the api review adapter (declared-review-adapter)
 
-const declaredProfile = (review, extra = '') => `---\nstack: nhost\n${extra}review:\n${review}---\n`;
+const declaredProfile = (review, extra = '') => `---\nstack: pocketbase\n${extra}review:\n${review}---\n`;
 const NHOST_OK = '  adapter: api\n  needs: [nhost, docker]\n  log: compose:postgres,auth\n  test: npm run --silent test:integration\n';
-const resolveWith = (files, stack = 'nhost') => resolveProfile({ platform: { stack }, pluginRoot: '/p', read: (path) => files[path] ?? null });
-const repoFile = (text, stack = 'nhost') => ({ [`.relevo/stacks/${stack}.md`]: text });
+const resolveWith = (files, stack = 'pocketbase') => resolveProfile({ platform: { stack }, pluginRoot: '/p', read: (path) => files[path] ?? null });
+const repoFile = (text, stack = 'pocketbase') => ({ [`.relevo/stacks/${stack}.md`]: text });
 
 test('Scenario: Declared in a repository-only stack - the resolved profile carries adapter, needs, log and test', () => {
   const r = resolveWith(repoFile(declaredProfile(NHOST_OK)));
@@ -561,7 +561,7 @@ test('Scenario: Needs that is not a list / with a path - review.needs is named',
 });
 
 test('Scenario: Declared in a profile of the plugin - it is refused and the message says where it belongs', () => {
-  const r = resolveWith({ '/p/stacks/nhost.md': declaredProfile(NHOST_OK) });
+  const r = resolveWith({ '/p/stacks/pocketbase.md': declaredProfile(NHOST_OK) });
   assert.equal(r.ok, false);
   assert.match(r.errors.join(' '), /"review\.adapter" belongs in the repository's profile/);
   assert.match(r.errors.join(' '), /"review\.needs" belongs in the repository's profile/);
@@ -631,4 +631,35 @@ test('a repository-only stack keeps all four keys', () => {
   const merged = mergeProfiles(null, repo);
   assert.deepEqual(Object.keys(merged.review).sort(), ['adapter', 'log', 'needs', 'test']);
   assert.deepEqual(merged.ignored, []);
+});
+
+// ---- the plugin ships the nhost profile (nhost-review-adapter)
+
+const SHIPPED_NHOST = readFileSync(new URL('../stacks/nhost.md', import.meta.url), 'utf8');
+const resolveNhost = (repository) => resolveWith({ '/p/stacks/nhost.md': SHIPPED_NHOST, ...(repository ? repoFile(repository, 'nhost') : {}) }, 'nhost');
+
+test('Scenario: Nhost profile resolution - commands, tools, review block and no targets', () => {
+  const r = resolveNhost();
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  const p = r.profile;
+  assert.deepEqual([p.commands.analyze, p.commands.test, p.tools, p.review, p.targets, p.interface], ['npm run --silent analyze', 'npm run --silent test', ['docker', 'node'], { log: 'compose:', test: 'npm run --silent test' }, {}, 'none']);
+  assert.match(p.body, /Security for the developer/);
+});
+
+test('Scenario: A full repository profile - the plugin commands stay, the difference is ignored and the bodies follow each other', () => {
+  const r = resolveNhost('---\nstack: nhost\ncommands:\n  analyze: npm run --silent analyze\n  test: npm run --silent test:integration\ntools: [node, docker]\n---\n\n# Own\n\nOwn rules.\n');
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.profile.commands.test, 'npm run --silent test');
+  assert.ok(r.profile.ignored.some((i) => /commands\.test/.test(i.key)), JSON.stringify(r.profile.ignored));
+  assert.ok(r.profile.body.indexOf('Own rules.') > r.profile.body.indexOf('Verification'));
+});
+
+test('Scenario: Nhost override of log and test - replaced; needs and adapter are ignored; a remote address is refused', () => {
+  const ok = resolveNhost('---\nstack: nhost\nreview:\n  log: compose:postgres,auth\n  test: npm run --silent test:integration\n  needs: [x]\n  adapter: api\n---\n');
+  assert.equal(ok.ok, true, JSON.stringify(ok.errors));
+  assert.deepEqual([ok.profile.review.log, ok.profile.review.test, ok.profile.review.needs, ok.profile.review.adapter], ['compose:postgres,auth', 'npm run --silent test:integration', undefined, undefined]);
+  assert.ok(ok.profile.ignored.some((i) => i.key === 'review.needs'));
+  const remote = resolveNhost('---\nstack: nhost\nreview:\n  test: curl https://db.example.com/\n---\n');
+  assert.equal(remote.ok, false);
+  assert.match(remote.errors.join(' '), /"review\.test"/);
 });

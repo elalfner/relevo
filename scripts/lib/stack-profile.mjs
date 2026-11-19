@@ -6,6 +6,7 @@
 
 import { parse, YamlLiteError } from './yaml-lite.mjs';
 import { isRestricted } from './restricted-paths.mjs';
+import { isGenericApi } from './review-adapters.mjs';
 
 export const ROLES = ['dev', 'qa', 'issue', 'review'];
 const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'installed', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review', 'interface']);
@@ -365,8 +366,9 @@ function readProfile(read, path) {
 }
 
 /** What a declared `api` adapter needs of the merged profile: its two commands, no targets, and nothing that is not local. */
-function declaredAdapterErrors(merged) {
-  if (merged.review.adapter !== 'api') return [];
+function declaredAdapterErrors(merged, stack) {
+  // The generic api adapter is declared by the repository's profile or shipped by the plugin (the table says so).
+  if (merged.review.adapter !== 'api' && !isGenericApi(stack)) return [];
   const errors = [];
   ['log', 'test'].forEach((key) => {
     if (merged.review[key] === undefined) errors.push(`"review.${key}" is missing: a declared "api" adapter needs "review.log" and "review.test"`);
@@ -397,7 +399,7 @@ export function resolveProfile({ platform, pluginRoot, read }) {
   if (errors.length > 0) return { ok: false, errors };
   const merged = mergeProfiles(plugin.profile, repository.profile);
   if (!merged) return { ok: false, errors: [`no profile for stack "${platform.stack}": define one in ${profileLocations(platform.stack)}`] };
-  const declaredErrors = declaredAdapterErrors(merged);
+  const declaredErrors = declaredAdapterErrors(merged, platform.stack);
   if (declaredErrors.length > 0) return { ok: false, errors: declaredErrors.map((e) => `${repositoryProfilePath(platform.stack)}: ${e}`) };
   const profile = applyChecks(merged, platform.checks ?? {});
   profile.stack = platform.stack;
