@@ -67,6 +67,13 @@ import { mkdtempSync, copyFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { findCrashReports, auditSimulatorSource as auditSource } from '../scripts/lib/logaudit-ios.mjs';
+import { formatLogStart } from '../scripts/lib/device-ios.mjs';
+
+// The review start is local time of the machine, so the starts are built from the instant of the crash (2026-11-19 16:58:33 UTC), not written in a zone.
+const CRASH_AT = Date.UTC(2026, 10, 19, 16, 58, 33);
+const startAt = (seconds) => formatLogStart(new Date(CRASH_AT + seconds * 1000));
+const BEFORE = startAt(-33);
+const AFTER = startAt(27);
 
 const crashFixture = new URL('./fixtures/ios-log/crash-report.ips', import.meta.url);
 const UDID = '94E35096-C3C1-4FB7-A807-DFD9020E7E00';
@@ -77,27 +84,27 @@ const crashDir = (name = 'ProbeExec-2026-11-19-105845.ips') => {
 };
 
 test('a crash report captured after the review started is a finding', () => {
-  const found = findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: '2026-11-19 10:58:00', udid: UDID });
+  const found = findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: BEFORE, udid: UDID });
   assert.equal(found.length, 1);
   assert.equal(found[0].class, 'crash');
   assert.match(found[0].excerpt, /ProbeExec Trace\/BPT trap: 5 at 2026-11-19 10:58:33/);
 });
 
 test('a crash report from before the start, of another app, or of another simulator is not a finding', () => {
-  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: '2026-11-19 10:59:00', udid: UDID }), []);
-  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'Other', since: '2026-11-19 10:58:00', udid: UDID }), []);
-  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: '2026-11-19 10:58:00', udid: 'OTHER-UDID' }), []);
+  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: AFTER, udid: UDID }), []);
+  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'Other', since: BEFORE, udid: UDID }), []);
+  assert.deepEqual(findCrashReports({ dir: crashDir(), processName: 'ProbeExec', since: BEFORE, udid: 'OTHER-UDID' }), []);
 });
 
 test('a folder that cannot be read, or a file that is not a report, gives no finding', () => {
-  assert.deepEqual(findCrashReports({ dir: '/nonexistent-crash-dir', processName: 'ProbeExec', since: '2026-11-19 10:58:00' }), []);
+  assert.deepEqual(findCrashReports({ dir: '/nonexistent-crash-dir', processName: 'ProbeExec', since: BEFORE }), []);
   const dir = mkdtempSync(joinPath(tmpdir(), 'crash-'));
   writeFileSync(joinPath(dir, 'ProbeExec-2026-11-19-105845.ips'), 'not a report');
-  assert.deepEqual(findCrashReports({ dir, processName: 'ProbeExec', since: '2026-11-19 10:58:00' }), []);
+  assert.deepEqual(findCrashReports({ dir, processName: 'ProbeExec', since: BEFORE }), []);
 });
 
 test('a crash makes the audit reject even when the log of the app is empty', () => {
-  const src = { source: 'simulator', udid: UDID, process: 'ProbeExec', since: '2026-11-19 10:58:00' };
+  const src = { source: 'simulator', udid: UDID, process: 'ProbeExec', since: BEFORE };
   const crashes = (args) => findCrashReports({ ...args, dir: crashDir() });
   const a = auditSource(src, () => '', crashes);
   assert.equal(a.verdict, 'REVIEW REJECTED');
