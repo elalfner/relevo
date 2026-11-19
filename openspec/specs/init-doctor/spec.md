@@ -1207,10 +1207,14 @@ When the agent in use does not apply a setting of `agents`, `doctor` and `init` 
 - **THEN** no warning is printed
 
 ### Requirement: `doctor` checks that the lens agents are in place
-`doctor` SHALL check that the plugin has the four lens agents and that the profile of each platform can be resolved for each lens, and SHALL report a missing agent or a profile that cannot be resolved.
+`doctor` SHALL check that the plugin has the five lens agents and that the profile of each platform can be resolved for each lens, and SHALL report a missing agent or a profile that cannot be resolved.
 
 #### Scenario: A plugin without a lens agent
 - **WHEN** an installed plugin lacks `qa-security`
+- **THEN** `doctor` names it and says to update the plugin
+
+#### Scenario: A plugin without the bugs lens
+- **WHEN** an installed plugin lacks `qa-bugs`
 - **THEN** `doctor` names it and says to update the plugin
 
 ### Requirement: `doctor` reports a leftover reference to the former QA agent
@@ -1280,6 +1284,21 @@ For a declared adapter with `review.autopilot` `precheck` or `verify`, `doctor` 
 #### Scenario: Ignored declaration on a shipped stack
 - **WHEN** the repository's profile of `laravel` sets `review.adapter`
 - **THEN** `doctor` warns that the plugin's adapter is used and the setting is ignored
+
+### Requirement: `doctor` says when the bugs lens is not advisory
+`doctor` SHALL report, as a note and never as a failure, the value of `qa.bugs` when it is `blocking` or `off`, saying in one line what it means, and SHALL report nothing about it when it is `advisory` or not set.
+
+#### Scenario: The lens blocks
+- **WHEN** `qa.bugs` is `blocking`
+- **THEN** `doctor` notes that a `CONFIRMED` finding of the `bugs` lens sends the work back to the developer
+
+#### Scenario: The lens is off
+- **WHEN** `qa.bugs` is `off`
+- **THEN** `doctor` notes that the `bugs` lens does not run
+
+#### Scenario: The default
+- **WHEN** `qa.bugs` is not set
+- **THEN** `doctor` prints nothing about it
 
 ### Requirement: Doctor checks what an iOS review needs
 For each platform whose targets include `ios`, `doctor` SHALL check that the machine is macOS, that `xcrun` can be found, that `xcrun simctl` answers and that at least one iOS simulator runtime is installed. It SHALL warn, with the command or the place to fix it, when one is missing, and SHALL note when no simulator is booted, because the review needs one booted. On a machine that is not macOS it SHALL say that the iOS review cannot run there, and SHALL NOT fail the platform, because the build can run elsewhere.

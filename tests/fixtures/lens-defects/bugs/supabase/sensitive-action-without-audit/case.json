@@ -1,0 +1,10 @@
+{
+ "lens": "bugs",
+ "stack": "supabase",
+ "case": "sensitive-action-without-audit",
+ "description": "An administrator can reset another person's password and the action leaves no row in the audit log that every other sensitive action writes to.",
+ "expected": {
+  "lens": "bugs",
+  "finding": "audit|trace|log|record"
+ }
+}

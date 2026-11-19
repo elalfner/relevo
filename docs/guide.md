@@ -62,7 +62,7 @@ The issue becomes `build-failed` and the assignee is told, with the first findin
 
 ### Who rejected it: the gate or one of the reviewers
 
-QA is no longer one agent. First a script (the **gate**) runs the analysis, the tests and the scans once, with no model; then four reviewers (the **lenses**) each look at what they own. The comment names the one that stopped the build:
+QA is no longer one agent. First a script (the **gate**) runs the analysis, the tests and the scans once, with no model; then five reviewers (the **lenses**) each look at what they own; the fifth, `bugs`, looks for correctness defects and by default only leaves notes ([configuration](configuration.md#the-model-and-the-effort-of-each-agent)). The comment names the one that stopped the build:
 
 | It says | What it means | What to do |
 |---|---|---|

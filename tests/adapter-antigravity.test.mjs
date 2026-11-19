@@ -37,7 +37,7 @@ test('Scenario: No Claude token remains', () => {
     assert.ok(!f.content.includes('${CLAUDE_PLUGIN_ROOT}'), `${f.path} keeps the script path variable`);
     assert.ok(!/relevo:(dev|qa)(?![\w-])/.test(f.content), `${f.path} keeps a Claude agent name`);
   }
-  for (const p of ['agents/relevo-dev.md', 'agents/relevo-qa-spec.md', 'agents/relevo-qa-security.md', 'agents/relevo-qa-code.md', 'agents/relevo-qa-interface.md']) {
+  for (const p of ['agents/relevo-dev.md', 'agents/relevo-qa-spec.md', 'agents/relevo-qa-security.md', 'agents/relevo-qa-code.md', 'agents/relevo-qa-interface.md', 'agents/relevo-qa-bugs.md']) {
     const meta = head(p);
     for (const k of ['model', 'effort', 'disallowedTools']) assert.ok(!(k in meta), `${p} keeps ${k}`);
   }
@@ -137,9 +137,9 @@ test('every tool of the table is a tool the installed agy reports', { skip: !wit
 });
 
 // ---- the QA lenses (specialist-review-lenses)
-const LENS_AGENTS = ['qa-spec', 'qa-security', 'qa-code', 'qa-interface'];
+const LENS_AGENTS = ['qa-spec', 'qa-security', 'qa-code', 'qa-interface', 'qa-bugs'];
 
-test('Scenario: the four lens agents are rendered with valid names and read-only tool lists', () => {
+test('Scenario: the five lens agents are rendered with valid names and read-only tool lists', () => {
   for (const lens of LENS_AGENTS) {
     const path = `agents/relevo-${lens}.md`;
     assert.ok(file(path), `${path} is rendered`);
@@ -165,7 +165,7 @@ test('Scenario: No Claude token remains - no relevo:qa-<lens> name is left in an
 
 test('the paragraph about waiting for subagents says that each lens is called one at a time', () => {
   const go = file('skills/go/SKILL.md').content;
-  assert.match(go, /relevo-qa-spec.*relevo-qa-security.*relevo-qa-code.*relevo-qa-interface.*one at a time, never two together/);
+  assert.match(go, /relevo-qa-spec.*relevo-qa-security.*relevo-qa-code.*relevo-qa-interface.*relevo-qa-bugs.*one at a time, never two together/);
 });
 
 test('the rewrite of agent names turns the lens names and leaves other text alone', async () => {

@@ -98,7 +98,7 @@ If the template looks wrong, or a difference needs a decision the recipe does no
 
 You receive one of two things, and fix exactly what it lists, each at its file and line, without refactoring around it or touching unrelated code:
 
-- **The reports of the QA lenses**, together: the `spec`, `security`, `code` and `interface` reviewers each reviewed the change, and each finding says which lens made it. Fix all of them in this one pass. A finding with the class `fixable` is yours; one with another class (`input`, `spec`, `policy`) needs something you cannot supply, so say so in your report instead of guessing.
+- **The reports of the QA lenses**, together: the `spec`, `security`, `code`, `interface` and `bugs` reviewers each reviewed the change, and each finding says which lens made it. Fix all of them in this one pass. A finding with the class `fixable` is yours; one with another class (`input`, `spec`, `policy`) needs something you cannot supply, so say so in your report instead of guessing.
 - **The output of a red gate**: the end of the output of the command that failed (the analysis, the tests, the scan for markers and credentials, or the check for restricted files). No reviewer has run yet. Fix what failed and nothing else.
 
 Re-run the checks of the profile. If you disagree with a finding, do not ignore it: explain with evidence in your report and let the lens decide. Along with the hygiene of the stack you receive in the profile, you receive the section **Security for the developer**, the interface rules for the change and the decisions and constraints of the issue (`From the issue:` in `design.md`): they are what the lenses will check, so follow them as you correct.

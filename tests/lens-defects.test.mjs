@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCases } from '../scripts/lib/lens-cases.mjs';
 
-const LENSES = ['spec', 'security', 'code', 'interface'];
+const LENSES = ['spec', 'security', 'code', 'interface', 'bugs'];
 const STACKS = ['flutter', 'vue', 'laravel', 'supabase'];
 const REQUIRED = [
   'code/flutter/state-update-after-await',
@@ -13,6 +13,10 @@ const REQUIRED = [
   'spec/vue/task-without-implementation',
   'spec/vue/broken-decision',
   'spec/flutter/altered-documentation',
+  'bugs/laravel/limit-reset-after-activation',
+  'bugs/supabase/sensitive-action-without-audit',
+  'bugs/vue/falsy-zero-default',
+  'bugs/vue/changed-return-breaks-caller',
 ];
 
 const cases = loadCases();

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 export const OUTCOME_CLASSES = ['built', 'inputs', 'policy', 'qa-non-fixable', 'qa-fixable-after-retries', 'conflict', 'limit', 'other'];
 
-export const LENSES = ['spec', 'security', 'code', 'interface'];
+export const LENSES = ['spec', 'security', 'code', 'interface', 'bugs'];
 
 const LOG = 'phases.jsonl';
 const LENS_LOG = 'lenses.jsonl';

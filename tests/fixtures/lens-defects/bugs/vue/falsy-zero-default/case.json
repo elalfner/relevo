@@ -1,0 +1,10 @@
+{
+ "lens": "bugs",
+ "stack": "vue",
+ "case": "falsy-zero-default",
+ "description": "A fallback is chosen with a falsy check, so a valid price of zero is replaced by the default price.",
+ "expected": {
+  "lens": "bugs",
+  "finding": "falsy|\\|\\||zero|\\?\\?|free"
+ }
+}

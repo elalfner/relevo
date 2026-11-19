@@ -169,7 +169,7 @@ review:
 
 ## What each QA reviewer reads of a profile
 
-QA is made of four reviewers (lenses), and each reads only the part of the profile it needs, so none carries the others' context:
+QA is made of five reviewers (lenses), and each reads only the part of the profile it needs, so none carries the others' context:
 
 | Reviewer | Reads of the profile |
 |---|---|
@@ -177,6 +177,7 @@ QA is made of four reviewers (lenses), and each reads only the part of the profi
 | `security` | the section `## Security review` |
 | `code` | `## Architecture` and `## What the auditor looks for in the diff` |
 | `interface` | nothing from the profile: its rules come from the interface knowledge |
+| `bugs` | nothing: it reads the code and the callers of what changed |
 
 The developer agent keeps receiving the whole body, now including the section `## Security for the developer`, and never the `## Security review`. To see what one reviewer receives: `node scripts/stack-profile.mjs --platform <name> --lens security`.
 

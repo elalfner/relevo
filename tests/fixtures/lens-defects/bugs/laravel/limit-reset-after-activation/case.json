@@ -1,0 +1,10 @@
+{
+ "lens": "bugs",
+ "stack": "laravel",
+ "case": "limit-reset-after-activation",
+ "description": "A value is required to be positive when an account is activated, but a later update can set it back to zero.",
+ "expected": {
+  "lens": "bugs",
+  "finding": "daily_limit|after activation|activated|set (it )?back|zero"
+ }
+}

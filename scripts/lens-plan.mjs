@@ -3,7 +3,8 @@
 //   node scripts/lens-plan.mjs [--platform name] [--text-file issue.md] [--config relevo.yml] [--max-parallel n]
 // Prints { lenses: [{ lens, active, reason? }], skipped: ["SKIPPED interface: ..."], batches: [[lens, ...]] }. The batches are the
 // launch groups: all the active lenses together, or groups of at most --max-parallel when the runtime limits the subagents. The interface lens is active only when the
-// stack of the platform has an interface and the change matches at least one interface rule beyond the always-on ones.
+// stack of the platform has an interface and the change matches at least one interface rule beyond the always-on ones. The bugs lens is
+// active unless `qa.bugs` is `off`; its entry carries the mode.
 // Without the interface knowledge of the plugin the lens is skipped, never an error.
 //   exit 0: printed   exit 2: bad arguments or an invalid relevo.yml
 
@@ -53,5 +54,5 @@ if (existsSync(resolve(root, 'scripts/lib/interface-rules.mjs')) && typeof resol
     }
   }
 }
-const lenses = planLenses({ interfaceKind, extraRules });
+const lenses = planLenses({ interfaceKind, extraRules, bugsMode: loaded.config.qa.bugs });
 console.log(JSON.stringify({ lenses, skipped: skippedLines(lenses), batches: batchLenses(lenses, maxParallel) }, null, 2));

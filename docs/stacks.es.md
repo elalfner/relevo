@@ -169,7 +169,7 @@ review:
 
 ## Qué lee cada revisor de QA de un perfil
 
-QA se compone de cuatro revisores (lentes), y cada uno lee solo la parte del perfil que necesita, así que ninguno carga el contexto de los demás:
+QA se compone de cinco revisores (lentes), y cada uno lee solo la parte del perfil que necesita, así que ninguno carga el contexto de los demás:
 
 | Revisor | Qué lee del perfil |
 |---|---|
@@ -177,6 +177,7 @@ QA se compone de cuatro revisores (lentes), y cada uno lee solo la parte del per
 | `security` | la sección `## Security review` |
 | `code` | `## Architecture` y `## What the auditor looks for in the diff` |
 | `interface` | nada del perfil: sus reglas vienen del conocimiento de interfaz |
+| `bugs` | nada: lee el código y a quienes llaman lo que cambió |
 
 El agente de desarrollo sigue recibiendo el cuerpo completo, ahora con la sección `## Security for the developer`, y nunca la `## Security review`. Para ver lo que recibe un revisor: `node scripts/stack-profile.mjs --platform <nombre> --lens security`.
 

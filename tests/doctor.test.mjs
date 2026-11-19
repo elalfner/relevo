@@ -2540,7 +2540,7 @@ test('Scenario: A stale reference - a file that still names relevo:qa is reporte
   const r = runChecks(healthy({ staleQaReferences: ['CLAUDE.md'] }));
   const w = byId(r, 'qa.stale-reference.CLAUDE.md');
   assert.equal(w.status, 'warn');
-  assert.match(w.fix, /relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface/);
+  assert.match(w.fix, /relevo:qa-spec, relevo:qa-security, relevo:qa-code, relevo:qa-interface and relevo:qa-bugs/);
   const wf = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'allowed: relevo:qa and more' } } }));
   assert.equal(byId(wf, 'qa.stale-reference.relevo-go.yml').status, 'warn');
   const fine = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'relevo:qa-code relevo:qa-spec' } } }));
@@ -2942,6 +2942,26 @@ test('the doctor skill names the two new checks', () => {
   const skill = readFileSync(new URL('../skills/doctor/SKILL.md', import.meta.url), 'utf8');
   assert.match(skill, /`automation\.workflow-trigger`/);
   assert.match(skill, /`repo\.local-label`/);
+});
+
+// ---- the bugs lens (add-qa-bugs-lens)
+
+test('Scenario: A plugin without the bugs lens - doctor names it and says to update the plugin', () => {
+  const missing = byId(runChecks(healthy({ lensAgentsMissing: ['bugs'] })), 'qa.lens-agents');
+  assert.equal(missing.status, 'fail');
+  assert.match(missing.message, /lacks the QA lens agent qa-bugs/);
+  assert.match(missing.fix, /update the plugin/);
+  assert.match(byId(runChecks(healthy({ lensAgentsMissing: [] })), 'qa.lens-agents').message, /the plugin has the 5 QA lens agents/);
+});
+
+test('Scenario: The lens blocks, is off or is the default - doctor notes the first two and says nothing of the third', () => {
+  const withMode = (bugs) => byId(runChecks(healthy({ config: { ...config, qa: { ...(config.qa ?? {}), bugs } } })), 'qa.bugs-mode');
+  assert.equal(withMode('blocking').status, 'note');
+  assert.match(withMode('blocking').message, /CONFIRMED/);
+  assert.equal(withMode('off').status, 'note');
+  assert.match(withMode('off').message, /does not run/);
+  assert.equal(withMode('advisory'), undefined);
+  assert.equal(byId(runChecks(healthy()), 'qa.bugs-mode'), undefined);
 });
 
 // ---------- a review adapter the repository declares

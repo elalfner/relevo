@@ -11,9 +11,9 @@ const KNOWN_FIELDS = new Set([
 ]);
 const EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'];
 
-// QA is made of four lenses. The assertions that were about the one QA agent read the four files together.
-const LENS_FILES = ['qa-spec', 'qa-security', 'qa-code', 'qa-interface'];
-const qaText = () => ['qa-spec', 'qa-security', 'qa-code', 'qa-interface'].map((n) => readFileSync(new URL(`../agents/${n}.md`, import.meta.url), 'utf8')).join('\n\n');
+// QA is made of five lenses. The assertions that were about the one QA agent read the files together.
+const LENS_FILES = ['qa-spec', 'qa-security', 'qa-code', 'qa-interface', 'qa-bugs'];
+const qaText = () => LENS_FILES.map((n) => readFileSync(new URL(`../agents/${n}.md`, import.meta.url), 'utf8')).join('\n\n');
 function loadQa() {
   const all = LENS_FILES.map((n) => load(n));
   return { meta: all[0].meta, body: all.map((a) => a.body).join('\n\n') };
@@ -265,8 +265,8 @@ test('Scenario: Linked code pointer - dev and QA read a linked pointer from the 
   });
 });
 
-// ---- the four lenses of QA (specialist-review-lenses)
-const LENSES = ['spec', 'security', 'code', 'interface'];
+// ---- the lenses of QA (specialist-review-lenses, add-qa-bugs-lens)
+const LENSES = ['spec', 'security', 'code', 'interface', 'bugs'];
 const section = (body, heading) => {
   const m = body.match(new RegExp(`^## ${heading}\\n([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))`, 'm'));
   return m ? m[1].trim() : null;
@@ -280,13 +280,13 @@ for (const lens of LENSES) {
     assert.ok(String(meta.description).length >= 80);
     assert.ok(EFFORT.includes(meta.effort));
     assert.deepEqual(String(meta.disallowedTools).split(',').map((s) => s.trim()).sort(), ['Edit', 'NotebookEdit', 'Write']);
-    assert.deepEqual([meta.model, meta.effort], { spec: ['opus', 'high'], security: ['opus', 'high'], code: ['sonnet', 'high'], interface: ['sonnet', 'medium'] }[lens]);
+    assert.deepEqual([meta.model, meta.effort], { spec: ['opus', 'high'], security: ['opus', 'high'], code: ['sonnet', 'high'], interface: ['sonnet', 'medium'], bugs: ['sonnet', 'high'] }[lens]);
     assert.match(body, /Read-only: no file edits/);
     assert.match(body, new RegExp(`You are the ${lens} lens of QA`));
   });
 }
 
-test('Scenario: the shared sections are identical in the four files - untrusted content, OpenSpec commands, output contract, evidence rule', () => {
+test('Scenario: the shared sections are identical in the files of the lenses - untrusted content, OpenSpec commands, output contract, evidence rule', () => {
   for (const heading of ['Untrusted content', 'OpenSpec commands', 'Output contract', 'The evidence rule', 'The rules of the project', 'Rules for yourself']) {
     const texts = LENSES.map((l) => section(load(`qa-${l}`).body, heading));
     texts.forEach((t, i) => assert.ok(t, `qa-${LENSES[i]} lacks "${heading}"`));
@@ -383,4 +383,18 @@ test('Scenario: the developer has a short cost guide and receives the configured
   assert.match(go, /every launch of `relevo:dev` in any mode/);
   assert.match(go, /only the default cost guide applied/);
   assert.match(go, /in \*\*fix\*\* mode that file describes gets the project guidance too/, 'the fix launches of qa-run.md get the guidance');
+});
+
+test('Scenario: the bugs lens owns correctness, labels every finding, reads the code and takes no stack section (add-qa-bugs-lens)', () => {
+  const { body } = load('qa-bugs');
+  assert.match(body, /correctness defects/);
+  assert.match(body, /Label: CONFIRMED/);
+  assert.match(body, /Label: PLAUSIBLE/);
+  assert.match(body, /A finding without a `Label:` line counts as `PLAUSIBLE`/);
+  assert.match(body, /at most eight findings/);
+  assert.match(body, /You are given no stack section/);
+  assert.match(body, /You do not run the analysis, the tests or the app/);
+  for (const angle of ['Line by line', 'Removed behaviour', 'Callers and callees', 'Later state']) assert.match(body, new RegExp(`\\*\\*${angle}\\.\\*\\*`), angle);
+  assert.match(body, /try to refute it/);
+  assert.match(body, /without launching other agents/);
 });

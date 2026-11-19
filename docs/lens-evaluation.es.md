@@ -51,6 +51,21 @@ Las primeras ejecuciones midieron la evaluación y no las lentes, y cada una se 
 
 El total es de unos 2.84 USD en uso de modelo. Tres de las seis ejecuciones son válidas para su lente.
 
+## La lente `bugs` (2026-11-19)
+
+La lente `bugs` (`agents/qa-bugs.md`, el cambio `add-qa-bugs-lens`) busca defectos de correctitud y marca cada hallazgo `CONFIRMED` o `PLAUSIBLE`. Se ejecutó una vez sobre cuatro casos sembrados hechos para ella, con `node scripts/eval-lenses.mjs --lens bugs --yes --max-budget-usd 1`, el modelo y el esfuerzo de su archivo de agente (`sonnet`, `high`) y el mismo recibo simulado que las otras lentes. Los casos son ejemplos inventados: un límite que se puede volver a poner en cero después de activar una cuenta, un restablecimiento de contraseña que no deja fila de auditoría, un precio de cero reemplazado por el valor por defecto con una comprobación falsy, y una función auxiliar que ahora devuelve un texto mientras quien la llama aún suma su resultado a un número.
+
+| Lente | Casos | Defectos encontrados | Variantes buenas marcadas | Marcados `CONFIRMED` | Costo (USD) | Tiempo (s) | Tiempo por corrida (s) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bugs` | 4 | 4 | 0 | 3 | 0.90 | 125.1 | 15.6 |
+
+Cumple el umbral de más abajo (todos los defectos encontrados, ninguna variante buena marcada). Tres cosas para leer junto con esto:
+
+- **La etiqueta.** Tres de los cuatro hallazgos fueron `CONFIRMED`. El cuarto, el límite que se puede volver a poner en cero, fue `PLAUSIBLE`, y la lente dijo por qué: depende de si una cuenta activa puede tener un límite en cero, y el modelo de la cuenta no está en el caso. El arnés contó primero dos, porque un reporte escribió la etiqueta dentro de una lista (`- Label: CONFIRMED`) y el primer lector del arnés la quería al inicio de la línea; ahora el lector acepta una viñeta y marcas de negrita, en el arnés y en el script que decide el resultado, y los reportes de la corrida se leyeron de nuevo con él (sin nueva llamada al modelo).
+- **Un hallazgo extra.** En el restablecimiento de contraseña la lente también reportó que se acepta un hash vacío, con la etiqueta `PLAUSIBLE`. No es uno de los defectos sembrados y la variante buena conserva el mismo código, así que es un hallazgo sobre el caso y no un falso positivo; en modo `advisory` es solo una nota.
+- **Un renombre después de la corrida.** Los archivos de prueba de los dos casos de Vue se llamaban `*.test.js` y después se renombraron `*.spec.js`, porque `node --test` los ejecutaba como pruebas del plugin; su contenido no cambió, pero la lente vio los nombres anteriores.
+- **Lo que todavía no respalda.** Cuatro casos, una sola corrida, escritos por quien hizo la lente y con las variantes buenas que solo difieren en la corrección. Basta para construir la lente contra ellos, no para dejarla bloquear: **`qa.bugs` sigue en `advisory` por defecto** y el modelo y el esfuerzo siguen siendo los de `code`. Pasar el valor por defecto a `blocking` necesita una muestra más grande y más ruidosa, y una corrida sobre cambios reales en la que una persona lea los reportes.
+
 ## Lo que esto no demuestra
 
 - Es una muestra pequeña de 11 casos; cada caso se ejecutó una vez en cada ejecución, así que se sabe poco de cuánto varía una lente entre ejecuciones.

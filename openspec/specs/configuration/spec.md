@@ -311,10 +311,14 @@ The configuration that `init` offers SHALL show the three keys, commented out, w
 - **THEN** the three keys appear commented out with their explanation
 
 ### Requirement: The settings of the agents are configuration keys
-`relevo.yml` MAY set `agents.dev.model`, `agents.dev.effort` and, for each lens, `agents.qa.<lens>.model` and `agents.qa.<lens>.effort`, with `<lens>` one of `spec`, `security`, `code` and `interface`. A model SHALL be a non-empty string. An effort SHALL be one of `low`, `medium`, `high`, `xhigh` and `max`. An unknown lens name or effort SHALL fail validation, and a file without the keys SHALL be valid.
+`relevo.yml` MAY set `agents.dev.model`, `agents.dev.effort` and, for each lens, `agents.qa.<lens>.model` and `agents.qa.<lens>.effort`, with `<lens>` one of `spec`, `security`, `code`, `interface` and `bugs`. A model SHALL be a non-empty string. An effort SHALL be one of `low`, `medium`, `high`, `xhigh` and `max`. An unknown lens name or effort SHALL fail validation, and a file without the keys SHALL be valid.
 
 #### Scenario: Valid settings
 - **WHEN** the file sets a model and an effort for `agents.qa.security`
+- **THEN** validation passes
+
+#### Scenario: Settings for the bugs lens
+- **WHEN** the file sets a model and an effort for `agents.qa.bugs`
 - **THEN** validation passes
 
 #### Scenario: An unknown lens
@@ -395,3 +399,18 @@ The renderer SHALL use the English text when a supported language lacks a messag
 #### Scenario: A command that leaves the repository
 - **WHEN** an `integration.generated` or `queue.append_only` glob is absolute or climbs out of the repository with `..`
 - **THEN** validation fails, as it does for the other path settings
+
+### Requirement: The mode of the bugs lens is a configuration key
+`relevo.yml` MAY set `qa.bugs` to `advisory`, `blocking` or `off`. A file without the key SHALL be valid and SHALL mean `advisory`. Any other value SHALL fail validation and list the values that exist.
+
+#### Scenario: A valid mode
+- **WHEN** the file sets `qa.bugs` to `blocking`
+- **THEN** validation passes
+
+#### Scenario: No mode
+- **WHEN** the file does not set `qa.bugs`
+- **THEN** validation passes and the effective mode is `advisory`
+
+#### Scenario: An unknown mode
+- **WHEN** the file sets `qa.bugs` to `strict`
+- **THEN** validation fails and lists `advisory`, `blocking` and `off`

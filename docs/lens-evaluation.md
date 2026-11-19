@@ -64,6 +64,21 @@ The total is about 2.84 USD in model usage. Three of the six runs are valid for 
 
 By the threshold above (every defect found, no good variant flagged): sonnet passes for `spec` and `security`; haiku does not pass for `code` and `interface`. It finds the seeded defects but also rejects clean changes (a missing `pubspec.yaml` in the fixture, a stub without a marker, one form), which would send correct work back to the developer. So `auto` should not go below sonnet for QA lenses until a larger sample says otherwise.
 
+## The `bugs` lens (2026-11-19)
+
+The `bugs` lens (`agents/qa-bugs.md`, the change `add-qa-bugs-lens`) looks for correctness defects and labels each finding `CONFIRMED` or `PLAUSIBLE`. It was run once on four seeded cases made for it, with `node scripts/eval-lenses.mjs --lens bugs --yes --max-budget-usd 1`, the model and effort of its agent file (`sonnet`, `high`) and the same simulated receipt as the other lenses. The cases are invented examples: a limit that can be set back to zero after an account is activated, a password reset that leaves no audit row, a price of zero replaced by the default through a falsy check, and a helper that now returns a string while a caller still adds its result to a number.
+
+| Lens | Cases | Defects found | Good variants flagged | Labelled `CONFIRMED` | Cost (USD) | Time (s) | Time per run (s) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bugs` | 4 | 4 | 0 | 3 | 0.90 | 125.1 | 15.6 |
+
+It meets the threshold below (every defect found, no good variant flagged). Three things to read with it:
+
+- **The label.** Three of the four findings were `CONFIRMED`. The fourth, the limit that can be set back to zero, was `PLAUSIBLE`, and the lens said why: it depends on whether an active account may have a zero limit, and the model of the account is not in the fixture. The harness first counted two, because one report wrote the label inside a list (`- Label: CONFIRMED`) and the first reader of the harness wanted it at the start of the line; the reader now accepts a bullet and bold markers, in the harness and in the script that decides the result, and the reports of the run were read again with it (no new model call).
+- **An extra finding.** On the password reset the lens also reported that an empty hash is accepted, labelled `PLAUSIBLE`. It is not one of the seeded defects and the good variant keeps the same code, so this is a finding about the fixture and not a false positive; in `advisory` mode it is only a note.
+- **A rename after the run.** The test files of the two Vue cases were called `*.test.js` and were renamed `*.spec.js` afterwards, because `node --test` ran them as tests of the plugin; their content did not change, but the lens saw the earlier names.
+- **What it does not support yet.** Four cases, run once, written by the author of the lens and with the good variants differing only by the fix. That is enough to build the lens against, not to let it block: **`qa.bugs` stays `advisory` by default** and the model and effort stay those of `code`. Moving the default to `blocking` needs a larger and noisier sample, and a run on real changes where the reports are read by a person.
+
 ## What this does not show
 
 - It is a small sample of 11 cases; each case was run once in each run, so little is known about how much a lens varies between runs.

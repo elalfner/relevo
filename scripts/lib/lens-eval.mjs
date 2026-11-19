@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { loadCases } from './lens-cases.mjs';
 import { RECEIPT_DIR, RECEIPT_FILE, buildReceipt, diffHash } from './validation-gate.mjs';
 
-export const LENSES = ['spec', 'security', 'code', 'interface'];
+export const LENSES = ['spec', 'security', 'code', 'interface', 'bugs'];
 const OUTPUT_TOKENS = 1500; // assumed size of one lens report, for the estimate
 const tokensOf = (text) => Math.ceil(text.length / 4);
 
@@ -119,6 +119,12 @@ export function judge(report, expected) {
   return { rejected, matched };
 }
 
+// Only for the bugs lens: the defect was found and the report holds a finding labelled CONFIRMED, the label that decides
+// whether a finding may block.
+// The line may carry a bullet or bold markers (`- Label: CONFIRMED`, `**Label:** CONFIRMED`): a lens writes it inside a list.
+export const LABEL_LINE = /^\s*(?:[-*+]\s+)?(?:\*\*)?Label(?:\*\*)?\s*[:=]\s*(?:\*\*)?\s*`?(CONFIRMED|PLAUSIBLE)\b/im;
+export const confirmedOf = (report, judged) => judged.matched && LABEL_LINE.exec(report)?.[1].toUpperCase() === 'CONFIRMED';
+
 export function selectCases(all, opts) {
   let cs = all.filter((c) => opts.lenses.includes(c.meta.lens));
   if (opts.cases) {
@@ -157,15 +163,17 @@ export async function evaluate(cases, opts, runner, root = process.cwd(), now = 
       const started = now();
       const r = await runner({ lens, model: opts.model ?? lensInfo[lens].model, effort: lensInfo[lens].effort, caseId: c.id, variant, prompt: casePrompt(lensInfo[lens].text, c[variant]), lensText: lensInfo[lens].text, stack: c.meta.stack, files: c[variant] });
       const seconds = Math.max(0, (now() - started) / 1000);
-      row[variant] = { ...judge(r.report, c.meta.expected), cost: r.cost ?? 0, seconds, report: r.report };
+      const judged = judge(r.report, c.meta.expected);
+      row[variant] = { ...judged, confirmed: confirmedOf(r.report, judged), cost: r.cost ?? 0, seconds, report: r.report };
     }
     rows.push(row);
   }
   const per = {};
   for (const r of rows) {
-    const p = (per[r.lens] ??= { cases: 0, found: 0, falsePositives: 0, cost: 0, seconds: 0 });
+    const p = (per[r.lens] ??= { cases: 0, found: 0, confirmed: 0, falsePositives: 0, cost: 0, seconds: 0 });
     p.cases++;
     if (r.bad.matched) p.found++;
+    if (r.bad.confirmed) p.confirmed++;
     if (r.good.rejected) p.falsePositives++;
     p.cost += r.bad.cost + r.good.cost;
     p.seconds += r.bad.seconds + r.good.seconds;
@@ -181,7 +189,8 @@ export function stubRunner({ miss = [], falsePositive = [], cases }) {
   return async ({ caseId, variant }) => {
     const c = byId[caseId];
     const reject = variant === 'bad' ? !miss.includes(caseId) : falsePositive.includes(caseId);
-    return { report: reject ? `QA REJECTED\n1. ${c.meta.description} (${c.meta.expected.finding.split('|')[0].replace(/\\/g, '')})\n` : 'QA PASSED\n', cost: 0 };
+    const label = c.meta.lens === 'bugs' ? '   Label: CONFIRMED\n' : '';
+    return { report: reject ? `QA REJECTED\n1. ${c.meta.description} (${c.meta.expected.finding.split('|')[0].replace(/\\/g, '')})\n${label}` : 'QA PASSED\n', cost: 0 };
   };
 }
 
@@ -204,6 +213,7 @@ export function renderReport(result, opts, est, date) {
     `- Estimated cost: ${est.usd == null ? `${est.inTok} input tokens, ${est.outTok} output tokens (no prices given)` : `${est.usd.toFixed(2)} USD`}`, '',
     '| Lens | Defects found | Good variants flagged | Cost (USD) | Time (s) | Time per run (s) |', '| --- | --- | --- | --- | --- | --- |'];
   for (const [lens, p] of Object.entries(result.per)) lines.push(`| ${lens} | ${p.found}/${p.cases} | ${p.falsePositives}/${p.cases} | ${p.cost.toFixed(2)} | ${p.seconds.toFixed(1)} | ${(p.seconds / (2 * p.cases)).toFixed(1)} |`);
+  if (result.per.bugs) lines.push('', `The bugs lens labelled ${result.per.bugs.confirmed} of the ${result.per.bugs.found} defects it found as CONFIRMED (only a CONFIRMED finding can block when \`qa.bugs\` is \`blocking\`).`);
   lines.push('', `Total cost: ${result.total.toFixed(2)} USD`, `Total time: ${(result.totalSeconds ?? 0).toFixed(1)} s (the lenses run one at a time, so this is the time of one pass over every case)`, '', '## Cases', '');
   for (const r of result.rows) lines.push(`- ${r.id}: bad ${r.bad.matched ? 'found' : r.bad.rejected ? 'rejected for another reason' : 'missed'}; good ${r.good.rejected ? 'FLAGGED' : 'passed'}`);
   // What the lens said where the result is not the expected one, to tell a fault of the lens from a fault of the fixture.
