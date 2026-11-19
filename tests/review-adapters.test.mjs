@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { adapterFor, hasShippedAdapter, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
+import { adapterFor, autopilotNotice, hasShippedAdapter, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
 
 const CLI = new URL('../scripts/review-adapter.mjs', import.meta.url).pathname;
 
@@ -22,10 +22,23 @@ test('Scenario: Web - Vue and Flutter on web are a browser, and the review needs
   assert.deepEqual([flutterWeb.kind, flutterWeb.driver], ['browser', 'flutter_driver']);
 });
 
-test('Scenario: No adapter - iOS says it is not available yet, and unknown combinations say why', () => {
-  const ios = adapterFor({ stack: 'flutter', target: 'ios' });
+test('Scenario: iOS simulator - Flutter and SwiftUI on ios use xcrun, observe-only, and do not need the autopilot', () => {
+  for (const stack of ['flutter', 'swiftui', 'swift-app']) {
+    const ios = adapterFor({ stack, target: 'ios' });
+    assert.equal(ios.supported, true);
+    assert.equal(ios.kind, 'device');
+    assert.deepEqual(ios.needs, ['xcrun']);
+    assert.equal(ios.driver, null);
+    assert.equal(needsAutopilot(ios), false);
+  }
+  assert.match(autopilotNotice(adapterFor({ stack: 'swiftui', target: 'ios' }), { autopilot: 'verify' }), /cannot drive an iOS app yet/);
+  assert.equal(autopilotNotice(adapterFor({ stack: 'swiftui', target: 'ios' }), { autopilot: 'off' }), null);
+  assert.equal(autopilotNotice(adapterFor({ stack: 'flutter', target: 'android' }), { autopilot: 'verify' }), null);
+});
+
+test('Scenario: No adapter - unknown combinations say why', () => {
+  const ios = adapterFor({ stack: 'swiftui', target: 'web' });
   assert.equal(ios.supported, false);
-  assert.match(ios.reason, /iOS is not available yet.*macOS/);
   assert.match(adapterFor({ stack: 'laravel', target: 'api' }).reason, /no review adapter for the stack "laravel" on the target "api"/);
   assert.match(adapterFor({ stack: 'django', target: null }).reason, /names no target/);
 });
@@ -69,8 +82,8 @@ test('the script resolves the platform from relevo.yml, takes --target, and exit
   assert.equal(JSON.parse(app.stdout).target, 'android');
   assert.equal(JSON.parse(run('--platform', 'app', '--target', 'web').stdout).kind, 'browser');
   const ios = run('--platform', 'app', '--target', 'ios');
-  assert.equal(ios.status, 1);
-  assert.match(JSON.parse(ios.stdout).reason, /not available yet/);
+  assert.equal(ios.status, 0);
+  assert.equal(JSON.parse(ios.stdout).needs[0], 'xcrun');
   const site = JSON.parse(run('--platform', 'site').stdout);
   assert.deepEqual([site.platform, site.needs_autopilot], ['site', true]);
   assert.equal(run('--platform', 'nope').status, 2);

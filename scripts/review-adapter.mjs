@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Prints how `review` works for a platform of relevo.yml, as JSON. Usage:
 //   node scripts/review-adapter.mjs --platform web [--target web] [--config relevo.yml] [--plugin-root dir]
-// Output: { supported, stack, target, kind, log, capture, driver, needs, reason, platform, needs_autopilot, advice }
+// Output: { supported, stack, target, kind, log, capture, driver, needs, reason, platform, needs_autopilot, advice, notice }
+// `notice` is set for an iOS platform when review.autopilot is not off: there is no iOS driver yet and the review proceeds as with off.
 // A stack the plugin ships no adapter for may declare the api adapter in its profile (`declared: true`, with `test`): the profile
 // is resolved only for such a stack, and an invalid one stops the review with its errors as the `reason` (exit 1).
 // `advice` is what to tell the person, in the language of relevo.yml, when a browser review cannot start with review.autopilot off.
@@ -11,7 +12,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
-import { adapterFor, autopilotAdvice, hasShippedAdapter, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
+import { adapterFor, autopilotAdvice, autopilotNotice, hasShippedAdapter, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
@@ -50,5 +51,6 @@ else {
   }
 }
 const advice = autopilotAdvice(adapter, { autopilot: loaded.config.review?.autopilot, language: loaded.config.language });
-console.log(JSON.stringify({ ...adapter, platform: name, needs_autopilot: needsAutopilot(adapter), advice }));
+const notice = autopilotNotice(adapter, { autopilot: loaded.config.review?.autopilot });
+console.log(JSON.stringify({ ...adapter, platform: name, needs_autopilot: needsAutopilot(adapter), advice, notice }));
 process.exit(adapter.supported ? 0 : 1);

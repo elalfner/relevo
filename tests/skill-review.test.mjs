@@ -402,6 +402,21 @@ test('Scenario: Supabase ready / Local stack stopped - the skill names the Supab
   assert.ok(source.includes("case 'started-stack'"), 'review-state has no "started-stack" command');
 });
 
+test('the skill handles an iOS review: preflight, process, audit input, captures, and no driving of the simulator', () => {
+  assert.match(body, /device\.mjs --target ios/);
+  assert.match(body, /IOS_SIMULATOR/);
+  assert.match(body, /review-state\.mjs init [^\n]*--target ios --process/);
+  assert.match(body, /simctl spawn <udid> log show --style ndjson/);
+  assert.match(body, /capture\.mjs <name>` \(`--target ios`/);
+  assert.match(body, /never boot, install, launch or terminate anything in a simulator/);
+  assert.match(body, /no iOS driver yet/);
+});
+
+test('the iOS micro-fix and start steps do not use adb or a serial', () => {
+  assert.match(body, /in an iOS review `review-state\.mjs reset-log` instead, never `adb`/);
+  assert.match(body, /In an iOS review they run it in the simulator/);
+});
+
 test('Scenario: review launches the developer with the model plan', () => {
   assert.match(body, /`model` and `effort` of `dev` in the model plan \(made as `go` does in its step 4/);
   assert.match(body, /`model` and `effort` of `dev` in the same model plan/);
