@@ -806,3 +806,12 @@ test('Scenario: Body edited days after the approval - approval_withdrawn names t
   assert.doesNotMatch(renderMessage('approval_withdrawn', { issue: 42, edited: 'title' }, 'en'), /Approved by/, 'an unknown approver drops the line');
   assert.throws(() => renderMessage('approval_withdrawn', { issue: 42, edited: 'labels' }, 'en'), /unknown edit/);
 });
+
+test('Scenario: A note from the bugs lens - the hand-off names the lens, shows how many notes there are and carries the label in the marker', () => {
+  const notes = [{ lens: 'bugs', text: 'CONFIRMED: a valid zero is replaced by the default.' }, { lens: 'bugs', text: 'PLAUSIBLE: a reset can be called twice.' }];
+  const en = renderMessage('built', { ...NOTE_BUILT, qa_notes: notes });
+  assert.match(en, /QA left 2 advisory notes for you \(bugs: CONFIRMED: a valid zero is replaced by the default\.; bugs: PLAUSIBLE: a reset can be called twice\.\); they are in the checklist\./);
+  const marker = /<!-- relevo:qa-notes (\[.*\]) -->/.exec(en);
+  assert.deepEqual(JSON.parse(marker[1]).map((n) => n.lens), ['bugs', 'bugs']);
+  assert.match(JSON.parse(marker[1])[0].text, /^CONFIRMED: /);
+});

@@ -96,6 +96,8 @@ Lo que Relevo asume del runner:
 
 Un runner con `limits.concurrent_agents: 1` es la misma máquina que corre los checks de tus pull requests, así que un build de hasta 60 minutos los retrasa. Agrega runners con las mismas etiquetas en lugar de subir el límite.
 
+Una construcción de iOS necesita macOS con Xcode, así que una ejecución en la nube para una plataforma iOS necesita `runner.labels` que nombren un runner Mac. `review` es un paso local: la revisión de iOS corre en tu Mac contra un simulador arrancado y nunca en el runner de Linux.
+
 ### Varios runners en una misma máquina
 
 Cada proceso de runner ejecuta un job a la vez, así que varios runners en una máquina son la forma de correr builds en paralelo allí. Lo que cada uno guarda aparte y lo que comparten:

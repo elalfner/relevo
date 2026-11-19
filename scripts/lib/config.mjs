@@ -43,6 +43,8 @@ export const SETTINGS = [
   { path: 'runner.build_labels', type: 'label-list', default: null },
   { path: 'qa.retries', type: 'int', min: 0, default: 1 },
   { path: 'qa.rules_from', type: 'path-list', default: [] },
+  // Whether the findings of the bugs lens block: `advisory` (they are notes), `blocking` (a CONFIRMED finding blocks) or `off` (the lens does not run).
+  { path: 'qa.bugs', type: 'enum', allowed: ['advisory', 'blocking', 'off'], default: 'advisory' },
   // Files no agent or script reads, added to the base list of restricted-paths.mjs; it can never take an entry away.
   { path: 'restricted_paths', type: 'restricted-list', default: [] },
   // Files that issues only add lines to (a merge is trivial), so naming one does not make two issues wait for each other.
@@ -72,7 +74,7 @@ const KNOWN_TOP = new Set([...GROUPS, ...TOP_SCALARS, 'labels', 'platform', 'pla
 
 // The model and the effort of the developer agent and of each QA lens. The default of `dev` is what it always was; the lenses'
 // defaults are set in the design of specialist-review-lenses and change only on the evidence of its evaluation.
-export const QA_LENSES = ['spec', 'security', 'code', 'interface'];
+export const QA_LENSES = ['spec', 'security', 'code', 'interface', 'bugs'];
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 // The order of the models, from the lowest to the highest. Relevo reads only the order, never checks the names against a list of
 // models (the list changes): a new model needs a line in relevo.yml and no release.
@@ -88,6 +90,8 @@ export const AGENT_DEFAULTS = {
     security: { model: 'opus', effort: 'high' },
     code: { model: 'sonnet', effort: 'high' },
     interface: { model: 'sonnet', effort: 'medium' },
+    // The defaults of the bugs lens start from those of `code` and change only on the evidence of docs/lens-evaluation.md.
+    bugs: { model: 'sonnet', effort: 'high' },
   },
 };
 const isMapValue = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);

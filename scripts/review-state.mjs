@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Keeps the state of an on-device review and decides whether a pull request may be opened.
 //   review-state.mjs init <change-dir> [--autopilot off|precheck|verify]   build the checklist from the change's scenarios
-//   review-state.mjs init <change-dir> --adapter api [--stack supabase] [--log <path, glob or docker:name>] [--cwd <dir>]
+//   review-state.mjs init <change-dir> --adapter api [--stack supabase] [--declared] [--log <path, glob, docker:name or compose:services>] [--cwd <dir>]
 //                                                 an api review: also records how much of the log files exists now,
 //                                                 or the time a container's log is read from (the Supabase default)
 //   review-state.mjs ran <exit code> [--by person|agent] [--filter <f>] [--tests <n>] [--line <n>] [--failing a,b] [--tap <file>|-]
@@ -9,6 +9,7 @@
 //                                                 --tap reads the output of `supabase test db` for the assertions and the failing names
 //   review-state.mjs started-stack                a Supabase review: the agent started the local stack, so it stops it at the end
 //   review-state.mjs runs-list                    print the "Test runs" section for the pull request body
+//   review-state.mjs init <change-dir> --target ios --process <executable>   an iOS review: reads the log of the booted simulator
 //   review-state.mjs reset-log                    an api review: take the log files as they are now (after a fix)
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
 //   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
@@ -34,6 +35,8 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { readSlice, snapshotLog } from './lib/api-log.mjs';
 import { checklistFromChange } from './lib/checklist.mjs';
+import { listSimulators, pickSimulator, readIosLog, formatLogStart } from './lib/device-ios.mjs';
+import { auditSimulatorSource } from './lib/logaudit-ios.mjs';
 import { auditApi, auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
 import { parseTap } from './lib/pgtap.mjs';
 import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, markStackStarted, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
@@ -47,7 +50,7 @@ const [command, ...rest] = args;
 
 // The log an api review reads when the profile does not say: the files of Laravel, the container of Supabase.
 const DEFAULT_LOG = { supabase: 'docker:supabase_db_{project_id}' };
-const describeLog = (log) => (log.source === 'docker' ? `the log of the container ${log.container} is read from ${log.since} on` : `the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)`);
+const describeLog = (log) => (log.source === 'compose' ? `the log of ${log.services.length > 0 ? `the services ${log.services.join(', ')}` : 'every service'} of the Compose project is read from ${log.since} on` : log.source === 'docker' ? `the log of the container ${log.container} is read from ${log.since} on` : `the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)`);
 
 const fail = (m) => {
   console.error(m);
@@ -62,6 +65,18 @@ const save = (state) => {
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
 };
 
+// The end of every audit: apply the waivers, keep the state, write the report and print the verdict.
+function finishAudit(state, audit, scope) {
+  applyWaivers(state);
+  audit.verdict = state.audit.verdict;
+  save(state);
+  writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
+  console.log(audit.verdict);
+  if (audit.reason) console.log(`  ${audit.reason}`);
+  if (audit.ignored) console.log(`  ${audit.ignored} Apple system error(s) ignored`);
+  audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+}
+
 try {
   switch (command) {
     case 'init': {
@@ -70,10 +85,17 @@ try {
       const flag = (name) => (rest.indexOf(`--${name}`) === -1 ? undefined : rest[rest.indexOf(`--${name}`) + 1]);
       const api = flag('adapter') === 'api';
       if (flag('adapter') !== undefined && !api) fail('--adapter can only be "api"');
+      const ios = flag('target') === 'ios';
+      if (flag('target') !== undefined && !ios) fail('--target can only be "ios"');
+      if (ios && api) fail('--target ios is a device review: it does not go with --adapter api');
+      if (ios && !flag('process')) fail('an iOS review needs --process <executable name of the app>');
       const stack = flag('stack');
       if (stack !== undefined && !api) fail('--stack goes with --adapter api');
+      const declared = rest.includes('--declared');
+      if (declared && !api) fail('--declared goes with --adapter api');
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack });
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared });
+      if (ios) state.source = { source: 'simulator', udid: pickSimulator(listSimulators(), process.env.IOS_SIMULATOR ?? null), process: flag('process'), since: formatLogStart() };
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
       console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})${api ? `; ${describeLog(log)}` : ''}`);
@@ -84,6 +106,8 @@ try {
       const state = syncState(load(), checklistFromChange(rest[0]));
       // The log of the old code is not the log of the new: an api review takes the files as they are now.
       if (state.kind === 'api') state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
+      // Likewise an iOS review reads the simulator log from now on.
+      if (state.source?.source === 'simulator') state.source.since = formatLogStart();
       save(state);
       const pending = state.items.filter((i) => i.status === 'pending').length;
       console.log(`${state.items.length} checklist item(s), ${pending} to test again; the log audit and the agreement must be repeated`);
@@ -141,7 +165,13 @@ try {
       break;
     case 'reset-log': {
       const state = load();
-      if (state.kind !== 'api') fail('reset-log is for an api review');
+      if (state.source?.source === 'simulator') {
+        state.source.since = formatLogStart();
+        save(state);
+        console.log(`the simulator log is read from ${state.source.since} (local time)`);
+        break;
+      }
+      if (state.kind !== 'api') fail('reset-log is for an api or an iOS review');
       state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
       save(state);
       console.log(describeLog(state.log));
@@ -151,17 +181,18 @@ try {
       const state = load();
       if (state.kind === 'api') {
         const slice = readSlice(state.log, { cwd: state.cwd ?? '.' });
-        const flavor = state.stack === 'supabase' ? 'postgres' : 'laravel';
+        const flavor = state.declared ? 'declared' : state.stack === 'supabase' ? 'postgres' : 'laravel';
         const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor });
-        const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor === 'postgres' ? { flavor } : {}) };
+        const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor !== 'laravel' ? { flavor } : {}) };
         state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}) };
-        applyWaivers(state);
-        audit.verdict = state.audit.verdict;
-        save(state);
-        writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
-        console.log(audit.verdict);
-        if (audit.reason) console.log(`  ${audit.reason}`);
-        audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+        finishAudit(state, audit, scope);
+        break;
+      }
+      if (state.source?.source === 'simulator') {
+        const audit = auditSimulatorSource(state.source, readIosLog);
+        const scope = { kind: 'ios', process: state.source.process, since: state.source.since };
+        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ignored: audit.ignored, ...(audit.reason ? { reason: audit.reason } : {}) };
+        finishAudit(state, audit, scope);
         break;
       }
       const pi = rest.indexOf('--package');
@@ -176,13 +207,7 @@ try {
       const { text: source, scope } = pkg ? filterByApp(raw, { package: pkg, pids }) : { text: raw, scope: null };
       const audit = auditLog(source, { scope });
       state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}) };
-      applyWaivers(state);
-      audit.verdict = state.audit.verdict;
-      save(state);
-      writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
-      console.log(audit.verdict);
-      if (audit.reason) console.log(`  ${audit.reason}`);
-      audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
+      finishAudit(state, audit, scope);
       break;
     }
     case 'confirm-env': {

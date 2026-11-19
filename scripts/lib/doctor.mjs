@@ -22,6 +22,7 @@ import { restrictedBlockState } from './agent-workflow.mjs';
 import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
+import { onPath } from './on-path.mjs';
 import { testDatabase } from './api-preflight.mjs';
 import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
@@ -651,9 +652,35 @@ function gatherPlatforms(f, p, tryRun) {
         const tool = resolved.profile.targets[target] ?? '';
         return { target, tool, ok: tool === '' ? true : available(tool) };
       });
+      // An iOS review reads a simulator: whether simctl answers, a runtime is installed and a simulator is booted.
+      if (f.macos && f.ios === undefined && entry.targetTools.some((t) => t.target === 'ios' && t.tool === 'xcrun' && t.ok)) {
+        const json = (args) => tryRun(() => JSON.parse(String(p.tool('xcrun', args))), null);
+        const runtimes = json(['simctl', 'list', 'runtimes', '--json']);
+        const booted = json(['simctl', 'list', 'devices', 'booted', '--json']);
+        f.ios = {
+          simctl: runtimes !== null,
+          runtimes: runtimes ? (runtimes.runtimes ?? []).filter((r) => r.isAvailable !== false).length : 0,
+          booted: booted ? Object.values(booted.devices ?? {}).flat().filter((d) => d.state === 'Booted').length : null,
+        };
+      }
       // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
-      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
-      if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
+      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform), review: resolved.profile.review });
+      if (adapter.declared) {
+        // A declared adapter (the repository's own stack): the tools of review.needs are looked for on the PATH, never run, and the
+        // Docker daemon is asked when docker is listed. Nothing is started, and the log and the test command are not run.
+        const found = (tool) => (p.onPath ? tryRun(() => Boolean(p.onPath(tool)), false) : available(tool));
+        entry.declared = {
+          needs: adapter.needs.map((tool) => {
+            if (tool === 'docker') {
+              const cliOk = found('docker');
+              const daemonOk = cliOk ? tryRun(() => Boolean(p.tool('docker', ['info'])), false) : false;
+              return { tool, ok: daemonOk, cliOk };
+            }
+            return { tool, ok: found(tool) };
+          }),
+          filter: String(adapter.test ?? '').includes('{filter}'),
+        };
+      } else if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
         // A Supabase review runs pgTAP against the local containers: the config, whether the stack runs, and its log container.
         const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
         const hasConfig = p.exists(at('supabase/config.toml'));
@@ -743,7 +770,7 @@ function gatherPlatforms(f, p, tryRun) {
     f.autopilot = {
       mode,
       platforms: Object.entries(f.config.platforms).map(([name, platform]) => {
-        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets };
+        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets, review: f.platformFacts.find((x) => x.name === name)?.profile?.review };
         if (platform.stack === 'flutter') {
           entry.driverEntry = p.exists(join(platform.path, 'lib/main_driver.dart'));
           const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
@@ -917,7 +944,8 @@ function platformChecks(f) {
       if (missing.length > 0) r.push(warn(`platform.${e.name}.commands`, `platform ${e.name}: the profile of ${e.stack} defines no ${missing.join(' and no ')}, so QA has no command to run for it`, `write ${missing.join(' and ')} in .relevo/stacks/${e.stack}.md, or set platforms.${e.name}.checks in relevo.yml`));
     }
     (e.profile.ignored ?? []).forEach((x) => {
-      r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
+      const reviewAdapterKey = x.key === 'review.adapter' || x.key === 'review.needs';
+      r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, reviewAdapterKey ? `remove ${x.key} from .relevo/stacks/${e.stack}.md: only a stack the plugin has no review adapter for can declare one` : `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
     // What an api review needs, and what the review block of the profile says.
     if (e.api) {
@@ -936,6 +964,14 @@ function platformChecks(f) {
       if (sb.config && sb.running === false) r.push(note(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is not running; the review asks before it runs \`supabase start\``));
       else if (sb.running) r.push(pass(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is running`));
       if (sb.logContainerFound === false) r.push(warn(`review.log.${e.name}`, `platform ${e.name}: review.log names the container ${sb.logContainer}, which does not exist while the local stack is running, so the audit would read no log`, 'check review.log in the profile; the database container is supabase_db_<project_id>'));
+    }
+    if (e.declared) {
+      e.declared.needs.forEach(({ tool, ok, cliOk }) => {
+        const id = `review.needs.${e.name}.${tool}`;
+        if (tool === 'docker' && !ok && cliOk) r.push(warn(id, `platform ${e.name}: review.needs lists docker and the engine is stopped, so the review cannot run its tests`, 'start Docker Desktop or OrbStack'));
+        else if (!ok) r.push(warn(id, `platform ${e.name}: review.needs lists ${tool}, which is not installed, so the review cannot run its tests`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+      });
+      if (e.declared.needs.every((n) => n.ok)) r.push(pass(`review.declared.${e.name}`, `platform ${e.name}: the review is declared by .relevo/stacks/${e.stack}.md (adapter api)${e.declared.needs.length > 0 ? `, and ${e.declared.needs.map((n) => n.tool).join(', ')} ${e.declared.needs.length === 1 ? 'is' : 'are'} available` : ''}`));
     }
     (e.profile.reviewReplaced ?? []).forEach((key) => {
       r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));
@@ -962,6 +998,15 @@ function platformChecks(f) {
       const id = `tools.target.${e.name}.${target}`;
       if (tool === '') r.push(pass(id, `target ${target} of ${e.name} needs no extra tool`));
       else if (tool === 'xcrun' && !f.macos) r.push(note(id, `target ${target} of ${e.name}: iOS can only be built and reviewed on macOS`));
+      else if (ok && tool === 'xcrun' && target === 'ios' && f.ios) {
+        r.push(pass(id, `target ${target} of ${e.name}: ${tool} is installed`));
+        const key = `review.ios.${e.name}`;
+        if (!f.ios.simctl) r.push(warn(`${key}.simctl`, `platform ${e.name}: \`xcrun simctl\` does not answer, so \`review\` cannot read a simulator`, 'install Xcode and run `sudo xcode-select -s /Applications/Xcode.app`'));
+        else if (f.ios.runtimes === 0) r.push(warn(`${key}.runtime`, `platform ${e.name}: no iOS Simulator runtime is installed`, 'install one in Xcode (Settings > Components) or with `xcodebuild -downloadPlatform iOS`'));
+        else if (f.ios.booted === null) r.push(note(`${key}.booted`, `platform ${e.name}: the list of booted simulators could not be read`))
+        else if (f.ios.booted === 0) r.push(note(`${key}.booted`, `platform ${e.name}: no simulator is booted; the iOS review needs one running the app (the review never boots it)`));
+        else r.push(pass(`${key}.booted`, `platform ${e.name}: ${f.ios.booted} iOS simulator(s) booted`));
+      }
       else if (ok) r.push(pass(id, `target ${target} of ${e.name}: ${tool} is installed`));
       else r.push(warn(id, `target ${target} of ${e.name}: ${tool} is not installed; \`review\` needs it for this target`, TOOL_INSTALL[tool] ?? `install ${tool}`));
     });
@@ -1018,8 +1063,13 @@ function platformChecks(f) {
     } else if (e.stack === 'vue') {
       if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, `run /relevo:init, which offers it, or \`${e.path && e.path !== '.' ? `cd ${e.path} && ` : ''}npm install -D playwright && npx playwright install chromium\` and commit package.json and the lock file`));
       else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
-    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }) }).kind === 'api') {
-      r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
+    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }), review: e.review }).kind === 'api') {
+      const adapter = adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }), review: e.review });
+      if (adapter.declared && !String(adapter.test ?? '').includes('{filter}')) {
+        r.push(note(`autopilot.${e.name}.filter`, `platform ${e.name}: review.test has no {filter}, so with autopilot ${f.autopilot.mode} the agent marks no line by itself: it runs the whole suite once at the end and you confirm every line`));
+      } else {
+        r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
+      }
     } else {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
     }
@@ -1237,7 +1287,7 @@ function toolchainChecks(f) {
   return [...known, ...own];
 }
 
-/** The QA lenses: settings an agent does not apply, the four agent files, the profile of each platform for each lens, stale names. */
+/** The QA lenses: settings an agent does not apply, the agent files, the profile of each platform for each lens, stale names. */
 function lensChecks(f) {
   const r = [];
   const given = f.config?.agents_given ?? [];
@@ -1246,17 +1296,20 @@ function lensChecks(f) {
   }
   if (f.lensAgentsMissing !== undefined) {
     r.push(f.lensAgentsMissing.length === 0
-      ? pass('qa.lens-agents', 'the plugin has the four QA lens agents')
+      ? pass('qa.lens-agents', `the plugin has the ${QA_LENSES.length} QA lens agents`)
       : fail('qa.lens-agents', `the plugin lacks the QA lens agent${f.lensAgentsMissing.length === 1 ? '' : 's'} ${f.lensAgentsMissing.map((l) => `qa-${l}`).join(', ')}`, 'update the plugin to the current version'));
   }
+  // The bugs lens advises by default; a repository that lets it block, or switches it off, hears it once.
+  if (f.config?.qa?.bugs === 'blocking') r.push(note('qa.bugs-mode', 'qa.bugs is blocking: a finding of the bugs lens that it labels CONFIRMED sends the work back to the developer, and one labelled PLAUSIBLE is only a note'));
+  if (f.config?.qa?.bugs === 'off') r.push(note('qa.bugs-mode', 'qa.bugs is off: the bugs lens does not run, so correctness defects are checked only by the other lenses'));
   (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
     const bad = LENSES.filter((l) => { try { lensText(e.profile, l); return false; } catch { return true; } });
     r.push(bad.length === 0
       ? pass(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} resolves for every QA lens`)
       : fail(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} cannot be resolved for the lens${bad.length === 1 ? '' : 'es'} ${bad.join(', ')}`, 'check .relevo/stacks and stacks/ for the stack'));
   });
-  (f.staleQaReferences ?? []).forEach((file) => r.push(warn(`qa.stale-reference.${file}`, `${file} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
-  (f.workflows ? Object.entries(f.workflows) : []).filter(([, w]) => w?.present && typeof w.text === 'string' && STALE_QA_RE.test(w.text)).forEach(([name]) => r.push(warn(`qa.stale-reference.${name}`, `workflow ${name} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
+  (f.staleQaReferences ?? []).forEach((file) => r.push(warn(`qa.stale-reference.${file}`, `${file} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code, relevo:qa-interface and relevo:qa-bugs')));
+  (f.workflows ? Object.entries(f.workflows) : []).filter(([, w]) => w?.present && typeof w.text === 'string' && STALE_QA_RE.test(w.text)).forEach(([name]) => r.push(warn(`qa.stale-reference.${name}`, `workflow ${name} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code, relevo:qa-interface and relevo:qa-bugs')));
   return r;
 }
 

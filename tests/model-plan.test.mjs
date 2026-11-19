@@ -210,7 +210,7 @@ test('the command prints the plan of a role on auto, and exits 0', () => {
   const plan = JSON.parse(r.stdout);
   assert.equal(plan.dev.model, 'haiku');
   assert.equal(plan.dev.source, 'auto');
-  assert.deepEqual(Object.keys(plan.qa), ['spec', 'security', 'code', 'interface']);
+  assert.deepEqual(Object.keys(plan.qa), ['spec', 'security', 'code', 'interface', 'bugs']);
 });
 
 test('the command with roles that are not on auto prints the configuration', () => {
@@ -299,4 +299,23 @@ test('the escalate command prints the model, records the step for the report and
   const broken = spawnSync(process.execPath, [CLI, 'escalate', '--config', join(dir, 'missing.yml')], { encoding: 'utf8', env });
   assert.equal(broken.status, 0);
   assert.equal(JSON.parse(broken.stdout).failed, true);
+});
+
+// ---- the bugs lens (add-qa-bugs-lens)
+
+test('Scenario: The bugs lens on auto - it is in the plan and never goes below sonnet by default', () => {
+  const config = cfg(`${ALL_AUTO}    bugs:\n      model: auto\n`);
+  const p = planModels({ config, issue: issue(2), tasksText: tasks(2) });
+  assert.equal(p.qa.bugs.model, 'sonnet');
+  assert.equal(p.qa.bugs.source, 'auto');
+});
+
+test('Scenario: The bugs lens keeps the model written, and its floor and ceiling are read only on auto', () => {
+  const p = planModels({ config: cfg('agents:\n  qa:\n    bugs:\n      model: opus\n      floor: haiku\n'), issue: issue(2), tasksText: tasks(2) });
+  assert.deepEqual(p.qa.bugs, { model: 'opus', effort: 'high', source: 'config', why: 'set in relevo.yml' });
+});
+
+test('the command with a lens list can ask for the bugs lens alone', () => {
+  const plan = JSON.parse(run(folder(), ['--lenses', 'bugs']).stdout);
+  assert.deepEqual(Object.keys(plan.qa), ['bugs']);
 });

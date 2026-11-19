@@ -402,8 +402,65 @@ test('Scenario: Supabase ready / Local stack stopped - the skill names the Supab
   assert.ok(source.includes("case 'started-stack'"), 'review-state has no "started-stack" command');
 });
 
+test('the skill handles an iOS review: preflight, process, audit input, captures, and no driving of the simulator', () => {
+  assert.match(body, /device\.mjs --target ios/);
+  assert.match(body, /IOS_SIMULATOR/);
+  assert.match(body, /review-state\.mjs init [^\n]*--target ios --process/);
+  assert.match(body, /simctl spawn <udid> log show --style ndjson/);
+  assert.match(body, /capture\.mjs <name>` \(`--target ios`/);
+  assert.match(body, /never boot, install, launch or terminate anything in a simulator/);
+  assert.match(body, /no iOS driver yet/);
+});
+
+test('the iOS micro-fix and start steps do not use adb or a serial', () => {
+  assert.match(body, /in an iOS review `review-state\.mjs reset-log` instead, never `adb`/);
+  assert.match(body, /In an iOS review they run it in the simulator/);
+});
+
 test('Scenario: review launches the developer with the model plan', () => {
   assert.match(body, /`model` and `effort` of `dev` in the model plan \(made as `go` does in its step 4/);
   assert.match(body, /`model` and `effort` of `dev` in the same model plan/);
   assert.doesNotMatch(body, /`effort` of `agents\.dev`/, 'it no longer reads agents directly');
+});
+
+// ---- a declared adapter (declared-review-adapter)
+
+test('Scenario: Missing tool / Daemon stopped / Everything present - the skill runs the generic preflight, stops on exit 3 and 4 and installs nothing', () => {
+  assert.ok(body.includes('api-preflight.mjs --needs <the needs, comma separated>'));
+  assert.match(body, /Exit `3` \(a tool is missing; its `detail` names it\) or `4` \(the Docker daemon does not answer\)/);
+  assert.match(body, /only looks for each tool on the `PATH` without running it[^.]*installs nothing, starts nothing and reads no file/);
+});
+
+test('Scenario: Confirmation before the agent runs a test / refused / The person runs the test / Instance not up - the two questions, confirm-env and the off case', () => {
+  assert.match(body, /ask the person in one message for two things: \(1\) the written confirmation that the data the tests touch is not production, and \(2\) their word that the local instance the tests need is up/);
+  assert.match(body, /Run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/review-state\.mjs confirm-env` only after they say yes to the first/);
+  assert.match(body, /If they confirm nothing, run no test and leave every line to them/);
+  assert.match(body, /say the local instance is not up, run no test, ask them to start it and never start it yourself/);
+  assert.match(body, /With `review\.autopilot` `off` ask nothing about this: the person runs `review\.test` in their own terminal, tells you `ran <exit code>`/);
+  assert.match(body, /do not read the file: leave that test to the person/);
+  assert.ok(body.includes('--declared'));
+});
+
+test('Scenario: Command with a filter / without a filter / A filter that is not a single name / A run that reports no count - the {filter} rule', () => {
+  assert.ok(body.includes('`^[A-Za-z0-9_./:#@-]+$`'));
+  assert.match(body, /replace every `\{filter\}` with exactly one test name/);
+  assert.match(body, /leave the line to the person with a note/);
+  assert.match(body, /if the output does not say how many ran, record no count and the proof is refused/);
+  assert.match(body, /When `review\.test` has no `\{filter\}`, you prove no line and leave every line to the person: run the whole suite once at the end/);
+  assert.match(body, /Never write or edit a test, never start or stop the local instance, never read `\.env` files, and run `git status --porcelain` before and after each run/);
+});
+
+test('the audit paragraph of a declared adapter lists the signals, says what is not detected and that an unreadable compose log cannot be waived', () => {
+  assert.match(body, /`FATAL` or `PANIC`, a deadlock, out of memory, a database `ERROR` that is not a denial, and an HTTP status of 500 or above/);
+  assert.match(body, /errors without those signals are not detected and that the recorded run is the proof/);
+  assert.match(body, /`compose:` log cannot be read[^.]*`REVIEW INCONCLUSIVE` and cannot be waived/);
+});
+
+test('the Laravel and Supabase steps are unchanged', () => {
+  assert.ok(body.includes('For an adapter whose kind is `api`: run `node ${CLAUDE_PLUGIN_ROOT}/scripts/api-preflight.mjs` from the folder of the platform. Exit `3` (PHP or Composer is missing)'));
+  assert.ok(body.includes('For an adapter whose kind is `api` and whose stack is `supabase`: run `node ${CLAUDE_PLUGIN_ROOT}/scripts/api-preflight.mjs --stack supabase`'));
+  assert.ok(body.includes('An `api` review of Laravel works as follows. With `precheck` or `verify` and the data confirmed, prove a line only with the test that already covers it'));
+  assert.ok(body.includes('**An `api` review of Supabase.** With `precheck` or `verify`, prove a line only with the pgTAP file that already covers it'));
+  assert.ok(body.includes('A Supabase review asks no confirmation about the database'));
+  assert.ok(body.includes('the one entry `FATAL: role "postgres" does not exist` that `supabase db reset` writes'));
 });

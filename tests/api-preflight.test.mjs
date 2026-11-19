@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { apiPreflight, lockMatches, phpunitEnv, testDatabase } from '../scripts/lib/api-preflight.mjs';
+import { apiPreflight, findOnPath, lockMatches, needsPreflight, phpunitEnv, testDatabase } from '../scripts/lib/api-preflight.mjs';
 
 const CLI = new URL('../scripts/api-preflight.mjs', import.meta.url).pathname;
 // The test environment of a new Laravel project, as phpunit.xml declares it (checked on a project from composer create-project).
@@ -136,4 +136,77 @@ test('the script takes --stack, refuses an unknown one, and Laravel stays the de
   const laravel = spawnSync(process.execPath, [CLI], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
   assert.equal(laravel.status, 3);
   assert.match(JSON.parse(laravel.stdout).detail, /php and composer/);
+});
+
+// ---- a declared adapter (declared-review-adapter): --needs a,b
+
+const needsWorld = ({ tools = [], docker = 0 } = {}) => ({ find: (n) => tools.includes(n), run: () => ({ status: docker }) });
+
+test('Scenario: Missing tool - the preflight names it, exits 3 and installs nothing', () => {
+  const r = needsPreflight({ needs: ['nhost', 'docker'] }, needsWorld({ tools: ['docker'] }));
+  assert.deepEqual([r.ok, r.check, r.exit, r.missing], [false, 'tool', 3, ['nhost']]);
+  assert.match(r.detail, /nhost not found/);
+  assert.equal(r.install, null, 'it has no hint for a tool it does not know');
+  assert.match(needsPreflight({ needs: ['docker'] }, needsWorld()).install, /Docker/);
+});
+
+test('Scenario: Daemon stopped - exit 4', () => {
+  const r = needsPreflight({ needs: ['nhost', 'docker'] }, needsWorld({ tools: ['nhost', 'docker'], docker: 1 }));
+  assert.deepEqual([r.ok, r.check, r.exit], [false, 'docker', 4]);
+  assert.match(r.detail, /Docker daemon does not answer/);
+});
+
+test('Scenario: Everything present - ready with exit 0, and the daemon is asked only when docker is listed', () => {
+  const calls = [];
+  const deps = { find: () => true, run: (c, a) => { calls.push([c, a]); return { status: 0 }; } };
+  assert.deepEqual([needsPreflight({ needs: ['nhost', 'docker'] }, deps).ok, calls], [true, [['docker', ['info']]]]);
+  calls.length = 0;
+  assert.equal(needsPreflight({ needs: ['nhost'] }, deps).exit, 0);
+  assert.deepEqual(calls, []);
+  assert.equal(needsPreflight({ needs: [] }, deps).exit, 0);
+});
+
+test('a name with a path or a shell character is refused before anything is looked for', () => {
+  let looked = false;
+  const deps = { find: () => { looked = true; return true; }, run: () => ({ status: 0 }) };
+  ['./tools/run', '/bin/sh', 'a b', 'x;rm'].forEach((name) => {
+    const r = needsPreflight({ needs: [name] }, deps);
+    assert.deepEqual([r.ok, r.exit], [false, 2], name);
+  });
+  assert.equal(looked, false);
+});
+
+test('findOnPath looks in the directories of PATH without running anything', () => {
+  const deps = { isExecutable: (f) => f === '/b/nhost' };
+  assert.equal(findOnPath('nhost', '/a:/b', deps), true);
+  assert.equal(findOnPath('nhost', '/a', deps), false);
+  assert.equal(findOnPath('nhost', '', deps), false);
+});
+
+test('the command looks on PATH: a stub tool is found, a missing one exits 3, a stopped daemon exits 4, a path exits 2', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-needs-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  const stub = (name, status) => { writeFileSync(join(bin, name), `#!/bin/sh\necho ran >> "${dir}/${name}.ran"\nexit ${status}\n`); chmodSync(join(bin, name), 0o755); };
+  stub('nhost', 0);
+  stub('docker', 0);
+  const run = (needs, PATH = bin) => spawnSync(process.execPath, [CLI, '--needs', needs], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH } });
+  const ok = run('nhost,docker');
+  assert.equal(ok.status, 0, ok.stdout);
+  assert.equal(JSON.parse(ok.stdout).check, 'ready');
+  const missing = run('nhost,gateway');
+  assert.equal(missing.status, 3);
+  assert.deepEqual(JSON.parse(missing.stdout).missing, ['gateway']);
+  assert.equal(run('./nhost').status, 2);
+  stub('docker', 1);
+  assert.equal(run('docker').status, 4);
+  // the tool named only to be found was never run, and docker was run once for `info`
+  assert.equal(spawnSync('test', ['-e', join(dir, 'nhost.ran')]).status, 1);
+});
+
+test('the Laravel and Supabase modes are unchanged by --needs', () => {
+  const r = apiPreflight({ cwd: '/p' }, world({ files: READY }));
+  assert.equal(r.exit, 0);
+  const none = spawnSync(process.execPath, [CLI, '--stack', 'supabase'], { cwd: mkdtempSync(join(tmpdir(), 'relevo-needs-')), encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
+  assert.equal(none.status, 3);
 });

@@ -200,3 +200,13 @@ test('run-usage.mjs puts the seconds of each lens in the marker, apart from the 
   assert.equal(parseUsageMarker(bot(none.slice(none.indexOf('<!--')))).lenses, undefined);
   assert.equal(parseUsageMarker(bot('<!-- relevo:usage {"turns":3,"lenses":[{"name":1}]} -->')).lenses, undefined, 'a malformed one is left out');
 });
+
+test('Scenario: the bugs lens has its own seconds in the usage record, like the others (add-qa-bugs-lens)', () => {
+  const dir = fresh();
+  recordPhase(dir, { phase: 'qa', attempt: 1, of: 2 }, 0);
+  assert.equal(recordLens(dir, { lens: 'bugs', attempt: 1 }, 5_000), true);
+  recordLens(dir, { lens: 'bugs', attempt: 1, end: true }, 35_000);
+  assert.deepEqual(lensSeconds(readLensLog(dir), readPhaseLog(dir), 40_000), [{ name: 'bugs', attempt: 1, seconds: 30 }]);
+  const run = spawnSync(process.execPath, [PROGRESS, 'lens', 'bugs', '--attempt', '1'], { encoding: 'utf8', env: { ...process.env, RELEVO_PROGRESS_DIR: dir } });
+  assert.equal(run.status, 0, run.stderr);
+});

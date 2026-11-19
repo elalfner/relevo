@@ -1,12 +1,16 @@
 // Decides the result of the QA lenses, in a script that fails closed. Implements "A script decides the result and it fails
-// closed" and "The interface lens advises on the last attempt" of the qa-lenses specification.
+// closed", "The interface lens advises on the last attempt" and "The mode of the `bugs` lens decides whether it blocks" of the
+// qa-lenses specification.
 
-import { ALWAYS } from './lens-plan.mjs';
+import { ALWAYS, BUGS_MODES } from './lens-plan.mjs';
 import { quoteMatches, ruleAt } from './rules-file.mjs';
 
 export const CLASSES = ['fixable', 'input', 'spec', 'policy'];
 const CLASS_RE = /^\s*(?:\*\*)?Class(?:\*\*)?\s*[:=]\s*`?([A-Za-z]+)`?/i;
 const FINDING_RE = /^\s*(\d+)[.)]\s+(.*)$/;
+// `Label: CONFIRMED` or `Label: PLAUSIBLE` under a finding of the bugs lens; a bullet or bold markers are accepted. A finding
+// without a valid label is PLAUSIBLE: a block must rest on a label the lens gave.
+const LABEL_RE = /^\s*(?:[-*+]\s+)?(?:\*\*)?Label(?:\*\*)?\s*[:=]\s*(?:\*\*)?\s*`?(CONFIRMED|PLAUSIBLE)\b/i;
 // `Rule: <file>:<line> "<quoted text>"` (backticks and curly quotes accepted): a finding that cites the rule it breaks.
 const RULE_RE = /\bRule\b\**\s*[:=]\s*\**\s*`?([^\s`"“”:]+):(\d+)`?\s*["“'`](.+?)["”'`]\s*\.?\s*$/i;
 const DEVICE_HEADING_RE = /^\s*(?:#{1,6}\s*|\*\*)?Left for on-device review\b/i;
@@ -85,8 +89,8 @@ export function verdictOf(text) {
 }
 
 /**
- * { verdict, findings: [{ number, class, text, cites }], device: [text], orphans: [cite] }. A finding without a valid class is
- * `fixable`. A cite is { file, line, quote } from a `Rule:` line; one that belongs to no numbered finding (or that is in a report
+ * { verdict, findings: [{ number, class, label, text, cites }], device: [text], orphans: [cite] }. A finding without a valid class
+ * is `fixable`, and one without a valid label is `PLAUSIBLE`. A cite is { file, line, quote } from a `Rule:` line; one that belongs to no numbered finding (or that is in a report
  * with no findings, as in `QA PASSED`) is in `orphans`.
  */
 export function parseReport(text) {
@@ -105,9 +109,11 @@ export function parseReport(text) {
       return;
     }
     const cite = (l) => { const m = RULE_RE.exec(l); return m ? { file: m[1], line: Number(m[2]), quote: m[3].trim() } : null; };
-    if (item) { current = { number: Number(item[1]), class: 'fixable', text: item[2].trim(), cites: [] }; findings.push(current); const c = cite(item[2]); if (c) current.cites.push(c); return; }
+    if (item) { current = { number: Number(item[1]), class: 'fixable', label: 'PLAUSIBLE', text: item[2].trim(), cites: [] }; findings.push(current); const c = cite(item[2]); if (c) current.cites.push(c); return; }
     const c = cite(line);
     if (c) { (current ? current.cites : orphans).push(c); return; }
+    const lab = LABEL_RE.exec(line);
+    if (lab && current) { current.label = lab[1].toUpperCase(); return; }
     const cls = CLASS_RE.exec(line);
     if (cls && current) current.class = CLASSES.includes(cls[1].toLowerCase()) ? cls[1].toLowerCase() : 'fixable';
   });
@@ -148,9 +154,22 @@ export function aggregate({ reports, plan, attempt, retries, reasked = [], rules
     if (!p.active) { lenses[p.lens] = { status: 'SKIPPED', reason: p.reason }; return; }
     const parsed = parseReport(reports[p.lens]);
     now[p.lens] = parsed;
-    if (parsed.verdict === null) { invalid.push(p.lens); lenses[p.lens] = { status: 'INVALID' }; return; }
-    const blocks = ALWAYS.includes(p.lens) || !last;
-    lenses[p.lens] = { status: parsed.verdict, blocking: blocks, findings: parsed.findings.length };
+    // The bugs lens is governed by its mode: `advisory` never blocks, `blocking` blocks only on a CONFIRMED finding.
+    const isBugs = p.lens === 'bugs';
+    const mode = isBugs ? (BUGS_MODES.includes(p.mode) && p.mode !== 'off' ? p.mode : 'advisory') : null;
+    if (parsed.verdict === null) {
+      // An advisory lens that was already asked twice and still gives no valid first line does not stop the run: it is a note.
+      if (isBugs && mode === 'advisory' && reasked.includes(p.lens)) {
+        lenses[p.lens] = { status: 'INVALID', blocking: false, mode };
+        advisory.push({ lens: p.lens, kind: 'finding', text: 'The bugs lens gave no valid report, so its findings are missing from this review.' });
+        return;
+      }
+      invalid.push(p.lens);
+      lenses[p.lens] = { status: 'INVALID' };
+      return;
+    }
+    const blocks = isBugs ? mode === 'blocking' : ALWAYS.includes(p.lens) || !last;
+    lenses[p.lens] = { status: parsed.verdict, blocking: blocks, findings: parsed.findings.length, ...(isBugs ? { mode } : {}) };
     let hardRule = 0;
     if (parsed.verdict === 'REJECTED') {
       parsed.findings.forEach((f) => {
@@ -163,8 +182,8 @@ export function aggregate({ reports, plan, attempt, retries, reasked = [], rules
           && (!ALWAYS.includes(p.lens) || checked.every((x) => namesQuote(f.text, x.c.quote)));
         const { cites, ...rest } = f;
         if (hard) { hardRule += 1; findings.push({ lens: p.lens, ...rest, rule: { file: hard.v.rule.file, line: hard.v.rule.line, text: hard.v.rule.text } }); rejecting.add(p.lens); }
-        else if (blocks && !adviceOnly) { const entry = { lens: p.lens, ...rest }; if (cites.length) cited.add(entry); findings.push(entry); rejecting.add(p.lens); }
-        else advisory.push({ lens: p.lens, kind: 'finding', text: f.text });
+        else if (blocks && !adviceOnly && (!isBugs || f.label === 'CONFIRMED')) { const entry = { lens: p.lens, ...rest }; if (cites.length) cited.add(entry); findings.push(entry); rejecting.add(p.lens); }
+        else advisory.push(isBugs ? { lens: p.lens, kind: 'finding', label: f.label, text: `${f.label}: ${f.text}` } : { lens: p.lens, kind: 'finding', text: f.text });
       });
       // A rejection that lists no finding cannot be read as a pass.
       if (blocks && parsed.findings.length === 0) rejecting.add(p.lens);
@@ -195,6 +214,11 @@ export function aggregate({ reports, plan, attempt, retries, reasked = [], rules
   // Only from the second attempt, and only with the reports of the one before: without them nothing can be compared.
   const before = {};
   Object.entries(previous ?? {}).forEach(([l, t]) => { before[l] = parseReport(t); });
+  // What the bugs lens reported as a note asked for nothing: only a CONFIRMED finding of a blocking lens can be reversed by another lens.
+  if (before.bugs) {
+    const bugsBlocks = plan.some((p) => p.lens === 'bugs' && p.active && p.mode === 'blocking');
+    before.bugs = { ...before.bugs, findings: bugsBlocks ? before.bugs.findings.filter((f) => f.label === 'CONFIRMED') : [] };
+  }
   const contradiction = rejected && attempt > 1 && !allNonFixable ? contradictionOf({ findings, rejecting, now, before, cited }) : null;
   return {
     result: rejected ? 'QA REJECTED' : 'QA PASSED', action: 'done', lenses, findings, advisory, invalid, unverified, reason: null, contradiction,

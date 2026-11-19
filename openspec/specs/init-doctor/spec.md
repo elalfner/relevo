@@ -1207,10 +1207,14 @@ When the agent in use does not apply a setting of `agents`, `doctor` and `init` 
 - **THEN** no warning is printed
 
 ### Requirement: `doctor` checks that the lens agents are in place
-`doctor` SHALL check that the plugin has the four lens agents and that the profile of each platform can be resolved for each lens, and SHALL report a missing agent or a profile that cannot be resolved.
+`doctor` SHALL check that the plugin has the five lens agents and that the profile of each platform can be resolved for each lens, and SHALL report a missing agent or a profile that cannot be resolved.
 
 #### Scenario: A plugin without a lens agent
 - **WHEN** an installed plugin lacks `qa-security`
+- **THEN** `doctor` names it and says to update the plugin
+
+#### Scenario: A plugin without the bugs lens
+- **WHEN** an installed plugin lacks `qa-bugs`
 - **THEN** `doctor` names it and says to update the plugin
 
 ### Requirement: `doctor` reports a leftover reference to the former QA agent
@@ -1234,3 +1238,87 @@ When the agent in use does not apply a setting of `agents`, `doctor` and `init` 
 #### Scenario: A pin chosen on purpose
 - **WHEN** a repository pins an older action deliberately
 - **THEN** `doctor` warns once per run and never edits it
+
+### Requirement: Doctor checks a declared review adapter
+For a platform whose repository profile declares the `api` adapter, `doctor` SHALL check that each tool in `review.needs` can be found and, when `docker` is listed, that the daemon answers, warning with the tool named when one is missing. It SHALL report an unresolvable declaration as an invalid profile naming the key, and SHALL NOT install or start anything.
+
+#### Scenario: Missing tool
+- **WHEN** `review.needs` lists `nhost` and the tool cannot be found
+- **THEN** `doctor` warns, names `review.needs` and `nhost`, and gives the way to install it
+
+#### Scenario: Docker stopped
+- **WHEN** `review.needs` lists `docker`, the CLI is installed and the daemon does not answer
+- **THEN** `doctor` warns that the engine is stopped and says to start it
+
+#### Scenario: Remote target
+- **WHEN** `review.test` of a declared adapter contains a URL whose host is not local
+- **THEN** `doctor` reports the profile as invalid and names `review.test`
+
+#### Scenario: Missing test
+- **WHEN** a profile sets `adapter: api` and no `test`
+- **THEN** `doctor` reports the profile as invalid and names `review.test`
+
+#### Scenario: Everything in place
+- **WHEN** the declaration is valid, every tool of `review.needs` is found and the daemon answers
+- **THEN** `doctor` passes the check of that platform and says the review is declared by the repository
+
+#### Scenario: No declared adapter
+- **WHEN** no platform declares an adapter
+- **THEN** `doctor` adds none of these checks
+
+### Requirement: Doctor says what a declared adapter can and cannot prove
+For a declared adapter with `review.autopilot` `precheck` or `verify`, `doctor` SHALL note that the agent marks no line by itself when `review.test` has no `{filter}`, and SHALL otherwise pass the autopilot check. It SHALL warn when the repository's profile of a shipped stack sets `review.adapter` or `review.needs`, because they are ignored.
+
+#### Scenario: No filter
+- **WHEN** `review.autopilot` is `verify` and the declared `review.test` has no `{filter}`
+- **THEN** `doctor` notes that the agent will mark no line by itself and that the whole suite runs once at the end
+
+#### Scenario: Autopilot with a filter
+- **WHEN** `review.autopilot` is `precheck` and the declared `review.test` has `{filter}`
+- **THEN** `doctor` passes the autopilot check of that platform and says the agent proves a line by running the test that covers it
+
+#### Scenario: Autopilot off
+- **WHEN** `review.autopilot` is `off` and a platform declares the adapter
+- **THEN** `doctor` adds no autopilot check for it
+
+#### Scenario: Ignored declaration on a shipped stack
+- **WHEN** the repository's profile of `laravel` sets `review.adapter`
+- **THEN** `doctor` warns that the plugin's adapter is used and the setting is ignored
+
+### Requirement: `doctor` says when the bugs lens is not advisory
+`doctor` SHALL report, as a note and never as a failure, the value of `qa.bugs` when it is `blocking` or `off`, saying in one line what it means, and SHALL report nothing about it when it is `advisory` or not set.
+
+#### Scenario: The lens blocks
+- **WHEN** `qa.bugs` is `blocking`
+- **THEN** `doctor` notes that a `CONFIRMED` finding of the `bugs` lens sends the work back to the developer
+
+#### Scenario: The lens is off
+- **WHEN** `qa.bugs` is `off`
+- **THEN** `doctor` notes that the `bugs` lens does not run
+
+#### Scenario: The default
+- **WHEN** `qa.bugs` is not set
+- **THEN** `doctor` prints nothing about it
+
+### Requirement: Doctor checks what an iOS review needs
+For each platform whose targets include `ios`, `doctor` SHALL check that the machine is macOS, that `xcrun` can be found, that `xcrun simctl` answers and that at least one iOS simulator runtime is installed. It SHALL warn, with the command or the place to fix it, when one is missing, and SHALL note when no simulator is booted, because the review needs one booted. On a machine that is not macOS it SHALL say that the iOS review cannot run there, and SHALL NOT fail the platform, because the build can run elsewhere.
+
+#### Scenario: Xcode tools missing
+- **WHEN** an iOS platform exists and `xcrun` is not on the path
+- **THEN** `doctor` warns and says to install Xcode and its command line tools
+
+#### Scenario: No runtime
+- **WHEN** `xcrun simctl` answers and lists no iOS runtime
+- **THEN** `doctor` warns and says to install one from Xcode, Settings, Components
+
+#### Scenario: Nothing booted
+- **WHEN** a runtime exists and no simulator is booted
+- **THEN** `doctor` notes it and says the person boots one before the review
+
+#### Scenario: Not macOS
+- **WHEN** an iOS platform exists and the machine is Linux
+- **THEN** `doctor` says that the iOS review cannot run on this machine and does not fail the platform
+
+#### Scenario: No iOS platform
+- **WHEN** no platform has the target `ios`
+- **THEN** `doctor` adds none of these checks

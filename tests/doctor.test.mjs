@@ -2540,7 +2540,7 @@ test('Scenario: A stale reference - a file that still names relevo:qa is reporte
   const r = runChecks(healthy({ staleQaReferences: ['CLAUDE.md'] }));
   const w = byId(r, 'qa.stale-reference.CLAUDE.md');
   assert.equal(w.status, 'warn');
-  assert.match(w.fix, /relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface/);
+  assert.match(w.fix, /relevo:qa-spec, relevo:qa-security, relevo:qa-code, relevo:qa-interface and relevo:qa-bugs/);
   const wf = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'allowed: relevo:qa and more' } } }));
   assert.equal(byId(wf, 'qa.stale-reference.relevo-go.yml').status, 'warn');
   const fine = runChecks(healthy({ workflows: { ...healthy().workflows, 'relevo-go.yml': { present: true, enabled: true, text: 'relevo:qa-code relevo:qa-spec' } } }));
@@ -2577,6 +2577,17 @@ test('Scenario: a platform with an interface and no browser automation - a note,
   const r = runChecks(healthy({ interfaceBrowser: { app: false } }));
   assert.equal(byId(r, 'interface.browser.app').status, 'warn');
   assert.equal(byId(runChecks(healthy({ interfaceBrowser: { app: true } })), 'interface.browser.app'), undefined);
+});
+
+test('Scenario: iOS review needs - simctl, a runtime and a booted simulator are checked on macOS, and a repository with no iOS platform is not asked', () => {
+  const run = (ios, over = {}) => runChecks(healthy({ macos: true, ios, platformFacts: [flutterPlatform({ targets: { ios: 'xcrun' }, available: { xcrun: true }, ...over })] }));
+  assert.equal(byId(run({ simctl: false, runtimes: 0, booted: 0 }), 'review.ios.app.simctl').status, 'warn');
+  assert.equal(byId(run({ simctl: true, runtimes: 0, booted: 0 }), 'review.ios.app.runtime').status, 'warn');
+  assert.equal(byId(run({ simctl: true, runtimes: 1, booted: 0 }), 'review.ios.app.booted').status, 'note');
+  assert.equal(byId(run({ simctl: true, runtimes: 1, booted: 1 }), 'review.ios.app.booted').status, 'pass');
+  assert.match(byId(run({ simctl: true, runtimes: 1, booted: null }), 'review.ios.app.booted').message, /could not be read/);
+  const none = runChecks(healthy({ macos: true, platformFacts: [flutterPlatform()] }));
+  assert.equal(none.some((r) => /^review\.ios\./.test(r.id)), false);
 });
 
 // ---------- run time limit
@@ -2931,4 +2942,136 @@ test('the doctor skill names the two new checks', () => {
   const skill = readFileSync(new URL('../skills/doctor/SKILL.md', import.meta.url), 'utf8');
   assert.match(skill, /`automation\.workflow-trigger`/);
   assert.match(skill, /`repo\.local-label`/);
+});
+
+// ---- the bugs lens (add-qa-bugs-lens)
+
+test('Scenario: A plugin without the bugs lens - doctor names it and says to update the plugin', () => {
+  const missing = byId(runChecks(healthy({ lensAgentsMissing: ['bugs'] })), 'qa.lens-agents');
+  assert.equal(missing.status, 'fail');
+  assert.match(missing.message, /lacks the QA lens agent qa-bugs/);
+  assert.match(missing.fix, /update the plugin/);
+  assert.match(byId(runChecks(healthy({ lensAgentsMissing: [] })), 'qa.lens-agents').message, /the plugin has the 5 QA lens agents/);
+});
+
+test('Scenario: The lens blocks, is off or is the default - doctor notes the first two and says nothing of the third', () => {
+  const withMode = (bugs) => byId(runChecks(healthy({ config: { ...config, qa: { ...(config.qa ?? {}), bugs } } })), 'qa.bugs-mode');
+  assert.equal(withMode('blocking').status, 'note');
+  assert.match(withMode('blocking').message, /CONFIRMED/);
+  assert.equal(withMode('off').status, 'note');
+  assert.match(withMode('off').message, /does not run/);
+  assert.equal(withMode('advisory'), undefined);
+  assert.equal(byId(runChecks(healthy()), 'qa.bugs-mode'), undefined);
+});
+
+// ---------- a review adapter the repository declares
+
+const DECLARED_REVIEW = '  adapter: api\n  log: compose:postgres,auth\n  test: npm run --silent test:integration\n  needs: [nhost, docker]\n';
+const declaredProfile = (review) => `---\nstack: pocketbase\ncommands:\n  analyze: npm run --silent analyze\n  test: npm run --silent test:integration\ntools: [node]\nreview:\n${review}---\n\n# Nhost\n`;
+function declaredFacts({ review = DECLARED_REVIEW, mode = 'off', found = { nhost: true, docker: true }, daemon = true, calls = [] } = {}) {
+  const text = `limits:\n  run_max_cost: 5\n${mode === 'off' ? '' : `review:\n  autopilot: ${mode}\n`}platforms:\n  backend:\n    stack: pocketbase\n    path: backend\n`;
+  const files = { 'relevo.yml': text, '.relevo/stacks/pocketbase.md': declaredProfile(review) };
+  return gatherFacts({
+    tool: (name, args) => { calls.push([name, ...args].join(' ')); if (name === 'docker' && args[0] === 'info' && !daemon) throw new Error('the daemon does not answer'); return 'ok'; },
+    onPath: (name) => Boolean(found[name]),
+    gh: () => { throw new Error('no network'); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+const declaredChecks = (f) => runChecks({ ...healthy(), ...f, config: f.config });
+
+test('Scenario: Missing tool of a declared adapter - doctor warns naming review.needs and the tool, with how to install it', () => {
+  const r = byId(declaredChecks(declaredFacts({ found: { nhost: false, docker: true } })), 'review.needs.backend.nhost');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /review\.needs lists nhost/);
+  assert.match(r.fix, /install nhost/);
+});
+
+test('Scenario: Docker stopped under a declared adapter - doctor warns that the engine is stopped and says to start it', () => {
+  const r = byId(declaredChecks(declaredFacts({ daemon: false })), 'review.needs.backend.docker');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /engine is stopped/);
+  assert.match(r.fix, /start Docker/);
+});
+
+test('Scenario: Everything in place - the declared adapter passes and doctor says the review is declared by the repository', () => {
+  const calls = [];
+  const f = declaredFacts({ calls });
+  const results = declaredChecks(f);
+  assert.deepEqual(f.platformFacts[0].declared, { needs: [{ tool: 'nhost', ok: true }, { tool: 'docker', ok: true, cliOk: true }], filter: false });
+  assert.equal(byId(results, 'review.declared.backend').status, 'pass');
+  assert.match(byId(results, 'review.declared.backend').message, /declared by \.relevo\/stacks\/pocketbase\.md/);
+  assert.equal(results.filter((r) => r.id.startsWith('review.needs.')).length, 0);
+  assert.ok(!calls.some((c) => c.startsWith('nhost')), 'a tool the repository names is looked for on the PATH, never run');
+});
+
+test('Scenario: No declared adapter - doctor adds none of these checks', () => {
+  const results = runChecks(healthy());
+  assert.equal(results.filter((r) => r.id.startsWith('review.needs.') || r.id.startsWith('review.declared.')).length, 0);
+});
+
+test('Scenario: Invalid declaration - doctor reports the profile as invalid and names the key', () => {
+  const noTest = byId(declaredChecks(declaredFacts({ review: '  adapter: api\n  log: compose:postgres\n' })), 'platform.backend.profile');
+  assert.equal(noTest.status, 'fail');
+  assert.match(noTest.message, /review\.test/);
+  const remote = byId(declaredChecks(declaredFacts({ review: '  adapter: api\n  log: compose:postgres\n  test: curl https://api.example.com/health\n' })), 'platform.backend.profile');
+  assert.equal(remote.status, 'fail');
+  assert.match(remote.message, /review\.test/);
+});
+
+test('Scenario: Ignored declaration on a shipped stack - doctor warns that the plugin keeps its adapter', () => {
+  const files = { 'relevo.yml': 'limits:\n  run_max_cost: 5\nplatforms:\n  api:\n    stack: laravel\n', '.relevo/stacks/laravel.md': '---\nstack: laravel\nreview:\n  adapter: api\n  needs: [docker]\n---\n' };
+  const f = gatherFacts({ tool: () => 'ok', gh: () => { throw new Error('no network'); }, exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: null });
+  const results = declaredChecks(f);
+  for (const key of ['review.adapter', 'review.needs']) {
+    const w = byId(results, `platform.api.ignored.${key}`);
+    assert.equal(w.status, 'warn');
+    assert.match(w.fix, new RegExp(`remove ${key.replace('.', '\\.')} from \\.relevo/stacks/laravel\\.md`));
+  }
+  assert.equal(results.filter((r) => r.id.startsWith('review.needs.')).length, 0, 'the declaration of a shipped stack is not checked: the plugin ignores it');
+});
+
+test('Scenario: Autopilot with a declared adapter - a {filter} passes, no {filter} is a note, and off adds no check', () => {
+  const withFilter = DECLARED_REVIEW.replace('test:integration', 'test:integration -- {filter}');
+  const pass = autopilotChecks(declaredFacts({ mode: 'precheck', review: withFilter }));
+  assert.equal(byId(pass, 'autopilot.backend.adapter').status, 'pass');
+  assert.match(byId(pass, 'autopilot.backend.adapter').message, /running the test that covers it/);
+  assert.equal(pass.some((r) => r.status === 'warn'), false, 'no longer says that a driven review is not available');
+  const noFilter = autopilotChecks(declaredFacts({ mode: 'verify' }));
+  assert.equal(byId(noFilter, 'autopilot.backend.filter').status, 'note');
+  assert.match(byId(noFilter, 'autopilot.backend.filter').message, /marks no line by itself.*whole suite once at the end/);
+  assert.equal(noFilter.some((r) => r.id === 'autopilot.backend.adapter'), false);
+  assert.equal(autopilotChecks(declaredFacts({ mode: 'off' })).length, 0);
+});
+
+test('doctor looks for the tools of review.needs through the probe onPath when there is one, and runs no tool for them', () => {
+  const calls = [];
+  declaredFacts({ calls, found: { nhost: true, docker: true } });
+  assert.deepEqual(calls.filter((c) => c.startsWith('docker')), ['docker info']);
+});
+
+// ---- the plugin's nhost stack (nhost-review-adapter)
+
+function nhostFacts({ own = null, found = { docker: true, npm: true, node: true }, mode = 'off' } = {}) {
+  const text = `limits:\n  run_max_cost: 5\n${mode === 'off' ? '' : `review:\n  autopilot: ${mode}\n`}platforms:\n  backend:\n    stack: nhost\n    path: backend\n`;
+  const files = { 'relevo.yml': text, ...(own ? { '.relevo/stacks/nhost.md': own } : {}) };
+  return gatherFacts({
+    tool: () => 'ok', onPath: (name) => Boolean(found[name]), gh: () => { throw new Error('no network'); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+
+test('Scenario: Doctor finds Docker missing - for the stack nhost the missing tool is reported with the fix', () => {
+  const r = byId(declaredChecks(nhostFacts({ found: { docker: false, npm: true, node: true } })), 'review.needs.backend.docker');
+  assert.equal(r.status, 'warn');
+  assert.match(r.fix, /Docker/i);
+});
+
+test('Scenario: Doctor with an old full profile - a command that differs from the plugin is warned as ignored, with checks as the fix', () => {
+  const own = '---\nstack: nhost\ncommands:\n  test: npm run --silent test:integration\n---\n';
+  const results = declaredChecks(nhostFacts({ own }));
+  const w = results.find((x) => x.id === 'platform.backend.ignored.commands.test');
+  assert.ok(w, results.map((x) => x.id).join(' '));
+  assert.equal(w.status, 'warn');
+  assert.match(w.fix, /checks/);
 });

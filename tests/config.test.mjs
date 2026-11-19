@@ -435,7 +435,7 @@ test('Scenario: A project that changes nothing - each role has its default, and 
   assert.equal(ok, true);
   assert.deepEqual(config.agents, AGENT_DEFAULTS);
   assert.deepEqual(config.agents.dev, { model: 'sonnet', effort: 'high' });
-  assert.deepEqual(config.agents.qa, { spec: { model: 'opus', effort: 'high' }, security: { model: 'opus', effort: 'high' }, code: { model: 'sonnet', effort: 'high' }, interface: { model: 'sonnet', effort: 'medium' } });
+  assert.deepEqual(config.agents.qa, { spec: { model: 'opus', effort: 'high' }, security: { model: 'opus', effort: 'high' }, code: { model: 'sonnet', effort: 'high' }, interface: { model: 'sonnet', effort: 'medium' }, bugs: { model: 'sonnet', effort: 'high' } });
   assert.deepEqual(config.agents_given, []);
 });
 
@@ -469,7 +469,7 @@ test('Scenario: An attempt to turn a lens off - validation fails because the key
     const r = loadConfig(agents(yaml));
     assert.equal(r.ok, false, yaml);
   }
-  assert.equal(QA_LENSES.length, 4);
+  assert.equal(QA_LENSES.length, 5);
 });
 
 test('Scenario: Antigravity warns and passes - the settings are accepted, not applied, and a rejected key still fails', () => {
@@ -666,4 +666,36 @@ test('Scenario: the former key qa-failed of labels is refused and the message na
   assert.equal(ok, false);
   assert.ok(errors.some((e) => e.path === 'labels.qa-failed' && /build-failed/.test(e.message)));
   assert.equal(loadConfig(`${MINIMAL}labels:\n  build-failed: x\n`).ok, true);
+});
+
+// ---- the mode of the bugs lens (add-qa-bugs-lens)
+
+test('Scenario: A valid mode - qa.bugs accepts advisory, blocking and off', () => {
+  for (const mode of ['advisory', 'blocking', 'off']) {
+    const r = loadConfig(`${MINIMAL}qa:\n  bugs: ${mode}\n`);
+    assert.equal(r.ok, true, `${mode}: ${JSON.stringify(r.errors)}`);
+    assert.equal(r.config.qa.bugs, mode);
+  }
+});
+
+test('Scenario: No mode - the file is valid and the effective mode is advisory', () => {
+  const r = loadConfig(MINIMAL);
+  assert.equal(r.ok, true);
+  assert.equal(r.config.qa.bugs, 'advisory');
+});
+
+test('Scenario: An unknown mode - validation fails and lists the values that exist', () => {
+  const r = loadConfig(`${MINIMAL}qa:\n  bugs: strict\n`);
+  assert.equal(r.ok, false);
+  const message = r.errors.map((e) => e.message).join(' | ');
+  assert.match(message, /qa\.bugs/);
+  for (const v of ['advisory', 'blocking', 'off']) assert.match(message, new RegExp(`"${v}"`));
+});
+
+test('Scenario: Settings for the bugs lens - a model and an effort are valid and the other lenses keep their defaults', () => {
+  const { ok, config } = loadConfig(agents('  qa:\n    bugs:\n      model: opus\n      effort: xhigh\n'));
+  assert.equal(ok, true);
+  assert.deepEqual(config.agents.qa.bugs, { model: 'opus', effort: 'xhigh' });
+  assert.deepEqual(config.agents.qa.code, AGENT_DEFAULTS.qa.code);
+  assert.deepEqual(config.agents_given, ['agents.qa.bugs.model', 'agents.qa.bugs.effort']);
 });

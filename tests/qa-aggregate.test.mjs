@@ -7,8 +7,9 @@ import { join } from 'node:path';
 import { aggregate, parseReport, verdictOf } from '../scripts/lib/qa-aggregate.mjs';
 import { planLenses } from '../scripts/lib/lens-plan.mjs';
 
-const ALL = planLenses({ interfaceKind: 'web', extraRules: 2 });
-const THREE = planLenses({ interfaceKind: 'none' });
+// The plans of the four original lenses: the bugs lens is switched off here and has its own plans below.
+const ALL = planLenses({ interfaceKind: 'web', extraRules: 2, bugsMode: 'off' });
+const THREE = planLenses({ interfaceKind: 'none', bugsMode: 'off' });
 const passed = (extra = '') => `QA PASSED\n\n- checked\n\n## Left for on-device review\n${extra || '- none'}\n`;
 const rejected = (...findings) => ['QA REJECTED', '', ...findings].join('\n');
 const run = (reports, o = {}) => aggregate({ reports, plan: o.plan ?? ALL, attempt: o.attempt ?? 1, retries: o.retries ?? 1, reasked: o.reasked });
@@ -331,4 +332,125 @@ test('CLI: --previous reads the reports of the previous attempt and prints the c
   const none = spawnSync('node', [cli, ...base, '--previous', `spec=${join(dir, 'missing.md')}`], { encoding: 'utf8' });
   assert.equal(none.status, 1);
   assert.equal(JSON.parse(none.stdout).contradiction, null);
+});
+
+// ---- the bugs lens (add-qa-bugs-lens)
+
+const withBugs = (mode) => planLenses({ interfaceKind: 'none', bugsMode: mode });
+const okBugs = { spec: passed(), security: passed(), code: passed(), bugs: passed() };
+const confirmed = '1. `a.js:3` a valid zero is replaced by the default.\n   Class: fixable\n   Label: CONFIRMED';
+const plausible = '1. `a.js:9` a reset can be called twice.\n   Class: fixable\n   Label: PLAUSIBLE';
+const bugs = (plan, reports, o = {}) => aggregate({ reports: { ...okBugs, ...reports }, plan, attempt: o.attempt ?? 1, retries: o.retries ?? 1, reasked: o.reasked, previous: o.previous });
+
+test('the labels are read: CONFIRMED, PLAUSIBLE, with a bullet or bold, and PLAUSIBLE when the label is absent or unknown', () => {
+  const r = parseReport(rejected('1. One.', '   Label: CONFIRMED', '2. Two.', '   - Label: plausible', '3. Three.', '   **Label:** CONFIRMED', '4. Four.', '5. Five.', '   Label: certain'));
+  assert.deepEqual(r.findings.map((f) => f.label), ['CONFIRMED', 'PLAUSIBLE', 'CONFIRMED', 'PLAUSIBLE', 'PLAUSIBLE']);
+});
+
+test('Scenario: The default - a CONFIRMED finding of the bugs lens in advisory mode is a note and the result is unchanged', () => {
+  const r = bugs(withBugs('advisory'), { bugs: rejected(confirmed) });
+  assert.equal(r.result, 'QA PASSED');
+  assert.deepEqual(r.findings, []);
+  assert.equal(r.lenses.bugs.blocking, false);
+  assert.equal(r.lenses.bugs.mode, 'advisory');
+  assert.deepEqual(r.advisory.map((a) => [a.lens, a.label]), [['bugs', 'CONFIRMED']]);
+  assert.match(r.advisory[0].text, /^CONFIRMED: /);
+});
+
+test('Scenario: Blocking with a confirmed finding - the result is QA REJECTED and the finding reaches the developer', () => {
+  const r = bugs(withBugs('blocking'), { bugs: rejected(confirmed) });
+  assert.equal(r.result, 'QA REJECTED');
+  assert.deepEqual(r.findings.map((f) => [f.lens, f.label]), [['bugs', 'CONFIRMED']]);
+  assert.equal(r.lenses.bugs.blocking, true);
+});
+
+test('Scenario: Blocking with a plausible finding - the result is QA PASSED and the finding is a note', () => {
+  const r = bugs(withBugs('blocking'), { bugs: rejected(plausible) });
+  assert.equal(r.result, 'QA PASSED');
+  assert.deepEqual(r.findings, []);
+  assert.deepEqual(r.advisory.map((a) => [a.lens, a.label]), [['bugs', 'PLAUSIBLE']]);
+});
+
+test('a finding with no label counts as plausible and never blocks', () => {
+  const r = bugs(withBugs('blocking'), { bugs: rejected('1. `a.js:3` something is odd.\n   Class: fixable') });
+  assert.equal(r.result, 'QA PASSED');
+  assert.equal(r.advisory[0].label, 'PLAUSIBLE');
+});
+
+test('with blocking, one confirmed and one plausible finding: only the confirmed one is sent back', () => {
+  const r = bugs(withBugs('blocking'), { bugs: rejected(confirmed, plausible.replace('1.', '2.')) });
+  assert.equal(r.result, 'QA REJECTED');
+  assert.deepEqual(r.findings.map((f) => f.number), [1]);
+  assert.deepEqual(r.advisory.map((a) => a.label), ['PLAUSIBLE']);
+});
+
+test('a blocking lens that rejects and lists no finding fails closed, an advisory one does not', () => {
+  assert.equal(bugs(withBugs('blocking'), { bugs: 'QA REJECTED\n' }).result, 'QA REJECTED');
+  assert.equal(bugs(withBugs('advisory'), { bugs: 'QA REJECTED\n' }).result, 'QA PASSED');
+});
+
+test('Scenario: The other lenses still block while the bugs lens advises', () => {
+  const r = bugs(withBugs('advisory'), { code: rejected('1. A leftover.'), bugs: rejected(confirmed) });
+  assert.equal(r.result, 'QA REJECTED');
+  assert.deepEqual(r.findings.map((f) => f.lens), ['code']);
+  assert.equal(r.advisory.length, 1);
+});
+
+test('Scenario: Switched off - the lens is SKIPPED and needs no report', () => {
+  const r = aggregate({ reports: { spec: passed(), security: passed(), code: passed() }, plan: withBugs('off'), attempt: 1, retries: 1 });
+  assert.equal(r.result, 'QA PASSED');
+  assert.deepEqual(r.lenses.bugs, { status: 'SKIPPED', reason: 'qa.bugs is off' });
+});
+
+test('Scenario: The bugs lens gives no valid report in advisory mode - asked again once, then a note and no stop', () => {
+  const first = bugs(withBugs('advisory'), { bugs: 'no verdict here' });
+  assert.equal(first.action, 'reask');
+  assert.deepEqual(first.reask, ['bugs']);
+  const second = bugs(withBugs('advisory'), { bugs: 'still no verdict' }, { reasked: ['bugs'] });
+  assert.equal(second.action, 'done');
+  assert.equal(second.result, 'QA PASSED');
+  assert.deepEqual(second.lenses.bugs, { status: 'INVALID', blocking: false, mode: 'advisory' });
+  assert.match(second.advisory[0].text, /gave no valid report/);
+});
+
+test('an invalid report of the bugs lens in blocking mode ends the run as for the other lenses', () => {
+  const r = bugs(withBugs('blocking'), { bugs: 'no verdict' }, { reasked: ['bugs'] });
+  assert.equal(r.action, 'stop');
+  assert.equal(r.reason, 'lens report invalid');
+});
+
+test('Scenario: A hard rule cited by the bugs lens blocks even in advisory mode', () => {
+  const rules = parseRules('RULES.md', 'Never log a password.\n');
+  const report = rejected('1. `a.js:3` a password is logged.\n   Rule: RULES.md:1 "Never log a password."\n   Class: fixable\n   Label: PLAUSIBLE');
+  const r = aggregate({ reports: { ...okBugs, bugs: report }, plan: withBugs('advisory'), attempt: 1, retries: 1, rules });
+  assert.equal(r.result, 'QA REJECTED');
+  assert.equal(r.findings[0].lens, 'bugs');
+  assert.equal(r.findings[0].rule.file, 'RULES.md');
+});
+
+test('Scenario: A note of the bugs lens is no side of a contradiction, a blocking confirmed finding is', () => {
+  const quoted = (w) => `1. \`${w}\` is read twice.\n   Class: fixable\n   Label: CONFIRMED`;
+  const spec1 = rejected('1. Read the question from `QUESTION` instead of the literal.\n   Class: fixable');
+  const codeNow = rejected('1. The test asserts `QUESTION` and nothing else.\n   Class: fixable');
+  const plan = planLenses({ interfaceKind: 'none', bugsMode: 'advisory' });
+  const noSide = aggregate({ reports: { spec: passed(), security: passed(), code: codeNow, bugs: passed() }, plan, attempt: 2, retries: 2, previous: { spec: spec1, security: passed(), code: passed(), bugs: passed() } });
+  assert.notEqual(noSide.contradiction, null, 'the original contradiction between spec and code still holds with the bugs lens in the plan');
+  const bugsNote = aggregate({ reports: { spec: passed(), security: passed(), code: codeNow, bugs: passed() }, plan, attempt: 2, retries: 2, previous: { spec: passed(), security: passed(), code: passed(), bugs: rejected(quoted('QUESTION')) } });
+  assert.equal(bugsNote.contradiction, null, 'a note that the bugs lens wrote asked for nothing');
+});
+
+test('Scenario: The default changes nothing - for every combination of the four original lenses, a bugs lens that rejects in advisory mode gives the result, the findings and the retry decision of a run without it', () => {
+  const states = [passed(), rejected('1. A problem.\n   Class: fixable'), rejected('1. Needs a decision.\n   Class: spec')];
+  const plan = (mode) => planLenses({ interfaceKind: 'web', extraRules: 2, bugsMode: mode });
+  for (const attempt of [1, 2]) {
+    for (const [a, b, c, d] of states.flatMap((a) => states.flatMap((b) => states.flatMap((c) => states.map((d) => [a, b, c, d]))))) {
+      const base = { spec: a, security: b, code: c, interface: d };
+      const without = aggregate({ reports: base, plan: plan('off'), attempt, retries: 1 });
+      const withBugs = aggregate({ reports: { ...base, bugs: rejected(confirmed) }, plan: plan('advisory'), attempt, retries: 1 });
+      assert.equal(withBugs.result, without.result);
+      assert.deepEqual(withBugs.findings, without.findings);
+      assert.equal(withBugs.all_non_fixable, without.all_non_fixable);
+      assert.equal(withBugs.action, without.action);
+    }
+  }
 });

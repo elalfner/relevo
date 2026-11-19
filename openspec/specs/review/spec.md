@@ -281,11 +281,19 @@ Before it opens a pull request, `review` SHALL look for one for the branch; if i
 - **THEN** the review stops, says why and force-pushes nothing
 
 ### Requirement: The review picks its adapter from the platform and the target
-`review` SHALL resolve, from the platform of the issue and its target, how the review obtains its log and captures and whether it can be driven: a device with `adb` for Flutter on `android`, a simulator with `xcrun` for Flutter on `ios` (macOS only), a browser for `web`, and the `api` adapter for a stack with no targets that has one (Laravel and Supabase). A combination without an adapter SHALL stop the review before it changes anything, naming what is missing, which adapters exist and what the person can do next. When the adapter is a browser and `review.autopilot` is `off`, the stop message SHALL recommend `verify`, with `precheck` as the cautious option, in the language of `relevo.yml`.
+`review` SHALL resolve, from the platform of the issue and its target, how the review obtains its log and captures and whether it can be driven: a device with `adb` for Flutter on `android`, a simulator with `xcrun` for Flutter and for a SwiftUI stack on `ios` (macOS only), a browser for `web`, and the `api` adapter for a stack with no targets that has one (Laravel and Supabase, or a stack the plugin ships no adapter for whose repository profile declares it). A combination without an adapter SHALL stop the review before it changes anything, naming what is missing, which adapters exist and what the person can do next. When the adapter is a browser and `review.autopilot` is `off`, the stop message SHALL recommend `verify`, with `precheck` as the cautious option, in the language of `relevo.yml`.
 
 #### Scenario: Android device
 - **WHEN** the platform is Flutter with the target `android`
 - **THEN** the adapter is the device with `adb`, and the review proceeds as before
+
+#### Scenario: iOS simulator
+- **WHEN** the platform is Flutter or a SwiftUI stack with the target `ios`
+- **THEN** the adapter is the iOS Simulator with `xcrun`, the person drives the app in it, and the review does not need `review.autopilot` other than `off`
+
+#### Scenario: iOS on a machine that is not macOS
+- **WHEN** the platform has the target `ios` and the machine has no `xcrun`
+- **THEN** `review` stops before changing anything and says that the iOS review needs macOS with Xcode
 
 #### Scenario: Web
 - **WHEN** the platform is Vue with the target `web`
@@ -303,9 +311,17 @@ Before it opens a pull request, `review` SHALL look for one for the branch; if i
 - **WHEN** the platform has the stack `supabase`, which defines no targets
 - **THEN** the adapter is `api`, driven by `supabase test db`, and the review does not need `review.autopilot` other than `off`
 
+#### Scenario: Declared adapter
+- **WHEN** the platform has a stack the plugin ships no adapter for, the repository's profile of that stack declares the `api` adapter in its `review` block, and the platform defines no target
+- **THEN** the adapter is `api`, marked as declared by the repository, its log, test and needs are the ones of that block, and the review does not need `review.autopilot` other than `off`
+
+#### Scenario: Declared adapter with an invalid profile
+- **WHEN** the repository's profile of the stack declares the `api` adapter but cannot be resolved (for example, it has no `test`)
+- **THEN** the review stops before changing anything, shows what is wrong with the profile and says that the issue stays `built`
+
 #### Scenario: No adapter
 - **WHEN** the combination has no adapter, or the tool it needs is missing
-- **THEN** `review` stops before changing anything, says what to install or that it is not supported yet, names the adapters that exist (Flutter on Android, Flutter on web, Vue on web, Laravel and Supabase), says that the issue stays `built`, and says that a stack the plugin ships can tune its review in its profile
+- **THEN** `review` stops before changing anything, says what to install or that it is not supported yet, names the adapters that exist (Flutter on Android, Flutter and SwiftUI on iOS, Flutter on web, Vue on web, Laravel and Supabase), says that the issue stays `built`, says that a stack the plugin ships can tune its review in its profile, and says that a stack of the repository with no targets can declare an `api` adapter in its own profile
 
 ### Requirement: Who drives the review is a setting, and the person always closes the loop
 `review.autopilot` SHALL be `off` (the person does everything), `precheck` (the agent walks the lines, takes captures, audits and records its result per line apart from the person's confirmation; the person confirms every line) or `verify` (as `precheck`, and the agent may mark a line `ok (auto)` only when its `THEN` was verified by an assertion, a semantic finder, the log or the exit code of a project command; the person confirms the rest and gives the agreement). A line checked only by reading code, CI configuration or documentation SHALL be pre-checked, never marked automatically. The pull request SHALL list the lines verified automatically.
@@ -619,7 +635,7 @@ With `review.autopilot` `precheck` or `verify`, the agent SHALL prove a line of 
 - **THEN** the proof fails, whatever the exit code of the other assertions
 
 ### Requirement: The audit of an api review reads the log since the review started
-For the `api` adapter the audit SHALL read only what the project's log received since the review started, SHALL NOT truncate, delete, restart or recreate it, and SHALL report a source it could not read. When the log is made of files, the start SHALL be an offset per file recorded when the state is created, and a file that appears later SHALL be read from its start. When the log is a container's (`docker:<name>`), the start SHALL be a timestamp recorded when the state is created and the audit SHALL read what the container wrote since then.
+For the `api` adapter the audit SHALL read only what the project's log received since the review started, SHALL NOT truncate, delete, restart or recreate it, and SHALL report a source it could not read. When the log is made of files, the start SHALL be an offset per file recorded when the state is created, and a file that appears later SHALL be read from its start. When the log is a container's (`docker:<name>`) or the services of a Docker Compose project (`compose:<services>`), the start SHALL be a timestamp recorded when the state is created and the audit SHALL read what the container or the services wrote since then.
 
 #### Scenario: Entries from before the review
 - **WHEN** the log already had an unhandled exception before the review started and none after
@@ -633,9 +649,17 @@ For the `api` adapter the audit SHALL read only what the project's log received 
 - **WHEN** the platform is Supabase and the review started at 10:00:00
 - **THEN** the audit reads the log of the local database container from 10:00:00, and an error the container logged at 09:59 is not a finding
 
+#### Scenario: Compose log
+- **WHEN** a declared adapter has `review.log` `compose:postgres,auth` and the review started at 10:00:00
+- **THEN** the audit reads what the services `postgres` and `auth` of the Compose project in the folder of the platform wrote from 10:00:00, and an error one of them logged at 09:59 is not a finding
+
 #### Scenario: Unreadable file
 - **WHEN** a log file named by the setting cannot be read, or the container does not exist
 - **THEN** the report says which source and why, and the verdict is not `REVIEW PASSED` on that source's account
+
+#### Scenario: Unreadable compose log
+- **WHEN** the `compose:` log of a declared adapter cannot be read (Docker does not answer, the folder has no Compose file, or a service does not exist)
+- **THEN** the report says which source and why, and the verdict is `REVIEW INCONCLUSIVE`, which cannot be waived
 
 ### Requirement: A recorded test run proves an api review whose log is quiet
 For the `api` adapter, an empty log slice SHALL be `REVIEW INCONCLUSIVE` only when no test run is recorded in the review state, and SHALL be `REVIEW PASSED` when a run is recorded and the latest run of each line or filter exited 0, so a run repeated after a fix replaces the one before. A latest run with a non-zero exit code SHALL be `REVIEW REJECTED` and name the failing tests. The log slice SHALL still be scanned for unhandled exceptions, server errors and database errors. A run told by the person SHALL be recorded as the person's, and the pull request SHALL say which runs were the person's and which the agent's.
@@ -808,3 +832,163 @@ The checklist of `review` SHALL include the advisory notes that the build left i
 #### Scenario: A hand-off without notes
 - **WHEN** the hand-off has no notes
 - **THEN** the checklist is as it was
+
+### Requirement: A declared adapter asks for the person's word before the agent runs anything
+Before the agent runs any command of a review with a declared adapter, `review` SHALL ask the person to confirm in writing that the data the tests touch is not production, and SHALL record it first. A test the person runs themselves with `review.autopilot` `off` SHALL be the person's, with no confirmation asked. The review SHALL never read `.env` files for a declared adapter.
+
+#### Scenario: Confirmation before the agent runs a test
+- **WHEN** `review.autopilot` is `precheck` and the adapter is declared
+- **THEN** the review asks for the written confirmation before it runs the first test and runs none without it
+
+#### Scenario: Confirmation refused
+- **WHEN** the person does not confirm
+- **THEN** the agent runs no test and leaves every line to the person
+
+#### Scenario: The person runs the test
+- **WHEN** `review.autopilot` is `off` and the adapter is declared
+- **THEN** the person runs `review.test` in their own terminal, tells the review `ran <exit code>` and confirms each line, and no confirmation about the data is asked
+
+#### Scenario: Environment files
+- **WHEN** the adapter is declared and a test needs a variable that an environment file holds
+- **THEN** the review does not read the file and leaves the test to the person
+
+### Requirement: A declared adapter proves a single line only through the filter of its test command
+`review.test` of a declared adapter MAY contain `{filter}`. With `review.autopilot` `precheck` or `verify`, the agent SHALL prove a line only by running the command with `{filter}` replaced by one name of a test that already covers it, recording the filter and the number of tests that ran. Without the placeholder it SHALL prove no line and run the whole suite once at the end. It SHALL never write a test. A run proves a line only when it exited 0 and at least one test ran.
+
+#### Scenario: Command with a filter
+- **WHEN** `review.test` is `npm test -- {filter}`, a line is covered by the test `login`, and the run exits 0 and reports one test
+- **THEN** the agent runs `npm test -- login`, records the run and may mark the line
+
+#### Scenario: Command without a filter
+- **WHEN** `review.test` is `npm test` and `review.autopilot` is `verify`
+- **THEN** the agent marks no line by itself, runs the whole suite once at the end and records it
+
+#### Scenario: A filter that is not a single name
+- **WHEN** the only name the agent has for a test contains a space or a shell character
+- **THEN** the agent does not run the command and leaves the line to the person with a note
+
+#### Scenario: A run that reports no count
+- **WHEN** the command exits 0 and its output does not say how many tests ran
+- **THEN** the proof is refused and the line stays for the person
+
+### Requirement: A declared adapter needs its tools, checked without installing or starting anything
+For a declared adapter the preflight SHALL check that each tool in `needs` can be found and, when `docker` is listed, that the Docker daemon answers. It SHALL NOT install or start anything and SHALL NOT read an environment file. A missing tool or a stopped daemon SHALL stop the review before it changes anything and show what the person can do. The review SHALL ask the person to say that the local instance the tests need is up, and SHALL never start or stop it.
+
+#### Scenario: Missing tool
+- **WHEN** `needs` lists `nhost` and the tool cannot be found
+- **THEN** the preflight names `nhost`, the review stops before changing anything and no installer runs
+
+#### Scenario: Daemon stopped
+- **WHEN** `needs` lists `docker` and the daemon does not answer
+- **THEN** the preflight says the daemon does not answer and the review stops before changing anything
+
+#### Scenario: Everything present
+- **WHEN** every tool in `needs` is found and the daemon answers
+- **THEN** the preflight reports it ready and starts nothing
+
+#### Scenario: Instance not up
+- **WHEN** the person says the local instance is not up
+- **THEN** the agent runs no test, asks the person to start it and does not start it
+
+### Requirement: The audit of a declared adapter flags only the signals that every backend log shares
+For a declared adapter the audit SHALL flag, in what the log wrote since the review started, only signals that belong to no framework: `FATAL` or `PANIC`, a deadlock, out of memory, a database `ERROR` that is not a denial or a constraint violation, and an HTTP status of 500 or above. Denials and constraint violations SHALL be listed as expected while a run is recorded. The report SHALL say that errors without those signals are not detected.
+
+#### Scenario: Fatal entry
+- **WHEN** a run exited 0 and the slice holds a `FATAL` entry
+- **THEN** the verdict is `REVIEW REJECTED` and the person can waive the finding with a reason
+
+#### Scenario: Expected denial
+- **WHEN** a run exited 0 and the slice holds `permission denied for table` and nothing else
+- **THEN** the report lists it as an expected denial and the verdict can be `REVIEW PASSED`
+
+#### Scenario: Server error
+- **WHEN** the slice holds a response with status 500
+- **THEN** the verdict is `REVIEW REJECTED`
+
+#### Scenario: Quiet log with a run
+- **WHEN** a run exited 0 and the slice is empty
+- **THEN** the verdict is `REVIEW PASSED` and the report says that the recorded run is the proof
+
+#### Scenario: Not detected
+- **WHEN** a run exited 0 and the slice holds an application error that carries none of those signals
+- **THEN** the verdict can be `REVIEW PASSED` and the report says that errors without those signals are not detected
+
+### Requirement: An iOS review chooses its simulator
+An iOS review SHALL use the one iOS Simulator that is booted, or the one named in the environment variable `IOS_SIMULATOR` (a UDID or a name), and SHALL read the list with `xcrun simctl list devices booted --json`. When none is booted, or several are and none is named, or the named one is not booted, the review SHALL stop before changing anything with a message the person can act on, and SHALL NOT boot a simulator itself.
+
+#### Scenario: One simulator is booted
+- **WHEN** exactly one simulator is booted
+- **THEN** the review uses it and records its UDID
+
+#### Scenario: None is booted
+- **WHEN** no simulator is booted
+- **THEN** the review stops, says that none is booted and that the person boots one (the Simulator app, or `xcrun simctl boot <udid>`), and changes nothing
+
+#### Scenario: Several are booted
+- **WHEN** two simulators are booted and `IOS_SIMULATOR` is not set
+- **THEN** the review stops, names both and says to set `IOS_SIMULATOR` to the one to use
+
+#### Scenario: The named simulator is not booted
+- **WHEN** `IOS_SIMULATOR` names a simulator that is not booted
+- **THEN** the review stops and says that it is not booted
+
+### Requirement: An iOS review takes captures from the simulator
+An iOS review SHALL take a capture with `xcrun simctl io <udid> screenshot <file>` and save it as `evidence/<name>.png`, SHALL accept only plain file names under the same rule as an Android capture, and SHALL NOT open the image. A simulator that returns no image SHALL be reported as such.
+
+#### Scenario: A capture is requested
+- **WHEN** the person asks for a capture named `02_after_tap`
+- **THEN** `evidence/02_after_tap.png` is written from the simulator and the agent does not open it
+
+#### Scenario: A bad name
+- **WHEN** the name contains a slash or `..`
+- **THEN** the capture is refused before `simctl` runs
+
+#### Scenario: The simulator returns nothing
+- **WHEN** `simctl` exits with an error or writes an empty file
+- **THEN** the review says that no image was produced and what the error was, and records no evidence
+
+### Requirement: The audit of an iOS review separates faults and the app's errors from system noise
+For an iOS review the audit SHALL read only the log of the app under review since the review started, as `simctl spawn <udid> log show --style ndjson --start <time> --predicate 'process == "<app>"'`, and SHALL ignore a line that is not a log entry. Every entry of type `Fault` SHALL be a finding, including the runtime issues that SwiftUI reports. An entry of type `Error` SHALL be counted and reported as system noise when its subsystem begins with `com.apple.`, and SHALL be a finding otherwise (the app itself, an empty subsystem, or a library that is not Apple's). Entries of other types SHALL NOT be findings. Identical findings SHALL be reported once with a count. A log with no entry from the app SHALL be inconclusive, as for the other adapters. A crash report of the app captured after the review started (a `.ips` file under `~/Library/Logs/DiagnosticReports/` named after the executable, whose `captureTime` is after the start time and whose path holds the UDID of the simulator) SHALL be a finding of class `crash`, even when the log is empty, because the log of an app that crashed does not show the crash.
+
+#### Scenario: A SwiftUI runtime issue
+- **WHEN** the log holds a `Fault` from the subsystem `com.apple.runtime-issues`
+- **THEN** it is a finding
+
+#### Scenario: An error of the app or of a library
+- **WHEN** the log holds an `Error` whose subsystem is the bundle identifier of the app, is empty, or belongs to a library that is not Apple's
+- **THEN** it is a finding
+
+#### Scenario: The same finding twice
+- **WHEN** the same `Fault` appears three times
+- **THEN** the audit reports it once with a count of 3
+
+#### Scenario: Noise of an Apple framework
+- **WHEN** the log holds an `Error` from `com.apple.app_launch_measurement`
+- **THEN** it is not a finding, and the audit reports how many system errors it ignored
+
+#### Scenario: Entries from before the review
+- **WHEN** an `Error` of the app was written before the start time
+- **THEN** it is not read
+
+#### Scenario: A crash of the app
+- **WHEN** the app crashed after the review started and its crash report is in the folder of reports
+- **THEN** the audit is `REVIEW REJECTED` with a `crash` finding, even if the log of the app is empty
+
+#### Scenario: A crash from before the review or of another app
+- **WHEN** a crash report was captured before the start time, or belongs to another executable or another simulator
+- **THEN** it is not read as a finding
+
+#### Scenario: An empty log
+- **WHEN** the filter matches no entry
+- **THEN** the audit is inconclusive and says so
+
+#### Scenario: Lines that are not entries
+- **WHEN** the output has a line that is not JSON
+- **THEN** the audit skips it and still reads the rest
+
+### Requirement: The autopilot has no iOS driver yet
+With `review.autopilot` `precheck` or `verify` on an iOS platform, `review` SHALL say that the agent cannot drive an iOS app yet and SHALL proceed as with `off`: the person drives and confirms every line. The agent SHALL NOT tap, swipe, type or press keys in the simulator, and SHALL NOT use coordinates, Appium, Maestro or a UI-automation tool.
+
+#### Scenario: Autopilot on an iOS platform
+- **WHEN** `review.autopilot` is `verify` and the platform has the target `ios`
+- **THEN** `review` says that there is no iOS driver yet, the review proceeds as with `off`, and the agent operates nothing in the simulator

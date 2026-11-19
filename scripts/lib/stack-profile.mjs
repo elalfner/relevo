@@ -6,12 +6,17 @@
 
 import { parse, YamlLiteError } from './yaml-lite.mjs';
 import { isRestricted } from './restricted-paths.mjs';
+import { isGenericApi } from './review-adapters.mjs';
 
 export const ROLES = ['dev', 'qa', 'issue', 'review'];
 const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'installed', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review', 'interface']);
 // The kind of interface a stack builds, for the interface rules: none when the key is missing.
 export const INTERFACE_KINDS = ['mobile', 'web', 'none'];
-const REVIEW_KEYS = new Set(['log', 'test', 'serve']);
+const REVIEW_KEYS = new Set(['log', 'test', 'serve', 'adapter', 'needs']);
+// The only kind of review adapter a repository profile can declare: the others need tools the plugin drives itself.
+const DECLARABLE_ADAPTERS = ['api'];
+// A name the repository chose for a tool or a Compose service: no path, no space, no shell character.
+const TOOL_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SERVE_KEYS = new Set(['command', 'url', 'env']);
 // A server the agent starts is reached on this machine only.
 const LOCAL_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:(\d+|\{port\}))?(\/\S*)?$/;
@@ -133,6 +138,20 @@ export function fixedRuleWarnings(text) {
 const DOCKER_LOG_RE = /^docker:[A-Za-z0-9_.{}-]+$/;
 // A review runs its tests against what is local. A test command that names one of these reaches a remote project.
 const REMOTE_TEST_RE = /(^|\s)(--linked|--db-url(=\S*)?|link|push|pull)(\s|$)/;
+// The log of the services of a Docker Compose project: `compose:` and comma-separated service names, every service when none.
+const COMPOSE_LOG_RE = /^compose:([A-Za-z0-9][A-Za-z0-9._-]*(,[A-Za-z0-9][A-Za-z0-9._-]*)*)?$/;
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const ADDRESS_RE = /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s/?#'"`]*/g;
+
+/** The `scheme://host` addresses of a command whose host is not spelled out as a local one (a variable, a remote name). */
+function nonLocalAddresses(text) {
+  return (String(text).match(ADDRESS_RE) ?? []).filter((address) => {
+    let authority = address.slice(address.indexOf('://') + 3);
+    authority = authority.slice(authority.lastIndexOf('@') + 1);
+    const host = authority.startsWith('[') ? authority.slice(0, authority.indexOf(']') + 1) : authority.split(':')[0];
+    return !LOCAL_HOSTS.has(host.toLowerCase());
+  });
+}
 
 /** Validate the `review` block of a header. Returns { value, errors }. */
 function parseReviewBlock(raw) {
@@ -144,9 +163,19 @@ function parseReviewBlock(raw) {
     if (raw[key] === undefined) return;
     if (typeof raw[key] !== 'string' || raw[key].trim() === '') errors.push(`"review.${key}" must be a non-empty string`);
     else if (key === 'log' && raw.log.startsWith('docker:') && !DOCKER_LOG_RE.test(raw.log)) errors.push(`"review.log" names a container as docker:<name> (got "${raw.log}"); {project_id} stands for the project_id of supabase/config.toml`);
+    else if (key === 'log' && raw.log.startsWith('compose:') && !COMPOSE_LOG_RE.test(raw.log)) errors.push(`"review.log" names the services of a Compose project as compose:<service>,<service> (got "${raw.log}"); a service name has letters, digits, dots, underscores and hyphens, and none means every service`);
     else if (key === 'test' && REMOTE_TEST_RE.test(raw.test)) errors.push(`"review.test" must not target a remote database (got "${raw.test}"): a review runs against the local containers only, without --linked, --db-url, link, push or pull`);
     else value[key] = raw[key];
   });
+  if (raw.adapter !== undefined) {
+    if (!DECLARABLE_ADAPTERS.includes(raw.adapter)) errors.push(`"review.adapter" must be ${DECLARABLE_ADAPTERS.map((a) => `"${a}"`).join(' or ')}, the only adapter a profile can declare (got "${raw.adapter}"); device and browser reviews stay in the plugin`);
+    else value.adapter = raw.adapter;
+  }
+  if (raw.needs !== undefined) {
+    if (!isStringList(raw.needs)) errors.push('"review.needs" must be a list of tool names, such as [nhost, docker]');
+    else if (raw.needs.some((n) => !TOOL_NAME_RE.test(n))) errors.push(`"review.needs" lists names of tools, never a path or a command (got ${JSON.stringify(raw.needs)}); a name has letters, digits, dots, underscores and hyphens`);
+    else value.needs = unique(raw.needs);
+  }
   if (raw.serve !== undefined) {
     const serve = raw.serve;
     if (!isMap(serve)) errors.push('"review.serve" must be a map with "command" and "url"');
@@ -233,7 +262,7 @@ export function parseProfile(text) {
     const r = parseReviewBlock(raw.review);
     errors.push(...r.errors);
     profile.review = r.value;
-    if (r.value.log && !r.value.log.startsWith('docker:') && isRestricted(r.value.log)) errors.push(`"review.log" names "${r.value.log}", a restricted file: the base list cannot be reduced by a profile`);
+    if (r.value.log && !r.value.log.startsWith('docker:') && !r.value.log.startsWith('compose:') && isRestricted(r.value.log)) errors.push(`"review.log" names "${r.value.log}", a restricted file: the base list cannot be reduced by a profile`);
   }
   // The questions for the issue writer and the section Review are kept apart from the body: dev and qa never receive them.
   const noQuestions = splitQuestions((match[2] ?? '').trim());
@@ -271,6 +300,11 @@ export function mergeProfiles(plugin, repository) {
   // The review block says how the review is driven, not what gates the code, so the repository's keys replace the plugin's.
   const reviewReplaced = [];
   Object.entries(repository.review).forEach(([key, value]) => {
+    // The plugin ships the adapter of its stacks: the repository cannot relabel how they are reviewed.
+    if (key === 'adapter' || key === 'needs') {
+      ignored.push({ key: `review.${key}`, value: Array.isArray(value) ? value.join(', ') : value, kept: 'the review adapter of the plugin for this stack' });
+      return;
+    }
     if (key in plugin.review && JSON.stringify(plugin.review[key]) !== JSON.stringify(value)) reviewReplaced.push(`review.${key}`);
     out.review[key] = value;
   });
@@ -331,6 +365,25 @@ function readProfile(read, path) {
   return { profile: r.profile, errors: r.errors.map((e) => `${path}: ${e}`) };
 }
 
+/** What a declared `api` adapter needs of the merged profile: its two commands, no targets, and nothing that is not local. */
+function declaredAdapterErrors(merged, stack) {
+  // The generic api adapter is declared by the repository's profile or shipped by the plugin (the table says so).
+  if (merged.review.adapter !== 'api' && !isGenericApi(stack)) return [];
+  const errors = [];
+  ['log', 'test'].forEach((key) => {
+    if (merged.review[key] === undefined) errors.push(`"review.${key}" is missing: a declared "api" adapter needs "review.log" and "review.test"`);
+  });
+  if (Object.keys(merged.targets).length > 0) errors.push('"review.adapter" is set on a stack that defines targets: a declared adapter is for a stack with no targets');
+  ['test', 'log'].forEach((key) => {
+    const text = merged.review[key];
+    if (text === undefined) return;
+    if (REMOTE_TEST_RE.test(text)) errors.push(`"review.${key}" must not target a remote project (got "${text}"): a declared adapter runs against what is local, without --linked, --db-url, link, push or pull`);
+    const remote = nonLocalAddresses(text);
+    if (remote.length > 0) errors.push(`"review.${key}" must reach only localhost, 127.0.0.1 or [::1] (got "${remote[0]}"): a host that is remote, or that a variable decides, cannot be shown to be local`);
+  });
+  return errors;
+}
+
 /**
  * Resolve the profile of one platform entry ({ stack, path, targets, checks }).
  * Returns { ok: true, profile } or { ok: false, errors }.
@@ -340,9 +393,14 @@ export function resolveProfile({ platform, pluginRoot, read }) {
   const repository = readProfile(read, repositoryProfilePath(platform.stack));
   const errors = [...plugin.errors, ...repository.errors];
   if (plugin.profile?.skillsDisable.length > 0) errors.push(`${pluginProfilePath(pluginRoot, platform.stack)}: "skills.${SKILLS_DISABLE}" belongs in the repository's profile, not in the plugin's`);
+  ['adapter', 'needs'].forEach((key) => {
+    if (plugin.profile?.review[key] !== undefined) errors.push(`${pluginProfilePath(pluginRoot, platform.stack)}: "review.${key}" belongs in the repository's profile, not in the plugin's`);
+  });
   if (errors.length > 0) return { ok: false, errors };
   const merged = mergeProfiles(plugin.profile, repository.profile);
   if (!merged) return { ok: false, errors: [`no profile for stack "${platform.stack}": define one in ${profileLocations(platform.stack)}`] };
+  const declaredErrors = declaredAdapterErrors(merged, platform.stack);
+  if (declaredErrors.length > 0) return { ok: false, errors: declaredErrors.map((e) => `${repositoryProfilePath(platform.stack)}: ${e}`) };
   const profile = applyChecks(merged, platform.checks ?? {});
   profile.stack = platform.stack;
   // What the repository's text asked for that the review will not do; the review and doctor report it.

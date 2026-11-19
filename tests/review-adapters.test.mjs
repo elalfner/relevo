@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { adapterFor, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
+import { adapterFor, autopilotNotice, hasShippedAdapter, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
 
 const CLI = new URL('../scripts/review-adapter.mjs', import.meta.url).pathname;
 
@@ -22,10 +22,23 @@ test('Scenario: Web - Vue and Flutter on web are a browser, and the review needs
   assert.deepEqual([flutterWeb.kind, flutterWeb.driver], ['browser', 'flutter_driver']);
 });
 
-test('Scenario: No adapter - iOS says it is not available yet, and unknown combinations say why', () => {
-  const ios = adapterFor({ stack: 'flutter', target: 'ios' });
+test('Scenario: iOS simulator - Flutter and SwiftUI on ios use xcrun, observe-only, and do not need the autopilot', () => {
+  for (const stack of ['flutter', 'swiftui', 'swift-app']) {
+    const ios = adapterFor({ stack, target: 'ios' });
+    assert.equal(ios.supported, true);
+    assert.equal(ios.kind, 'device');
+    assert.deepEqual(ios.needs, ['xcrun']);
+    assert.equal(ios.driver, null);
+    assert.equal(needsAutopilot(ios), false);
+  }
+  assert.match(autopilotNotice(adapterFor({ stack: 'swiftui', target: 'ios' }), { autopilot: 'verify' }), /cannot drive an iOS app yet/);
+  assert.equal(autopilotNotice(adapterFor({ stack: 'swiftui', target: 'ios' }), { autopilot: 'off' }), null);
+  assert.equal(autopilotNotice(adapterFor({ stack: 'flutter', target: 'android' }), { autopilot: 'verify' }), null);
+});
+
+test('Scenario: No adapter - unknown combinations say why', () => {
+  const ios = adapterFor({ stack: 'swiftui', target: 'web' });
   assert.equal(ios.supported, false);
-  assert.match(ios.reason, /iOS is not available yet.*macOS/);
   assert.match(adapterFor({ stack: 'laravel', target: 'api' }).reason, /no review adapter for the stack "laravel" on the target "api"/);
   assert.match(adapterFor({ stack: 'django', target: null }).reason, /names no target/);
 });
@@ -47,7 +60,7 @@ test('Scenario: Supabase - a stack with no targets is the api adapter driven by 
 test('Scenario: No adapter - the message names the adapters that exist, that the issue stays built and how to tune', () => {
   const r = adapterFor({ stack: 'django', target: null }).reason;
   assert.match(r, /names no target to review/);
-  assert.match(r, /flutter on android.*vue on web.*laravel \(api\) and supabase \(api\)/);
+  assert.match(r, /flutter on android.*vue on web.*laravel \(api\), supabase \(api\) and nhost \(api\)/);
   assert.match(r, /issue stays built/);
   assert.match(r, /"review" block of \.relevo\/stacks/);
 });
@@ -69,8 +82,8 @@ test('the script resolves the platform from relevo.yml, takes --target, and exit
   assert.equal(JSON.parse(app.stdout).target, 'android');
   assert.equal(JSON.parse(run('--platform', 'app', '--target', 'web').stdout).kind, 'browser');
   const ios = run('--platform', 'app', '--target', 'ios');
-  assert.equal(ios.status, 1);
-  assert.match(JSON.parse(ios.stdout).reason, /not available yet/);
+  assert.equal(ios.status, 0);
+  assert.equal(JSON.parse(ios.stdout).needs[0], 'xcrun');
   const site = JSON.parse(run('--platform', 'site').stdout);
   assert.deepEqual([site.platform, site.needs_autopilot], ['site', true]);
   assert.equal(run('--platform', 'nope').status, 2);
@@ -96,4 +109,60 @@ test('Scenario: Web with autopilot off - the advice recommends verify, names pre
   assert.match(out.advice, /precheck es la opción prudente/);
   writeFileSync(config, 'language: es\nreview:\n  autopilot: verify\nlimits:\n  run_max_cost: 5\nplatforms:\n  site:\n    stack: vue\n    targets: [web]\n');
   assert.equal(JSON.parse(spawnSync('node', [CLI, '--config', config, '--platform', 'site'], { encoding: 'utf8' }).stdout).advice, null);
+});
+
+test('every stack the plugin ships a profile for has an entry in the table of adapters', () => {
+  const stacks = readdirSync(new URL('../stacks', import.meta.url)).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
+  assert.ok(stacks.length >= 4);
+  assert.equal(hasShippedAdapter('pocketbase'), false);
+  stacks.forEach((stack) => assert.equal(hasShippedAdapter(stack), true, `${stack} has a profile in the plugin but no adapter`));
+});
+
+// ---- a declared adapter (declared-review-adapter)
+
+const DECLARED = { adapter: 'api', needs: ['nhost', 'docker'], log: 'compose:postgres,auth', test: 'npm run --silent test:integration' };
+
+test('Scenario: Declared adapter - a stack with no table entry and no target is api, marked declared, with the log, test and needs', () => {
+  const a = adapterFor({ stack: 'pocketbase', target: null, review: DECLARED });
+  assert.deepEqual([a.supported, a.kind, a.declared, a.log, a.test, a.driver, a.capture, a.needs, a.reason], [true, 'api', true, 'compose:postgres,auth', 'npm run --silent test:integration', 'npm run --silent test:integration', null, ['nhost', 'docker'], null]);
+  assert.equal(needsAutopilot(a), false);
+});
+
+test('the five shipped combinations are unchanged and ignore a review argument', () => {
+  [['flutter', 'android'], ['flutter', 'web'], ['vue', 'web'], ['laravel', null], ['supabase', null]].forEach(([stack, target]) => {
+    const plain = adapterFor({ stack, target });
+    assert.deepEqual(adapterFor({ stack, target, review: DECLARED }), plain, `${stack}/${target}`);
+    assert.equal(plain.declared, undefined);
+  });
+});
+
+test('a stack with a target stays unsupported, and so does one that declares nothing', () => {
+  assert.equal(adapterFor({ stack: 'pocketbase', target: 'web', review: DECLARED }).supported, false);
+  assert.equal(adapterFor({ stack: 'pocketbase', target: null, review: { log: 'x', test: 'y' } }).supported, false);
+  assert.equal(adapterFor({ stack: 'pocketbase', target: null }).supported, false);
+});
+
+test('Scenario: No adapter - the message says that a stack of the repository with no targets can declare an api adapter', () => {
+  assert.match(adapterFor({ stack: 'django', target: null }).reason, /stack of the repository with no targets can declare an api adapter/);
+});
+
+// ---- the plugin's nhost adapter (nhost-review-adapter)
+
+const NHOST_REVIEW = { log: 'compose:', test: 'npm run --silent test' };
+
+test('Scenario: Nhost with no review block - the shipped entry is api, marked declared, filled from the review block, with its own needs', () => {
+  assert.equal(hasShippedAdapter('nhost'), true);
+  const a = adapterFor({ stack: 'nhost', target: null, review: NHOST_REVIEW });
+  assert.deepEqual([a.supported, a.kind, a.declared, a.log, a.test, a.driver, a.capture, a.needs, a.reason], [true, 'api', true, 'compose:', 'npm run --silent test', 'npm run --silent test', null, ['docker', 'npm'], null]);
+  assert.equal(needsAutopilot(a), false);
+});
+
+test('Scenario: Nhost with the repository test command - the override replaces test, never needs or adapter', () => {
+  const a = adapterFor({ stack: 'nhost', target: null, review: { ...NHOST_REVIEW, test: 'npm run --silent test:integration', needs: ['x'], adapter: 'api' } });
+  assert.equal(a.test, 'npm run --silent test:integration');
+  assert.deepEqual(a.needs, ['docker', 'npm']);
+});
+
+test('Scenario: Stop message - names nhost among the adapters that exist', () => {
+  assert.match(adapterFor({ stack: 'go', target: null }).reason, /nhost \(api\)/);
 });

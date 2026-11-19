@@ -321,7 +321,7 @@ export function limitsExceeded(usage, limits = {}) {
 // is read from a file and goes into a comment.
 const PLAN_SOURCES = ['config', 'auto', 'issue'];
 const ESCALATION_REASONS = ['qa-rejected', 'gate-red'];
-const PLAN_ROLES = ['dev', 'spec', 'security', 'code', 'interface'];
+const PLAN_ROLES = ['dev', 'spec', 'security', 'code', 'interface', 'bugs'];
 const text200 = (v) => String(v ?? '').replace(/[^\x20-\x7e]/g, ' ').trim().slice(0, 200);
 
 /** The roles of a saved plan as [{ role, model, effort, source, why }], and its notes; null when there is no usable plan. */

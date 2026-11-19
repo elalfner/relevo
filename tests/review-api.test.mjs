@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditApi } from '../scripts/lib/logaudit.mjs';
@@ -189,4 +189,143 @@ test('a device review is unchanged: it keeps kind device and has no runs', () =>
   assert.equal(s.kind, 'device');
   assert.equal(s.runs, undefined);
   assert.match(spawnSync('node', [CLI, 'ran', '0', '--state', state], { encoding: 'utf8' }).stderr, /only in an api review/);
+});
+
+// ---- a declared adapter (declared-review-adapter): the log of Compose services and the audit of the common signals
+
+test('Scenario: Compose log - the snapshot records the services and the start time, and the slice is read with docker compose logs from the folder of the platform', () => {
+  const snap = snapshotLog('compose:postgres,auth', { cwd: '/backend', now: () => new Date('2026-11-18T10:00:00.000Z') });
+  assert.deepEqual(snap, { pattern: 'compose:postgres,auth', source: 'compose', services: ['postgres', 'auth'], since: '2026-11-18T10:00:00.000Z' });
+  assert.deepEqual(snapshotLog('compose:', { now: () => new Date('2026-11-18T10:00:00.000Z') }).services, [], 'none means every service');
+  const calls = [];
+  const slice = readSlice(snap, { cwd: '/backend', run: (command, args, opts) => { calls.push([command, args, opts]); return { status: 0, stdout: 'postgres | ok\n', stderr: '' }; } });
+  assert.deepEqual(calls, [['docker', ['compose', 'logs', '--no-color', '--since', '2026-11-18T10:00:00.000Z', 'postgres', 'auth'], { cwd: '/backend' }]]);
+  assert.equal(slice.text, 'postgres | ok\n');
+  assert.deepEqual(slice.unreadable, []);
+  readSlice({ ...snap, services: [] }, { run: (c, args) => { assert.equal(args.at(-1), '2026-11-18T10:00:00.000Z'); return { status: 0, stdout: '', stderr: '' }; } });
+});
+
+test('Scenario: Unreadable compose log - a failing runner is an unreadable source', () => {
+  const snap = snapshotLog('compose:postgres', { now: () => new Date() });
+  const slice = readSlice(snap, { run: () => ({ status: 1, stdout: '', stderr: 'no configuration file provided: not found\nmore' }) });
+  assert.deepEqual(slice.unreadable, [{ file: 'compose:postgres', reason: 'no configuration file provided: not found' }]);
+  assert.equal(slice.text, '');
+  const audit = auditApi({ text: slice.text, runs: [{ exit: 0, tests: 3 }], unreadable: slice.unreadable, flavor: 'declared' });
+  assert.equal(audit.verdict, 'REVIEW INCONCLUSIVE');
+});
+
+// A review of a declared adapter with a stand-in `docker` that answers `compose logs --since` from a fixture, as Compose does.
+function declaredReview({ autopilot = 'off', dockerFails = false } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-decl-'));
+  mkdirSync(join(dir, 'change', 'specs', 'cap'), { recursive: true });
+  mkdirSync(join(dir, 'backend'), { recursive: true });
+  mkdirSync(join(dir, 'bin'));
+  writeFileSync(join(dir, 'change', 'specs', 'cap', 'spec.md'), SPEC);
+  const fixture = join(dir, 'compose.log');
+  writeFileSync(fixture, '');
+  writeFileSync(join(dir, 'bin', 'docker'), `#!${process.execPath}\nconst fs = require('fs');\nfs.appendFileSync(${JSON.stringify(join(dir, 'docker.calls'))}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + '\\n');\nif (${dockerFails}) { console.error('no configuration file provided: not found'); process.exit(1); }\nconst since = process.argv[process.argv.indexOf('--since') + 1];\nfs.readFileSync(${JSON.stringify(fixture)}, 'utf8').split('\\n').filter(Boolean).forEach((l) => { const [ts, ...rest] = l.split(' '); if (ts >= since) console.log('service | ' + rest.join(' ')); });\n`);
+  chmodSync(join(dir, 'bin', 'docker'), 0o755);
+  const state = join(dir, 'evidence', 'review-state.json');
+  const env = { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}` };
+  const run = (...args) => spawnSync('node', [CLI, ...args, '--state', state], { encoding: 'utf8', env });
+  const init = run('init', join(dir, 'change'), '--adapter', 'api', '--stack', 'pocketbase', '--declared', '--log', 'compose:postgres,auth', '--cwd', join(dir, 'backend'), '--autopilot', autopilot);
+  return { dir, run, init, show: () => JSON.parse(readFileSync(state, 'utf8')), add: (line) => appendFileSync(fixture, `${line}\n`), calls: () => readFileSync(join(dir, 'docker.calls'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) };
+}
+const LATER = '2999-01-01T00:00:00.000Z';
+
+test('a declared review records declared in the state, and init describes the services and the start', () => {
+  const r = declaredReview();
+  assert.equal(r.init.status, 0, r.init.stderr);
+  assert.match(r.init.stdout, /the log of the services postgres, auth of the Compose project is read from \d{4}-/);
+  const state = r.show();
+  assert.deepEqual([state.kind, state.declared, state.stack, state.log.source, state.log.services], ['api', true, 'pocketbase', 'compose', ['postgres', 'auth']]);
+  assert.equal(declaredReview().run('init', 'x', '--declared').status, 2, '--declared needs an api review');
+});
+
+test('Scenario: Compose log through the command - what the services wrote before the start is not read, and docker runs in the folder of the platform', () => {
+  const r = declaredReview();
+  r.add('1999-01-01T00:00:00.000Z FATAL: from before the review');
+  r.run('ran', '0', '--tests', '5');
+  assert.match(r.run('audit').stdout, /^REVIEW PASSED/);
+  const call = r.calls().at(-1);
+  assert.deepEqual(call.args.slice(0, 4), ['compose', 'logs', '--no-color', '--since']);
+  assert.deepEqual(call.args.slice(5), ['postgres', 'auth']);
+  assert.match(call.cwd, /backend$/);
+  r.add(`${LATER} FATAL: terminating connection`);
+  assert.match(r.run('audit').stdout, /^REVIEW REJECTED/);
+});
+
+test('Scenario: Unreadable compose log through the command - inconclusive and it cannot be waived', () => {
+  const r = declaredReview({ dockerFails: true });
+  r.run('ran', '0', '--tests', '5');
+  const out = r.run('audit').stdout;
+  assert.match(out, /^REVIEW INCONCLUSIVE/);
+  assert.match(out, /compose:postgres,auth: no configuration file provided/);
+  const waive = r.run('waive', '1', 'because');
+  assert.notEqual(waive.status, 0);
+  assert.match(waive.stderr, /inconclusive audit cannot be waived/);
+});
+
+test('Scenario: Fatal entry - rejected, and the person can waive the finding with a reason', () => {
+  const r = declaredReview();
+  r.run('ran', '0', '--tests', '5');
+  r.add(`${LATER} FATAL: terminating connection due to administrator command`);
+  assert.match(r.run('audit').stdout, /^REVIEW REJECTED/);
+  assert.match(r.run('waive', '1', 'the test restarts the container').stdout, /REVIEW PASSED \(with waivers\)/);
+});
+
+test('Scenario: Expected denial, Server error, Quiet log with a run, Not detected', () => {
+  const runs = [{ exit: 0, tests: 5, by: 'person' }];
+  const denial = auditApi({ text: 'ERROR:  permission denied for table invoices\nERROR:  duplicate key value violates unique constraint "x"', runs, flavor: 'declared' });
+  assert.equal(denial.verdict, 'REVIEW PASSED');
+  assert.equal(denial.expected.length, 2);
+  assert.equal(auditApi({ text: 'ERROR:  permission denied for table x', runs: [], flavor: 'declared' }).findings[0].class, 'denial', 'a denial with no run to explain it is a finding');
+  const server = auditApi({ text: 'POST /graphql HTTP/1.1" 500 12\nresponse 503', runs, flavor: 'declared' });
+  assert.equal(server.verdict, 'REVIEW REJECTED');
+  assert.equal(server.findings[0].class, 'server-error');
+  assert.equal(auditApi({ text: '', runs, flavor: 'declared' }).verdict, 'REVIEW PASSED');
+  assert.equal(auditApi({ text: '', runs: [], flavor: 'declared' }).verdict, 'REVIEW INCONCLUSIVE');
+  const quiet = auditApi({ text: '{"level":"error","type":"http-log","detail":{"operation":{"error":{"message":"validation-failed"}}}}', runs, flavor: 'declared' });
+  assert.equal(quiet.verdict, 'REVIEW PASSED');
+  assert.deepEqual(['deadlock detected: ERROR:  deadlock detected', 'out of memory', 'PANIC:  could not write'].map((text) => auditApi({ text, runs, flavor: 'declared' }).findings[0]?.class), ['deadlock', 'out-of-memory', 'fatal']);
+  assert.equal(auditApi({ text: 'ERROR:  relation "x" does not exist', runs, flavor: 'declared' }).findings[0].class, 'database-error');
+});
+
+test('the report of a declared audit says that the recorded run is the proof and that errors without the signals are not detected', () => {
+  const r = declaredReview();
+  r.run('ran', '0', '--tests', '5');
+  r.add(`${LATER} {"level":"error","message":"rejected request"}`);
+  assert.match(r.run('audit').stdout, /^REVIEW PASSED/);
+  const report = readFileSync(join(r.dir, 'evidence', 'review-report.md'), 'utf8');
+  assert.match(report, /no fatal entry, deadlock, out-of-memory, database error or server error/);
+  assert.match(report, /are not detected, and the recorded run is the proof/);
+  assert.equal(r.show().audit.scope.flavor, 'declared');
+});
+
+test('the Laravel and Supabase audits are unchanged: no flavor in the scope of Laravel, postgres for Supabase', () => {
+  const laravel = review();
+  laravel.run('ran', '0');
+  laravel.run('audit');
+  assert.equal(laravel.show().audit.scope.flavor, undefined);
+  assert.equal(auditApi({ text: 'FATAL:  role "postgres" does not exist', runs: [{ exit: 0 }], flavor: 'postgres' }).startup.length, 1);
+  assert.equal(auditApi({ text: 'FATAL:  role "postgres" does not exist', runs: [{ exit: 0 }], flavor: 'declared' }).findings[0].class, 'fatal', 'the startup entry is Supabase noise, not a declared one');
+});
+
+test('Scenario: A run that reports no count - a declared line is proved only by an agent run for the line with exit 0 and at least one test; the pull request says test(s) and filter', () => {
+  const r = declaredReview({ autopilot: 'verify' });
+  assert.match(r.run('ran', '0', '--by', 'agent', '--line', '1', '--tests', '1', '--filter', 'login').stderr, /not confirmed in writing/, 'the agent runs nothing before the confirmation');
+  r.run('confirm-env');
+  r.run('ran', '0', '--by', 'agent', '--line', '1', '--filter', 'login');
+  assert.match(r.run('precheck', '1', 'ok').stderr, /ran no test \(count not given\)/);
+  assert.match(r.run('auto', '1', 'login').stderr, /ran no test \(count not given\)/);
+  r.run('ran', '0', '--by', 'agent', '--line', '1', '--tests', '0', '--filter', 'login');
+  assert.match(r.run('auto', '1', 'login').stderr, /ran no test \(0\)/);
+  r.run('ran', '0', '--by', 'agent', '--tests', '12');
+  assert.match(r.run('auto', '1', 'whole suite').stderr, /ran no test/, 'a whole-suite run with no line proves no line');
+  r.run('ran', '0', '--by', 'agent', '--line', '1', '--tests', '1', '--filter', 'login');
+  assert.equal(r.run('precheck', '1', 'ok').status, 0);
+  const section = r.run('runs-list').stdout;
+  assert.match(section, /by the agent: exit 0, 12 test\(s\)/);
+  assert.match(section, /by the agent for line 1, filter `login`: exit 0, 1 test\(s\)/);
+  assert.doesNotMatch(section, /assertion/);
 });
