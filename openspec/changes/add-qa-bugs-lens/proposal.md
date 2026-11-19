@@ -26,6 +26,7 @@ None. The lens belongs to the existing capability that owns the lenses.
 - `qa-lenses`: QA is made of five lenses; a `bugs` lens owns correctness defects; a mode decides whether its findings block; its advisory findings reach the person through the hand-off; its seeded cases are part of the evaluation.
 - `configuration`: `qa.bugs` is a setting with three values, and `agents.qa.bugs` accepts a model and an effort like the other lenses.
 - `agent-adapters`: the renderer writes the `bugs` lens agent with a valid name.
+- `init-doctor`: `doctor` checks five lens agents, and notes when `qa.bugs` is `blocking` or `off`.
 
 ## Impact
 

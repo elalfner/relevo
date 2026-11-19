@@ -45,7 +45,8 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `agent.build` | qué agente construye en la nube: `claude`, o `antigravity` (lo que cada uno puede y no puede hacer cumplir está en [Seguridad](security.es.md)) | `claude` |
 | `qa.retries` | intentos del desarrollador después de que QA rechaza | 1 |
 | `agents.dev.model`, `agents.dev.effort` | modelo (un alias como `sonnet` o un identificador completo) y esfuerzo (`low`, `medium`, `high`, `xhigh`, `max`) del agente de desarrollo | `sonnet`, `high` |
-| `agents.qa.<lente>.model`, `agents.qa.<lente>.effort` | lo mismo para cada revisor de QA: `spec`, `security`, `code` o `interface`. Una lente desconocida falla; no hay clave para apagar una | `spec` y `security`: `opus`, `high`; `code`: `sonnet`, `high`; `interface`: `sonnet`, `medium` |
+| `agents.qa.<lente>.model`, `agents.qa.<lente>.effort` | lo mismo para cada revisor de QA: `spec`, `security`, `code`, `interface` o `bugs`. Una lente desconocida falla; solo el revisor `bugs` se puede apagar, con `qa.bugs` | `spec` y `security`: `opus`, `high`; `code` y `bugs`: `sonnet`, `high`; `interface`: `sonnet`, `medium` |
+| `qa.bugs` | si el revisor `bugs`, que busca defectos de correctitud, puede bloquear: `advisory` (sus hallazgos son notas y nunca bloquean), `blocking` (un hallazgo que marca `CONFIRMED` bloquea, uno `PLAUSIBLE` es una nota) u `off` (no corre) | `advisory` |
 | `qa.rules_from` | reglas del proyecto que QA lee en cada ejecución: un archivo o una lista | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, o `local_only` para datos sensibles | `attach_to_pr` |
 | `digest.issue` | número del issue donde se publica el resumen diario como comentario | ninguno |
@@ -68,7 +69,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 
 ## El modelo y el esfuerzo de cada agente
 
-QA se compone de cuatro revisores (ver [Qué lee cada revisor de QA de un perfil](stacks.es.md#qué-lee-cada-revisor-de-qa-de-un-perfil)), y el agente de desarrollo y cada revisor tienen su propio `model` y `effort` bajo `agents`. Escribe solo lo que quieras cambiar; lo demás conserva su valor por defecto.
+QA se compone de cinco revisores (ver [Qué lee cada revisor de QA de un perfil](stacks.es.md#qué-lee-cada-revisor-de-qa-de-un-perfil)), y el agente de desarrollo y cada revisor tienen su propio `model` y `effort` bajo `agents`. Escribe solo lo que quieras cambiar; lo demás conserva su valor por defecto.
 
 ```yaml
 agents:
@@ -76,7 +77,7 @@ agents:
     security: { model: sonnet }   # el revisor de seguridad con el modelo que de otro modo no usaría
 ```
 
-- **Las claves**, completas: `agents.dev.model`, `agents.dev.effort`, `agents.qa.spec.model`, `agents.qa.spec.effort`, `agents.qa.security.model`, `agents.qa.security.effort`, `agents.qa.code.model`, `agents.qa.code.effort`, `agents.qa.interface.model`, `agents.qa.interface.effort`.
+- **Las claves**, completas: `agents.dev.model`, `agents.dev.effort`, `agents.qa.spec.model`, `agents.qa.spec.effort`, `agents.qa.security.model`, `agents.qa.security.effort`, `agents.qa.code.model`, `agents.qa.code.effort`, `agents.qa.interface.model`, `agents.qa.interface.effort`, `agents.qa.bugs.model`, `agents.qa.bugs.effort`.
 - **El costo de los valores por defecto.** `spec` y `security` usan el modelo más potente (`opus`) por defecto, así que QA cuesta más que cuando era un solo agente con `sonnet`. Para mantener el costo anterior, pon ambos en `sonnet`:
   ```yaml
   agents:
@@ -86,7 +87,8 @@ agents:
   ```
   Los valores por defecto cambian solo con la evidencia de una evaluación de los revisores sobre defectos sembrados.
 - **Un modelo es un nombre, no una lista.** Escribe un alias o un identificador completo; Relevo no lo comprueba contra una lista porque la lista cambia, y el entorno de ejecución rechaza el que no conoce.
-- **Ningún ajuste apaga un revisor ni baja lo que bloquea.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee. Toda regla de ese archivo es un requisito salvo que su línea (o el encabezado que la contiene) esté marcada `[advice]`; un hallazgo que cita un requisito como `Rule: <archivo>:<línea> "<sus palabras>"` bloquea, sin importar qué revisor lo escribió. Un hallazgo que cita una línea `[advice]` es solo una nota cuando su texto nombra ese consejo; un problema real encontrado por `spec`, `security` o `code` que lleva una línea de consejo al lado sigue bloqueando.
+- **Ningún ajuste apaga `spec`, `security`, `code` o `interface` ni baja lo que bloquean.** Las excepciones de un proyecto van en su propio archivo de reglas (`qa.rules_from`), que el revisor `spec` ya lee. Toda regla de ese archivo es un requisito salvo que su línea (o el encabezado que la contiene) esté marcada `[advice]`; un hallazgo que cita un requisito como `Rule: <archivo>:<línea> "<sus palabras>"` bloquea, sin importar qué revisor lo escribió. Un hallazgo que cita una línea `[advice]` es solo una nota cuando su texto nombra ese consejo; un problema real encontrado por `spec`, `security` o `code` que lleva una línea de consejo al lado sigue bloqueando.
+- **El revisor `bugs` tiene un modo propio.** Busca defectos que tienen una entrada, un estado o un actor concretos que fallan, y marca cada hallazgo `CONFIRMED` (muestra la entrada y la línea) o `PLAUSIBLE` (lo decide un hecho fuera del diff). Con el valor por defecto `qa.bugs: advisory` sus hallazgos te llegan como notas en la entrega y nunca cambian el resultado de una ejecución, así que una compilación que pasaba antes sigue pasando. `blocking` deja que un hallazgo `CONFIRMED` devuelva el trabajo al desarrollador; `off` quita el revisor y su costo. No bloquea por defecto hasta que una evaluación sobre defectos sembrados lo respalde ([evaluación de las lentes](lens-evaluation.es.md)).
 - **Con Antigravity** los ajustes se aceptan y no se aplican: no se escriben en los agentes que renderiza. `/relevo:doctor` y `/relevo:init` imprimen un aviso que nombra cada uno y siguen.
 
 ### Elegir el modelo de cada issue: `auto`
@@ -106,7 +108,7 @@ agents:
 ```
 
 - **La escalera** es solo un orden. Relevo no comprueba los nombres contra una lista de modelos; un modelo nuevo es una línea más en `agents.ladder`.
-- **El rango.** Sin `ceiling` es el modelo por defecto del rol (desarrollador `sonnet`, spec y security `opus`, code e interface `sonnet`), y sin `floor` es un escalón más abajo. Una lente de QA nunca queda por debajo de `sonnet` por defecto (la evaluación de lentes no aprobó `haiku` para `code` e `interface`, `docs/lens-evaluation.md`); escribe un `floor` para bajar más. Así `auto` no puede costar más que los valores por defecto salvo que subas un techo.
+- **El rango.** Sin `ceiling` es el modelo por defecto del rol (desarrollador `sonnet`, spec y security `opus`, code, interface y bugs `sonnet`), y sin `floor` es un escalón más abajo. Una lente de QA nunca queda por debajo de `sonnet` por defecto (la evaluación de lentes no aprobó `haiku` para `code` e `interface`, `docs/lens-evaluation.md`); escribe un `floor` para bajar más. Así `auto` no puede costar más que los valores por defecto salvo que subas un techo.
 - **La puntuación.** El tamaño del cambio (tareas pendientes más escenarios del issue: hasta 6 toma el piso, hasta 14 el punto medio, más el techo), subido un escalón cuando el issue permite un archivo de dependencias en `Allow-paths:` o nombra un área sensible para la seguridad (autenticación, credencial, token, contraseña, pago, permiso, secreto, cifrado). La lente de seguridad va a su techo en ambos casos. Si no hay tareas ni escenarios que puntuar, se usa el modelo por defecto del rol. El esfuerzo no se puntúa: sigue siendo el configurado.
 - **El issue puede pedir.** Una línea `Model: <nombre>` (desarrollador) o `QA-model: <nombre>` (todas las lentes) se lee solo para un rol en `auto`. Puede elegir cualquier modelo dentro del rango del rol, entre su `floor` y su `ceiling`: un nombre por encima del techo se baja hasta él y uno por debajo del piso se sube hasta él, y el plan lo dice (cada lente de QA con su propio rango); un nombre que no está en la escalera se ignora, y con `trust: public` las líneas se ignoran. Las líneas son parte del texto del issue, así que el hash del issue las cubre. `/relevo:issue` puede proponer una, con su motivo, y la escribe solo si lo confirmas.
 - **Un rol que no es `auto`** conserva el modelo escrito, diga lo que diga el issue. `limits.run_max_cost` sigue siendo el tope duro en todos los casos.

@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseArgs, loadCases, selectCases, estimate, evaluate, stubRunner, lensPrompt, readLens, judge } from '../scripts/lib/lens-eval.mjs';
+import { parseArgs, loadCases, selectCases, estimate, evaluate, stubRunner, lensPrompt, readLens, judge, confirmedOf } from '../scripts/lib/lens-eval.mjs';
 
 const run = (args, opts = {}) => spawnSync(process.execPath, ['scripts/eval-lenses.mjs', ...args], { encoding: 'utf8', input: '', ...opts });
 
@@ -178,4 +178,50 @@ test('--model overrides the model of every lens and is named in the report', asy
   const stub = stubRunner({ cases });
   await evaluate(cases, opts, async (call) => { seen.push(call.model); return stub(call); }, process.cwd());
   assert.ok(seen.length > 0 && seen.every((m) => m === 'haiku'));
+});
+
+// ---- the bugs lens (add-qa-bugs-lens)
+
+test('the harness accepts the bugs lens, finds its four seeded cases and reads its agent file', () => {
+  const opts = parseArgs(['--lens', 'bugs']);
+  const cases = selectCases(loadCases(), opts);
+  assert.equal(cases.length, 4);
+  assert.ok(cases.every((c) => c.meta.lens === 'bugs'));
+  assert.match(readLens('bugs').body, /You are the bugs lens of QA/);
+});
+
+test('the bugs lens is counted like the others: a miss, a false positive, and how many findings it labelled CONFIRMED', async () => {
+  const opts = parseArgs(['--lens', 'bugs']);
+  const cases = selectCases(loadCases(), opts);
+  const clean = await evaluate(cases, opts, stubRunner({ cases }));
+  assert.equal(clean.per.bugs.found, 4);
+  assert.equal(clean.per.bugs.confirmed, 4);
+  assert.equal(clean.per.bugs.falsePositives, 0);
+  const odd = await evaluate(cases, opts, stubRunner({ cases, miss: [cases[0].id], falsePositive: [cases[1].id] }));
+  assert.equal(odd.per.bugs.found, 3);
+  assert.equal(odd.per.bugs.confirmed, 3);
+  assert.equal(odd.per.bugs.falsePositives, 1);
+});
+
+test('a finding that matches but is labelled PLAUSIBLE is found and not confirmed', () => {
+  const expected = { finding: 'zero' };
+  const check = (report) => { const j = judge(report, expected); return { ...j, confirmed: confirmedOf(report, j) }; };
+  assert.deepEqual(check('QA REJECTED\n1. a valid zero is replaced\n   Label: PLAUSIBLE\n'), { rejected: true, matched: true, confirmed: false });
+  assert.deepEqual(check('QA REJECTED\n1. a valid zero is replaced\n   Label: CONFIRMED\n'), { rejected: true, matched: true, confirmed: true });
+  assert.deepEqual(check('QA PASSED\n'), { rejected: false, matched: false, confirmed: false });
+});
+
+test('the report says how many findings of the bugs lens were confirmed', async () => {
+  const opts = parseArgs(['--lens', 'bugs', '--dry-run']);
+  const cases = selectCases(loadCases(), opts);
+  const { renderReport } = await import('../scripts/lib/lens-eval.mjs');
+  const result = await evaluate(cases, opts, stubRunner({ cases }));
+  assert.match(renderReport(result, opts, estimate(cases, opts), '2026-11-19'), /labelled 4 of the 4 defects it found as CONFIRMED/);
+});
+
+test('the label line is read with a bullet or bold markers, as a lens writes it inside a list', () => {
+  const j = judge('QA REJECTED\n1. a valid zero is replaced\n   - Class: fixable\n   - Label: CONFIRMED\n', { finding: 'zero' });
+  assert.equal(confirmedOf('QA REJECTED\n1. a valid zero is replaced\n   - Label: CONFIRMED\n', j), true);
+  assert.equal(confirmedOf('QA REJECTED\n1. a valid zero is replaced\n   **Label:** CONFIRMED\n', j), true);
+  assert.equal(confirmedOf('QA REJECTED\n1. a valid zero is replaced\n   - Label: `PLAUSIBLE`\n', j), false);
 });

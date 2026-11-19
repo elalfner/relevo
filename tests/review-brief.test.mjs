@@ -160,3 +160,13 @@ test('qa-notes.mjs prints one checklist line per note, nothing without notes, an
   assert.equal(run().status, 2);
   assert.equal(run('--built-file', join(dir, 'missing.md')).status, 2);
 });
+
+// ---- a note of the bugs lens (add-qa-bugs-lens)
+
+test('Scenario: A note from the bugs lens - the checklist line names the lens and carries its label', () => {
+  const built = 'built text\n<!-- relevo:qa-notes [{"lens":"bugs","text":"CONFIRMED: `a.js:3` a valid zero is replaced by the default."},{"lens":"bugs","text":"PLAUSIBLE: a reset can be called twice."}] -->';
+  assert.deepEqual(qaNotesChecklist(built), [
+    '- [ ] CONFIRMED: `a.js:3` a valid zero is replaced by the default. (pending after the retries, bugs lens)',
+    '- [ ] PLAUSIBLE: a reset can be called twice. (pending after the retries, bugs lens)',
+  ]);
+});

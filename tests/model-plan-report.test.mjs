@@ -108,3 +108,9 @@ test('Scenario: the developer went up on a retry - the comment and the marker sa
   assert.deepEqual(parsed.escalated, [{ attempt: 2, from: 'haiku', to: 'sonnet', reason: 'qa-rejected' }]);
   assert.doesNotMatch(usageLine(usage, { plan: planFromJson(PLAN) }), /went up on a retry/);
 });
+
+test('Scenario: the usage comment lists the bugs lens with its model, effort and source (add-qa-bugs-lens)', () => {
+  const plan = planFromJson(JSON.stringify({ ...PLAN, qa: { ...PLAN.qa, bugs: { model: 'sonnet', effort: 'high', source: 'config', why: 'set in relevo.yml' } } }));
+  assert.deepEqual(plan.roles.map((r) => r.role), ['dev', 'spec', 'security', 'code', 'bugs']);
+  assert.deepEqual(plan.roles.at(-1), { role: 'bugs', model: 'sonnet', effort: 'high', source: 'config', why: 'set in relevo.yml' });
+});

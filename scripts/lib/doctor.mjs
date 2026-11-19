@@ -1237,7 +1237,7 @@ function toolchainChecks(f) {
   return [...known, ...own];
 }
 
-/** The QA lenses: settings an agent does not apply, the four agent files, the profile of each platform for each lens, stale names. */
+/** The QA lenses: settings an agent does not apply, the agent files, the profile of each platform for each lens, stale names. */
 function lensChecks(f) {
   const r = [];
   const given = f.config?.agents_given ?? [];
@@ -1246,17 +1246,20 @@ function lensChecks(f) {
   }
   if (f.lensAgentsMissing !== undefined) {
     r.push(f.lensAgentsMissing.length === 0
-      ? pass('qa.lens-agents', 'the plugin has the four QA lens agents')
+      ? pass('qa.lens-agents', `the plugin has the ${QA_LENSES.length} QA lens agents`)
       : fail('qa.lens-agents', `the plugin lacks the QA lens agent${f.lensAgentsMissing.length === 1 ? '' : 's'} ${f.lensAgentsMissing.map((l) => `qa-${l}`).join(', ')}`, 'update the plugin to the current version'));
   }
+  // The bugs lens advises by default; a repository that lets it block, or switches it off, hears it once.
+  if (f.config?.qa?.bugs === 'blocking') r.push(note('qa.bugs-mode', 'qa.bugs is blocking: a finding of the bugs lens that it labels CONFIRMED sends the work back to the developer, and one labelled PLAUSIBLE is only a note'));
+  if (f.config?.qa?.bugs === 'off') r.push(note('qa.bugs-mode', 'qa.bugs is off: the bugs lens does not run, so correctness defects are checked only by the other lenses'));
   (f.platformFacts ?? []).filter((e) => e.profile).forEach((e) => {
     const bad = LENSES.filter((l) => { try { lensText(e.profile, l); return false; } catch { return true; } });
     r.push(bad.length === 0
       ? pass(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} resolves for every QA lens`)
       : fail(`qa.lens-profile.${e.name}`, `the profile of platform ${e.name} cannot be resolved for the lens${bad.length === 1 ? '' : 'es'} ${bad.join(', ')}`, 'check .relevo/stacks and stacks/ for the stack'));
   });
-  (f.staleQaReferences ?? []).forEach((file) => r.push(warn(`qa.stale-reference.${file}`, `${file} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
-  (f.workflows ? Object.entries(f.workflows) : []).filter(([, w]) => w?.present && typeof w.text === 'string' && STALE_QA_RE.test(w.text)).forEach(([name]) => r.push(warn(`qa.stale-reference.${name}`, `workflow ${name} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code and relevo:qa-interface')));
+  (f.staleQaReferences ?? []).forEach((file) => r.push(warn(`qa.stale-reference.${file}`, `${file} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code, relevo:qa-interface and relevo:qa-bugs')));
+  (f.workflows ? Object.entries(f.workflows) : []).filter(([, w]) => w?.present && typeof w.text === 'string' && STALE_QA_RE.test(w.text)).forEach(([name]) => r.push(warn(`qa.stale-reference.${name}`, `workflow ${name} still names the agent relevo:qa, which the QA lenses replaced`, 'use relevo:qa-spec, relevo:qa-security, relevo:qa-code, relevo:qa-interface and relevo:qa-bugs')));
   return r;
 }
 

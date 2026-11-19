@@ -62,7 +62,7 @@ El issue pasa a `build-failed` y se avisa a la persona asignada, con el primer h
 
 ### Quién lo rechazó: la puerta o uno de los revisores
 
-QA ya no es un solo agente. Primero un script (la **puerta**) ejecuta una sola vez el análisis, los tests y los escaneos, sin modelo; después cuatro revisores (las **lentes**) miran cada uno lo que le toca. El comentario nombra al que detuvo la construcción:
+QA ya no es un solo agente. Primero un script (la **puerta**) ejecuta una sola vez el análisis, los tests y los escaneos, sin modelo; después cinco revisores (las **lentes**) miran cada uno lo que le toca; el quinto, `bugs`, busca defectos de correctitud y por defecto solo deja notas ([configuración](configuration.es.md#el-modelo-y-el-esfuerzo-de-cada-agente)). El comentario nombra al que detuvo la construcción:
 
 | Dice | Qué significa | Qué hacer |
 |---|---|---|

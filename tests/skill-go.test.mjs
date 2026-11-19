@@ -41,7 +41,7 @@ test('the checklist comes from the shared script, so go and review always agree'
 
 test('every agent the skill launches exists', () => {
   const agents = [...body.matchAll(/`relevo:([a-z-]+)`/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(agents)].sort(), ['dev', 'qa-code', 'qa-interface', 'qa-security', 'qa-spec']);
+  assert.deepEqual([...new Set(agents)].sort(), ['dev', 'qa-bugs', 'qa-code', 'qa-interface', 'qa-security', 'qa-spec']);
   new Set(agents).forEach((a) => assert.ok(existsSync(root(`agents/${a}.md`)), `agents/${a}.md is missing`));
   assert.equal(existsSync(root('agents/qa.md')), false, 'the former QA agent is gone');
   [...ref.matchAll(/`relevo:([a-z-]+)`/g)].filter((m) => m[1] !== 'qa-notes').forEach((m) => assert.ok(existsSync(root(`agents/${m[1]}.md`)), `the reference launches ${m[1]}, which is missing`));
@@ -404,7 +404,7 @@ test('The decision of a start after the bound carries the shared files into the 
 
 test('Scenario: No agent starts after a limit of the run - the skill records each agent and checks before the next one', () => {
   assert.match(body, /## The budget of the run/);
-  assert.match(body, /run-budget\.mjs record --agent <relevo:dev\|relevo:qa-spec\|relevo:qa-security\|relevo:qa-code\|relevo:qa-interface> --tool-uses <n> --duration-ms <n> --tokens <n>/);
+  assert.match(body, /run-budget\.mjs record --agent <relevo:dev\|relevo:qa-spec\|relevo:qa-security\|relevo:qa-code\|relevo:qa-interface\|relevo:qa-bugs> --tool-uses <n> --duration-ms <n> --tokens <n>/);
   assert.match(body, /run-budget\.mjs check --max-turns <run_max_turns> --max-minutes <run_max_minutes>/);
   assert.match(body, /\*\*Exit 1:\*\* a limit was reached[^]*take the failure path with the reason `run limit reached`/);
   assert.match(body, /names the agents that did not run/);
@@ -554,7 +554,7 @@ test('the model of a retry stays as the previous change left it: lenses keep the
 test('Scenario: a hard rule blocks - qa-run.md passes the rules files, explains the citation and keeps the parallel launch and the retry model (#121)', () => {
   assert.match(ref, /--rules-file <qa\.rules_from, comma separated>/);
   assert.match(ref, /Rule: <file>:<line> "<the words of that line>"/);
-  assert.match(ref, /the `interface` lens on the last attempt cannot leave it as a note/);
+  assert.match(ref, /the `interface` lens on the last attempt and the `bugs` lens in `advisory` mode cannot leave it as a note/);
   assert.match(ref, /`QA PASSED` but cites one becomes `QA REJECTED`/);
   assert.match(ref, /\[advice\]/);
   assert.match(ref, /`unverified`/);
@@ -746,4 +746,17 @@ test('Scenario: A session does not honour it (until a recorded check says it doe
   assert.equal(meta['allowed-tools'], undefined);
   assert.equal(meta['disallowed-tools'], undefined);
   assert.doesNotMatch(front, /allowed-tools|allowedTools/i);
+});
+
+test('Scenario: the QA reference launches the bugs lens with the others, gives it no stack section and tells how its mode decides (add-qa-bugs-lens)', () => {
+  assert.match(ref, /five read-only reviewers \(the \*\*lenses\*\*: `spec`, `security`, `code`, `interface` and `bugs`\)/);
+  assert.match(ref, /`bugs` is active unless `qa\.bugs` is `off`/);
+  assert.match(ref, /- `bugs`: the change folder, the base branch, the folder of the platform, the receipt/);
+  assert.match(ref, /It is given no stack section and never runs the analysis, the tests or the app/);
+  assert.match(ref, /\[--report bugs=<file>\]/);
+  assert.match(ref, /\[--previous bugs=<file>\]/);
+  assert.match(ref, /with `advisory` \(the default\) every finding is an advisory note and nothing can block; with `blocking` only a finding it labels `CONFIRMED` blocks/);
+  assert.match(ref, /A report of `bugs` that is invalid twice does not end the run in `advisory` mode/);
+  assert.match(ref, /the findings of the `bugs` lens that do not block \(each starts with its label/);
+  assert.match(body, /`relevo:qa-bugs`/);
 });

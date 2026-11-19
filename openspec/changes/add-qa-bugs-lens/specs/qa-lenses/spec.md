@@ -90,7 +90,7 @@ The `bugs` lens SHALL check each candidate against the code before reporting it 
 - **THEN** the lens does not report the candidate
 
 ### Requirement: The mode of the `bugs` lens decides whether it blocks
-The `bugs` lens SHALL be governed by `qa.bugs` of `relevo.yml`, whose default is `advisory`. In `advisory` every finding SHALL be an advisory note and none SHALL block. In `blocking` a `CONFIRMED` finding SHALL block and a `PLAUSIBLE` one SHALL be an advisory note. With `off` the lens SHALL be recorded as `SKIPPED` with that reason and no agent SHALL be launched for it.
+The `bugs` lens SHALL be governed by `qa.bugs`, whose default is `advisory`. In `advisory` its findings SHALL be advisory notes. In `blocking` a `CONFIRMED` finding SHALL block and a `PLAUSIBLE` one SHALL be a note. With `off` the lens SHALL be recorded as `SKIPPED` and no agent launched. A finding that cites a hard rule of the project as `Rule:` SHALL block in every mode, as in every lens.
 
 #### Scenario: The default
 - **WHEN** `relevo.yml` does not set `qa.bugs` and the lens reports a `CONFIRMED` finding
@@ -107,6 +107,10 @@ The `bugs` lens SHALL be governed by `qa.bugs` of `relevo.yml`, whose default is
 #### Scenario: Switched off
 - **WHEN** `qa.bugs` is `off`
 - **THEN** the lens is recorded as `SKIPPED` with that reason and no agent is launched
+
+#### Scenario: A hard rule in advisory mode
+- **WHEN** `qa.bugs` is `advisory` and a finding of the lens cites a hard rule of the project and the quoted words are on that line
+- **THEN** the finding blocks and the result is `QA REJECTED`
 
 ### Requirement: The `bugs` lens is evaluated before its default changes
 The evaluation harness SHALL include seeded cases for the `bugs` lens, built from neutral examples that name no real project, each with a bad variant that has one defect and a good variant that differs only by the fix. The default of `qa.bugs` SHALL change to `blocking` only after a dated page of the documentation records, for the lens, the defects found and no good variant flagged.

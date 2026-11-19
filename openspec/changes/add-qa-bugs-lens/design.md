@@ -31,7 +31,7 @@ Whether a lens may block is a behaviour of the pipeline, not a model choice, so 
 
 ### D3. A label on every finding decides what may block
 
-The lens writes a line `Label: CONFIRMED` or `Label: PLAUSIBLE` under each finding, after checking the candidate against the callers and the code around it. The aggregation reads that line. A finding with no valid label counts as `PLAUSIBLE`, so a malformed report can never block; this is the opposite of the fail-closed rule for the first line, on purpose: a block must rest on evidence the lens declared. When every finding of a `QA REJECTED` report is a note, the result of the lens is a pass with notes. Alternative discarded: a numeric confidence, which the aggregation could not check and the person could not read.
+The lens writes a line `Label: CONFIRMED` or `Label: PLAUSIBLE` under each finding, after checking the candidate against the callers and the code around it. The aggregation reads that line. A finding with no valid label counts as `PLAUSIBLE`, so a malformed report can never block; this is the opposite of the fail-closed rule for the first line, on purpose: a block must rest on evidence the lens declared. When every finding of a `QA REJECTED` report is a note, the result of the lens is a pass with notes. A finding that cites a hard rule of the project as `Rule:` blocks in every mode, as the rule of the aggregation says for every lens: the label governs what the lens thinks, not what the project wrote as binding. A label is read from its own line, with or without a bullet or bold markers, because a lens writes it inside a list (the first real run did). Alternative discarded: a numeric confidence, which the aggregation could not check and the person could not read.
 
 ### D4. An advisory lens fails open, a blocking one fails closed
 
@@ -60,7 +60,7 @@ It runs on every round unless `off`. A selector (for example skipping a diff wit
 
 ### D9. The evaluation comes first
 
-The first tasks add seeded cases to `tests/fixtures/lens-defects/bugs/<stack>/<case>/` and run the harness on the lens before the wiring is merged: each case has a bad variant with one defect and a good variant that differs only by the fix. The cases are neutral and invented, drawn from four classes seen in the real run: an invariant that holds only when a feature is switched on, a sensitive action with no audit row, a guard removed that nothing re-establishes, and a changed function that breaks a caller. The result goes into a dated section of `docs/lens-evaluation.md` and its Spanish copy. Moving the default to `blocking` is a different change that must cite that page.
+The first tasks add seeded cases to `tests/fixtures/lens-defects/bugs/<stack>/<case>/` and run the harness on the lens before the wiring is merged: each case has a bad variant with one defect and a good variant that differs only by the fix. The cases are neutral and invented, drawn from classes seen in the real run: an invariant that holds only when a feature is switched on, a sensitive action with no audit row, a falsy check that treats a valid zero as missing, and a changed function that breaks a caller. A guard removed by a diff is not a case: the harness shows a lens whole files and no diff, so that class is checked by the reading of the lens and not by a seeded case. The result goes into a dated section of `docs/lens-evaluation.md` and its Spanish copy. Moving the default to `blocking` is a different change that must cite that page.
 
 ## Risks / Trade-offs
 

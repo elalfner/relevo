@@ -1,0 +1,10 @@
+{
+ "lens": "bugs",
+ "stack": "vue",
+ "case": "changed-return-breaks-caller",
+ "description": "A helper now returns a formatted string, and a caller still adds its result to a number, which concatenates strings.",
+ "expected": {
+  "lens": "bugs",
+  "finding": "string|concatenat|formatAmount|NaN|number"
+ }
+}

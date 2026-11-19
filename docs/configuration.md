@@ -45,7 +45,8 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `agent.build` | which agent builds in the cloud: `claude`, or `antigravity` (what each can and cannot enforce is in [Security](security.md)) | `claude` |
 | `qa.retries` | developer attempts after QA rejects | 1 |
 | `agents.dev.model`, `agents.dev.effort` | model (an alias such as `sonnet` or a full identifier) and effort (`low`, `medium`, `high`, `xhigh`, `max`) of the developer agent | `sonnet`, `high` |
-| `agents.qa.<lens>.model`, `agents.qa.<lens>.effort` | the same for each QA reviewer: `spec`, `security`, `code` or `interface`. An unknown lens fails; there is no key to turn one off | `spec` and `security`: `opus`, `high`; `code`: `sonnet`, `high`; `interface`: `sonnet`, `medium` |
+| `agents.qa.<lens>.model`, `agents.qa.<lens>.effort` | the same for each QA reviewer: `spec`, `security`, `code`, `interface` or `bugs`. An unknown lens fails; only the `bugs` reviewer can be turned off, with `qa.bugs` | `spec` and `security`: `opus`, `high`; `code` and `bugs`: `sonnet`, `high`; `interface`: `sonnet`, `medium` |
+| `qa.bugs` | whether the `bugs` reviewer, which looks for correctness defects, can block: `advisory` (its findings are notes and never block), `blocking` (a finding it labels `CONFIRMED` blocks, a `PLAUSIBLE` one is a note) or `off` (it does not run) | `advisory` |
 | `qa.rules_from` | project rules QA reads at every run: one file or a list | `CLAUDE.md` |
 | `evidence.policy` | `attach_to_pr`, or `local_only` for sensitive data | `attach_to_pr` |
 | `digest.issue` | number of the issue where the daily digest is posted as a comment | none |
@@ -68,7 +69,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 
 ## The model and the effort of each agent
 
-QA is made of four reviewers (see [What each QA reviewer reads of a profile](stacks.md#what-each-qa-reviewer-reads-of-a-profile)), and the developer agent and each reviewer have their own `model` and `effort` under `agents`. Set only what you want to change; everything else keeps its default.
+QA is made of five reviewers (see [What each QA reviewer reads of a profile](stacks.md#what-each-qa-reviewer-reads-of-a-profile)), and the developer agent and each reviewer have their own `model` and `effort` under `agents`. Set only what you want to change; everything else keeps its default.
 
 ```yaml
 agents:
@@ -76,7 +77,7 @@ agents:
     security: { model: sonnet }   # the reviewer of security with the model it would otherwise not use
 ```
 
-- **The keys**, spelled out: `agents.dev.model`, `agents.dev.effort`, `agents.qa.spec.model`, `agents.qa.spec.effort`, `agents.qa.security.model`, `agents.qa.security.effort`, `agents.qa.code.model`, `agents.qa.code.effort`, `agents.qa.interface.model`, `agents.qa.interface.effort`.
+- **The keys**, spelled out: `agents.dev.model`, `agents.dev.effort`, `agents.qa.spec.model`, `agents.qa.spec.effort`, `agents.qa.security.model`, `agents.qa.security.effort`, `agents.qa.code.model`, `agents.qa.code.effort`, `agents.qa.interface.model`, `agents.qa.interface.effort`, `agents.qa.bugs.model`, `agents.qa.bugs.effort`.
 - **The cost of the defaults.** `spec` and `security` use the stronger model (`opus`) by default, so QA costs more than when it was one agent on `sonnet`. To keep the previous cost, set both to `sonnet`:
   ```yaml
   agents:
@@ -86,7 +87,8 @@ agents:
   ```
   The defaults change only on the evidence of an evaluation of the reviewers on seeded defects.
 - **A model is a name, not a list.** Write an alias or a full identifier; Relevo does not check it against a list because the list changes, and the runtime refuses one it does not know.
-- **No setting turns a reviewer off or lowers what it blocks.** A project's exceptions go in its own rules file (`qa.rules_from`), which the `spec` reviewer already reads. Every rule of that file is a requirement unless its line (or the heading above it) is marked `[advice]`; a finding that cites a requirement as `Rule: <file>:<line> "<its words>"` blocks, whichever reviewer wrote it. A finding that cites an `[advice]` line is a note only when its text names that advice; a real problem found by `spec`, `security` or `code` that carries an advice line on the side still blocks.
+- **No setting turns `spec`, `security`, `code` or `interface` off or lowers what it blocks.** A project's exceptions go in its own rules file (`qa.rules_from`), which the `spec` reviewer already reads. Every rule of that file is a requirement unless its line (or the heading above it) is marked `[advice]`; a finding that cites a requirement as `Rule: <file>:<line> "<its words>"` blocks, whichever reviewer wrote it. A finding that cites an `[advice]` line is a note only when its text names that advice; a real problem found by `spec`, `security` or `code` that carries an advice line on the side still blocks.
+- **The `bugs` reviewer has a mode of its own.** It looks for defects that have a concrete failing input, state or actor, and it labels each finding `CONFIRMED` (it shows the input and the line) or `PLAUSIBLE` (a fact outside the diff decides it). With the default `qa.bugs: advisory` its findings reach you as notes in the hand-off and never change the result of a run, so a build that passed before still passes. `blocking` lets a `CONFIRMED` finding send the work back to the developer; `off` removes the reviewer and its cost. It is not blocking by default until an evaluation on seeded defects supports it ([lens evaluation](lens-evaluation.md)).
 - **With Antigravity** the settings are accepted and are not applied: they are not written to the agents it renders. `/relevo:doctor` and `/relevo:init` print a warning that names each one and go on.
 
 ### Choosing the model for each issue: `auto`
@@ -106,7 +108,7 @@ agents:
 ```
 
 - **The ladder** is only an order. Relevo does not check the names against a list of models; a new model is a new line in `agents.ladder`.
-- **The range.** Without `ceiling` it is the default model of the role (developer `sonnet`, spec and security `opus`, code and interface `sonnet`), and without `floor` it is one step below. A QA lens is never below `sonnet` by default (the lens evaluation did not pass `haiku` for `code` and `interface`, `docs/lens-evaluation.md`); write a `floor` to go lower. So `auto` cannot cost more than the defaults unless you raise a ceiling.
+- **The range.** Without `ceiling` it is the default model of the role (developer `sonnet`, spec and security `opus`, code, interface and bugs `sonnet`), and without `floor` it is one step below. A QA lens is never below `sonnet` by default (the lens evaluation did not pass `haiku` for `code` and `interface`, `docs/lens-evaluation.md`); write a `floor` to go lower. So `auto` cannot cost more than the defaults unless you raise a ceiling.
 - **The score.** The size of the change (pending tasks plus scenarios of the issue: up to 6 takes the floor, up to 14 the middle, more the ceiling), raised one step when the issue allows a dependency file in `Allow-paths:` or names a security-sensitive area (authentication, credential, token, password, payment, permission, secret, encryption). The security lens goes to its ceiling in both cases. With no tasks and no scenarios to score, the default model of the role is used. The effort is not scored: it stays the configured one.
 - **The issue can ask.** A line `Model: <name>` (developer) or `QA-model: <name>` (every lens) is read only for a role on `auto`. It can choose any model inside the range of the role, between its `floor` and its `ceiling`: a name above the ceiling is lowered to it and a name below the floor is raised to it, and the plan says so (each QA lens by its own range); a name that is not in the ladder is ignored, and with `trust: public` the lines are ignored. The lines are part of the text of the issue, so the hash of the issue covers them. `/relevo:issue` may propose one, with its reason, and writes it only if you confirm.
 - **A role that is not `auto`** keeps the model written, whatever the issue says. `limits.run_max_cost` stays the hard stop in every case.

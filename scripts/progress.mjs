@@ -5,7 +5,7 @@
 //   node scripts/progress.mjs change <change id>
 //       records the id of the change in the state of the build (an interactive build says it when it plans; the lines of a local
 //       build and `go-local.mjs status` count its tasks with it)
-//   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n] [--end]
+//   node scripts/progress.mjs lens <spec|security|code|interface|bugs> [--attempt n] [--end]
 //       records that a QA lens starts now (or, with --end, that its report arrived), for the seconds of each lens in the usage
 //       record; lenses run together, so each has its own start and end. It does not change the phase
 //   node scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
