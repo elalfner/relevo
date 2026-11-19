@@ -32,7 +32,7 @@ Un perfil es el archivo `stacks/<stack>.md` del plugin. Su encabezado lo leen lo
 - Las skills que requiere y las skills extra de cada rol.
 - Un texto con la higiene que sigue el desarrollador y lo que QA busca en el diff.
 
-Relevo trae los perfiles `flutter`, `vue`, `laravel` y `supabase`. `/relevo:go` resuelve el perfil de tu plataforma y se lo entrega a los agentes de desarrollo y de QA.
+Relevo trae los perfiles `flutter`, `vue`, `laravel`, `supabase` y `nhost`. `/relevo:go` resuelve el perfil de tu plataforma y se lo entrega a los agentes de desarrollo y de QA.
 
 El encabezado también puede decir qué tipo de interfaz construye el stack con `interface: web`, `interface: mobile` o `interface: none`. Sin la clave el stack no tiene interfaz y sus agentes no reciben reglas de interfaz. Flutter es `mobile` (y recibe también las reglas de `web` cuando una plataforma lista el destino `web`), Vue y Laravel son `web`, Supabase es `none`. Un stack que escribes tú en `.relevo/stacks/<stack>.md` declara el suyo con la misma clave. Las reglas y cómo las recibe un agente están en `knowledge/interface/`; un proyecto agrega las suyas en `.relevo/interface.json`, que puede agregar reglas y ejemplos y nunca quitar ni bajar una del plugin (`/relevo:doctor` lo valida y avisa de un intento).
 
@@ -44,6 +44,7 @@ El encabezado también puede decir qué tipo de interfaz construye el stack con 
 | `vue` | `vue-tsc --build` y luego `eslint . --cache` | `vitest run` | `prettier --write src/` | `web` |
 | `laravel` | `vendor/bin/pint --test` | `php artisan test` | `vendor/bin/pint` | ninguno |
 | `supabase` | `supabase db lint` | `supabase test db` | `npx prettier --write supabase/` | ninguno |
+| `nhost` | `npm run --silent analyze` | `npm run --silent test` | ninguno | ninguno |
 
 - Los comandos que ejecuta QA nunca reescriben tu código. Importa en Vue: el script `lint` que genera `npm create vue` usa `--fix`, así que el perfil llama a las herramientas directamente (con `npx --no-install`, con las versiones que fija tu proyecto) y no usa `npm run lint`.
 - El perfil `flutter` sigue la documentación oficial de Flutter (arquitectura, datos y backend, testing, performance y el servidor MCP de Dart), leída el 2026-10-22. El desarrollo evita, y QA busca en el diff, los errores comunes de layout, el trabajo caro en `build()`, las listas largas sin builder, `Opacity` y los recortes dentro de animaciones, el parseo pesado en el isolate de la UI y `dart:html` (impide compilar a Wasm). Con el servidor MCP de Dart los agentes usan solo las herramientas que no escriben nada (`analyze_files`, `lsp`, `read_package_uris`, y `run_tests` cuando está activo). El perfil no impone una arquitectura: los agentes siguen la que declaren tus reglas, y solo si no declaras ninguna el código nuevo usa las capas de la guía de arquitectura de Flutter. QA solo reporta un hallazgo de arquitectura contra una regla que escribiste. Si tu proyecto exige objetos Command y Result, un paquete de manejo de estado o una estructura de carpetas, escríbelo en tus reglas (`qa.rules_from`).
@@ -118,7 +119,7 @@ Esta sección sigue la documentación de Supabase (guías de flujo de desarrollo
 
 ## Ajusta cómo se revisa un stack
 
-El encabezado de `.relevo/stacks/<stack>.md` puede llevar un bloque `review`, y su cuerpo una sección `## Review`. Los perfiles `laravel` y `supabase` del plugin ponen los valores por defecto, así que un repositorio Laravel o Supabase no necesita ninguno de los dos.
+El encabezado de `.relevo/stacks/<stack>.md` puede llevar un bloque `review`, y su cuerpo una sección `## Review`. Los perfiles `laravel`, `supabase` y `nhost` del plugin ponen los valores por defecto, así que un repositorio Laravel, Supabase o Nhost no necesita ninguno de los dos.
 
 ```yaml
 review:
@@ -137,6 +138,12 @@ review:
 - `log` es una ruta o un glob de archivos, o `docker:<contenedor>` para el log de un contenedor; en un nombre `docker:`, `{project_id}` es el `project_id` de `supabase/config.toml`. El valor por defecto de `supabase` es `docker:supabase_db_{project_id}` con `test: supabase test db`.
 - Un review de Laravel no tiene dispositivo ni navegador. Con `review.autopilot` en `off` corres los tests del proyecto y se lo dices al review (`ran <código de salida>`); con `precheck` o `verify` el agente corre el test que ya existe para cada línea y nunca escribe uno. Una corrida de tests que pasa no escribe nada en `storage/logs`, así que lo que muestra que el código se ejercitó es la corrida registrada, no el log.
 - Un review de Supabase tampoco tiene dispositivo ni navegador, y solo toca los contenedores locales: `review.test` se rechaza si nombra `--linked`, `--db-url`, `link`, `push` o `pull`, y el review nunca lee archivos `.env` ni `supabase/.temp`, aunque la carpeta esté enlazada a un proyecto remoto. Cada línea se prueba con el archivo pgTAP de su escenario en `supabase/tests/` (`supabase test db <archivo>`); el log es el del contenedor de la base de datos, leído desde que empezó el review. Un `throws_ok` captura su denegación dentro del test y no la escribe en el log, así que la prueba de que una política deniega es la corrida registrada; un error de permiso, de row-level security o de constraints que sí llegue al log se lista como denegación esperada, y la entrada `FATAL: role "postgres" does not exist` de un `supabase db reset` como entrada de arranque esperada. Cualquier otro `FATAL`, un deadlock o cualquier otro `ERROR` es un hallazgo.
+
+### El perfil `nhost`
+
+Un backend en Nhost (Postgres, Hasura, Auth y un servicio de funciones en los contenedores de un proyecto de Docker Compose) trae su propio adaptador de review, `api`, sin que escribas un bloque `review`. Sus valores por defecto son `log: compose:` (el log de todos los servicios del proyecto Compose en la carpeta de la plataforma, leído desde que empezó el review), `test: npm run --silent test` y las herramientas `docker` y `npm`. Es el mismo adaptador que uno declarado: confirmas por escrito que los datos no son de producción antes de que el agente corra nada, levantas tú la instancia, y el review no prueba ninguna línea por separado porque la suite no tiene filtro y corre una sola vez.
+
+Reemplaza `log` y `test` en `.relevo/stacks/nhost.md` cuando tu proyecto sea distinto, por ejemplo `log: compose:postgres,graphql,auth,functions` (un nombre que el proyecto no tiene deja el log ilegible) y `test: npm run --silent test:integration`. `needs` y `adapter` siguen siendo los del plugin, y ambas claves solo pueden alcanzar `localhost`, `127.0.0.1` o `[::1]`. Los comandos de la compuerta (`analyze`, `test`) se reemplazan con `checks` en `relevo.yml`, no en el perfil: si ya tienes un perfil propio completo de `nhost`, `/relevo:doctor` avisa de cada comando que ignora.
 
 ### Declara un adaptador de review para tu propio stack
 
