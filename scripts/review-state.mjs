@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Keeps the state of an on-device review and decides whether a pull request may be opened.
 //   review-state.mjs init <change-dir> [--autopilot off|precheck|verify]   build the checklist from the change's scenarios
-//   review-state.mjs init <change-dir> --adapter api [--stack supabase] [--log <path, glob or docker:name>] [--cwd <dir>]
+//   review-state.mjs init <change-dir> --adapter api [--stack supabase] [--declared] [--log <path, glob, docker:name or compose:services>] [--cwd <dir>]
 //                                                 an api review: also records how much of the log files exists now,
 //                                                 or the time a container's log is read from (the Supabase default)
 //   review-state.mjs ran <exit code> [--by person|agent] [--filter <f>] [--tests <n>] [--line <n>] [--failing a,b] [--tap <file>|-]
@@ -50,7 +50,7 @@ const [command, ...rest] = args;
 
 // The log an api review reads when the profile does not say: the files of Laravel, the container of Supabase.
 const DEFAULT_LOG = { supabase: 'docker:supabase_db_{project_id}' };
-const describeLog = (log) => (log.source === 'docker' ? `the log of the container ${log.container} is read from ${log.since} on` : `the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)`);
+const describeLog = (log) => (log.source === 'compose' ? `the log of ${log.services.length > 0 ? `the services ${log.services.join(', ')}` : 'every service'} of the Compose project is read from ${log.since} on` : log.source === 'docker' ? `the log of the container ${log.container} is read from ${log.since} on` : `the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)`);
 
 const fail = (m) => {
   console.error(m);
@@ -91,8 +91,10 @@ try {
       if (ios && !flag('process')) fail('an iOS review needs --process <executable name of the app>');
       const stack = flag('stack');
       if (stack !== undefined && !api) fail('--stack goes with --adapter api');
+      const declared = rest.includes('--declared');
+      if (declared && !api) fail('--declared goes with --adapter api');
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack });
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared });
       if (ios) state.source = { source: 'simulator', udid: pickSimulator(listSimulators(), process.env.IOS_SIMULATOR ?? null), process: flag('process'), since: formatLogStart() };
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
@@ -179,9 +181,9 @@ try {
       const state = load();
       if (state.kind === 'api') {
         const slice = readSlice(state.log, { cwd: state.cwd ?? '.' });
-        const flavor = state.stack === 'supabase' ? 'postgres' : 'laravel';
+        const flavor = state.declared ? 'declared' : state.stack === 'supabase' ? 'postgres' : 'laravel';
         const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor });
-        const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor === 'postgres' ? { flavor } : {}) };
+        const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor !== 'laravel' ? { flavor } : {}) };
         state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}) };
         finishAudit(state, audit, scope);
         break;

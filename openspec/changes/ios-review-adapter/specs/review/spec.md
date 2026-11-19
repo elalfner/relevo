@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The review picks its adapter from the platform and the target
-`review` SHALL resolve, from the platform of the issue and its target, how the review obtains its log and captures and whether it can be driven: a device with `adb` for Flutter on `android`, a simulator with `xcrun` for Flutter and for a SwiftUI stack on `ios` (macOS only), a browser for `web`, and the `api` adapter for a stack with no targets that has one (Laravel and Supabase). A combination without an adapter SHALL stop the review before it changes anything, naming what is missing, which adapters exist and what the person can do next. When the adapter is a browser and `review.autopilot` is `off`, the stop message SHALL recommend `verify`, with `precheck` as the cautious option, in the language of `relevo.yml`.
+`review` SHALL resolve, from the platform of the issue and its target, how the review obtains its log and captures and whether it can be driven: a device with `adb` for Flutter on `android`, a simulator with `xcrun` for Flutter and for a SwiftUI stack on `ios` (macOS only), a browser for `web`, and the `api` adapter for a stack with no targets that has one (Laravel and Supabase, or a stack the plugin ships no adapter for whose repository profile declares it). A combination without an adapter SHALL stop the review before it changes anything, naming what is missing, which adapters exist and what the person can do next. When the adapter is a browser and `review.autopilot` is `off`, the stop message SHALL recommend `verify`, with `precheck` as the cautious option, in the language of `relevo.yml`.
 
 #### Scenario: Android device
 - **WHEN** the platform is Flutter with the target `android`
@@ -33,9 +33,17 @@
 - **WHEN** the platform has the stack `supabase`, which defines no targets
 - **THEN** the adapter is `api`, driven by `supabase test db`, and the review does not need `review.autopilot` other than `off`
 
+#### Scenario: Declared adapter
+- **WHEN** the platform has a stack the plugin ships no adapter for, the repository's profile of that stack declares the `api` adapter in its `review` block, and the platform defines no target
+- **THEN** the adapter is `api`, marked as declared by the repository, its log, test and needs are the ones of that block, and the review does not need `review.autopilot` other than `off`
+
+#### Scenario: Declared adapter with an invalid profile
+- **WHEN** the repository's profile of the stack declares the `api` adapter but cannot be resolved (for example, it has no `test`)
+- **THEN** the review stops before changing anything, shows what is wrong with the profile and says that the issue stays `built`
+
 #### Scenario: No adapter
 - **WHEN** the combination has no adapter, or the tool it needs is missing
-- **THEN** `review` stops before changing anything, says what to install or that it is not supported yet, names the adapters that exist (Flutter on Android, Flutter and SwiftUI on iOS, Flutter on web, Vue on web, Laravel and Supabase), says that the issue stays `built`, and says that a stack the plugin ships can tune its review in its profile
+- **THEN** `review` stops before changing anything, says what to install or that it is not supported yet, names the adapters that exist (Flutter on Android, Flutter and SwiftUI on iOS, Flutter on web, Vue on web, Laravel and Supabase), says that the issue stays `built`, says that a stack the plugin ships can tune its review in its profile, and says that a stack of the repository with no targets can declare an `api` adapter in its own profile
 
 ## ADDED Requirements
 

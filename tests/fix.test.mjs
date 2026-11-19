@@ -13,10 +13,10 @@ const CLI = (n) => new URL(`../scripts/${n}`, import.meta.url).pathname;
 
 // ---------- State is preserved
 
-test('Scenario: Fix after qa-failed - the issue becomes built and the assignee is notified', () => {
-  const r = fixOutcome(['relevo:qa-failed', 'bug']);
-  assert.deepEqual([r.allowed, r.from, r.to, r.notify], [true, 'qa-failed', 'built', 'assignee']);
-  assert.deepEqual(r.labels, { add: ['relevo:built'], remove: ['relevo:qa-failed'] });
+test('Scenario: Fix after build-failed - the issue becomes built and the assignee is notified', () => {
+  const r = fixOutcome(['relevo:build-failed', 'bug']);
+  assert.deepEqual([r.allowed, r.from, r.to, r.notify], [true, 'build-failed', 'built', 'assignee']);
+  assert.deepEqual(r.labels, { add: ['relevo:built'], remove: ['relevo:build-failed'] });
 });
 
 test('Scenario: Fix after requested changes - the issue returns to pr-open and the reviewer is re-requested', () => {
@@ -49,12 +49,12 @@ test('the needs-reviewer overlay does not hide the real state', () => {
 });
 
 test('renamed labels are honoured', () => {
-  const r = fixOutcome(['fallo-qa'], { 'qa-failed': 'fallo-qa', built: 'construido' });
+  const r = fixOutcome(['fallo-qa'], { 'build-failed': 'fallo-qa', built: 'construido' });
   assert.deepEqual(r.labels, { add: ['construido'], remove: ['fallo-qa'] });
 });
 
 test('fix-state CLI: allowed states exit 0, others exit 1', () => {
-  const ok = spawnSync('node', [CLI('fix-state.mjs'), '--current', 'relevo:qa-failed'], { encoding: 'utf8' });
+  const ok = spawnSync('node', [CLI('fix-state.mjs'), '--current', 'relevo:build-failed'], { encoding: 'utf8' });
   assert.equal(ok.status, 0);
   assert.equal(JSON.parse(ok.stdout).to, 'built');
   const no = spawnSync('node', [CLI('fix-state.mjs'), '--current', 'relevo:ready'], { encoding: 'utf8' });

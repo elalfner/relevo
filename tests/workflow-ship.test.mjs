@@ -38,7 +38,7 @@ test('Scenario: Scripts changed in the pull request - nothing from the branch is
 
 test('the App token exists only with both secrets and is used only for the checkout that pushes and for the push client', () => {
   assert.match(active, /HAS_APP: \$\{\{ secrets\.RELEVO_SHIP_APP_ID != '' && secrets\.RELEVO_SHIP_APP_KEY != '' \}\}/);
-  assert.match(active, /if: env\.HAS_APP == 'true'\n\s+uses: actions\/create-github-app-token@v1/);
+  assert.match(active, /if: env\.HAS_APP == 'true'\n\s+uses: actions\/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3\.3\.0/);
   const uses = [...active.matchAll(/steps\.app\.outputs\.token/g)];
   assert.equal(uses.length, 2, 'the checkout token and GH_PUSH_TOKEN');
   assert.match(active, /token: \$\{\{ steps\.app\.outputs\.token \|\| github\.token \}\}/);
@@ -71,4 +71,8 @@ test('Scenario: Private repository on a free plan - the token may read the check
   const permissions = active.match(/^permissions:\n((?:  .*\n)+)/m)?.[1] ?? '';
   assert.match(permissions, /^  checks: read$/m);
   assert.match(permissions, /^  statuses: read$/m);
+});
+
+test('Scenario: Mergeability never computed - the header says the run waits inside the script', () => {
+  assert.match(text, /looks again for about 90 seconds, keeping the label/);
 });

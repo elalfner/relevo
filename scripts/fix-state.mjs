@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Prints what a fix does to an issue's labels. Usage:
-//   node scripts/fix-state.mjs --current "relevo:qa-failed,bug" [--config relevo.yml]
-// Output: {"allowed":true,"from":"qa-failed","to":"built","notify":"assignee","labels":{"add":[...],"remove":[...]}}
+//   node scripts/fix-state.mjs --current "relevo:build-failed,bug" [--config relevo.yml]
+// Output: {"allowed":true,"from":"build-failed","to":"built","notify":"assignee","labels":{"add":[...],"remove":[...]}}
 //   exit 0: a fix may run   exit 1: not allowed in this state   exit 2: bad arguments
 
 import { existsSync } from 'node:fs';

@@ -42,7 +42,7 @@ Every finding needs evidence: a line of code, a command's output, the receipt, o
 
 ## Protocol
 
-Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile) and the files it touches. Look for:
+Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile, and one for each path of `not_the_change` when the orchestrator gives that list: the files that the install step of the job left, which are not the work of the developer and about which you report no finding) and the files it touches. Look for:
 
 - **Injection and unsafe construction** of queries, commands, paths, templates or markup from data the code does not control.
 - **Authentication and authorization**: a route, action or function that can be reached without the check it needs, or that checks the wrong thing.
@@ -56,6 +56,10 @@ Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude
 Then read the section **Security review** of the stack profile, when you are given one, and check each of its items against the diff.
 
 A finding needs a line, an output or a quoted scenario; a speculative one is not a rejection. When something is only suspicious and you cannot show it, say it under **Left for on-device review**.
+
+## The rules of the project
+
+The orchestrator gives you the project rules files (`qa.rules_from`). When what you review breaks a rule written there, that is a finding, never a note: report it under `QA REJECTED` with the rule cited on its own line, exactly as `Rule: <file>:<line> "<the words of that line, copied>"`. The script that decides the result reads that line, finds the quoted words on that line of the file and, when they are there and the rule is not marked `[advice]`, the finding blocks, whichever lens you are and on every attempt. Write a `Rule:` line only for a violation: never to say that a rule was respected, and never from memory (a citation whose words are not on that line is not trusted). A rule marked `[advice]` is advice: mention it as a note without a `Rule:` line. You do not decide which rule wins over the issue: when the issue records a decision that overrides the rule (`Overrides: <file>:<line>`), follow the decision and report nothing.
 
 ## Rules for yourself
 

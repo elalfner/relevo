@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 // Prints how `review` works for a platform of relevo.yml, as JSON. Usage:
-//   node scripts/review-adapter.mjs --platform web [--target web] [--config relevo.yml]
+//   node scripts/review-adapter.mjs --platform web [--target web] [--config relevo.yml] [--plugin-root dir]
 // Output: { supported, stack, target, kind, log, capture, driver, needs, reason, platform, needs_autopilot, advice, notice }
 // `notice` is set for an iOS platform when review.autopilot is not off: there is no iOS driver yet and the review proceeds as with off.
+// A stack the plugin ships no adapter for may declare the api adapter in its profile (`declared: true`, with `test`): the profile
+// is resolved only for such a stack, and an invalid one stops the review with its errors as the `reason` (exit 1).
 // `advice` is what to tell the person, in the language of relevo.yml, when a browser review cannot start with review.autopilot off.
 //   exit 0: supported   exit 1: no adapter for this platform and target (the reason is in the output)   exit 2: bad usage or invalid relevo.yml
 
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
-import { adapterFor, autopilotAdvice, autopilotNotice, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
+import { adapterFor, autopilotAdvice, autopilotNotice, hasShippedAdapter, needsAutopilot, targetOf } from './lib/review-adapters.mjs';
+import { resolveProfile } from './lib/stack-profile.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -30,7 +34,22 @@ const platform = loaded.config.platforms[name];
 if (!platform) fail(`there is no platform "${name}" in relevo.yml (platforms: ${Object.keys(loaded.config.platforms).join(', ') || 'none'})`);
 
 const target = arg('target') ?? targetOf(platform);
-const adapter = adapterFor({ stack: platform.stack, target });
+let adapter;
+if (hasShippedAdapter(platform.stack)) adapter = adapterFor({ stack: platform.stack, target });
+else {
+  const pluginRoot = resolve(arg('plugin-root') ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));
+  const base = dirname(configPath);
+  const read = (path) => {
+    const file = path.startsWith('/') ? path : resolve(base, path);
+    return existsSync(file) ? readFileSync(file, 'utf8') : null;
+  };
+  const resolved = resolveProfile({ platform, pluginRoot, read });
+  adapter = adapterFor({ stack: platform.stack, target, review: resolved.ok ? resolved.profile.review : undefined });
+  // With no profile of the repository there is nothing declared: the stack just has no adapter.
+  if (!resolved.ok && read(`.relevo/stacks/${platform.stack}.md`) !== null) {
+    adapter = { ...adapter, supported: false, reason: `the profile of the stack "${platform.stack}" cannot be resolved, so its review cannot start:\n${resolved.errors.map((e) => `  ${e}`).join('\n')}\nFix the profile and run the review again. The issue stays built.` };
+  }
+}
 const advice = autopilotAdvice(adapter, { autopilot: loaded.config.review?.autopilot, language: loaded.config.language });
 const notice = autopilotNotice(adapter, { autopilot: loaded.config.review?.autopilot });
 console.log(JSON.stringify({ ...adapter, platform: name, needs_autopilot: needsAutopilot(adapter), advice, notice }));

@@ -46,6 +46,21 @@ export function findCredentials(text, { strict = false } = {}) {
   return found;
 }
 
+/**
+ * Returns [{ name, start, end }] for every credential-looking match in `text`, with where it sits: the same matches as
+ * `findCredentials` (which reports a kind once, however many matches it has), without the opaque-token check, which needs `strict`.
+ */
+export function credentialMatches(text) {
+  const out = [];
+  CREDENTIAL_PATTERNS.forEach(({ name, re, accept }) => {
+    const all = re.global ? re : new RegExp(re.source, `${re.flags}g`);
+    for (const match of text.matchAll(all)) {
+      if (!accept || accept(match, text)) out.push({ name, start: match.index, end: match.index + match[0].length });
+    }
+  });
+  return out;
+}
+
 /** Returns the marker found in a line of text, or null. */
 export function findMarker(text) {
   const m = text.match(MARKER_RE);
@@ -83,6 +98,31 @@ export function scanDiff(diffText) {
     }
   });
   return findings;
+}
+
+/** The added lines of a unified diff as [{ file, line, text }], numbered like the findings of `scanDiff`. */
+export function addedLines(diffText) {
+  const out = [];
+  let file = null;
+  let line = 0;
+  String(diffText).split('\n').forEach((raw) => {
+    if (raw.startsWith('+++ ')) {
+      const target = raw.slice(4).trim();
+      file = target === '/dev/null' ? null : target.replace(/^b\//, '');
+      return;
+    }
+    if (raw.startsWith('--- ') || raw.startsWith('diff --git') || raw.startsWith('index ')) return;
+    const hunk = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      line = Number.parseInt(hunk[1], 10);
+      return;
+    }
+    if (raw.startsWith('+')) {
+      out.push({ file, line, text: raw.slice(1) });
+      line += 1;
+    } else if (raw.startsWith(' ')) line += 1;
+  });
+  return out;
 }
 
 export function formatFindings(findings) {

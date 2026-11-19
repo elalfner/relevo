@@ -203,7 +203,8 @@ test('Scenario: Decision broken / Section reworded - QA applies the decisions an
   const qa = qaText();
   assert.match(qa, /### 6\. Decisions and constraints from the issue/);
   assert.match(qa, /headings that start `From the issue:`/);
-  assert.match(qa, /issue-sections\.mjs --body-file <issue_file> --copy/);
+  assert.match(qa, /issue-sections\.mjs path you were given> --body-file <issue_file> --copy/);
+  assert.doesNotMatch(qa, /<plugin>/, 'no placeholder the agent would have to search for');
   assert.match(qa, /must be contained, unchanged, in the issue/);
   assert.match(qa, /citing its id, the file and line/);
   assert.match(qa, /A decision under `Discarded` is not a rule/);
@@ -286,10 +287,20 @@ for (const lens of LENSES) {
 }
 
 test('Scenario: the shared sections are identical in the four files - untrusted content, OpenSpec commands, output contract, evidence rule', () => {
-  for (const heading of ['Untrusted content', 'OpenSpec commands', 'Output contract', 'The evidence rule', 'Rules for yourself']) {
+  for (const heading of ['Untrusted content', 'OpenSpec commands', 'Output contract', 'The evidence rule', 'The rules of the project', 'Rules for yourself']) {
     const texts = LENSES.map((l) => section(load(`qa-${l}`).body, heading));
     texts.forEach((t, i) => assert.ok(t, `qa-${LENSES[i]} lacks "${heading}"`));
     assert.equal(new Set(texts).size, 1, `"${heading}" differs between the lenses`);
+  }
+});
+
+test('Scenario: every lens cites a violated rule as Rule: <file>:<line> "<quote>", never as a note, and leaves advice alone (#121)', () => {
+  for (const lens of LENSES) {
+    const rules = section(load(`qa-${lens}`).body, 'The rules of the project');
+    assert.match(rules, /Rule: <file>:<line> "<the words of that line, copied>"/, lens);
+    assert.match(rules, /never a note/, lens);
+    assert.match(rules, /\[advice\]/, lens);
+    assert.match(rules, /Overrides: <file>:<line>/, lens);
   }
 });
 
@@ -354,4 +365,22 @@ test('Scenario: QA rejects on a blocking interface rule only with evidence, and 
   assert.match(qa, /advisory, or whose check is `person`, is never a rejection: list it under \*\*Left for on-device review\*\*/);
   assert.match(qa, /Say how many rules were left out/);
   assert.match(qa, /treat a \*\*mobile sketch\*\* like an image reference/);
+});
+
+test('Scenario: the developer has a short cost guide and receives the configured OpenSpec guidance (#130)', () => {
+  const dev = readFileSync(new URL('../agents/dev.md', import.meta.url), 'utf8');
+  const guide = dev.split('## Cost guide')[1]?.split(/\n## /)[0];
+  assert.ok(guide, 'agents/dev.md has a Cost guide section');
+  const lines = guide.split('\n').filter((l) => l.trim());
+  assert.ok(lines.length <= 6, `the guide has ${lines.length} lines, at most 6`);
+  for (const re of [/bounded ranges/, /script/, /only the tests of what you changed/, /never rerun/]) assert.match(guide, re);
+  assert.match(dev, /project guidance/);
+  assert.match(dev, /it wins/);
+  assert.match(dev, /never overrides the "You must never" list/);
+  const go = readFileSync(new URL('../skills/go/SKILL.md', import.meta.url), 'utf8');
+  assert.match(go, /`openspec instructions tasks --change "<change_id>" --json`/);
+  assert.match(go, /`operationGuidance`/);
+  assert.match(go, /every launch of `relevo:dev` in any mode/);
+  assert.match(go, /only the default cost guide applied/);
+  assert.match(go, /in \*\*fix\*\* mode that file describes gets the project guidance too/, 'the fix launches of qa-run.md get the guidance');
 });

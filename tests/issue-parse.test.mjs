@@ -165,3 +165,77 @@ test('External inputs: a link gives its repository and its path', () => {
   const { inputs } = parseIssueBody(`${GOOD}\n## External inputs\n\n- link: \`acme/api:lib/schema.graphqls\`: the schema\n`).externalInputs;
   assert.deepEqual([inputs[0].repo, inputs[0].path], ['acme/api', 'lib/schema.graphqls']);
 });
+
+import { namedFiles, sharedFiles } from '../scripts/lib/issue-parse.mjs';
+
+const NAMING = [
+  '## Code pointers',
+  '',
+  '- `templates/workflows/relevo-queue.yml` (the queue decision) and `Depends-on:` handling in `scripts/lib/issue-parse.mjs`.',
+  '- `acme/api:src/server.ts`: a file of another repository',
+  '- https://example.com/x.png',
+  '',
+  '## Design reference',
+  '',
+  '- `src/ui/Button.vue`: spacing and colour',
+  '',
+  '## External inputs',
+  '',
+  '- file: `assets/logo.svg`: the logo',
+  '- secret: `API_KEY`: the key',
+  '',
+  'Allow-paths: package.json, `src/gen/**`',
+].join('\n');
+
+test('Scenario: Files named by an issue - each of the four places counts, other repositories and links do not', () => {
+  assert.deepEqual(namedFiles(NAMING), [
+    'templates/workflows/relevo-queue.yml',
+    'scripts/lib/issue-parse.mjs',
+    'src/ui/Button.vue',
+    'assets/logo.svg',
+    'package.json',
+    'src/gen/**',
+  ]);
+});
+
+test('Scenario: An issue that names no file - the list is empty', () => {
+  assert.deepEqual(namedFiles('## Summary\n\nDo a thing in `prose`.\n'), []);
+  assert.deepEqual(namedFiles(''), []);
+});
+
+test('Scenario: Shared files - equal paths and a glob against a path collide, two different globs do not', () => {
+  assert.deepEqual(sharedFiles(['a/router.ts', 'b.ts'], ['router.ts', 'a/router.ts']), ['a/router.ts']);
+  assert.deepEqual(sharedFiles(['src/**'], ['src/app/router.ts']), ['src/app/router.ts']);
+  assert.deepEqual(sharedFiles(['src/app/router.ts'], ['src/**']), ['src/app/router.ts']);
+  assert.deepEqual(sharedFiles(['src/**'], ['src/app/**']), []);
+  assert.deepEqual(sharedFiles(['src/**'], ['src/**']), ['src/**']);
+});
+
+test('Scenario: Append-only and generated files - they are not compared, the others are', () => {
+  const exclude = ['src/nav/items.ts', 'src/gql/**'];
+  assert.deepEqual(sharedFiles(['src/nav/items.ts', 'router.ts'], ['src/nav/items.ts', 'router.ts'], { exclude }), ['router.ts']);
+  assert.deepEqual(sharedFiles(['src/gql/types.ts'], ['src/gql/types.ts'], { exclude }), []);
+  assert.deepEqual(sharedFiles(['src/gql/types.ts'], ['src/gql/types.ts']), ['src/gql/types.ts']);
+});
+
+test('Scenario: A valid pattern - the Pattern: line names an issue of this repository', () => {
+  const r = parseIssueBody('## Summary\n\nPattern: #12\n');
+  assert.equal(r.pattern, 12);
+  assert.deepEqual(r.patternProblems, []);
+  assert.equal(parseIssueBody('- Pattern: `#7`').pattern, 7);
+  assert.equal(parseIssueBody('no line here').pattern, null);
+});
+
+test('Scenario: A pattern that cannot be used - another repository, several numbers, two lines, a code block', () => {
+  ['Pattern: acme/api#12', 'Pattern: #12, #13', 'Pattern: like the orders screen'].forEach((line) => {
+    const r = parseIssueBody(line);
+    assert.equal(r.pattern, null, line);
+    assert.equal(r.patternProblems.length, 1, line);
+  });
+  const two = parseIssueBody('Pattern: #1\nPattern: #2');
+  assert.equal(two.pattern, null);
+  assert.match(two.patternProblems[0], /more than one/);
+  const fenced = parseIssueBody('```\nPattern: #9\n```\n');
+  assert.equal(fenced.pattern, null);
+  assert.deepEqual(fenced.patternProblems, []);
+});

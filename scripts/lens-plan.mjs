@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Says which QA lenses are active for a change, as JSON. Usage:
-//   node scripts/lens-plan.mjs [--platform name] [--text-file issue.md] [--config relevo.yml]
-// Prints { lenses: [{ lens, active, reason? }], skipped: ["SKIPPED interface: ..."] }. The interface lens is active only when the
+//   node scripts/lens-plan.mjs [--platform name] [--text-file issue.md] [--config relevo.yml] [--max-parallel n]
+// Prints { lenses: [{ lens, active, reason? }], skipped: ["SKIPPED interface: ..."], batches: [[lens, ...]] }. The batches are the
+// launch groups: all the active lenses together, or groups of at most --max-parallel when the runtime limits the subagents. The interface lens is active only when the
 // stack of the platform has an interface and the change matches at least one interface rule beyond the always-on ones.
 // Without the interface knowledge of the plugin the lens is skipped, never an error.
 //   exit 0: printed   exit 2: bad arguments or an invalid relevo.yml
@@ -11,11 +12,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
 import { resolveProfile } from './lib/stack-profile.mjs';
-import { planLenses, skippedLines } from './lib/lens-plan.mjs';
+import { batchLenses, planLenses, skippedLines } from './lib/lens-plan.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (n) => { const i = process.argv.indexOf(`--${n}`); return i === -1 ? undefined : process.argv[i + 1]; };
 const fail = (m) => { console.error(m); process.exit(2); };
+
+const maxParallel = arg('max-parallel') === undefined ? Infinity : Number(arg('max-parallel'));
+if (!(maxParallel === Infinity || (Number.isInteger(maxParallel) && maxParallel > 0))) fail('--max-parallel must be a whole number above 0');
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = resolve(arg('config') ?? 'relevo.yml');
@@ -50,4 +54,4 @@ if (existsSync(resolve(root, 'scripts/lib/interface-rules.mjs')) && typeof resol
   }
 }
 const lenses = planLenses({ interfaceKind, extraRules });
-console.log(JSON.stringify({ lenses, skipped: skippedLines(lenses) }, null, 2));
+console.log(JSON.stringify({ lenses, skipped: skippedLines(lenses), batches: batchLenses(lenses, maxParallel) }, null, 2));

@@ -138,6 +138,35 @@ review:
 - A Laravel review has no device and no browser. With `review.autopilot` `off` you run the project's tests and tell the review (`ran <exit code>`); with `precheck` or `verify` the agent runs the existing test of each line and never writes one. A test run that passes writes nothing to `storage/logs`, so the recorded run, and not the log, is what shows that the code was exercised.
 - A Supabase review has no device and no browser either, and it only ever touches the local containers: `review.test` is refused when it names `--linked`, `--db-url`, `link`, `push` or `pull`, and the review never reads `.env` files or `supabase/.temp`, even when the folder is linked to a remote project. Each line is proved by the pgTAP file of its scenario in `supabase/tests/` (`supabase test db <file>`); the log is the database container's, read since the review started. A policy test provokes permission, row-level security and constraint errors on purpose, so the report lists those as expected denials, and a `FATAL`, a deadlock or any other `ERROR` is a finding.
 
+### Declaring a review adapter for your own stack
+
+The plugin has a review adapter for `flutter`, `vue`, `laravel` and `supabase`. A stack you write yourself (see [Your own stack](#your-own-stack)) has none, and `/relevo:review` stops for it with the issue left `built`. A backend with no screen can declare an `api` adapter in the `review` block of its own `.relevo/stacks/<stack>.md`, with no release of the plugin:
+
+```markdown
+---
+stack: backend-api
+commands:
+  analyze: npm run --silent analyze
+  test: npm run --silent test:integration
+tools: [node]
+review:
+  adapter: api
+  log: compose:postgres,api,auth
+  test: npm run --silent test:integration
+  needs: [node, docker]
+---
+
+# Backend API
+```
+
+- **What can be declared.** Only `adapter: api`, with a `log` and a `test` (both required) and a `needs` list. A device or a browser needs `adb`, a simulator or Playwright, which stay in the plugin, so `adapter: browser` or `adapter: device` is invalid. A stack that defines `targets` cannot declare one. A profile of a shipped stack cannot change its adapter: `adapter` and `needs` are ignored there, and `/relevo:doctor` warns.
+- **`needs`.** Tool names, never paths. The review looks for each one on the `PATH` without running it, and for `docker` it also asks that the daemon answers (`node scripts/api-preflight.mjs --needs node,docker`). A missing tool stops the review before it changes anything, and `/relevo:doctor` warns about it.
+- **`log: compose:<services>`.** The log of services of a Docker Compose project, as a comma-separated list of names (every service when none is named). It is read with `docker compose logs --since <start>` from the folder of the platform, only what the services wrote since the review started. When it cannot be read (no Compose file, Docker stopped, an unknown service) the verdict is `REVIEW INCONCLUSIVE` and cannot be waived. Compose may read a `.env` of that folder by itself, which Relevo never does: when it cannot start without it, the log is unreadable and the review inconclusive, never a false pass. A path, a glob or `docker:<container>` also work.
+- **Only what is local.** `review.test` and `review.log` are refused when they name `--linked`, `--db-url`, `link`, `push` or `pull`, or an address `scheme://host` whose host is not `localhost`, `127.0.0.1` or `[::1]` or is a variable. This is a tripwire: it does not see a bare host (`psql -h db.example.com`) or an address that an environment file defines. The guard that matters is the next one.
+- **The confirmation.** Before the agent runs anything, the review asks in one message for your written word that the data the tests touch is not production and that the local instance is up. The agent never starts or stops that instance, never writes a test and never reads `.env` files. With `review.autopilot` `off` the agent runs nothing: you run `review.test` in your terminal and tell the review (`ran <exit code>`), and nothing is asked.
+- **`{filter}`.** `review.test` may hold the placeholder `{filter}`, such as `npm run test:integration -- {filter}`. With `precheck` or `verify` the agent replaces it with one test name made of letters, digits and `_ . / : # @ -` and proves the line with that test; a line with no such name stays for you. Without the placeholder the agent proves no line: it runs the whole suite once at the end and you confirm every line. That is the right choice for a suite that cannot be filtered or that has a rate limit. `/relevo:doctor` notes it when `review.autopilot` is not `off`.
+- **What the audit flags.** The log slice since the review started: `FATAL`, `PANIC`, a deadlock, out of memory, a database `ERROR` that is not a denial and an HTTP status of 500 or more are findings. Permission and constraint errors are listed as expected while a run is recorded. An error without those signals, such as a rejected request that a service logs as `"level":"error"`, is not detected, and the report says so: the recorded run is the proof. An empty slice with no recorded run is `REVIEW INCONCLUSIVE`.
+
 ## What each QA reviewer reads of a profile
 
 QA is made of four reviewers (lenses), and each reads only the part of the profile it needs, so none carries the others' context:
@@ -236,7 +265,7 @@ The agent and QA run the commands of the profile, and they need the dependencies
 ```
 
 - Install without the scripts of the packages where the tool allows it (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` runs none.
-- The step "Check the toolchain" looks, once the tools are there, for each path that the profile lists under `installed`. When one is missing the issue becomes `relevo:qa-failed`, the comment names the path and says to enable the install step, and no model turn is spent.
+- The step "Check the toolchain" looks, once the tools are there, for each path that the profile lists under `installed`. When one is missing the issue becomes `relevo:build-failed`, the comment names the path and says to enable the install step, and no model turn is spent.
 - `/relevo:doctor` warns, for each platform whose profile lists `installed`, when the go workflow has no active step that installs its dependencies. A commented example, and an install into another folder (the steps that install OpenSpec and the Relevo scripts), do not count.
 
 ## Extra skills per role
@@ -251,7 +280,7 @@ The agent and QA run the commands of the profile, and they need the dependencies
 
 ## What an unattended run cannot change
 
-- `relevo.yml`, everything under `.relevo/`, the folders of skills and `skills-lock.json` (inside the folder of each platform too), because they decide the checks the work is held to. A run that touches them ends in `qa-failed`.
+- `relevo.yml`, everything under `.relevo/`, the folders of skills and `skills-lock.json` (inside the folder of each platform too), because they decide the checks the work is held to. A run that touches them ends in `build-failed`.
 - The files you list in `qa.rules_from`.
 - Files outside the folder of the platform of the issue (apart from the change's own specification, `GLOSSARY.md` and `docs/adr/`), unless the issue lists them in `Allow-paths:`.
 - The command of a check, from a profile: only `relevo.yml` can replace one.

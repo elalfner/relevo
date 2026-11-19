@@ -51,8 +51,10 @@ test('Scenario: Plan before changes - it lists files, labels, branches, rulesets
 test('Scenario: Fresh repository - everything is planned and the API key is a manual step', () => {
   const items = plan(bare());
   assert.equal(get(items, 'config').status, 'todo');
-  assert.equal(get(items, 'labels').labels.length, 13);
+  assert.equal(get(items, 'labels').labels.length, 15);
   assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:ship'), 'the ship label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:go'), 'the go label is created');
+  assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:local'), 'the local label is created');
   assert.ok(get(items, 'labels').labels.some((l) => l.name === 'relevo:urgent'), 'the urgent label is created');
   assert.equal(get(items, 'branch.base').status, 'todo');
   assert.equal(get(items, 'protection').status, 'todo');
@@ -152,7 +154,7 @@ test('applying carries out labels, branch, ruleset, workflow permissions, files 
   };
   const results = applyPlan(plan(bare()), { repo: 'o/r', io });
   assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)));
-  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 13);
+  assert.equal(calls.filter((c) => c.args[0] === 'label').length, 15);
   assert.ok(calls.some((c) => c.args.includes('-f') && c.args.includes('ref=refs/heads/dev') && c.args.includes('sha=abc123')));
   assert.ok(calls.some((c) => c.args.includes(`repos/o/r/rulesets`) && JSON.parse(c.input).name === 'relevo-protected-branches'));
   assert.ok(calls.some((c) => c.args.includes('repos/o/r/actions/permissions/workflow') && c.args.includes('can_approve_pull_request_reviews=false')));
@@ -676,6 +678,84 @@ test('a runner with one label is written as that label, and an invalid list is r
   assert.throws(() => renderConfig(template, { ...ANSWERS, runnerLabels: [] }), /needs at least one label|runner example/);
 });
 
+const BUILD_ANSWERS = { ...ANSWERS, runnerLabels: ['self-hosted', 'linux'], runnerBuildLabels: ['self-hosted', 'relevo-build'] };
+const jobsRunsOn = (text) => {
+  const out = {};
+  let inJobs = false;
+  let job = null;
+  text.split('\n').forEach((line) => {
+    if (/^jobs:/.test(line)) { inJobs = true; return; }
+    if (!inJobs) return;
+    const m = /^  ([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (m) job = m[1];
+    const r = /^    runs-on: (.*)$/.exec(line);
+    if (r && job) out[job] = r[1];
+  });
+  return out;
+};
+
+test('Scenario: Builds with their own runner - the build job gets the build labels and every other job runner.labels', () => {
+  const items = planInit({ facts: bare(), answers: BUILD_ANSWERS, templates, current: empty(), admin: true });
+  const config = loadConfig(get(items, 'config').content);
+  assert.ok(config.ok);
+  assert.deepEqual(config.config.runner.labels, ['self-hosted', 'linux']);
+  assert.deepEqual(config.config.runner.build_labels, ['self-hosted', 'relevo-build']);
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.equal(go.build, '[self-hosted, relevo-build]');
+  assert.equal(go.decide, '[self-hosted, linux]');
+  assert.equal(go.requeue, '[self-hosted, linux]');
+  WORKFLOW_FILES.filter((f) => f !== 'relevo-go.yml').forEach((f) => {
+    const text = get(items, `workflow.${f}`).content;
+    assert.ok(!/relevo-build/.test(text), `${f} has no build runner`);
+    assert.ok(/runs-on: \[self-hosted, linux\]/.test(text), f);
+    assert.ok(!/runs-on: ubuntu-latest/.test(text), f);
+  });
+});
+
+test('Scenario: No separate runner - without the key nothing changes', () => {
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerLabels: ['self-hosted', 'linux'] }, templates, current: empty(), admin: true });
+  assert.ok(!/build_labels/.test(get(items, 'config').content.replace(/^#.*$/gm, '')));
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.deepEqual(Object.values(go), ['[self-hosted, linux]', '[self-hosted, linux]', '[self-hosted, linux]']);
+});
+
+test('Scenario: Light jobs on the runners of GitHub - only the build job is self-hosted', () => {
+  const items = planInit({ facts: bare(), answers: { ...ANSWERS, runnerBuildLabels: ['self-hosted', 'relevo-build'] }, templates, current: empty(), admin: true });
+  const config = loadConfig(get(items, 'config').content);
+  assert.ok(config.ok);
+  assert.deepEqual(config.config.runner.labels, ['ubuntu-latest']);
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.equal(go.build, '[self-hosted, relevo-build]');
+  assert.equal(go.decide, 'ubuntu-latest');
+  assert.equal(go.requeue, 'ubuntu-latest');
+});
+
+test('Scenario: Regenerating the go workflow - a repository that sets runner.build_labels keeps both', () => {
+  const config = loadConfig(renderConfig(template, BUILD_ANSWERS)).config;
+  const items = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current: empty(), admin: true });
+  const go = jobsRunsOn(get(items, 'workflow.relevo-go.yml').content);
+  assert.equal(go.build, '[self-hosted, relevo-build]');
+  assert.equal(go.decide, '[self-hosted, linux]');
+  // a rewrite of the file already written for both settings is up to date
+  const current = empty();
+  current.workflows['relevo-go.yml'] = get(items, 'workflow.relevo-go.yml').content;
+  const again = planInit({ facts: bare({ config }), answers: ANSWERS, templates, current, admin: true });
+  assert.equal(get(again, 'workflow.relevo-go.yml').status, 'ok');
+});
+
+test('only the go workflow has a build job', () => {
+  WORKFLOW_FILES.filter((f) => f !== 'relevo-go.yml').forEach((f) => assert.ok(!('build' in jobsRunsOn(workflows[f])), f));
+});
+
+test('the skill asks about the build runner only after the person says the runner is self-hosted', () => {
+  const skill = readFileSync(`${root}skills/init/SKILL.md`, 'utf8');
+  const line = skill.split('\n').find((l) => /self-hosted runner/.test(l) && /runnerLabels|runner\.labels/.test(l));
+  assert.ok(line, 'the self-hosted question exists');
+  assert.match(line, /Ask nothing more when the answer is no/);
+  assert.ok(line.indexOf('runner.build_labels') > line.indexOf('On a yes'), 'the build question is inside the yes branch');
+  assert.match(skill, /runnerBuildLabels/);
+});
+
 // ---------- updating a workflow that differs
 
 const withOneFile = (file, text) => { const c = empty(); c.workflows[file] = text; return c; };
@@ -1148,4 +1228,111 @@ test('Scenario: The plan item of a subscription gives the command that stores th
   const item = get(planWith({ runs: 'cloud', credential: 'subscription' }), 'manual.api-key');
   assert.ok(item.description.includes(STORE_TOKEN_COMMAND));
   assert.match(item.description, /two lines.*incomplete token fails with the same authentication error/);
+});
+
+// ---------- environment findings (#123)
+
+test('init lists the environment findings as manual steps and applies none of them', () => {
+  const facts = {
+    configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: true, release: true },
+    skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: ['RELEVO_LINKS_TOKEN'],
+    links: [{ repo: 'acme/design', reachable: false, private: null }],
+    protection: { base: { protected: true, pullRequestRequired: true, approvals: 1, requiredChecks: false }, release: { pullRequestRequired: true } },
+    pluginVersion: '0.14.2', publishedVersion: '0.14.4',
+    config: loadConfig('runner:\n  labels: [self-hosted, linux]\n').config,
+    workflows: { 'relevo-go.yml': { present: true, text: "jobs:\n  build:\n    runs-on: ${{ vars.RELEVO_RUNNER || 'ubuntu-latest' }}\n" } },
+    runnerVariables: { RELEVO_RUNNER: { value: 'ubuntu-latest' } },
+  };
+  const plan = planInit({ facts, answers: ANSWERS, templates, current: empty(), admin: true });
+  const byId = (id) => plan.find((i) => i.id === id);
+  assert.equal(byId('manual.links-unreadable').status, 'manual');
+  assert.match(byId('manual.links-unreadable').description, /acme\/design.*RELEVO_LINKS_TOKEN.*copy the file/);
+  assert.equal(byId('manual.runner-variable.RELEVO_RUNNER').status, 'manual');
+  assert.match(byId('manual.runner-variable.RELEVO_RUNNER').description, /ubuntu-latest.*self-hosted, linux|self-hosted, linux.*ubuntu-latest/);
+  assert.equal(byId('manual.branch-checks').status, 'manual');
+  assert.match(byId('manual.branch-checks').description, /init does not change it/);
+  assert.equal(byId('manual.plugin-update').status, 'manual');
+  assert.match(byId('manual.plugin-update').description, /0\.14\.4.*0\.14\.2/);
+  const applied = plan.filter((i) => i.id.startsWith('manual.') && i.status !== 'manual' && i.status !== 'ok');
+  assert.deepEqual(applied.map((i) => i.id), [], 'a manual step is never applied');
+});
+
+test('init adds no environment step when nothing is wrong or nothing could be read', () => {
+  const facts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: Object.fromEntries(REQUIRED_SKILLS.map((n) => [n, true])), openspec: '1.14.1', secrets: [],
+    protection: { base: { requiredChecks: true }, release: {} }, publishedVersion: null, pluginVersion: '0.14.4' };
+  const plan = planInit({ facts, answers: ANSWERS, templates, current: empty(), admin: true });
+  ['manual.links-unreadable', 'manual.branch-checks', 'manual.plugin-update'].forEach((id) => assert.equal(plan.some((i) => i.id === id), false, id));
+  const unreadable = planInit({ facts: { ...facts, protection: { base: { requiredChecks: false } }, protectionError: 'HTTP 403' }, answers: ANSWERS, templates, current: empty(), admin: true });
+  assert.equal(unreadable.some((i) => i.id === 'manual.branch-checks'), false, 'protection that could not be read is not reported as missing');
+});
+
+// --- Init renames the label of a failed build ---
+
+const FORMER = 'relevo:qa-failed';
+const withConfig = (over = {}) => bare({ configText: renderConfig(template, ANSWERS), config: loadConfig(renderConfig(template, ANSWERS)).config, ...over });
+const without = allLabels.filter((n) => n !== 'relevo:build-failed');
+
+test('Scenario: Only the former label exists - one rename call, then the creation of the others, and the report says it was renamed', () => {
+  const items = plan(withConfig({ labels: [...without, FORMER] }));
+  const rename = get(items, 'labels.rename');
+  assert.equal(rename.status, 'todo');
+  assert.match(rename.description, /Rename the label relevo:qa-failed to relevo:build-failed/);
+  assert.ok(items.indexOf(rename) < items.indexOf(get(items, 'labels')), 'the rename comes before the creation');
+  assert.ok(get(items, 'labels').labels.every((l) => l.name === 'relevo:build-failed'), 'only the renamed label is created again, to set its description');
+  const calls = [];
+  const io = { gh: (args, input) => { calls.push({ args, input }); return '{}'; }, write() {}, append() {} };
+  const results = applyPlan(items.filter((i) => ['labels.rename', 'labels'].includes(i.id)), { repo: 'o/r', io });
+  assert.ok(results.every((r) => r.ok));
+  assert.equal(calls.filter((c) => c.args[0] === 'api' && c.args.includes('PATCH')).length, 1);
+  const patch = calls[0].args;
+  assert.ok(patch.includes('repos/o/r/labels/relevo%3Aqa-failed') && patch.includes('new_name=relevo:build-failed'), JSON.stringify(patch));
+  assert.equal(calls[1].args[0], 'label');
+  assert.ok(results.find((r) => r.id === 'labels.rename').message.includes('renamed'));
+});
+
+test('Scenario: Neither exists - init creates relevo:build-failed as it creates the others', () => {
+  const items = plan(withConfig({ labels: without }));
+  assert.equal(items.find((i) => i.id === 'labels.rename'), undefined);
+  assert.deepEqual(get(items, 'labels').labels.map((l) => l.name), ['relevo:build-failed']);
+});
+
+test('Scenario: Both exist - nothing is renamed or deleted, and the issue that carries the former one is named', () => {
+  const items = plan(withConfig({ labels: [...allLabels, FORMER], formerLabelIssues: [41] }));
+  const item = get(items, 'labels.former');
+  assert.equal(item.status, 'manual');
+  assert.match(item.description, /#41/);
+  assert.match(item.description, /relevo:qa-failed/);
+  assert.equal(items.find((i) => i.id === 'labels.rename'), undefined);
+  const calls = [];
+  applyPlan(items, { repo: 'o/r', io: { gh: (a) => { calls.push(a); return '{}'; }, write() {}, append() {} } });
+  assert.ok(!calls.some((a) => a.some((x) => /\/labels\//.test(x)) || (a[0] === 'label' && a[1] === 'delete')), 'no label is renamed or deleted');
+});
+
+// --- split-ready-and-go: the labels and the trigger that init writes
+
+test('Scenario: the go and local labels are created with the others, with their descriptions', () => {
+  const labels = get(plan(bare()), 'labels').labels;
+  const go = labels.find((l) => l.name === 'relevo:go');
+  const local = labels.find((l) => l.name === 'relevo:local');
+  assert.ok(go && local);
+  assert.match(go.description, /Build it in the cloud/);
+  assert.match(local.description, /Being built on a machine/);
+});
+
+test('a written workflow starts on the go label, and a workflow of an earlier version is rewritten to start on it', () => {
+  const fresh = wf(planWith({ runs: 'cloud' }), 'relevo-go.yml').content;
+  assert.match(fresh, /github\.event\.label\.name == 'relevo:go'/);
+  assert.doesNotMatch(fresh, /github\.event\.label\.name == 'relevo:ready'/);
+  // A workflow installed from the 0.12.0 template, updated as scripts/init.mjs does: merged with the template it came from.
+  const old = readFileSync(new URL('./fixtures/workflows/relevo-go-0.12.0.yml', import.meta.url), 'utf8');
+  const current = withGo(old);
+  const facts = factsFor({ secrets: KEY_SECRET });
+  const upgrades = (file) => withDiff(current.workflows[file], planUpgrades({
+    files: [file], ours: current.workflows, templates: templates.workflows, agentBlocks: null, labels: undefined, build: 'claude',
+    source: { versions: () => ['0.12.0'], read: () => old }, restricted: restrictedList(facts.config), credential: 'api_key',
+  })[file]);
+  const upgraded = wf(planInit({ facts, answers: { ...ANSWERS, runs: 'cloud' }, templates, current, admin: true, upgrades }), 'relevo-go.yml');
+  assert.equal(upgraded.status, 'todo', JSON.stringify({ status: upgraded.status, description: upgraded.description }));
+  assert.match(upgraded.content, /github\.event\.label\.name == 'relevo:go'/);
+  assert.match(upgraded.diff, /^-.*github\.event\.label\.name == 'relevo:ready'/m);
 });

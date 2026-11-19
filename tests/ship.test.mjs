@@ -71,7 +71,7 @@ test('Scenario: Explicit confirmation - with approval, passing checks and the ri
   assert.equal(d.allowed, true);
   assert.deepEqual(d.reasons, []);
   assert.deepEqual(d.confirm, ['merge']);
-  assert.deepEqual(d.summary, { pr: 40, title: 'Summary screen', author: 'persona-b', branch: 'feature/31-summary', base: 'dev', head: null, mode: 'peer', approvedBy: ['persona-c'], checks: 'passing', checksFrom: 'head' });
+  assert.deepEqual(d.summary, { pr: 40, title: 'Summary screen', author: 'persona-b', branch: 'feature/31-summary', base: 'dev', head: null, mode: 'peer', approvedBy: ['persona-c'], checks: 'passing', checksFrom: 'head', checksOid: null });
 });
 
 test('Scenario: Conflicts - stops and tells the author to synchronise', () => {
@@ -226,7 +226,7 @@ test('label-change --clear removes every Relevo label and leaves the others', ()
 const HEAD = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
 const approvedOn = (oid, login = 'persona-c') => ({ ...review(login, 'APPROVED', '2026-10-14T10:00:00Z'), commit: { oid } });
-const LABELS = { 'pr-open': ['relevo:pr-open'], built: ['relevo:built'], 'qa-failed': ['relevo:qa-failed'] };
+const LABELS = { 'pr-open': ['relevo:pr-open'], built: ['relevo:built'], 'build-failed': ['relevo:build-failed'] };
 
 test('Scenario: Approval on an older commit - ship stops and asks for a new approval on the current code', () => {
   const d = shipDecision({ config: peer, pr: pr({ headRefOid: HEAD, reviews: [approvedOn(OLD)] }), invoker: 'persona-c' });
@@ -255,7 +255,7 @@ test('Scenario: Issue not reviewed yet - ship names the command that is missing'
   const built = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS.built, issue: '31' });
   assert.equal(built.allowed, false);
   assert.match(built.reasons.join(' '), /"built", not "pr-open": run \/relevo:review 31 first/);
-  const failed = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS['qa-failed'], issue: '31' });
+  const failed = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: LABELS['build-failed'], issue: '31' });
   assert.match(failed.reasons.join(' '), /run \/relevo:fix 31 first/);
   const none = shipDecision({ config: peer, pr: pr(), invoker: 'persona-c', labels: [], issue: '31' });
   assert.match(none.reasons.join(' '), /not in a Relevo state.*\/relevo:review 31/);
@@ -308,4 +308,19 @@ test('ship-check passes the baseline, the labels and the issue through', () => {
   const wrongState = run('--baseline', HEAD, '--labels', 'relevo:built', '--issue', '31');
   assert.equal(wrongState.status, 1);
   assert.match(wrongState.stdout, /run \/relevo:review 31 first/);
+});
+
+test('Scenario: Archive commit without checks - the summary names the approved head as the one relied on', () => {
+  const d = shipDecision({
+    config: peer, pr: pr({ statusCheckRollup: [], headRefOid: 'bbb2222' }), invoker: 'persona-c', baseline: 'aaa1111',
+    baselineChecks: { archiveOnly: true, rollup: GOOD_CHECKS },
+  });
+  assert.equal(d.summary.checksFrom, 'baseline');
+  assert.equal(d.summary.checksOid, 'aaa1111');
+});
+
+test('Scenario: Checks ran on the merged head - the summary names the merged head', () => {
+  const d = shipDecision({ config: peer, pr: pr({ headRefOid: 'bbb2222' }), invoker: 'persona-c', baseline: 'aaa1111' });
+  assert.equal(d.summary.checksFrom, 'head');
+  assert.equal(d.summary.checksOid, 'bbb2222');
 });

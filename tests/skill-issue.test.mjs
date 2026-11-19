@@ -17,7 +17,7 @@ test('frontmatter uses only documented fields and Claude never starts it on its 
   assert.equal(meta.name, 'issue');
   assert.equal(meta['argument-hint'], '[what to build, the path of a saved agreement, or the number of an issue to update]');
   assert.equal(meta['disable-model-invocation'], true);
-  assert.match(meta.description, /applies the ready label only when asked in a separate question/);
+  assert.match(meta.description, /applies the ready and go labels only when asked in a separate question/);
   assert.ok(String(meta.description).length <= 1536);
 });
 
@@ -31,7 +31,7 @@ test('every script, template and document it points at exists', () => {
 
 test('Scenario: Issues created - the skill never applies a lifecycle label and creates only after approval', () => {
   assert.match(body, /Do \*\*not\*\* add the `ready` label/);
-  assert.match(body, /Never apply `ready` or any other Relevo label except `ready` after the separate question of step 7/);
+  assert.match(body, /Never apply `ready` or any other Relevo label except `ready` and `go` after the separate question of step 7/);
   assert.match(body, /Create nothing before a clear yes/);
   const beforeOffer = body.slice(0, body.indexOf('## 7. Offer `ready`'));
   assert.ok(!/--add-label|--remove-label|--label/.test(beforeOffer), 'no label is touched before the separate question');
@@ -103,14 +103,15 @@ test('Scenario: Number given - the mode comes from the argument', () => {
 test('Scenario: Issue ready - the refusal names the label and the way forward, and edits nothing', () => {
   assert.match(update, /can-edit-issue\.mjs/);
   assert.match(update, /the text is what `go` builds/);
-  assert.match(update, /remove `ready` by hand, edit, and apply `ready` again/);
+  assert.match(update, /Exit 3 prints `withdrawable`/);
   assert.match(update, /wait for the build to finish or fail first/);
 });
 
 test('Scenario: Approved - nothing is edited before a clear yes, labels are read again and only the body changes', () => {
   assert.match(update, /Apply nothing before a clear yes/);
-  assert.ok(update.indexOf('check-issue.mjs') < update.indexOf('gh-web.mjs issue edit'));
-  assert.ok(update.indexOf('clear yes') < update.indexOf('gh-web.mjs issue edit'));
+  assert.ok(update.indexOf('check-issue.mjs') < update.indexOf('gh-web.mjs issue edit <n> --body-file'));
+  assert.ok(update.indexOf('Apply nothing before a clear yes') < update.indexOf('gh-web.mjs issue edit <n> --body-file'));
+  assert.ok(update.indexOf('clear yes') < update.indexOf('gh-web.mjs issue edit <n> --remove-label'), 'the approval is withdrawn only on a clear yes');
   assert.match(update, /Read the issue again with `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/gh-web\.mjs issue view <n> --json state,labels`/);
   assert.match(body, /Never change the title, milestone or assignee of an existing issue, nor its labels except the swap offered in the update flow/);
 });
@@ -169,20 +170,20 @@ const offer = body.slice(body.indexOf('## 7. Offer `ready`'), body.indexOf('## U
 
 test('Scenario: Offer after creating - one separate question, after the creation, naming every issue, with its own yes', () => {
   assert.ok(body.indexOf('## 7. Offer `ready`') > body.indexOf('gh-web.mjs issue create'));
-  assert.match(offer, /Ask one more question, apart from the approval of the drafts and with its own yes or no/);
+  assert.match(offer, /Ask one more question, apart from the approval of the drafts and with its own answer/);
   assert.match(offer, /Name every issue/);
-  assert.match(offer, /Never apply it on your own, and never take the approval of the drafts as the answer/);
+  assert.match(offer, /Never apply a label on your own, and never take the approval of the drafts as the answer/);
   assert.match(offer, /label-change\.mjs --to ready/);
 });
 
 test('Scenario: Declined / No write access - nothing is applied and the person is reminded or the label is left to someone else', () => {
-  assert.match(offer, /On no, or silence, apply nothing and remind the person/);
+  assert.match(offer, /On nothing, or silence, apply nothing and remind the person/);
   assert.match(offer, /gh api repos\/\{owner\}\/\{repo\} --jq \.permissions/);
   assert.match(offer, /leave the label to someone who can/);
 });
 
 test('Scenario: Needs-spec swapped for ready - the update flow asks the same question and swaps the labels', () => {
-  assert.match(reference, /Offer `ready` for a `needs-spec` issue/);
+  assert.match(reference, /Offer the approval for a `needs-spec` issue/);
   assert.match(reference, /label-change\.mjs --to ready --current/);
   assert.match(reference, /--add-label … --remove-label …/);
 });
@@ -286,4 +287,85 @@ test('Scenario: The work needs a key - issue asks for the external inputs, write
 
 test('Scenario: Nothing is needed - issue writes no section', () => {
   assert.match(body, /needs nothing outside the repository, write no section/);
+});
+
+test('Scenario: A line in a draft - the skill may propose a model with its reason and writes it only when the person confirms', () => {
+  assert.match(text, /\*\*Model \(optional\)\.\*\*/);
+  assert.match(text, /`Model: <name>` for the developer, or `QA-model: <name>` for the QA lenses, with the reason in a sentence/);
+  assert.match(text, /write the line only if the person confirms it/);
+  assert.match(text, /the ceiling of the role still applies/);
+  assert.match(text, /Do not propose a line when no role is `auto`/);
+});
+
+test('Scenario: the check of a draft and of an update read the project rules, and the skill says who decides (#121)', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  const update = readFileSync(new URL('../skills/issue/references/update.md', import.meta.url), 'utf8');
+  assert.match(body, /check-issue\.mjs[^\n]*--rules-file <qa\.rules_from of relevo\.yml, comma separated>/);
+  assert.match(update, /check-issue\.mjs[^\n]*--rules-file <qa\.rules_from>/);
+  assert.match(body, /which one wins/);
+  assert.match(body, /Overrides: <file>:<line>/);
+  assert.match(body, /only a warning/);
+});
+
+test('Scenario: A task edits the rules file - the skill shows the warning and asks how to proceed, with the two ways out', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  const update = readFileSync(new URL('../skills/issue/references/update.md', import.meta.url), 'utf8');
+  assert.match(body, /\*\*Protected paths and unconfirmed names \(warnings\)\.\*\*/);
+  assert.match(body, /a person makes that edit and the issue leaves it out[^\n]*or the task is rewritten so that nothing needs it/);
+  assert.match(body, /a warning never fails the check/);
+  assert.ok(body.indexOf('Protected paths and unconfirmed names') < body.indexOf('## 5. Approval'));
+  assert.match(update, /warnings about protected paths and unconfirmed names and ask how to proceed/);
+});
+
+test('Scenario: A permission name nobody confirmed - the skill offers to confirm, keep as manual or ask', () => {
+  const body = readFileSync(new URL('../skills/issue/SKILL.md', import.meta.url), 'utf8');
+  assert.match(body, /the person confirms it[^\n]*`manual` input to `External inputs`[^\n]*`Open questions`, so the build waits/);
+});
+
+// --- split-ready-and-go: the question of three answers and the withdrawal of the approval
+
+test('Scenario: Offer after creating - one question with three answers: nothing, ready, or ready and go', () => {
+  assert.match(offer, /three answers: apply nothing, apply `ready` only, or apply `ready` and `go`/);
+  assert.match(offer, /`ready` approves the text and starts nothing/);
+  assert.match(offer, /`go` asks the cloud to build it/);
+  assert.doesNotMatch(offer, /Each one starts a build/);
+});
+
+test('Scenario: The cloud cannot build - go is offered only where the cloud can build', () => {
+  assert.match(offer, /scripts\/go-where\.mjs/);
+  assert.match(offer, /When `cloud\.builds` is `false`, offer only nothing or `ready`/);
+  assert.match(offer, /built with `\/relevo:go <n>`/);
+});
+
+test('Scenario: Approval only / Approval and request - the labels are applied in that order, and the person is told how to build', () => {
+  assert.match(offer, /label-change\.mjs --to ready/);
+  assert.match(offer, /label-change\.mjs --to go/);
+  assert.match(offer, /apply `go` in a command of its own, after `ready`/);
+  assert.match(offer, /the `go` label or `\/relevo:go <n>`/);
+});
+
+test('Scenario: Declined - the reminder says an issue is built only after it is approved with ready', () => {
+  assert.match(offer, /an issue is built only after it is approved with `ready`/);
+});
+
+test('Scenario: Needs-spec swapped for ready - the swap starts nothing, and go is asked in the same question', () => {
+  assert.match(reference, /Offer the approval for a `needs-spec` issue, or one whose approval was withdrawn/);
+  assert.match(reference, /the same question of three answers as step 7 of `SKILL\.md`/);
+  assert.match(reference, /starts nothing/);
+  assert.doesNotMatch(reference, /It starts a build/);
+});
+
+test('Scenario: Approval withdrawn to edit - withdrawable asks first, removes ready on a clear yes, and offers the approval at the end', () => {
+  assert.match(reference, /ask whether to withdraw the approval to edit it/);
+  assert.match(reference, /On a clear yes, remove `ready`/);
+  assert.match(reference, /Otherwise change nothing/);
+  assert.ok(reference.indexOf('withdraw the approval') < reference.indexOf('**Apply.**'), 'the approval is withdrawn before the edit');
+});
+
+test('Scenario: Build requested and not answered - ready with go is refused because a build was requested for that text', () => {
+  assert.match(reference, /If the label is `go`, a build was requested for this text/);
+});
+
+test('the new text is applied before any label, in a command of its own, so the approval is later than the edit', () => {
+  assert.match(reference, /never in the same command as a label/);
 });

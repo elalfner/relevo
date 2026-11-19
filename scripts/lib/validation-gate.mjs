@@ -62,7 +62,7 @@ export function buildReceipt({ hash, base, baseRef, generated, platformPath, com
     generated,
     platform_path: platformPath,
     status,
-    commands: commands.map((c) => ({ name: c.name, command: c.command, exit_code: c.status ?? null, duration_ms: c.duration_ms ?? 0, output_tail: tailOf(c.output), ...(couldNotStart(c) ? { could_not_start: toolOf(c.command) } : {}) })),
+    commands: commands.map((c) => ({ name: c.name, command: c.command, exit_code: c.status ?? null, duration_ms: c.duration_ms ?? 0, ...(c.reused ? { reused: true, original_duration_ms: c.original_duration_ms ?? 0 } : {}), output_tail: tailOf(c.output), ...(couldNotStart(c) ? { could_not_start: toolOf(c.command) } : {}) })),
     scans: scans.map((s) => ({ name: s.name, ok: s.ok, detail: tailOf(s.detail, 1500) })),
   };
 }

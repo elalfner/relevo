@@ -2,7 +2,9 @@
 // branch holds work that QA rejected. The comment is text written by the workflow, never an instruction.
 import { isWipCommit } from './wip-commit.mjs';
 
-const HEADING = /^@?\S* ?#\d+ ".*" (?:failed QA|no pasó QA) ❌/;
+// The title of a failure comment: a QA rejection (`failed QA`, `no pasó QA`) or a stop that is not one (`stopped`, `se detuvo`).
+// The earlier titles stay, because the comments already posted keep them. scripts/lib/messages.mjs writes them: change both together.
+const HEADING = /^@?\S* ?#\d+ ".*" (?:failed QA|no pasó QA|stopped|se detuvo) ❌/;
 const FINDING = /^(?:Finding|Hallazgo): (.+)$/m;
 
 /**

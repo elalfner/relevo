@@ -25,7 +25,7 @@ Una corrida real en el [sandbox](https://github.com/elalfner/relevo-sandbox), un
 | Paso | La persona | Relevo | Tiempo |
 |---|---|---|---|
 | 1 | piensa la idea (la exploración y la entrevista que ejecuta `/relevo:think`) y aprueba el texto del issue | explora el código, pregunta hasta que cada decisión está tomada y redacta el issue: escenarios, casos borde y el vocabulario nuevo en una sección `Documentation` | una conversación |
-| 2 | etiqueta el issue `relevo:ready` | el trabajo ligero `decide` aplica los gates y reclama el issue | 17 s |
+| 2 | etiqueta el issue `relevo:ready` (la aprobación) y `relevo:go` (la petición de build) | el trabajo ligero `decide` aplica los gates y reclama el issue | 17 s |
 | 3 | nada | el trabajo `build` escribe la especificación, el código y las pruebas, y QA los revisa | 3 min 35 s |
 | 4 | lee el traspaso y ejecuta `/relevo:review 5` en un teléfono | captura pantallas, audita el log y abre el [pull request](https://github.com/elalfner/relevo-sandbox/pull/16) | unos minutos |
 | 5 | ejecuta `/relevo:ship 5` y confirma | mergea, archiva la especificación y cierra el issue | segundos |

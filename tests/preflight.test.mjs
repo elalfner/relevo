@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { formatPreflight, runPreflight } from '../scripts/lib/preflight.mjs';
+import { formatPreflight, porcelainPath, runPreflight } from '../scripts/lib/preflight.mjs';
 
 const VALID = 'limits:\n  run_max_cost: 5\n';
 const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
@@ -76,6 +76,29 @@ test('Scenario: Uncommitted changes - the first files are listed and the rest co
   assert.match(text, /commit or stash them first/);
 });
 
+test('Scenario: the install step rewrote files before the agent - they do not count as uncommitted work', () => {
+  const dirty = ' M analysis_options.yaml\n M pubspec.lock\n';
+  const run = world({ 'git status --porcelain': ok(dirty) });
+  const installed = (path) => path === 'analysis_options.yaml' || path === 'pubspec.lock';
+  assert.equal(runPreflight({ checks: ['clean-tree'], readConfig: () => VALID, run, installed }).ok, true);
+  assert.equal(runPreflight({ checks: ['clean-tree'], readConfig: () => VALID, run }).ok, false, 'without the hook every change counts');
+});
+
+test('Scenario: a file changed after the install step still stops the run, and only it is listed', () => {
+  const run = world({ 'git status --porcelain': ok(' M pubspec.lock\n M lib/main.dart\n') });
+  const r = runPreflight({ checks: ['clean-tree'], readConfig: () => VALID, run, installed: (path) => path === 'pubspec.lock' });
+  assert.equal(r.ok, false);
+  const text = formatPreflight(r);
+  assert.match(text, / M lib\/main\.dart/);
+  assert.doesNotMatch(text, /pubspec\.lock/);
+});
+
+test('porcelainPath reads the new name of a rename and drops the quotes', () => {
+  assert.equal(porcelainPath(' M lib/a.dart'), 'lib/a.dart');
+  assert.equal(porcelainPath('R  old.dart -> new.dart'), 'new.dart');
+  assert.equal(porcelainPath('?? "with space.txt"'), 'with space.txt');
+});
+
 test('the GitHub login is only checked when asked for', () => {
   const signedOut = { 'gh auth status': bad() };
   assert.equal(runPreflight({ readConfig: () => VALID, run: world(signedOut) }).ok, true);
@@ -131,4 +154,23 @@ test('the command exits 2 for an unknown check', () => {
   const r = cli(sandbox(), '--checks', 'config,luck');
   assert.equal(r.status, 2);
   assert.match(r.stderr, /unknown check "luck"/);
+});
+
+test('the command tolerates the files recorded by the baseline, and still stops for any other change', () => {
+  const s = sandbox();
+  const progress = mkdtempSync(join(tmpdir(), 'relevo-pre-progress-'));
+  const env = { ...s.env, RELEVO_PROGRESS_DIR: progress };
+  writeFileSync(join(s.dir, 'relevo.yml'), VALID + '# touched by the install step\n');
+  const recorded = spawnSync('node', [new URL('../scripts/tree-baseline.mjs', import.meta.url).pathname, 'record'], { cwd: s.dir, env, encoding: 'utf8' });
+  assert.equal(recorded.status, 0);
+  assert.deepEqual(JSON.parse(recorded.stdout), { recorded: 1 });
+  const same = spawnSync('node', [CLI, '--checks', 'clean-tree'], { cwd: s.dir, env, encoding: 'utf8' });
+  assert.equal(same.status, 0, same.stderr);
+  writeFileSync(join(s.dir, 'relevo.yml'), VALID + '# changed again by someone\n');
+  const again = spawnSync('node', [CLI, '--checks', 'clean-tree'], { cwd: s.dir, env, encoding: 'utf8' });
+  assert.equal(again.status, 1);
+  assert.match(again.stderr, /relevo\.yml/);
+  writeFileSync(join(s.dir, 'relevo.yml'), VALID + '# touched by the install step\n');
+  const noBaseline = spawnSync('node', [CLI, '--checks', 'clean-tree'], { cwd: s.dir, env: { ...s.env, RELEVO_PROGRESS_DIR: '' }, encoding: 'utf8' });
+  assert.equal(noBaseline.status, 1, 'a local run has no baseline: every change counts');
 });

@@ -552,6 +552,99 @@ Date: 2026-11-03. A project outside the repository with `relevo.yml` (one Supaba
 
 - **Existing failure, not from this change**: `playwrightFacts resolves Playwright from the folder of the platform, not from where the command runs` fails in `tests/doctor.test.mjs` before and after this change.
 
+## The approval check: what `lastEditedAt` and the timeline say (tasks 1.1–1.3 of `split-ready-and-go`)
+
+Date: 2026-11-17. Repository: the sandbox (`elalfner/relevo-sandbox`). The workflow `spike-last-edited.yml` ran on a push to its own branch `feature/spike-last-edited` (run 44120874668), with the token of the run (`github.token`, `permissions: issues: write, contents: read`). It created two issues (#156, #157), changed them with `gh issue edit`, `gh issue comment` and `gh api -X PATCH`, read `lastEditedAt` after each step and closed them. The query, the same one `readLastEdited` sends:
+
+```bash
+gh api graphql -f query='query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){issue(number:$i){lastEditedAt updatedAt}}}' -F o=elalfner -F n=relevo-sandbox -F i=<n>
+```
+
+| Step | `lastEditedAt` | `updatedAt` |
+|---|---|---|
+| issue just created | `null` | 16:00:56 |
+| body edited | 16:01:00 | 16:01:00 |
+| label, comment and milestone added | 16:01:00 (unchanged) | 16:01:09 |
+| title changed | 16:01:00 (unchanged) | 16:01:15 |
+
+The REST timeline of #156 had `labeled` at 16:01:07, `milestoned` at 16:01:09 and `renamed` (`from`, `to`) at 16:01:15.
+
+Results, against `design.md` D6:
+
+1. **The token of a workflow run reads `lastEditedAt`**: `null` for an issue never edited, the time of the edit after a body edit. As assumed.
+2. **A label, a comment and a milestone do not move it, and neither does a title change**; a title change adds a `renamed` event with its time to the REST timeline. As assumed: the title is read from that event, the body from `lastEditedAt`. `updatedAt` moves on everything and is not usable.
+3. **A failure is told apart from "not edited"**: an issue that does not exist answers `issue: null` with a `NOT_FOUND` error and `gh` exits 1. `readLastEdited` returns a failure for both.
+
+One boundary the design did not state: **`gh issue edit <n> --body ... --add-label ...` in one command (#157) gives a `lastEditedAt` and a `labeled` time in the same second** (16:01:26 both). The planner compares with "later than", so that edit is not taken for an edit after the approval; a test now fixes that. Done as two commands, body then label, the label comes after the edit (16:01:33 and 16:01:34), which is what `issue` does.
+
+The same query with a person's `gh` (the local build), run on 2026-11-17 against `elalfner/relevo-sandbox` issue #158 (created, edited, labeled, commented and closed as not planned), with `gh api graphql -f query='query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){issue(number:$i){lastEditedAt updatedAt}}}' -F o=elalfner -F n=relevo-sandbox -F i=158`:
+
+- Never edited: `{"lastEditedAt":null,"updatedAt":"2026-11-17T16:10:24Z"}`.
+- After `gh issue edit 158 --body "version 2"`: `{"lastEditedAt":"2026-11-17T16:10:30Z","updatedAt":"2026-11-17T16:10:31Z"}`.
+- After adding the label `spike-test` and a comment: `{"lastEditedAt":"2026-11-17T16:10:30Z","updatedAt":"2026-11-17T16:10:38Z"}`. `updatedAt` moved, `lastEditedAt` did not.
+- Issue 999999: `gh` exited with code 1, the response had `"issue":null` and an error of type `NOT_FOUND` ("Could not resolve to an Issue with the number of 999999."), so a failure is told apart from a never-edited issue (`null` without an error).
+
+All four match what D6 assumes: a person's `gh` behaves like the token of a workflow run.
+
+## Integration of split-ready-and-go (tasks 12.2–12.4)
+
+Run on 2026-11-17 in `elalfner/relevo-sandbox`, with the workflows of PR #159 (sandbox) and the published `@elalfner/relevo@0.16.0-rc.1` (tag `next`). The local part used `claude --plugin-dir` on a clone of the branch, because the sandbox had 0.14.4 installed. `limits.concurrent_agents` is 3 and `limits.built_unreviewed_per_person` is 2. Four issues, each a one-line text change, with the milestone "Pilot 1" and assigned to the person running the test: A (#160), B (#161), C (#162), D (#163). They were checked with `check-issue` and created with `gh issue create`, not through `/relevo:issue`, which asks questions and cannot be driven from a script.
+
+### Task 12.2
+
+| Step | Expected | Result |
+|---|---|---|
+| `ready` on A | no run builds A | one `issues` run of `relevo-go` (44130316083), `skipped`. As expected. |
+| `go` on A | a run starts, A goes `building`, ends `built`, `go` is gone | run 44130752802 built it in 5m23s; the last labels were `relevo:built`, with no `go`. As expected. |
+| local build of B (`ready`, then `/relevo:go 161 --local`) | `building` and `local`, no run for B | B was `building` from 16:54:15 and ended `built`; the only runs for B (44130936334, 44131032460) were `skipped`. **Not shown: B never carried `relevo:local`, but the build ran with the installed 0.14.4, not the branch (see below).** |
+| `go` on C while B builds | C is not queued behind B | **Not shown.** C (run 44131754563) became `relevo:queued`, but because it names `lib/main.dart`, which #160 also names and had not been merged ("shared-wait"), not because of a limit. A had also finished by then, so nothing was running in the cloud. |
+
+The timeline of #161 has `ready` (16:53:43), then `building` and the removal of `ready` (16:54:15), and no `local` at any time. The cause is in the test, not in the branch: the session that `go-local.mjs` starts is a new `claude -p` that does not inherit the `--plugin-dir` of the session that launched it, so it used the Relevo installed in the sandbox (0.14.4, see the paths of its transcript). That version claims with `go-plan.mjs --only 161 --apply --claim`, without `--place local`, and takes the claim of a cloud build; the 0.16 skill and `scripts/lib/plan.mjs` add `local` for `place` `local`, but they never ran. So 12.2c is **not shown** for the branch, and has to be repeated with the branch plugin in the inner session as well (for example a `claude` wrapper on the `PATH` that adds `--plugin-dir`, or the installed plugin at 0.16.0-rc.1).
+
+12.2d is not shown, and should be repeated with issues that name different files, with the cloud build of one issue still running while the local build is on.
+
+### Task 12.2 again, with the branch in the local build too (issues #164–#167)
+
+The first local build (B) used the Relevo installed in the sandbox, so 12.2c and 12.2d were repeated the same day with a `claude` wrapper on the `PATH` that adds `--plugin-dir` for the clone of the branch: the session of `go-local.mjs` then ran the scripts of the branch (its transcript has no 0.14.4 path and the claim was `go-plan.mjs --only 166 --place local --apply --claim`). The cloud used `RELEVO_VERSION: '0.16.0-rc.1'` of the workflow. Four issues that name four different files, so nothing waits for a shared file: P (#164, `test/greeting_test.dart`), Q (#165, `test/build_number_test.dart`), R (#166, `test/widget_test.dart`) and S (#167, a new `test/tooltip_test.dart`).
+
+- **Local build carries `building` and `local`, and starts no run:** R (#166) had `ready` at 17:36:29, then at 17:37:24 `building` and `local` in the same second, and at 17:40:32 `built` with both removed. The runs for R (44138858246, 44139030675, 44139031760, 44139584949) were all `skipped`; none built it. As expected.
+- **A third issue is not queued behind the local build:** with P and Q building in the cloud (runs 44138911689 and 44138916876) and R building in local, `ready` then `go` on S at 17:38:51 started run 44139285146 at once (`building`, no `queued`, no comment of the queue). With `limits.concurrent_agents` at 3, a local build counted as a cloud one would have made 3 of 3 and queued S. So the local build takes no place. As expected. (The case was not "queued behind a cloud build", which would need `concurrent_agents` at 1.)
+
+| Issue | Where | Turns | Cost |
+|---|---|---|---|
+| P #164 | cloud, run 44138911689 | 31 | $1.02 |
+| Q #165 | cloud, run 44138916876 | 29 | $0.85 |
+| R #166 | local | 27 | $1.56 |
+| S #167 | cloud, run 44139285146 | 28 | $0.89 |
+
+The repeat cost $4.32. With it, 12.2 behaves as expected in the four steps; the first local build (B above) does not count for 12.2c.
+
+### Task 12.3
+
+The first text of D named `lib/main.dart` like the others, so it was rewritten before the test to change only `test/greeting_test.dart` (no overlap).
+
+- **Edited after `ready`:** `ready` on D at 17:02:36, body edited at 17:03:44, `go` at 17:03:50. Run 44132800351 finished in 22 s without a build. D had no lifecycle label, and at 17:04:10 the comment said "was not built: its body changed after it was approved, so the approval was withdrawn and the issue is a draft again", with "Approved by: @elalfner" and the next step. As expected.
+- **Paused:** with `RELEVO_CLOUD_GO` at `off` (17:05), `ready` and then `go` gave runs 44132969597 and 44133037064, both `skipped`. D kept `relevo:ready` and `relevo:go`, with no comment. As expected.
+- **Resumed:** the variable was deleted at 17:06:36 and, once the `go` was older than 15 minutes, `relevo-queue.yml` was started by hand at 17:20:23 (run 44135883744). The queue took the request with nothing applied again: at 17:20:40 it removed `ready` and `go` and put `queued`. **D was not built then**: `elalfner` had 2 built issues waiting for review (#160, #161; the limit is 2), as the comment of the queue says. That is the capacity of the person filled by the test itself.
+- **After the capacity was freed:** #160 and #161 were closed as not planned at about 17:23. The queue ran twice (44136524072, 44136529690) and started two builds without any label from a person: run 44136561471 for C (#162) and run 44136750882 for D (#163), both `built`. A third run (44136799876) decided there was nothing to build.
+
+So the queue serves a request kept during a pause with nothing applied again, and the gate of the capacity of the person holds as designed. The request was served in two steps because of the capacity.
+
+### Cost of each build
+
+| Issue | Where | Turns | Cost |
+|---|---|---|---|
+| A #160 | cloud, run 44130752802 | 30 | $1.04 |
+| B #161 | local | 25 | $1.67 |
+| C #162 | cloud, run 44136561471 | 30 | $1.12 |
+| D #163 | cloud, run 44136750882 | 30 | $0.89 |
+
+Total $4.72, against a budget of $5 per run (`run_max_cost`).
+
+### Result
+
+12.2 behaves as expected once the local build runs the branch (the repeat above); the first attempt did not test it. 12.3 behaved as expected, with the extra step for the capacity of the person. 12.2, 12.3 and 12.4 are marked in `tasks.md`. 12.3 is marked although 12.3c needed the capacity of the person freed first (#160 and #161 closed); that came from the test, not from the branch, and the case with the limit free from the start was not repeated.
+
 ## The iOS review on a real simulator (tasks 1.1 to 1.4, 3.3 and 7.1 of `ios-review-adapter`)
 
 Date: 2026-11-19. A Mac with Xcode 27.2 and an iPhone 17e simulator on iOS 27.0, booted with `simctl boot`. The app was a throwaway SwiftUI app built with `swiftc` (a title, a view that changes its state inside `body` with `--runtime-issue`, and `fatalError` with `--crash`), installed with `simctl install` and started by `simctl launch`, outside the repository.

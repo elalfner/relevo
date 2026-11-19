@@ -38,7 +38,7 @@ test('optional lines disappear when the data is unknown', () => {
 });
 
 test('Scenario: Failed build - names the finding with file and line, says the branch is pushed, gives the fix command', () => {
-  const text = renderMessage('qa_failed', {
+  const text = renderMessage('build_failed', {
     assignee: 'persona-b',
     issue: 31,
     title: 'Summary screen',
@@ -58,71 +58,72 @@ test('Scenario: Failed build - names the finding with file and line, says the br
 
 test('when a credential stopped the push, the message says the branch was NOT pushed', () => {
   const base = { assignee: 'b', issue: 1, title: 't', finding: 'possible credential in lib/a.dart', branch: 'feature/1-t' };
-  const text = renderMessage('qa_failed', { ...base, pushed: false });
+  const text = renderMessage('build_failed', { ...base, pushed: false });
   assert.match(text, /was NOT pushed/);
   assert.doesNotMatch(text, /is pushed/);
-  assert.match(renderMessage('qa_failed', { ...base, pushed: false }, 'es'), /NO se subió/);
-  assert.match(renderMessage('qa_failed', base), /is pushed/);
+  assert.match(renderMessage('build_failed', { ...base, pushed: false }, 'es'), /NO se subió/);
+  assert.match(renderMessage('build_failed', base), /is pushed/);
 });
 
 const classBase = { assignee: 'persona-b', issue: 48, title: 'Sign-in screen', finding: 'the key is the vendor test key', file: 'src/config.ts', line: 28, branch: 'feature/48-sign-in', branch_state: 'kept', tasks_done: 6, tasks_total: 8 };
 
 test('Scenario: Nothing the developer can fix - the comment says the class, that the retries were skipped, and the next step', () => {
-  const en = renderMessage('qa_failed', { ...classBase, finding_class: 'input', retries_skipped: true });
+  const en = renderMessage('build_failed', { ...classBase, finding_class: 'input', retries_skipped: true });
   assert.match(en, /What kind of finding: it needs something the developer agent cannot supply: an input that the issue depends on, so the retries were skipped\./);
   assert.match(en, /What happened: QA rejected it and no finding can be corrected by the developer agent, so there were no retries\./);
   assert.match(en, /Your next step: \/relevo:fix 48 \(supply what is missing/);
-  const es = renderMessage('qa_failed', { ...classBase, finding_class: 'input', retries_skipped: true }, 'es');
+  const es = renderMessage('build_failed', { ...classBase, finding_class: 'input', retries_skipped: true }, 'es');
   assert.match(es, /Qué tipo de hallazgo: necesita algo que el agente de desarrollo no puede aportar/);
   assert.match(es, /así que se omitieron los reintentos\./);
   assert.match(es, /Tu siguiente paso: \/relevo:fix 48/);
 });
 
 test('each class that the developer agent cannot fix has its own next step', () => {
-  const step = (finding_class) => renderMessage('qa_failed', { ...classBase, finding_class, retries_skipped: true });
+  const step = (finding_class) => renderMessage('build_failed', { ...classBase, finding_class, retries_skipped: true });
   assert.match(step('spec'), /Your next step: \/relevo:issue 48 \(decide what the specification leaves open/);
   assert.match(step('policy'), /Your next step: \/relevo:issue 48 \(the work needs something an unattended run may not do/);
   assert.match(step('policy'), /Allow-paths:/);
 });
 
 test('Scenario: A mixed report - the class is named without saying that the retries were skipped', () => {
-  const text = renderMessage('qa_failed', { ...classBase, finding_class: 'input' });
+  const text = renderMessage('build_failed', { ...classBase, finding_class: 'input' });
   assert.match(text, /What kind of finding: it needs something the developer agent cannot supply: an input that the issue depends on\./);
   assert.doesNotMatch(text, /retries were skipped/);
 });
 
 test('a fixable class, or no class, adds no line and leaves the next step as it was', () => {
-  const plain = renderMessage('qa_failed', classBase);
+  const plain = renderMessage('build_failed', classBase);
   assert.doesNotMatch(plain, /What kind of finding/);
-  assert.equal(renderMessage('qa_failed', { ...classBase, finding_class: 'fixable' }), plain);
+  assert.equal(renderMessage('build_failed', { ...classBase, finding_class: 'fixable' }), plain);
   assert.match(plain, /Your next step: \/relevo:fix 48 \(it checks and corrects the work that was kept/);
 });
 
 test('a class has a step of its own only when the work was kept on the branch', () => {
-  const text = renderMessage('qa_failed', { ...classBase, branch_state: 'pushed', finding_class: 'spec', retries_skipped: true });
+  const text = renderMessage('build_failed', { ...classBase, branch_state: 'pushed', finding_class: 'spec', retries_skipped: true });
   assert.match(text, /What kind of finding/);
   assert.match(text, /Your next step: \/relevo:fix 48/);
 });
 
 test('an unknown class is refused', () => {
-  assert.throws(() => renderMessage('qa_failed', { ...classBase, finding_class: 'urgent' }), /unknown finding_class "urgent"/);
+  assert.throws(() => renderMessage('build_failed', { ...classBase, finding_class: 'urgent' }), /unknown finding_class "urgent"/);
 });
 
 test('budget failures carry their reason', () => {
-  const text = renderMessage('qa_failed', {
+  const text = renderMessage('build_failed', {
     assignee: 'b', issue: 1, title: 't', finding: 'stopped', branch: 'f', reason: 'budget exceeded',
   });
-  assert.match(text, /after the retries \(budget exceeded\)\./);
+  // A reason that is not a QA rejection is named as the reason of a stop (issue #181), not as the end of the retries.
+  assert.match(text, /The run stopped \(budget exceeded\)\./);
 });
 
 test('a finding without a file is still reported', () => {
-  const text = renderMessage('qa_failed', { assignee: 'b', issue: 1, title: 't', finding: 'stopped early', branch: 'f' });
+  const text = renderMessage('build_failed', { assignee: 'b', issue: 1, title: 't', finding: 'stopped early', branch: 'f' });
   assert.match(text, /Finding: stopped early\n/);
   assert.doesNotMatch(text, /\(\)/);
 });
 
 test('long values are shortened: long logs are linked, never embedded', () => {
-  const text = renderMessage('qa_failed', {
+  const text = renderMessage('build_failed', {
     assignee: 'b', issue: 1, title: 't', finding: 'x'.repeat(5000), branch: 'f', log_url: 'https://example.invalid/log',
   });
   assert.ok(text.length < 1200);
@@ -204,55 +205,55 @@ const BACK = { spec_writer: 'persona-a', issue: 31, title: 'Summary', missing: '
 const BUILT_DATA = { assignee: 'persona-b', issue: 31, title: 'Summary', tasks_done: 5, tasks_total: 5, branch: 'feature/31-summary', scenarios: 4 };
 
 test('Scenario: Failed because the branch already exists with implementation commits - untouched, and /relevo:fix', () => {
-  const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' });
+  const text = renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' });
   assert.match(text, /already existed on the remote, so it was not touched/);
   assert.doesNotMatch(text, /is pushed|NOT pushed/);
   assert.match(text, /Your next step: \/relevo:fix 31/);
 });
 
-test('Scenario: Failed because the branch already exists with only the specification - delete it and apply ready again', () => {
-  const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' });
+test('Scenario: Failed because the branch already exists with only the specification - delete it and build again with go', () => {
+  const text = renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' });
   assert.match(text, /already existed on the remote/);
-  assert.match(text, /Your next step: the branch holds only the specification: delete the remote branch and label the issue ready again\./);
+  assert.match(text, /Your next step: the branch holds only the specification: delete the remote branch, then apply relevo:go so that the cloud builds it again, or run \/relevo:go 31 --retry on your machine\./);
   assert.doesNotMatch(text, /\/relevo:fix/);
 });
 
 test('the same recoveries in Spanish', () => {
-  const fix = renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }, 'es');
+  const fix = renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }, 'es');
   assert.match(fix, /ya existía en el remoto, así que no se tocó/);
   assert.match(fix, /Tu siguiente paso: \/relevo:fix 31/);
-  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' }, 'es'), /borra la rama remota y vuelve a ponerle ready al issue/);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' }, 'es'), /borra la rama remota, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta \/relevo:go 31 --retry en tu máquina/);
 });
 
 test('branch_state unsafe is the same as the older pushed: false, and now names a protected path too', () => {
-  const unsafe = renderMessage('qa_failed', { ...FAILED, branch_state: 'unsafe' });
-  assert.equal(unsafe, renderMessage('qa_failed', { ...FAILED, pushed: false }));
+  const unsafe = renderMessage('build_failed', { ...FAILED, branch_state: 'unsafe' });
+  assert.equal(unsafe, renderMessage('build_failed', { ...FAILED, pushed: false }));
   assert.match(unsafe, /was NOT pushed \(a possible credential, a temporary marker, a protected path or a restricted file was found\)/);
-  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'unsafe' }, 'es'), /NO se subió \(se encontró una posible credencial, un marcador temporal, una ruta protegida o un archivo restringido\)/);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'unsafe' }, 'es'), /NO se subió \(se encontró una posible credencial, un marcador temporal, una ruta protegida o un archivo restringido\)/);
 });
 
 test('a plain failed build is unchanged: pushed branch and the fix command', () => {
-  const text = renderMessage('qa_failed', FAILED);
+  const text = renderMessage('build_failed', FAILED);
   assert.match(text, /is pushed/);
   assert.match(text, /Your next step: \/relevo:fix 31$/);
 });
 
-test('qa_failed rejects an unknown branch state and an existing branch without a recovery', () => {
-  assert.throws(() => renderMessage('qa_failed', { ...FAILED, branch_state: 'gone' }), /unknown branch_state "gone"/);
-  assert.throws(() => renderMessage('qa_failed', { ...FAILED, branch_state: 'existing' }), /needs "recovery"/);
-  assert.throws(() => renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'burn' }), /unknown reason "burn"/);
+test('build_failed rejects an unknown branch state and an existing branch without a recovery', () => {
+  assert.throws(() => renderMessage('build_failed', { ...FAILED, branch_state: 'gone' }), /unknown branch_state "gone"/);
+  assert.throws(() => renderMessage('build_failed', { ...FAILED, branch_state: 'existing' }), /needs "recovery"/);
+  assert.throws(() => renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'burn' }), /unknown reason "burn"/);
 });
 
 test('Scenario: Spec returned with a reason - missing gives /relevo:issue', () => {
   const text = renderMessage('needs_spec', BACK);
   assert.match(text, /What is missing: edge cases/);
-  assert.match(text, /Your next step: \/relevo:issue 31: complete what is missing, then label it ready again\./);
+  assert.match(text, /Your next step: \/relevo:issue 31: complete what is missing, then approve it with ready again and request the build: relevo:go, or \/relevo:go 31 on your machine\./);
   assert.equal(renderMessage('needs_spec', { ...BACK, reason: 'missing' }), text, 'missing is the default');
 });
 
 test('Scenario: Spec returned with a reason - ambiguous asks for a decision and mentions /relevo:think', () => {
   const text = renderMessage('needs_spec', { ...BACK, missing: 'what happens when the list is empty?', reason: 'ambiguous' });
-  assert.match(text, /Your next step: \/relevo:issue 31: decide the open question \(run \/relevo:think #31 first if you need to explore it\), then label it ready again\./);
+  assert.match(text, /Your next step: \/relevo:issue 31: decide the open question \(run \/relevo:think #31 first if you need to explore it\), then approve it with ready again and request the build: relevo:go, or \/relevo:go 31 on your machine\./);
   assert.match(renderMessage('needs_spec', { ...BACK, reason: 'ambiguous' }, 'es'), /Tu siguiente paso: \/relevo:issue 31: decide la pregunta abierta \(ejecuta antes \/relevo:think #31/);
   assert.throws(() => renderMessage('needs_spec', { ...BACK, reason: 'whim' }), /unknown reason "whim"/);
 });
@@ -273,29 +274,29 @@ test('approved and changes_requested take their command from the same table', ()
 });
 
 test('Scenario: Issue changed after ready - the branch was not pushed, for a reason that is neither a credential nor a marker', () => {
-  const text = renderMessage('qa_failed', { ...FAILED, finding: 'the issue was edited', reason: 'issue changed after ready', branch_state: 'not_pushed' });
+  const text = renderMessage('build_failed', { ...FAILED, finding: 'the issue was edited', reason: 'issue changed after ready', branch_state: 'not_pushed' });
   assert.match(text, /was not pushed; the state did not advance/);
   assert.match(text, /\(issue changed after ready\)/);
   assert.doesNotMatch(text, /credential|marker/);
-  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed' }, 'es'), /no se subió; el estado no avanzó/);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'not_pushed' }, 'es'), /no se subió; el estado no avanzó/);
 });
 
 test('Scenario: nothing pushed - unsafe and not_pushed end with the rebuild step, never /relevo:fix', () => {
   ['unsafe', 'not_pushed'].forEach((branch_state) => {
-    const en = renderMessage('qa_failed', { ...FAILED, branch_state });
-    assert.match(en, /Your next step: nothing was pushed, so there is no branch to fix: .*relevo:ready again\./);
+    const en = renderMessage('build_failed', { ...FAILED, branch_state });
+    assert.match(en, /Your next step: nothing was pushed, so there is no branch to fix: .*\/relevo:go 31 --retry, or apply relevo:go so that the cloud builds it again\./);
     assert.doesNotMatch(en, /\/relevo:fix/);
-    const es = renderMessage('qa_failed', { ...FAILED, branch_state }, 'es');
+    const es = renderMessage('build_failed', { ...FAILED, branch_state }, 'es');
     assert.match(es, /Tu siguiente paso: no se subió nada/);
     assert.doesNotMatch(es, /\/relevo:fix/);
   });
-  assert.doesNotMatch(renderMessage('qa_failed', { ...FAILED, pushed: false }), /\/relevo:fix/, 'the older pushed: false is the same');
+  assert.doesNotMatch(renderMessage('build_failed', { ...FAILED, pushed: false }), /\/relevo:fix/, 'the older pushed: false is the same');
 });
 
 test('Scenario: pushed, kept and existing keep their next step', () => {
-  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'pushed' }), /Your next step: \/relevo:fix /);
-  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }), /\/relevo:fix /);
-  assert.match(renderMessage('qa_failed', { ...FAILED, branch_state: 'kept' }), /\/relevo:fix .*relevo:think/);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'pushed' }), /Your next step: \/relevo:fix /);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }), /\/relevo:fix /);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'kept' }), /\/relevo:fix .*relevo:think/);
 });
 
 test('the platform message of the previous change no longer exists: a missing platform is a missing part of the spec', () => {
@@ -349,8 +350,8 @@ test('the progress messages render in each language, with the minutes as given a
   assert.match(renderMessage('run_progress_closed', { outcome: 'none' }, 'es'), /terminó sin resultado\./);
 });
 
-test('qa_failed for a restricted file on the base branch does not send the person to /relevo:fix', () => {
-  const text = renderMessage('qa_failed', { ...FAILED, branch_state: 'not_pushed', recovery: 'restricted', reason: 'restricted file in the diff' });
+test('build_failed for a restricted file on the base branch does not send the person to /relevo:fix', () => {
+  const text = renderMessage('build_failed', { ...FAILED, branch_state: 'not_pushed', recovery: 'restricted', reason: 'restricted file in the diff' });
   assert.match(text, /versioned on the base branch/);
   assert.doesNotMatch(text, /\/relevo:fix/);
 });
@@ -407,4 +408,401 @@ test('Scenario: An input that a person confirms - the hand-off lists it, and a b
   assert.match(text, /Inputs to confirm before you test: RECAPTCHA_SITE_KEY \(the key of the login screen\)/);
   assert.match(renderMessage('built', { ...base, inputs_to_confirm: 'LLAVE (la llave)' }, 'es'), /Insumos que debes confirmar antes de probar: LLAVE \(la llave\)/);
   assert.doesNotMatch(renderMessage('built', base), /Inputs to confirm/);
+});
+
+test('Scenario: Entering the wait for a shared file - the comment names the file and the issue, mentions nobody and carries the marker', () => {
+  const data = { issue: 15, title: 'Settings', file: 'src/router.ts', other: 12, hours: 24 };
+  const en = renderMessage('queued_shared_files', data, 'en');
+  assert.match(en, /#15 "Settings" is queued/);
+  assert.match(en, /`src\/router\.ts`, which #12 also names/);
+  assert.match(en, /after 24 hours at the latest/);
+  assert.ok(!en.includes('@'));
+  assert.match(en, /<!-- relevo:shared-wait file=src%2Frouter\.ts issue=12 -->/);
+  const es = renderMessage('queued_shared_files', data, 'es');
+  assert.match(es, /está en cola/);
+  assert.match(es, /que #12 también nombra/);
+  assert.ok(!es.includes('@'));
+  assert.match(es, /relevo:shared-wait/);
+  assert.throws(() => renderMessage('queued_shared_files', { issue: 1, title: 'T', file: 'a' }, 'en'), /needs "other"/);
+});
+
+test('Scenario: The first issue takes too long - the hand-off lists the files it shares with issues that were not merged', () => {
+  const base = { assignee: 'persona-b', issue: 15, title: 'Settings', tasks_done: 2, tasks_total: 2, branch: 'feature/15-settings', scenarios: 3, command: '/relevo:review 15', due: 'tomorrow', checklist: '- [ ] a' };
+  const en = renderMessage('built', { ...base, shared_files: [{ file: 'src/router.ts', issue: 12 }, { file: 'src/nav.ts', issue: 13 }] }, 'en');
+  assert.match(en, /It shares files with issues that were not merged when it started: src\/router\.ts \(#12\), src\/nav\.ts \(#13\)\./);
+  assert.match(renderMessage('built', { ...base, shared_files: [{ file: 'src/router.ts', issue: 12 }] }, 'es'), /Comparte archivos con issues que aún no se fusionaban cuando empezó: src\/router\.ts \(#12\)/);
+  assert.doesNotMatch(renderMessage('built', base, 'en'), /shares files/);
+});
+
+test('Scenario: Another file conflicts - the failure comment says QA passed, lists the files and that the branch was pushed without the merge', () => {
+  const data = { assignee: 'persona-b', issue: 15, title: 'Settings', finding: 'Conflict with the base branch in: src/router.ts, src/nav.ts', branch: 'feature/15-settings', reason: 'conflict with the base branch', branch_state: 'pushed' };
+  const en = renderMessage('build_failed', data, 'en');
+  assert.match(en, /QA passed, but the base branch could not be merged into this branch cleanly/);
+  assert.match(en, /src\/router\.ts, src\/nav\.ts/);
+  assert.match(en, /pushed without the merge/);
+  assert.match(en, /\/relevo:fix 15/);
+  assert.doesNotMatch(en, /rejected it after the retries/);
+  assert.match(renderMessage('build_failed', data, 'es'), /QA aprobó, pero no se pudo fusionar la rama base/);
+});
+
+test('Scenario: The merged branch fails the gate - the failure comment says the failure came after merging the base', () => {
+  const data = { assignee: 'persona-b', issue: 15, title: 'Settings', finding: 'analyze: 2 errors', branch: 'feature/15-settings', reason: 'automated validation failed after merging the base branch', branch_state: 'pushed' };
+  assert.match(renderMessage('build_failed', data, 'en'), /the automated checks failed after the base branch was merged/);
+  assert.match(renderMessage('build_failed', data, 'es'), /tras fusionar la rama base las comprobaciones automáticas fallaron/);
+});
+
+test('Scenario: A run that stopped at a limit says so - it does not say that QA rejected it, and the work kept is the work done before the stop', () => {
+  const base = { issue: 97, title: 'Screen', assignee: 'persona-a', branch: 'feature/97-x', reason: 'run limit reached', branch_state: 'kept', tasks_done: 6, tasks_total: 9,
+    finding: 'the minutes limit (50) was reached after 51.2 minutes; qa-code and qa-interface did not run' };
+  const en = renderMessage('build_failed', base, 'en');
+  assert.match(en, /^@persona-a #97 "Screen" stopped ❌/, 'a stop that is not a QA rejection says so in the title, and fix reads that title too');
+  assert.match(en, /What happened: The run stopped at a limit before it finished \(run limit reached\)\./);
+  assert.match(en, /holds the work done before the stop \(6 of 9 tasks done\)/);
+  assert.match(en, /qa-code and qa-interface did not run/);
+  assert.doesNotMatch(en, /QA still rejected|did not approve/);
+  const es = renderMessage('build_failed', base, 'es');
+  assert.match(es, /Qué pasó: La ejecución se detuvo en un límite antes de terminar \(run limit reached\)\./);
+  assert.match(es, /tiene el trabajo hecho antes de detenerse/);
+  // The messages of QA are unchanged.
+  assert.match(renderMessage('build_failed', { ...base, reason: 'QA rejected after the retries' }, 'en'), /QA still rejected it after the retries/);
+});
+
+test('Scenario: The comment of the conflict - it quotes the missing text and the next step says a person settles which wins', () => {
+  const missing = 'Out of scope says "export", but the rule at CLAUDE.md:3 says "Every list must offer export"';
+  const text = renderMessage('needs_spec', { ...BACK, missing, reason: 'conflict' });
+  assert.match(text, /CLAUDE\.md:3/);
+  assert.match(text, /decide which one wins/);
+});
+
+test('Scenario: The commit guard refuses the rules file - the comment names the policy, not a QA rejection, and the next step rewrites the issue', () => {
+  const data = { assignee: 'a', issue: 48, title: 'T', finding: 'CLAUDE.md is a protected path', file: 'CLAUDE.md', branch: 'feature/48-t', reason: 'protected path in the diff', branch_state: 'unsafe' };
+  const text = renderMessage('build_failed', data);
+  assert.match(text, /An unattended run cannot edit a protected path|an unattended run cannot edit a protected path/);
+  assert.match(text, /QA did not reject the work/);
+  assert.doesNotMatch(text, /QA still rejected it after the retries/);
+  assert.match(text, /Your next step: \/relevo:issue 48 \(an unattended run cannot edit that protected path/);
+  assert.doesNotMatch(text, /build it again on your machine/);
+  const es = renderMessage('build_failed', data, 'es');
+  assert.match(es, /QA no rechazó el trabajo/);
+  assert.match(es, /Tu siguiente paso: \/relevo:issue 48 \(una corrida sin supervisión no puede editar esa ruta protegida/);
+});
+
+test('Scenario: QA rejected the work - the wording is unchanged', () => {
+  const text = renderMessage('build_failed', { assignee: 'a', issue: 48, title: 'T', finding: 'x', branch: 'b', reason: 'QA rejected after the retries' });
+  assert.match(text, /QA still rejected it after the retries \(QA rejected after the retries\)/);
+});
+
+test('the policy next step is true for the rules file as well as for a manifest', () => {
+  const text = renderMessage('needs_spec', { spec_writer: 'a', issue: 48, title: 'T', missing: 'task changes CLAUDE.md', reason: 'policy' });
+  assert.match(text, /a person makes that edit/);
+  assert.match(text, /only a dependency manifest can be allowed, with an Allow-paths: line/);
+});
+
+test('Scenario: Assumptions in the hand-off - the line comes before the branch, in both languages; left out when empty', () => {
+  const text = renderMessage('built', { ...BUILT, assumed: '"the permission `orders.export` exists" (not in the repository: `orders.export`)' });
+  assert.match(text, /Assumed, not confirmed: "the permission `orders.export` exists"/);
+  assert.ok(text.indexOf('Assumed, not confirmed') < text.indexOf('Branch:'));
+  assert.match(renderMessage('built', { ...BUILT, assumed: 'x' }, 'es'), /Supuesto, sin confirmar: x\nRama:/);
+  assert.doesNotMatch(renderMessage('built', BUILT), /Assumed, not confirmed/);
+  assert.doesNotMatch(renderMessage('built', { ...BUILT, assumed: '' }), /Assumed, not confirmed/);
+});
+
+test('Scenario: Shared code in the hand-off - after the riskiest area, in both languages; left out when empty', () => {
+  const text = renderMessage('built', { ...BUILT, risk: 'the table', shared_code: 'src/components/Table.vue (modified, used by 2 files)' });
+  assert.match(text, /Shared code touched: src\/components\/Table\.vue \(modified, used by 2 files\)/);
+  assert.ok(text.indexOf('Riskiest area') < text.indexOf('Shared code touched'));
+  assert.match(renderMessage('built', { ...BUILT, shared_code: 'a' }, 'es'), /Código compartido tocado: a/);
+  assert.doesNotMatch(renderMessage('built', BUILT), /Shared code touched/);
+});
+
+// ---------- A queued issue says its position and what it waits for (issue #127)
+
+const QUEUE_DATA = { issue: 9, title: 'Summary', active: 2, active_issues: '#3, #4', ahead: 1, typical_minutes: 38, typical_samples: 6 };
+
+test('Scenario: Slots full, issues ahead - queued_agents says the active runs, the issues ahead and the typical build, mentioning nobody', () => {
+  const en = renderMessage('queued_agents', QUEUE_DATA, 'en');
+  assert.match(en, /Running or starting now: 2 \(#3, #4\)/);
+  assert.match(en, /Ahead of it in the queue: 1$/m);
+  assert.match(en, /Recent builds: about 38 min \(median of the last 6 builds\)/);
+  assert.ok(!en.includes('@'));
+  const es = renderMessage('queued_agents', QUEUE_DATA, 'es');
+  assert.match(es, /En ejecución o por arrancar ahora: 2 \(#3, #4\)/);
+  assert.match(es, /Delante en la cola: 1$/m);
+  assert.match(es, /mediana de las últimas 6 construcciones/);
+});
+
+test('Scenario: No recent runs - a figure that is not known is written unknown and no number is put in its place', () => {
+  const none = renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'en');
+  assert.match(none, /Running or starting now: unknown/);
+  assert.match(none, /Ahead of it in the queue: unknown/);
+  assert.match(none, /Recent builds: unknown/);
+  assert.doesNotMatch(none, /\d+ min/);
+  // The duration is given only with its sample size.
+  assert.match(renderMessage('queued_agents', { ...QUEUE_DATA, typical_samples: undefined }, 'en'), /Recent builds: unknown/);
+  assert.match(renderMessage('queued_agents', { issue: 9, title: 'Summary' }, 'es'), /Recent builds|Construcciones recientes: desconocido/);
+  // Zero is a figure, not a missing one.
+  assert.match(renderMessage('queued_agents', { ...QUEUE_DATA, ahead: 0 }, 'en'), /Ahead of it in the queue: 0/);
+});
+
+test('Scenario: Capacity of the assignee - queued_capacity lists the built issues that wait, when they are known', () => {
+  const data = { issue: 9, title: 'Summary', assignee: 'persona-b', built: 2, limit: 2 };
+  assert.match(renderMessage('queued_capacity', { ...data, built_issues: '#3, #4' }, 'en'), /Built issues waiting for review: #3, #4/);
+  assert.match(renderMessage('queued_capacity', { ...data, built_issues: '#3, #4' }, 'es'), /Issues construidos esperando revisión: #3, #4/);
+  assert.doesNotMatch(renderMessage('queued_capacity', data, 'en'), /Built issues waiting for review:/, 'the line is dropped when the issues are not known');
+});
+
+// ---------- The comments about a run that ended without telling anyone follow the language (issue #127)
+
+const RUN = { issue: 12, run: 'https://example.test/run/1', assignee: 'persona-b' };
+
+test('run_failed_early: the run failed before it decided, in both languages, with the labels of the English text', () => {
+  const en = renderMessage('run_failed_early', { ...RUN, job_status: 'failure' }, 'en');
+  assert.equal(en, '@persona-b The run failed before it could decide what to do (job status: failure), so nothing was built. Read the log to see why: https://example.test/run/1. When the cause is fixed, apply `relevo:go` so that the cloud builds it again, or run `/relevo:go 12 --retry` on your machine.');
+  const es = renderMessage('run_failed_early', { ...RUN, job_status: 'failure' }, 'es');
+  assert.match(es, /^@persona-b La ejecución falló antes de poder decidir/);
+  assert.match(es, /`relevo:go`.*`\/relevo:go 12 --retry`/);
+  assert.doesNotMatch(renderMessage('run_failed_early', { issue: 12, job_status: 'failure', run: 'u' }, 'en'), /@/, 'nobody is mentioned when there is no assignee');
+});
+
+test('run_no_outcome situation no_result: names the job status and which limit of the runner cut it', () => {
+  const base = { ...RUN, situation: 'no_result', job_status: 'success' };
+  const en = renderMessage('run_no_outcome', base, 'en');
+  assert.match(en, /^@persona-b The run ended without a result \(job status: success\), so nothing was built or reported\. Read the log to see why: /);
+  assert.match(renderMessage('run_no_outcome', { ...base, cut: 'turns' }, 'en'), /The runner stopped it at its turn limit \(--max-turns\)\./);
+  assert.match(renderMessage('run_no_outcome', { ...base, cut: 'cost' }, 'en'), /cost limit \(--max-budget-usd\)/);
+  assert.match(renderMessage('run_no_outcome', { ...base, cut: 'turns' }, 'es'), /límite de turnos \(--max-turns\)/);
+  assert.match(renderMessage('run_no_outcome', base, 'es'), /^@persona-b La ejecución terminó sin resultado \(estado del job: success\)/);
+  assert.throws(() => renderMessage('run_no_outcome', { ...RUN, situation: 'no_result' }, 'en'), /needs "job_status"/);
+});
+
+test('run_no_outcome situation usage_limit: says that nothing is wrong with the code, in both languages', () => {
+  const data = { ...RUN, situation: 'usage_limit' };
+  assert.match(renderMessage('run_no_outcome', data, 'en'), /usage limit \(or the credit\) of the model account was reached, so nothing was built\. Nothing is wrong with the code\./);
+  assert.match(renderMessage('run_no_outcome', data, 'es'), /límite de uso \(o el crédito\).*El código no tiene ningún problema\./);
+});
+
+test('run_no_outcome: what the rescue did with the work goes after the sentence, quoted, in both languages', () => {
+  const data = { ...RUN, situation: 'usage_limit', rescue_branch: 'feature/12-x' };
+  assert.match(renderMessage('run_no_outcome', { ...data, rescue_state: 'unsafe', rescue_detail: 'a protected path' }, 'en'), /The work done before the stop was not kept: a protected path$/);
+  assert.match(renderMessage('run_no_outcome', { ...data, rescue_state: 'not_pushed', rescue_detail: 'push refused' }, 'es'), /no se pudo subir: push refused$/);
+  assert.match(renderMessage('run_no_outcome', { ...data, rescue_state: 'existing' }, 'en'), /The branch `feature\/12-x` is on the remote with commits this run does not have, so it was not touched\.$/);
+  assert.match(renderMessage('run_no_outcome', { ...data, rescue_state: 'existing' }, 'es'), /La rama `feature\/12-x` está en el remoto/);
+  const long = renderMessage('run_no_outcome', { ...data, rescue_state: 'unsafe', rescue_detail: 'x'.repeat(900) }, 'en');
+  assert.match(long, /truncated; see the full log/, 'a long detail is cut, the rest of the comment is not');
+  assert.match(long, /Nothing is wrong with the code/);
+});
+
+test('run_no_outcome situation kept: the next step is fix, or the branch of its own when the run was not on the issue branch', () => {
+  const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
+  const en = renderMessage('run_no_outcome', kept, 'en');
+  assert.match(en, /The run stopped before it finished \(the runner cut it, or the job was cancelled or timed out\)\./);
+  assert.match(en, /kept on the branch `feature\/12-x` as a work-in-progress commit\. Run `\/relevo:fix 12` to verify it and continue/);
+  assert.match(en, / https:\/\/example\.test\/run\/1$/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, cut: 'cost' }, 'en'), /\(the runner stopped it at its cost limit \(--max-budget-usd\)\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, cut: 'turns', usage_limit: true }, 'en'), /\(the usage limit \(or the credit\) of the model account was reached\)/, 'a usage limit wins over a cut');
+  const own = renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/feature/12-x' }, 'en');
+  assert.match(own, /not on the branch of the issue, so the work is on a branch of its own/);
+  assert.doesNotMatch(own, /\/relevo:fix/);
+  const es = renderMessage('run_no_outcome', kept, 'es');
+  assert.match(es, /Ejecuta `\/relevo:fix 12` para verificarlo y continuar/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/x' }, 'es'), /una rama aparte/);
+  assert.throws(() => renderMessage('run_no_outcome', { ...RUN, situation: 'kept' }, 'en'), /needs "rescue_branch"/);
+  assert.throws(() => renderMessage('run_no_outcome', { ...RUN, situation: 'nothing' }, 'en'), /unknown situation/);
+});
+
+// ---------- Two texts that said something other than what happened (issue #167, real-run verification)
+
+test('Scenario: An issue about to start holds the slot - the queue line does not say that it is running', () => {
+  const data = { issue: 117, title: 'Summary', active: 1, active_issues: '#116', ahead: 0 };
+  assert.match(renderMessage('queued_agents', data, 'en'), /^Running or starting now: 1 \(#116\)$/m);
+  assert.match(renderMessage('queued_agents', data, 'es'), /^En ejecución o por arrancar ahora: 1 \(#116\)$/m);
+  assert.doesNotMatch(renderMessage('queued_agents', data, 'en'), /Running now/);
+  assert.doesNotMatch(renderMessage('queued_agents', data, 'es'), /En ejecución ahora/);
+});
+
+test('Scenario: The branch holds a checkpoint / no checkpoint - kept says that ready resumes, never "from the start"', () => {
+  const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
+  const fromStart = /from the start|desde el principio/;
+  const withCheckpoints = renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'en');
+  assert.match(withCheckpoints, /apply `relevo:ready` again and then `relevo:go` \(or run `\/relevo:go 12` on your machine\) to resume from the last checkpoint \(2 saved\) and build only the pending tasks/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /pon `relevo:ready` otra vez y luego `relevo:go` \(o ejecuta `\/relevo:go 12` en tu máquina\) para reanudar desde el último checkpoint \(2 guardados\) y construir solo las tareas pendientes/);
+  const none = renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'en');
+  assert.match(none, /resume from the work kept on the branch \(no checkpoint was saved yet\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'es'), /reanudar desde el trabajo guardado en la rama \(todavía no hay ningún checkpoint\)/);
+  const unknown = renderMessage('run_no_outcome', kept, 'en');
+  assert.match(unknown, /resume from the last point saved on the branch/);
+  assert.match(renderMessage('run_no_outcome', kept, 'es'), /reanudar desde el último punto guardado en la rama/);
+  [withCheckpoints, none, unknown, renderMessage('run_no_outcome', kept, 'es'), renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es')]
+    .forEach((text) => {
+      assert.doesNotMatch(text, fromStart);
+      assert.match(text, /branch already exists/);
+    });
+  // The run that was not on the branch of the issue has nothing to resume from: there "from the start" is true.
+  assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/feature/12-x' }, 'en'), /build from the start/);
+});
+
+// ---------- A stop that is not a QA rejection is not reported as one (issue #181)
+
+const STOP = { assignee: 'persona-b', issue: 31, title: 'Summary', finding: 'the text of the issue changed since the last checkpoint', branch: 'feature/31-summary' };
+
+test('Scenario: The branch already exists - the title and the line say that the run stopped, not that QA rejected the work', () => {
+  const data = { ...STOP, reason: 'branch already exists', branch_state: 'existing', recovery: 'fix' };
+  const en = renderMessage('build_failed', data, 'en');
+  assert.match(en, /^@persona-b #31 "Summary" stopped ❌/);
+  assert.match(en, /What happened: The run stopped \(branch already exists\)\. QA did not reject the work\./);
+  assert.doesNotMatch(en, /failed QA|QA still rejected/);
+  assert.match(en, /Your next step: \/relevo:fix 31/, 'the next step is the one of the state of the branch');
+  const es = renderMessage('build_failed', data, 'es');
+  assert.match(es, /^@persona-b #31 "Summary" se detuvo ❌/);
+  assert.match(es, /Qué pasó: La ejecución se detuvo \(branch already exists\)\. QA no rechazó el trabajo\./);
+  assert.doesNotMatch(es, /no pasó QA|QA la rechazó/);
+});
+
+test('Scenario: Other reasons of the failure path that are not a QA rejection, and one the catalog does not know', () => {
+  ['issue changed after ready', 'specification invalid', 'tasks left unfinished', 'lens report invalid', 'automated validation could not run', 'a reason added to the skill later'].forEach((reason) => {
+    const en = renderMessage('build_failed', { ...STOP, reason }, 'en');
+    assert.match(en, /^@persona-b #31 "Summary" stopped ❌/, reason);
+    assert.match(en, new RegExp(`What happened: The run stopped \\(${reason}\\)\\. QA did not reject the work\\.`), reason);
+    assert.doesNotMatch(en, /failed QA|QA still rejected/, reason);
+    const es = renderMessage('build_failed', { ...STOP, reason }, 'es');
+    assert.match(es, /se detuvo ❌/, reason);
+    assert.doesNotMatch(es, /no pasó QA|QA la rechazó/, reason);
+  });
+});
+
+test('Scenario: QA rejected the work, and a comment with no reason - the title and the line are as before', () => {
+  ['QA rejected after the retries', 'QA rejected: nothing the developer agent can fix', 'QA rejected: the lenses contradict each other', undefined].forEach((reason) => {
+    const en = renderMessage('build_failed', { ...STOP, reason }, 'en');
+    assert.match(en, /^@persona-b #31 "Summary" failed QA ❌/, String(reason));
+    assert.doesNotMatch(en, /QA did not reject/, String(reason));
+    const es = renderMessage('build_failed', { ...STOP, reason }, 'es');
+    assert.match(es, /^@persona-b #31 "Summary" no pasó QA ❌/, String(reason));
+  });
+  assert.match(renderMessage('build_failed', { ...STOP, reason: 'QA rejected after the retries' }, 'en'), /What happened: QA still rejected it after the retries \(QA rejected after the retries\)\./);
+  assert.match(renderMessage('build_failed', { ...STOP }, 'en'), /What happened: QA still rejected it after the retries\./);
+  assert.match(renderMessage('build_failed', { ...STOP, retries_skipped: true, finding_class: 'input', reason: 'QA rejected: nothing the developer agent can fix' }, 'en'), /QA rejected it and no finding can be corrected by the developer agent, so there were no retries\./);
+});
+
+test('the stops that already had their own wording keep it and take the title of a stop', () => {
+  const limit = renderMessage('build_failed', { ...STOP, reason: 'run limit reached', branch_state: 'kept' }, 'en');
+  assert.match(limit, /^@persona-b #31 "Summary" stopped ❌/);
+  assert.match(limit, /What happened: The run stopped at a limit before it finished \(run limit reached\)\./);
+  const policy = renderMessage('build_failed', { ...STOP, reason: 'protected path in the diff', branch_state: 'unsafe', file: 'CLAUDE.md' }, 'en');
+  assert.match(policy, /^@persona-b #31 "Summary" stopped ❌/);
+  assert.match(policy, /QA did not reject the work/);
+  assert.match(policy, /Your next step: \/relevo:issue 31/);
+});
+
+// #150: the comment of two lenses that contradict each other shows both lenses and both findings.
+const contradiction = { contradiction_first_lens: 'spec', contradiction_first_finding: 'read the dialog question from `DIALOG_QUESTION`', contradiction_then_lens: 'code', contradiction_then_finding: 'the assertions on `DIALOG_QUESTION` can no longer fail' };
+
+test('Scenario: Two lenses contradict each other - the comment names both lenses, quotes both findings and says no retry was made', () => {
+  const en = renderMessage('build_failed', { ...classBase, reason: 'QA rejected: the lenses contradict each other', ...contradiction });
+  assert.match(en, /What happened: QA rejected it and the findings of two lenses contradict each other, so there were no more retries \(QA rejected: the lenses contradict each other\)\./);
+  assert.match(en, /the spec lens asked for “read the dialog question from `DIALOG_QUESTION`” and, once that was done, the code lens rejected it with “the assertions on `DIALOG_QUESTION` can no longer fail”/);
+  const es = renderMessage('build_failed', { ...classBase, ...contradiction }, 'es');
+  assert.match(es, /el lente spec pidió “read the dialog question from `DIALOG_QUESTION`” y, hecho eso, el lente code lo rechazó con “the assertions/);
+  assert.match(es, /Un reintento no puede cumplir las dos cosas\./);
+  assert.doesNotMatch(renderMessage('build_failed', classBase), /contradict/);
+  assert.throws(() => renderMessage('build_failed', { ...classBase, contradiction_first_lens: 'spec' }), /needs all of/);
+});
+
+// ---------- The count of checkpoints agrees in number (issue #167, seen in a real Spanish run)
+
+test('Scenario: One checkpoint is saved / Several checkpoints are saved - the Spanish count agrees in number and the English one is unchanged', () => {
+  const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
+  const es1 = renderMessage('run_no_outcome', { ...kept, checkpoints: 1 }, 'es');
+  assert.match(es1, /reanudar desde el último checkpoint \(1 guardado\) y construir solo las tareas pendientes/);
+  assert.doesNotMatch(es1, /1 guardados/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /último checkpoint \(2 guardados\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 12 }, 'es'), /último checkpoint \(12 guardados\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 1 }, 'en'), /last checkpoint \(1 saved\)/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'en'), /last checkpoint \(2 saved\)/);
+  // The other wordings do not change.
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'es'), /todavía no hay ningún checkpoint/);
+  assert.match(renderMessage('run_no_outcome', kept, 'es'), /reanudar desde el último punto guardado en la rama/);
+});
+
+// --- split-ready-and-go: the refusals of the go label and the texts that said ready starts a build
+
+const GO = { issue: 42, actor: 'ana' };
+
+test('Scenario: Request by someone without write access - go_denied says go needs the permission of ready, names who applied it', () => {
+  const en = renderMessage('go_denied', GO, 'en');
+  assert.match(en, /only people with write access can request a build/);
+  assert.match(en, /The issue stays ready/);
+  assert.match(en, /Applied by: @ana/);
+  assert.match(renderMessage('go_denied', GO, 'es'), /solo quienes tienen acceso de escritura pueden pedir un build/);
+});
+
+test('Scenario: Public repository - go_denied_maintainer says only a maintainer may request a build', () => {
+  assert.match(renderMessage('go_denied_maintainer', GO, 'en'), /only maintainers can request a build/);
+  assert.match(renderMessage('go_denied_maintainer', GO, 'es'), /solo quienes mantienen el proyecto pueden pedir un build/);
+});
+
+test('Scenario: Draft - go_needs_ready says the issue needs ready first and gives the local command', () => {
+  const en = renderMessage('go_needs_ready', GO, 'en');
+  assert.match(en, /not ready/);
+  assert.match(en, /approve it with the ready label/);
+  assert.match(en, /\/relevo:go 42/);
+  assert.match(renderMessage('go_needs_ready', GO, 'es'), /apruébalo con la etiqueta ready/);
+});
+
+test('Scenario: Already building - go_building says it is being built and the build was not touched', () => {
+  assert.match(renderMessage('go_building', GO, 'en'), /being built already.*not touched/);
+  assert.match(renderMessage('go_building', GO, 'es'), /ya se está construyendo.*no se tocó/);
+});
+
+test('Scenario: Already built - go_already_built says so', () => {
+  assert.match(renderMessage('go_already_built', GO, 'en'), /already built/);
+  assert.match(renderMessage('go_already_built', GO, 'es'), /ya está construido/);
+});
+
+test('Scenario: Failed build with code - go_use_fix says to run /relevo:fix', () => {
+  assert.match(renderMessage('go_use_fix', GO, 'en'), /run `\/relevo:fix 42`/);
+  assert.match(renderMessage('go_use_fix', GO, 'es'), /ejecuta `\/relevo:fix 42`/);
+});
+
+test('the refusals name nobody when the applier is unknown', () => {
+  ['go_denied', 'go_needs_ready', 'go_building', 'go_already_built', 'go_use_fix'].forEach((kind) => {
+    assert.doesNotMatch(renderMessage(kind, { issue: 42 }, 'en'), /@/, kind);
+  });
+});
+
+test('ready_denied says that ready approves and that both labels were removed', () => {
+  assert.match(renderMessage('ready_denied', GO, 'en'), /approve an issue with ready, so the ready and go labels were removed/);
+  assert.match(renderMessage('ready_denied', GO, 'es'), /se quitaron las etiquetas ready y go/);
+});
+
+test('no message tells a person that applying ready alone builds an issue', () => {
+  const samples = {
+    no_milestone: { issue: 42, actor: 'ana' },
+    no_assignee: { issue: 42, actor: 'ana' },
+    run_failed_early: { ...RUN, job_status: 'failure' },
+    run_no_outcome: { ...RUN, situation: 'usage_limit' },
+  };
+  Object.entries(samples).forEach(([kind, data]) => {
+    ['en', 'es'].forEach((language) => {
+      const text = renderMessage(kind, data, language);
+      assert.match(text, /relevo:go|\bgo\b/, `${kind}/${language} names the request`);
+      assert.doesNotMatch(text, /(label it|márcalo como) ready (again|otra vez)\./, `${kind}/${language}`);
+    });
+  });
+  ['usage_limit_stopped', 'no_result'].forEach((situation) => {
+    const text = renderMessage('run_no_outcome', { ...RUN, situation, job_status: 'failure' }, 'en');
+    assert.match(text, /apply `relevo:go` so that the cloud builds it again, or run `\/relevo:go 12 --retry` on your machine/, situation);
+  });
+});
+
+test('Scenario: Body edited days after the approval - approval_withdrawn names the approver and asks for a new approval', () => {
+  const en = renderMessage('approval_withdrawn', { issue: 42, edited: 'body', approver: 'ana' }, 'en');
+  assert.match(en, /^#42 was not built: its body changed after it was approved, so the approval was withdrawn and the issue is a draft again/);
+  assert.match(en, /Approved by: @ana/);
+  assert.match(en, /approve it with ready, then apply go or run `\/relevo:go 42`/);
+  const es = renderMessage('approval_withdrawn', { issue: 42, edited: 'title and body', approver: 'ana' }, 'es');
+  assert.match(es, /su título y su descripción cambiaron después de que se aprobara/);
+  assert.match(es, /Aprobado por: @ana/);
+  assert.match(renderMessage('approval_withdrawn', { issue: 42, edited: 'title' }, 'en'), /its title changed/);
+  assert.doesNotMatch(renderMessage('approval_withdrawn', { issue: 42, edited: 'title' }, 'en'), /Approved by/, 'an unknown approver drops the line');
+  assert.throws(() => renderMessage('approval_withdrawn', { issue: 42, edited: 'labels' }, 'en'), /unknown edit/);
 });

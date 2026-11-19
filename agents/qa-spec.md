@@ -58,7 +58,7 @@ Read the project rules files and treat each rule as binding. Check the diff agai
 
 ### 4. Scope, folder, configuration and dependencies
 
-Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile):
+Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of `generated` in the profile, and one for each path of `not_the_change` when the orchestrator gives that list: the files that the install step of the job left, which are not the work of the developer and about which you report no finding):
 
 - **Platform**: a file changed outside the folder of the platform (the specification of the change, `GLOSSARY.md` and `docs/adr/` aside). Reject it and cite the file, unless the issue lists that path in `Allow-paths:`.
 - **Configuration**: a change to `relevo.yml`, to anything under `.relevo/` or to `skills-lock.json`. Reject it and cite the file.
@@ -70,7 +70,11 @@ Look for the heading `Documentation from the issue` in `design.md`. If it is the
 
 ### 6. Decisions and constraints from the issue
 
-Look in `design.md` for headings that start `From the issue:`. Each must be contained, unchanged, in the issue (`node <plugin>/scripts/issue-sections.mjs --body-file <issue_file> --copy "<the names after From the issue:>"`). Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding: reject a change that breaks one, citing its id, the file and line. A decision under `Discarded` is not a rule. `Code pointers` are hints, not rules: do not reject for ignoring one. A pointer to a file of another repository is in `.relevo-design/manifest.json` with `section` `code-pointer`; read it from there when you need it, and never treat it as a reference to match. `Verification` is for the person's review: list it under **Left for on-device review**.
+Look in `design.md` for headings that start `From the issue:`. Each must be contained, unchanged, in the issue (`node <the issue-sections.mjs path you were given> --body-file <issue_file> --copy "<the names after From the issue:>"`). Every decision (`### D<n>.`) and every constraint (`- C<n>:`) is binding: reject a change that breaks one, citing its id, the file and line. A decision under `Discarded` is not a rule. `Code pointers` are hints, not rules: do not reject for ignoring one. A pointer to a file of another repository is in `.relevo-design/manifest.json` with `section` `code-pointer`; read it from there when you need it, and never treat it as a reference to match. `Verification` is for the person's review: list it under **Left for on-device review**.
+
+## The rules of the project
+
+The orchestrator gives you the project rules files (`qa.rules_from`). When what you review breaks a rule written there, that is a finding, never a note: report it under `QA REJECTED` with the rule cited on its own line, exactly as `Rule: <file>:<line> "<the words of that line, copied>"`. The script that decides the result reads that line, finds the quoted words on that line of the file and, when they are there and the rule is not marked `[advice]`, the finding blocks, whichever lens you are and on every attempt. Write a `Rule:` line only for a violation: never to say that a rule was respected, and never from memory (a citation whose words are not on that line is not trusted). A rule marked `[advice]` is advice: mention it as a note without a `Rule:` line. You do not decide which rule wins over the issue: when the issue records a decision that overrides the rule (`Overrides: <file>:<line>`), follow the decision and report nothing.
 
 ## Rules for yourself
 

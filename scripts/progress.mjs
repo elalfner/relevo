@@ -2,20 +2,29 @@
 // The progress of a cloud build, for the comment on the issue. Implements the progress requirements of the go specification.
 //   node scripts/progress.mjs phase <planning|specification|development|qa|delivery> [--attempt n] [--of m]
 //       announces the phase that `go` enters; used by the go skill
-//   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n]
-//       records that a QA lens starts now, for the seconds of each lens in the usage record; it does not change the phase
+//   node scripts/progress.mjs change <change id>
+//       records the id of the change in the state of the build (an interactive build says it when it plans; the lines of a local
+//       build and `go-local.mjs status` count its tasks with it)
+//   node scripts/progress.mjs lens <spec|security|code|interface> [--attempt n] [--end]
+//       records that a QA lens starts now (or, with --end, that its report arrived), for the seconds of each lens in the usage
+//       record; lenses run together, so each has its own start and end. It does not change the phase
 //   node scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
 //       records how the run ended, for the usage record; used by the go skill
 //   node scripts/progress.mjs watch --issue n --decision <base64> --max-minutes n [--repo owner/name] [--config relevo.yml]
 //       the loop of the workflow: every 30 seconds it edits the one progress comment; ends by itself
 //   node scripts/progress.mjs stop [--wait seconds]
 //       asks the loop to end and waits for it
+//   node scripts/progress.mjs waiting --issue n [--repo owner/name] [--config relevo.yml]
+//       the decision job, after it claims the issue: one comment says that the build waits for a runner
+//   node scripts/progress.mjs started --issue n [--repo owner/name] [--config relevo.yml]
+//       the first step of the build job: drops the waiting marker of that comment with one edit, and keeps the comment
 //   node scripts/progress.mjs close --issue n [--outcome result|none] [--run-url url] [--repo owner/name] [--config relevo.yml]
 //       replaces the progress comment by one line
 // Everything is kept under $RELEVO_PROGRESS_DIR, outside the working tree (the agent needs it clean). Without that
 // variable every command does nothing, which is also what a local run gets.
 // It never fails: exit 0 always, so a step that reports progress cannot fail a run. Errors go to stderr.
 
+import { progressDir } from './lib/worktree-path.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -23,9 +32,11 @@ import { loadConfig } from './lib/config.mjs';
 import { realGh } from './lib/github.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import {
-  INTERVAL_MS, PHASES, closeProgress, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
+  INTERVAL_MS, PHASES, closeProgress, markStarted, markWaiting, minutesSince, progressClient, readAnnouncement, readTreeFacts, renderClosed, watch,
 } from './lib/progress.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { groupInProgress, readGroups } from './lib/group-progress.mjs';
+import { writeChangeId } from './lib/build-state.mjs';
 import { LENSES, OUTCOME_CLASSES, recordLens, recordPhase, writeClass } from './lib/phase-log.mjs';
 
 const args = process.argv.slice(3);
@@ -35,7 +46,7 @@ const arg = (name) => {
 };
 const fail = (message) => process.stderr.write(`progress: ${message}\n`);
 
-const dir = process.env.RELEVO_PROGRESS_DIR;
+const dir = progressDir();
 const statePath = dir ? join(dir, 'state.json') : null;
 
 function writeFileAtomic(path, text) {
@@ -73,6 +84,16 @@ function decisionOf(b64) {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 async function main(command) {
+  // The comment of the wait is written by the decision job and the first step of the build job, before any progress folder exists.
+  if (command === 'waiting' || command === 'started') {
+    const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
+    const issue = arg('issue');
+    if (!repo || !issue) return fail('give --issue and --repo (or GITHUB_REPOSITORY)');
+    const client = progressClient({ gh: realGh, repo, issue });
+    const { language: lang } = language();
+    (command === 'waiting' ? markWaiting : markStarted)({ client, language: lang });
+    return;
+  }
   if (!dir) return;
   mkdirSync(dir, { recursive: true });
 
@@ -86,10 +107,16 @@ async function main(command) {
     return;
   }
 
+  if (command === 'change') {
+    if (!/^[A-Za-z0-9._-]+$/.test(String(args[0] ?? ''))) return fail(`not a change id "${args[0]}"`);
+    writeChangeId(dir, args[0]);
+    return;
+  }
+
   if (command === 'lens') {
     if (!LENSES.includes(args[0])) return fail(`unknown lens "${args[0]}"`);
     const attempt = Number(arg('attempt'));
-    recordLens(dir, { lens: args[0], attempt: Number.isInteger(attempt) && attempt > 0 ? attempt : null });
+    recordLens(dir, { lens: args[0], attempt: Number.isInteger(attempt) && attempt > 0 ? attempt : null, end: args.includes('--end') });
     return;
   }
 
@@ -130,6 +157,7 @@ async function main(command) {
       intervalMs: arg('interval') ? Number(arg('interval')) * 1000 : INTERVAL_MS,
       readFacts: () => readTreeFacts({ cwd: process.cwd(), changeId, base, branch, git: (a) => execFileSync('git', a, { encoding: 'utf8' }) }),
       readAnnounced: () => readAnnouncement(dir),
+      readGroup: () => groupInProgress(readGroups(dir)),
       stopRequested: () => existsSync(join(dir, 'stop')),
       stillBuilding: () => JSON.parse(realGh(['api', `repos/${repo}/issues/${issue}`])).labels
         .some((l) => (typeof l === 'string' ? l : l.name) === building),

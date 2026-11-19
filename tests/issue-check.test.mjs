@@ -588,3 +588,130 @@ test('a link input is fetched like a code pointer, so it counts with the referen
   const body = `${GOOD}\n## Design reference\n\n${refs}\n\n## External inputs\n\n${links}\n`;
   assert.match(checkIssueDraft({ title: 'Home', body, links: ['acme/api'] }).problems.join('\n'), /Design reference and the linked External inputs have 6 references together; the most Relevo takes is 5/);
 });
+
+test('Scenario: The check of the issue - Model: and QA-model: lines are accepted and are not a missing section', () => {
+  const plain = checkIssueDraft({ title: 'Birthday list', body: GOOD });
+  const withModels = checkIssueDraft({ title: 'Birthday list', body: `${GOOD}\nModel: haiku\nQA-model: sonnet\n` });
+  assert.equal(withModels.ok, true);
+  assert.deepEqual(withModels.problems, plain.problems);
+  assert.deepEqual(withModels.warnings, plain.warnings);
+  assert.deepEqual(withModels.models, { dev: 'haiku', qa: 'sonnet' });
+  assert.deepEqual(plain.models, { dev: null, qa: null });
+});
+
+test('a model line that cannot be read is a warning, never a problem', () => {
+  const r = checkIssueDraft({ title: 'Birthday list', body: `${GOOD}\nModel: the strongest one\n` });
+  assert.equal(r.ok, true);
+  assert.ok(r.warnings.some((w) => /Model: must be a single model name/.test(w)));
+  assert.equal(r.models.dev, null);
+});
+
+// ---------------------------------------------------------------- a draft that contradicts the rules or itself (#121)
+import { parseRules } from '../scripts/lib/rules-file.mjs';
+
+const RULES121 = parseRules('CLAUDE.md', '- Every list must offer export and the enable/disable actions.\n');
+const withOut = (out, extra = '') => `${GOOD}\n## Out of scope\n${out}\n${extra}`;
+
+test('Scenario: a draft whose Out of scope excludes what a rule requires fails, quoting both lines', () => {
+  const r = checkIssueDraft({ title: 'Birthday list', body: withOut('- export and the enable/disable actions'), rules: RULES121 });
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join('\n'), /"export and the enable\/disable actions".*CLAUDE\.md:1.*Every list must offer export/);
+});
+
+test('Scenario: the same draft with an Overrides decision passes', () => {
+  const extra = '\n## Decisions\n\n### D1. Export waits\nDecided: no export yet\nWhy: the API is not ready\nOverrides: CLAUDE.md:1\n';
+  assert.deepEqual(checkIssueDraft({ title: 'Birthday list', body: withOut('- export and the enable/disable actions', extra), rules: RULES121 }).problems, []);
+});
+
+test('Scenario: a scenario that needs what Out of scope excludes names both as a warning, with no rules', () => {
+  const body = withOut('- showing the names of the clients with a birthday today');
+  const r = checkIssueDraft({ title: 'Birthday list', body });
+  assert.equal(r.ok, true, 'a warning, never a problem');
+  assert.match(r.warnings.join('\n'), /Out of scope says.*scenario 1 \(WHEN/);
+});
+
+test('without rules and without a clash the draft still passes', () => {
+  assert.deepEqual(checkIssueDraft({ title: 'Birthday list', body: withOut('- a report of the clients') }).problems, []);
+});
+
+test('check-issue.mjs reads the rules file of --rules-file from the repository folder', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-conflict-'));
+  writeFileSync(join(dir, 'CLAUDE.md'), '- Every list must offer export and the enable/disable actions.\n');
+  writeFileSync(join(dir, 'issue.md'), withOut('- export and the enable/disable actions'));
+  const run = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Birthday list', '--body-file', join(dir, 'issue.md'), '--rules-file', 'CLAUDE.md', '--repo-root', dir], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /CLAUDE\.md:1/);
+});
+
+test('check-issue.mjs warns, and does not fail, when a rules file cannot be read', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-norules-'));
+  writeFileSync(join(dir, 'issue.md'), GOOD);
+  const run = spawnSync('node', [new URL('../scripts/check-issue.mjs', import.meta.url).pathname, '--title', 'Birthday list', '--body-file', join(dir, 'issue.md'), '--rules-file', 'nope.md', '--repo-root', dir], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  assert.match(run.stderr, /warning: the rules file nope\.md could not be read, so the draft was not compared with it/);
+});
+
+test('Scenario: A task edits the rules file - the check passes with a warning that names the path and the ways out', () => {
+  const body = GOOD.replace('the list shows 3 names', 'the list shows 3 names and the build updates CLAUDE.md');
+  const r = checkIssueDraft({ title: 'Birthday list', body, rulesFile: 'CLAUDE.md' });
+  assert.equal(r.ok, true);
+  const w = r.warnings.find((x) => /CLAUDE\.md/.test(x));
+  assert.match(w, /protected path/);
+  assert.match(w, /a person makes that edit/);
+});
+
+test('a protected path that is only named in prose is a warning, and a pointer is not', () => {
+  const named = checkIssueDraft({ title: 't', body: GOOD.replace('3 clients have', '3 clients, as CLAUDE.md says, have'), rulesFile: 'CLAUDE.md' });
+  assert.equal(named.ok, true);
+  assert.ok(named.warnings.some((x) => /names CLAUDE\.md/.test(x)));
+  const pointer = checkIssueDraft({ title: 't', body: `${GOOD}\n## Code pointers\n\n- \`CLAUDE.md\`: the rules\n`, rulesFile: 'CLAUDE.md' });
+  assert.deepEqual(pointer.warnings.filter((x) => /CLAUDE/.test(x)), []);
+});
+
+test('an allowed manifest is not a warning, an unlisted one is, and the warning offers Allow-paths', () => {
+  const body = GOOD.replace('shows 3 names', 'shows 3 names; add a package to package.json');
+  assert.ok(checkIssueDraft({ title: 't', body }).warnings.some((x) => /Allow-paths: line/.test(x)));
+  assert.deepEqual(checkIssueDraft({ title: 't', body: `${body}\nAllow-paths: package.json\n` }).warnings.filter((x) => /package\.json/.test(x)), []);
+});
+
+test('Scenario: A path that can never be allowed - the check fails and says why', () => {
+  const r = checkIssueDraft({ title: 't', body: `${GOOD}\nAllow-paths: CLAUDE.md, .github/workflows/ci.yml\n`, rulesFile: 'CLAUDE.md' });
+  assert.equal(r.ok, false);
+  const text = r.problems.join('\n');
+  assert.match(text, /Allow-paths lists "CLAUDE\.md", which can never be allowed: workflows, the Relevo configuration, skills and the project rules/);
+  assert.match(text, /Allow-paths lists "\.github\/workflows\/ci\.yml"/);
+});
+
+const ASSUMED = GOOD.replace('Depends-on: #12', '## Assumptions\n\n- the permission `orders.export` exists in the backend\n- the list sorts by date\n\nDepends-on: #12');
+
+test('Scenario: A permission name nobody confirmed - a warning with the name and the three ways out, and the check still passes', () => {
+  const r = checkIssueDraft({ title: 't', body: ASSUMED, search: () => null });
+  assert.equal(r.ok, true);
+  const w = r.warnings.filter((x) => /orders\.export/.test(x));
+  assert.equal(w.length, 1);
+  assert.match(w[0], /confirm it now[^]*manual input in External inputs[^]*Open questions/);
+});
+
+test('Scenario: The schema settles it - nothing is said, and an assumption about the repository itself is never listed', () => {
+  assert.deepEqual(checkIssueDraft({ title: 't', body: ASSUMED, search: (n) => (n === 'orders.export' ? 'src/p.ts' : null) }).warnings.filter((x) => /Assumptions:/.test(x)), []);
+});
+
+test('without a search the assumptions are not read (the light job that has no checkout)', () => {
+  assert.deepEqual(checkIssueDraft({ title: 't', body: ASSUMED }).warnings.filter((x) => /Assumptions:/.test(x)), []);
+});
+
+test('check-issue.mjs warns on stderr, exits 0 and finds a name that a file of --repo-root holds', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ci-'));
+  spawnSync('git', ['init', '-q'], { cwd: dir });
+  writeFileSync(join(dir, 'body.md'), ASSUMED);
+  const cli = new URL('../scripts/check-issue.mjs', import.meta.url).pathname;
+  const run = () => spawnSync('node', [cli, '--title', 't', '--body-file', join(dir, 'body.md'), '--repo-root', dir], { encoding: 'utf8' });
+  let r = run();
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /warning: Assumptions: .*orders\.export/);
+  writeFileSync(join(dir, 'perms.ts'), "export const P = 'orders.export';\n");
+  spawnSync('git', ['add', '-A'], { cwd: dir });
+  r = run();
+  assert.equal(r.status, 0);
+  assert.doesNotMatch(r.stderr, /Assumptions:/);
+});

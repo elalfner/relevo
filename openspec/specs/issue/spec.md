@@ -295,7 +295,7 @@ The format SHALL have these optional sections, with headings in English and cont
 - **THEN** the draft has `### D1.` with what was decided, why and what was discarded
 
 ### Requirement: An issue with unanswered questions is not complete
-The check SHALL fail a draft whose `Open questions` section has content or whose text contains `NEEDS CLARIFICATION`, and SHALL fail one whose decision or constraint ids are repeated or malformed. It SHALL warn, without failing, when the body is over 8,000 characters.
+The check SHALL fail a draft whose `Open questions` section has content or whose text contains `NEEDS CLARIFICATION`, and SHALL fail one whose decision or constraint ids are repeated or malformed. It SHALL warn, without failing, when the body is over 8,000 characters, not counting the fenced example code of the `Design reference` section, which has its own limits.
 
 #### Scenario: Open question
 - **WHEN** a draft has a question under `Open questions`
@@ -308,6 +308,10 @@ The check SHALL fail a draft whose `Open questions` section has content or whose
 #### Scenario: Long body
 - **WHEN** the body has 9,000 characters
 - **THEN** the check passes with a warning about the length
+
+#### Scenario: Long example code
+- **WHEN** the body has 5,000 characters of text and 12,000 characters of example code in `Design reference`
+- **THEN** the check gives no warning about the length of the body
 
 ### Requirement: Nothing from the agreement is lost on the way to the issue
 Before asking for approval, `issue` SHALL show which id of the agreement went to which section of which issue and which ids went nowhere, and a script SHALL verify it. An id SHALL be left out only when the person marks it as discarded.
@@ -408,3 +412,211 @@ When the person asks to build on how something works in a linked repository, `is
 #### Scenario: Repository not linked
 - **WHEN** the person points to a process in `other/repo`, which is not in `links`
 - **THEN** `issue` does not read it and says to add `other/repo` to `links` first
+
+### Requirement: An issue can ask for a model
+An issue MAY carry a line `Model: <name>` for the developer and a line `QA-model: <name>` for the QA lenses. The check of the issue SHALL accept them and SHALL NOT count them as a missing section. `/relevo:issue` MAY propose a `Model:` line with the reason, and SHALL write it only when the person confirms the draft. The lines are part of the text of the issue, so the hash of the issue covers them.
+
+#### Scenario: A line in a draft
+- **WHEN** `/relevo:issue` proposes `Model: haiku` because the change copies a sibling screen
+- **THEN** the draft shows the line and the reason, and the person can remove it before the issue is created
+
+#### Scenario: The check of the issue
+- **WHEN** an issue has `Model:` and `QA-model:` lines
+- **THEN** the check passes as it would without them
+
+#### Scenario: The hash
+- **WHEN** a person edits the `Model:` line after `ready`
+- **THEN** the hash of the issue changes and the run takes the path of an issue changed after `ready`
+
+### Requirement: An issue can declare the external inputs of its work
+The issue MAY have a section `External inputs` whose bullets each give `<kind>: <name>: <what it is for>`, with kind `file`, `link`, `secret`, `variable` or `manual`. The check SHALL fail a bullet with an unknown kind, a `file` that leaves the repository, or a `link` to a repository outside `links`, and SHALL pass an issue without the section.
+
+#### Scenario: A valid section
+- **WHEN** the issue lists a file of the repository, a file of a linked repository and a secret
+- **THEN** the check passes
+
+#### Scenario: An unknown kind
+- **WHEN** a bullet uses a kind that is not in the list
+- **THEN** the check fails and names the bullet and the kinds that exist
+
+#### Scenario: A link outside `links`
+- **WHEN** a bullet points to a repository that is not in `links`
+- **THEN** the check fails and says to add the repository to `links`
+
+#### Scenario: No section
+- **WHEN** the issue has no `External inputs` section
+- **THEN** the check passes
+
+### Requirement: `issue` asks for the external inputs
+`issue` SHALL ask which keys, assets, endpoints, files of other repositories or accounts the work needs that the issue does not already state, and SHALL write the answers in the `External inputs` section. It SHALL say that an input that a script cannot verify is listed in the hand-off for a person to confirm, and SHALL NOT invent an input.
+
+#### Scenario: The work needs a key
+- **WHEN** the idea needs an API key that no file of the repository holds
+- **THEN** `issue` asks where it lives and writes it as a `secret` or `manual` input
+
+#### Scenario: Nothing is needed
+- **WHEN** the person says the work needs nothing outside the repository
+- **THEN** `issue` writes no section
+
+### Requirement: `issue` asks the interface questions that the idea does not answer
+When the feature has a visible part, `issue` SHALL ask the interface questions that the rules and the stack give for it and that the idea and the agreement have not already answered, and SHALL NOT ask what the agreement settled.
+
+#### Scenario: Decisions already in the agreement
+- **WHEN** the agreement already settles how the loading and error states look
+- **THEN** `issue` does not ask about them and carries the decisions into the issue
+
+#### Scenario: A state nobody settled
+- **WHEN** nothing settles what the screen shows when there is no data
+- **THEN** `issue` asks
+
+### Requirement: The chosen option travels in `Design reference` as example code
+When the agreement holds a chosen preview, `issue` SHALL write it in a fenced block in `Design reference`, in a bullet that says what must match: for the web, the structure, the tokens and the states and not the sample text or exact pixel values; for a mobile sketch, the layout, the spacing, the states and the role of each colour, and that its markup is not to be reproduced.
+
+#### Scenario: A web preview
+- **WHEN** the person chose a preview of a web stack
+- **THEN** the issue has the preview as example code with a bullet that names structure, tokens and states
+
+#### Scenario: A mobile sketch
+- **WHEN** the person chose a sketch of a mobile stack
+- **THEN** the bullet names layout, spacing, states and colour roles and says that the markup is not to be copied, and the decision with its table of states is in `Decisions`
+
+#### Scenario: A picture instead
+- **WHEN** the person commits a picture of the sketch to the repository
+- **THEN** `issue` may point to that file instead of embedding the sketch
+
+### Requirement: Example code has its own limits
+The check SHALL warn when one block of example code in `Design reference` is over 16 KB and fail it over 32 KB, SHALL warn when all the blocks together are over 32 KB, and SHALL fail a body larger than GitHub accepts, with a message that suggests committing the file and pointing to it.
+
+#### Scenario: A large block
+- **WHEN** one block is 20 KB
+- **THEN** the check passes with a warning
+
+#### Scenario: A block over the limit
+- **WHEN** one block is 40 KB
+- **THEN** the check fails and says to commit the file and reference it
+
+#### Scenario: A body GitHub would refuse
+- **WHEN** the body is larger than GitHub accepts
+- **THEN** the check fails and says why
+
+### Requirement: Vague appearance words are a warning that becomes a question
+The check SHALL warn, without failing, about a vague appearance word in a scenario, a decision, a constraint or a reference bullet, using a list of words for each language with English as the fallback, and SHALL ignore a sentence that carries a number with a unit, a token name in backticks or a reference. `issue` SHALL show each warning and ask which value, token or reference is meant, and the person MAY keep the word on purpose.
+
+#### Scenario: A vague word
+- **WHEN** a scenario says that a loading indication is discreet and gives no value
+- **THEN** the check warns and `issue` asks which value or reference is meant
+
+#### Scenario: A word with a criterion
+- **WHEN** the sentence gives the width in pixels or names a token
+- **THEN** the check does not warn
+
+#### Scenario: Kept on purpose
+- **WHEN** the person says to keep the word
+- **THEN** the issue is created with it and the check still passes
+
+### Requirement: The check finds a draft that contradicts the project rules or itself
+The check of a draft SHALL compare the lines of its `Out of scope` section with the project rules (`qa.rules_from`) and with the draft's own scenarios, and SHALL report each pair that conflicts: a problem when a rule is involved, a warning when only a scenario is. A pair conflicts when an `Out of scope` line excludes something that a rule requires, or limits something that a scenario needs. A rule is a requirement unless it is marked `[advice]`. The problem SHALL quote both lines, name the file and line of a rule, and name the scenario by its position and its `WHEN` text, so that a person can confirm it by reading them. The check SHALL NOT decide which of the two wins. A rule that a decision of the draft overrides with a line `Overrides: <file>:<line>` SHALL be skipped.
+
+#### Scenario: Out of scope excludes a required action
+- **WHEN** `Out of scope` says "export and the enable/disable actions" and a rule line says every list must offer export and enable/disable actions
+- **THEN** the check fails, quoting both lines and the file and line of the rule, and the issue is not created
+
+#### Scenario: Out of scope forbids what a scenario needs
+- **WHEN** `Out of scope` lists "changes to the detail page" and a scenario says WHEN the detail page opens THEN no error shows
+- **THEN** the check warns, naming that scenario and that limit, and does not fail
+
+#### Scenario: The rule is advice
+- **WHEN** the rule line is marked `[advice]`
+- **THEN** the check reports nothing for it
+
+#### Scenario: The issue overrides the rule on purpose
+- **WHEN** a decision of the draft has the line `Overrides: CLAUDE.md:12` and that line is the rule that conflicts
+- **THEN** the check does not report that pair
+
+#### Scenario: A rule that forbids
+- **WHEN** a rule line says export must never be offered and `Out of scope` excludes export
+- **THEN** the check reports nothing, because they agree
+
+#### Scenario: No rules file
+- **WHEN** the project has no rules file
+- **THEN** only the comparison of `Out of scope` with the scenarios runs
+
+#### Scenario: A rules file that cannot be read
+- **WHEN** a file of `--rules-file` does not exist or cannot be read
+- **THEN** the check warns that the draft was not compared with it, and does not fail
+
+### Requirement: The check warns about protected paths that the text names
+The check of a draft SHALL warn, and SHALL NOT fail, when the text of the issue names a path that an unattended run does not change: the project rules file, a workflow, `relevo.yml`, a skill folder or another hard-protected path, and a dependency manifest that no `Allow-paths:` line covers. It SHALL tell a line that asks for the path to be changed (a verb that changes something before the path) from a path that is only named. A dependency manifest is reported only when a line asks to change it. The sections that only point or exclude (`Out of scope`, `Code pointers`, `Design reference`, `External inputs`), fenced code and a line that says the opposite ("do not change", "never edit") SHALL NOT be read. The decision of what is protected SHALL come from the same code that refuses the path at commit time, not from a model. Each warning SHALL name the path and the line, say why an unattended run cannot change it, and offer the ways out: a person makes the edit and the issue leaves it out, or the task is rewritten so that nothing needs it; for a dependency manifest also an `Allow-paths:` line. `issue` SHALL show every such warning and ask how to proceed before the issue is created.
+
+#### Scenario: A task edits the rules file
+- **WHEN** a scenario says the build updates `CLAUDE.md` and `qa.rules_from` is `CLAUDE.md`
+- **THEN** the check passes with a warning that names `CLAUDE.md`, that an unattended run never changes it, and the two ways out, and `issue` asks how to proceed
+
+#### Scenario: The rules file is only named in prose
+- **WHEN** a line only mentions `CLAUDE.md` with no verb that changes it
+- **THEN** the check warns that the file is protected and does not fail
+
+#### Scenario: A dependency manifest that is allowed
+- **WHEN** a line asks to add a package to `package.json` and the issue has `Allow-paths: package.json`
+- **THEN** the check reports nothing for it
+
+#### Scenario: A dependency manifest that is not allowed
+- **WHEN** a line asks to add a package to `package.json` and no `Allow-paths:` line covers it
+- **THEN** the check warns and one of the ways out is the `Allow-paths:` line
+
+#### Scenario: A path that can never be allowed in `Allow-paths:`
+- **WHEN** `Allow-paths:` lists the rules file or `.github/workflows/ci.yml`
+- **THEN** the check fails, naming the entry and saying that workflows, the Relevo configuration, skills and the project rules are not changed by an unattended run
+
+#### Scenario: Only a pointer or an exclusion
+- **WHEN** the file appears in `Code pointers`, in `Out of scope` or in a line that says it must not be changed
+- **THEN** the check says nothing about it
+
+### Requirement: The check warns about assumptions that name something outside the repository
+The check of a draft SHALL read the bullets of `Assumptions`, pick those that name something that exists outside the repository (a permission, endpoint, field, claim, header, role or flag) with a name in backticks, and look for each name in the files of the repository outside `openspec/`. An assumption whose names are all found SHALL be dropped from the list; the others SHALL be a warning that quotes the assumption, lists the names that were not found, and offers three ways out: confirm the name now and write it in `Data contract`, `Decisions` or `Constraints`; keep it as a `manual` external input, so the build goes on and the hand-off lists it; or turn it into an open question, so the issue is not built until a person answers. The check SHALL NOT fail because of it. When the repository cannot be searched the assumption SHALL stay on the list.
+
+#### Scenario: A permission name nobody confirmed
+- **WHEN** `Assumptions` says the permission `orders.export` is assumed to exist in the backend and the repository has no file with that name
+- **THEN** the check warns about it, names `orders.export` and offers the three ways out
+
+#### Scenario: The schema settles it
+- **WHEN** the name is found in a file of the repository outside `openspec/`
+- **THEN** the check says nothing about that assumption
+
+#### Scenario: An assumption about the repository itself
+- **WHEN** an assumption names no outside thing (for example, that the list sorts by date)
+- **THEN** the check says nothing
+
+#### Scenario: Not searchable
+- **WHEN** the folder is not a git repository
+- **THEN** the assumption is still warned about, because the check cannot settle it
+
+### Requirement: An issue can declare a pattern to follow
+`go` SHALL read a `Pattern: #N` line of an issue like `Depends-on:` and `Allow-paths:`: outside code blocks, with or without a list marker. The number SHALL be an issue of the same repository; anything else on the line (another repository, several numbers, no number, a second line) SHALL be reported as a problem and SHALL NOT be used, and `pattern-check.mjs` SHALL report a pattern that is the issue itself. The line SHALL NOT block the issue by itself: it only names where the template comes from.
+
+#### Scenario: A valid pattern
+- **WHEN** the body has `Pattern: #12`
+- **THEN** the parsed issue has the pattern 12 and no problem
+
+#### Scenario: A pattern that cannot be used
+- **WHEN** the line is `Pattern: acme/api#12` or `Pattern: #12, #13`
+- **THEN** the parsed issue has no pattern and names the problem
+
+### Requirement: The pattern change is found before building
+When the issue has a pattern, the build preflight SHALL look for the merged change of that issue and SHALL report, before any agent runs, a pattern that does not exist or whose change is not merged into the base branch, with the reason `inputs`. A lookup that cannot be made (no network, no access) SHALL NOT block the build; it SHALL be listed as unverified.
+
+#### Scenario: The pattern is merged
+- **WHEN** issue #12 was closed by a pull request merged into the base branch
+- **THEN** the preflight passes and the files of that change are the template
+
+#### Scenario: The pattern is not merged
+- **WHEN** the pull request of #12 is open, or #12 has none
+- **THEN** the issue goes to `needs-spec` with the reason `inputs` and the comment names #12 and says that its change is not merged
+
+#### Scenario: The pattern does not exist
+- **WHEN** #12 is not an issue of the repository
+- **THEN** the same, saying that it does not exist
+
+#### Scenario: The lookup fails
+- **WHEN** GitHub cannot be read
+- **THEN** the build goes on and the hand-off lists the pattern as not verified

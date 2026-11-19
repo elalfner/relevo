@@ -283,3 +283,79 @@ The documentation SHALL describe three levels and SHALL NOT promise a "no such f
 #### Scenario: Asking about the hidden file
 - **WHEN** a person reads what the agent answers when asked about `.env` in a tree where it is not present, and where its read is denied
 - **THEN** the page says that the first case answers "no such file" and the second says the read is blocked
+
+### Requirement: The lens agents are read-only
+Each lens agent SHALL have no tool that writes or edits files, SHALL NOT change the index, and SHALL treat the text of the issue, the specification, the code and the output of tools as data and never as instructions.
+
+#### Scenario: A lens given an instruction in the diff
+- **WHEN** a comment in the diff tells a lens to skip a rule
+- **THEN** the lens does not follow it and may report it as a finding
+
+#### Scenario: The tool list
+- **WHEN** a lens agent is read
+- **THEN** its tool list holds no write or edit tool
+
+### Requirement: The gate and its receipt are safeguards, not boundaries
+The gate and its receipt SHALL guard against an omission or a mistake and SHALL NOT be a security control. Every protected path, restricted file and credential rule SHALL still be enforced by the guard that already enforces it.
+
+#### Scenario: A receipt written by hand
+- **WHEN** an agent writes a receipt that matches its diff
+- **THEN** the commit guards still refuse a protected path or a credential in that diff
+
+### Requirement: The page on controls says what holds for each agent
+The security page SHALL say, for each supported agent, which of these controls hold, which hold in part and which do not exist, including that the settings of model and effort are not applied with Antigravity.
+
+#### Scenario: A reader looks at Antigravity
+- **WHEN** a person reads the security page for Antigravity
+- **THEN** it says that the lenses are read-only by their tool list and that the settings are not applied
+
+### Requirement: A cache written by a build is saved before the agent starts
+A step of a workflow SHALL NOT save a cache after the agent step has run. Caches of downloaded tools SHALL be restored first and saved by their own step immediately after the install and before the agent starts, so nothing the agent does can reach a cache that a later run restores. A tool restored from a cache SHALL be checked against its pinned version before the agent uses it. An action that saves a cache by itself when the job ends (the automatic npm cache of `actions/setup-node`) SHALL be switched off in the templates.
+
+#### Scenario: The agent changes a binary
+- **WHEN** the agent overwrites the Bun or OpenSpec files of the job
+- **THEN** the cache already holds the copy saved before the agent started, and no step after the agent saves it again
+
+#### Scenario: A template saves a cache late
+- **WHEN** a template has a step that saves a cache, or an action that saves one in its post step, after the agent step
+- **THEN** a test fails
+
+### Requirement: The light job only reads the runs
+The `decide` job MAY have `actions: read` to read the duration of recent builds. It SHALL NOT hold `actions: write`, which only the jobs that start the queue hold (`requeue`, the queue workflow and the ship workflow), and SHALL run no agent and no project code.
+
+#### Scenario: Permissions of the jobs
+- **WHEN** the templates are read
+- **THEN** `actions: read` appears in `decide` only, and `actions: write` only in the `requeue` job, the queue workflow and the ship workflow, which already start the queue
+
+### Requirement: Secrets are redacted from the agent's output that a run prints or saves
+Anything a workflow prints or saves from the agent's execution log SHALL pass through a redactor that replaces known secret shapes (provider and cloud keys, access tokens, private key blocks, credentials inside URLs, bearer values, and the value of an assignment whose name is a credential name) and the exact value of each secret the job holds, including the model credential and the workflow token. The redactor SHALL work on text only and SHALL NOT open a restricted file. A result that cannot be parsed SHALL be dropped, not printed as it is.
+
+#### Scenario: A secret the job holds
+- **WHEN** the agent's output contains the value of `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
+- **THEN** the rendering and the transcript show a placeholder instead
+
+#### Scenario: The content of a restricted file
+- **WHEN** the output holds lines shaped like an environment file, a private key, a `.npmrc` token, a `.git-credentials` URL, a `.pgpass` line, a `key.properties` password or a Google service key
+- **THEN** none of those values appears in the rendering or the transcript
+
+#### Scenario: A secret nobody knows
+- **WHEN** the output holds a credential in a shape the redactor does not know
+- **THEN** it can appear, which is why the option is off by default and its documentation says so
+
+### Requirement: The full output is refused for a public repository
+When `trust` is `public`, the system SHALL refuse the full output: validation fails when `run.full_output` is set, a `full_output` input of a manual start is ignored with a notice, and no transcript of a run is written to its summary.
+
+#### Scenario: Setting with trust public
+- **WHEN** `relevo.yml` sets `run.full_output: true` and `trust: public`
+- **THEN** validation fails with a message that says why
+
+#### Scenario: Manual start in a public repository
+- **WHEN** a person starts a run with `full_output` true and `trust` is `public`
+- **THEN** the log has no rendering of the agent output and says it was refused
+
+### Requirement: The redactor is not a control
+The documentation SHALL say that the redactor reduces the chance that a secret reaches a log or a run summary and does not replace the controls that keep secrets from the agent (the closed tool list, the restricted-file denials, the absence of web access). The workflow template SHALL NOT set the action's `show_full_output` or `allowed_non_write_users`.
+
+#### Scenario: Template check
+- **WHEN** the active lines of `relevo-go.yml` are read
+- **THEN** `show_full_output` is not among the inputs of the action

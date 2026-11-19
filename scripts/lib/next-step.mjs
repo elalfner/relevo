@@ -9,15 +9,16 @@ import { pickLanguage } from './language.mjs';
 // command: the command to run (`{n}` is the issue number), or null when nobody has to act yet.
 // who:     the role that runs it; the words for each role are in WHO.
 const TABLE = {
+  // The approval starts nothing: someone decides where it is built.
   ready: {
-    command: null,
-    who: 'nobody',
-    hint: { en: 'the agent starts it by itself', es: 'el agente la empieza solo' },
+    command: '/relevo:go {n}',
+    who: 'assignee',
+    hint: { en: 'it is approved and nothing starts by itself: build it on your machine, or apply relevo:go so that the cloud builds it', es: 'está aprobada y nada empieza sola: constrúyela en tu máquina, o ponle relevo:go para que la construya la nube' },
   },
   queued: {
     command: null,
     who: 'nobody',
-    hint: { en: 'it starts when the assignee has capacity', es: 'empieza cuando la persona asignada tenga capacidad' },
+    hint: { en: 'it starts when the assignee has capacity, an agent is free, or the issue that shares a file with it is merged', es: 'empieza cuando la persona asignada tenga capacidad, haya un agente libre o se fusione el issue que comparte un archivo con él' },
   },
   building: {
     command: null,
@@ -49,14 +50,14 @@ const TABLE = {
     missing: {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
-      hint: { en: 'complete what is missing, then label it ready again', es: 'completa lo que falta y vuelve a ponerle ready' },
+      hint: { en: 'complete what is missing, then approve it with ready again and request the build: relevo:go, or /relevo:go {n} on your machine', es: 'completa lo que falta, luego vuelve a aprobarla con ready y pide el build: relevo:go, o /relevo:go {n} en tu máquina' },
     },
     ambiguous: {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
       hint: {
-        en: 'decide the open question (run /relevo:think #{n} first if you need to explore it), then label it ready again',
-        es: 'decide la pregunta abierta (ejecuta antes /relevo:think #{n} si necesitas explorarla) y vuelve a ponerle ready',
+        en: 'decide the open question (run /relevo:think #{n} first if you need to explore it), then approve it with ready again and request the build: relevo:go, or /relevo:go {n} on your machine',
+        es: 'decide la pregunta abierta (ejecuta antes /relevo:think #{n} si necesitas explorarla), luego vuelve a aprobarla con ready y pide el build: relevo:go, o /relevo:go {n} en tu máquina',
       },
     },
     // The check before the build found that something the issue depends on is not available.
@@ -64,8 +65,8 @@ const TABLE = {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
       hint: {
-        en: 'an input of the issue is not available: provide it, or declare it as manual in the External inputs section, then label it ready again',
-        es: 'un insumo del issue no está disponible: aportalo o decláralo como manual en la sección External inputs, y vuelve a ponerle ready',
+        en: 'an input of the issue is not available: provide it, or declare it as manual in the External inputs section, then approve it with ready again and request the build: relevo:go, or /relevo:go {n} on your machine',
+        es: 'un insumo del issue no está disponible: aportalo o decláralo como manual en la sección External inputs, luego vuelve a aprobarla con ready y pide el build: relevo:go, o /relevo:go {n} en tu máquina',
       },
     },
     // The check before the build found a task that an unattended run may not do.
@@ -73,12 +74,21 @@ const TABLE = {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
       hint: {
-        en: 'a task needs something an unattended run may not do: list the dependency manifest in Allow-paths:, or change the issue so that it does not need the protected path, then label it ready again',
-        es: 'una tarea necesita algo que una corrida sin supervisión no puede hacer: lista el manifiesto de dependencias en Allow-paths: o cambia el issue para que no necesite la ruta protegida, y vuelve a ponerle ready',
+        en: 'a task needs something an unattended run may not do: a person makes that edit (workflows, relevo.yml, skills and the project rules are never changed by a run) or the issue changes so that no task needs it; only a dependency manifest can be allowed, with an Allow-paths: line; then approve it with ready again and request the build: relevo:go, or /relevo:go {n} on your machine',
+        es: 'una tarea necesita algo que una corrida sin supervisión no puede hacer: una persona hace esa edición (los workflows, relevo.yml, las skills y las reglas del proyecto no los cambia ninguna corrida) o el issue cambia para que ninguna tarea la necesite; solo un manifiesto de dependencias se puede permitir, con una línea Allow-paths:; luego vuelve a aprobarla con ready y pide el build: relevo:go, o /relevo:go {n} en tu máquina',
+      },
+    },
+    // The check before the build found that the issue contradicts the project rules or its own scenarios.
+    conflict: {
+      command: '/relevo:issue {n}',
+      who: 'spec_writer',
+      hint: {
+        en: 'the issue contradicts a project rule or its own scenarios: decide which one wins, change the issue or record a decision with an "Overrides: <file>:<line>" line, then approve it with ready again and request the build: relevo:go, or /relevo:go {n} on your machine',
+        es: 'el issue contradice una regla del proyecto o sus propios escenarios: decide cuál gana, cambia el issue o registra una decisión con una línea "Overrides: <archivo>:<línea>", luego vuelve a aprobarla con ready y pide el build: relevo:go, o /relevo:go {n} en tu máquina',
       },
     },
   },
-  'qa-failed': {
+  'build-failed': {
     // The recovery depends on what is on the branch.
     fix: {
       command: '/relevo:fix {n}',
@@ -99,8 +109,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'install the toolchain in the build job of relevo-go.yml (the template has the step for Flutter and Laravel, and /relevo:doctor checks it), then remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'instala el toolchain en el job de build de relevo-go.yml (la plantilla trae el paso para Flutter y Laravel, y /relevo:doctor lo comprueba), luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'install the toolchain in the build job of relevo-go.yml (the template has the step for Flutter and Laravel, and /relevo:doctor checks it), then apply relevo:go so that the cloud builds it again, or run /relevo:go {n} --retry on your machine',
+        es: 'instala el toolchain en el job de build de relevo-go.yml (la plantilla trae el paso para Flutter y Laravel, y /relevo:doctor lo comprueba), luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
       },
     },
     // QA rejected and no finding can be corrected by the developer agent: the retries were skipped. The work that
@@ -125,8 +135,17 @@ const TABLE = {
       command: '/relevo:issue {n}',
       who: 'spec_writer',
       hint: {
-        en: 'the work needs something an unattended run may not do: list the dependency manifest in Allow-paths:, or change the issue so that it does not need the protected path; the work that was kept stays on the branch, and /relevo:fix {n} then corrects it',
-        es: 'el trabajo necesita algo que una corrida sin supervisión no puede hacer: lista el manifiesto de dependencias en Allow-paths: o cambia el issue para que no necesite la ruta protegida; el trabajo que se guardó sigue en la rama y /relevo:fix {n} lo corrige después',
+        en: 'the work needs something an unattended run may not do: a person makes that edit or the issue changes so that no task needs it, and only a dependency manifest can be allowed, with an Allow-paths: line; the work that was kept stays on the branch, and /relevo:fix {n} then corrects it',
+        es: 'el trabajo necesita algo que una corrida sin supervisión no puede hacer: una persona hace esa edición o el issue cambia para que ninguna tarea la necesite, y solo un manifiesto de dependencias se puede permitir, con una línea Allow-paths:; el trabajo que se guardó sigue en la rama y /relevo:fix {n} lo corrige después',
+      },
+    },
+    // The commit guard refused a protected path: QA never judged the work and nothing was pushed, so the issue has to change.
+    protected: {
+      command: '/relevo:issue {n}',
+      who: 'spec_writer',
+      hint: {
+        en: 'an unattended run cannot edit that protected path and QA did not judge the work: a person makes the edit, or the issue changes so that no task needs it, then approve it with ready again and request the build: relevo:go, or /relevo:go {n} on your machine',
+        es: 'una corrida sin supervisión no puede editar esa ruta protegida y QA no juzgó el trabajo: una persona hace la edición, o el issue cambia para que ninguna tarea la necesite, luego vuelve a aprobarla con ready y pide el build: relevo:go, o /relevo:go {n} en tu máquina',
       },
     },
     // Nothing was built: the dependencies of the platform were never installed, and the fix is in the workflow.
@@ -134,16 +153,16 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'enable the step that installs the dependencies in the build job of relevo-go.yml (/relevo:doctor checks it), then remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'activa el paso que instala las dependencias en el job de build de relevo-go.yml (/relevo:doctor lo comprueba), luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'enable the step that installs the dependencies in the build job of relevo-go.yml (/relevo:doctor checks it), then apply relevo:go so that the cloud builds it again, or run /relevo:go {n} --retry on your machine',
+        es: 'activa el paso que instala las dependencias en el job de build de relevo-go.yml (/relevo:doctor lo comprueba), luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
       },
     },
     'delete-branch': {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'the branch holds only the specification: delete the remote branch and label the issue ready again',
-        es: 'la rama solo tiene la especificación: borra la rama remota y vuelve a ponerle ready al issue',
+        en: 'the branch holds only the specification: delete the remote branch, then apply relevo:go so that the cloud builds it again, or run /relevo:go {n} --retry on your machine',
+        es: 'la rama solo tiene la especificación: borra la rama remota, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
       },
     },
     // Nothing was pushed, so there is no branch to correct: the cause is resolved first, then the issue is built again.
@@ -151,8 +170,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'nothing was pushed, so there is no branch to fix: resolve the cause named above, then build it again on your machine with /relevo:go {n} --local --retry (the cloud does not start), or remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'no se subió nada, así que no hay rama que corregir: resuelve la causa indicada arriba, luego constrúyelo de nuevo en tu máquina con /relevo:go {n} --local --retry (la nube no arranca), o quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'nothing was pushed, so there is no branch to fix: resolve the cause named above, then build it again on your machine with /relevo:go {n} --retry, or apply relevo:go so that the cloud builds it again',
+        es: 'no se subió nada, así que no hay rama que corregir: resuelve la causa indicada arriba, luego constrúyelo de nuevo en tu máquina con /relevo:go {n} --retry, o ponle relevo:go para que la nube lo construya de nuevo',
       },
     },
     // Nothing was built: the base branch versions a file on the restricted list, which no command of Relevo can fix.
@@ -160,8 +179,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'a restricted file is versioned on the base branch: rotate any secret in it, remove it from the repository (git rm --cached) and keep it ignored, merge that into the base branch, then remove relevo:qa-failed and label the issue relevo:ready again',
-        es: 'un archivo restringido está versionado en la rama base: rota cualquier secreto que tenga, quítalo del repositorio (git rm --cached) y mantenlo ignorado, fusiona eso en la rama base, luego quita relevo:qa-failed y vuelve a poner relevo:ready al issue',
+        en: 'a restricted file is versioned on the base branch: rotate any secret in it, remove it from the repository (git rm --cached) and keep it ignored, merge that into the base branch, then apply relevo:go so that the cloud builds it again, or run /relevo:go {n} --retry on your machine',
+        es: 'un archivo restringido está versionado en la rama base: rota cualquier secreto que tenga, quítalo del repositorio (git rm --cached) y mantenlo ignorado, fusiona eso en la rama base, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
       },
     },
   },
@@ -187,6 +206,18 @@ const TABLE = {
     who: 'nobody',
     hint: { en: 'it starts before the others; the state it is in decides the next step', es: 'empieza antes que las demás; el estado en que está decide el siguiente paso' },
   },
+  // A request next to `ready`, not a state: the cloud decides about the issue and removes it.
+  go: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'the cloud was asked to build it and removes the label when it decides', es: 'se pidió a la nube que lo construya y quita la etiqueta cuando decide' },
+  },
+  // A mark next to `building`, not a state: the build runs on a person's machine.
+  local: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'it is being built on a machine', es: 'se está construyendo en una máquina' },
+  },
 };
 
 const WHO = {
@@ -204,16 +235,16 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
-  'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy'],
-  'qa-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'delete-branch', 'restricted', 'rebuild'],
+  'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
+  'build-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild'],
 };
 
 const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
 
 /**
  * The next step for an issue in `state`.
- * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs` or `policy`) and of `qa-failed`
- * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
+ * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `build-failed`
+ * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
 export function nextStep({ state, reason = null, issue = null, language = 'en' } = {}) {

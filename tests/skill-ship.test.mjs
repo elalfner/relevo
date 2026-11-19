@@ -126,6 +126,12 @@ test('the skill knows that the checks of the approved head carry over, and names
   assert.match(body, /apply the `relevo:ship` label/);
 });
 
+test('Scenario: Local ship meets the same state - the skill reruns ship-check before it stops, and reports the commit relied on', () => {
+  assert.match(body, /GitHub has not finished checking whether the pull request can be merged/);
+  assert.match(body, /up to 6 times, before stopping/);
+  assert.match(body, /which commit's checks it relied on/);
+});
+
 test('Scenario: A failed go left its worktree - ship asks who holds the branch before it switches, and archives nothing', () => {
   const check = body.indexOf('scripts/branch-worktree.mjs --branch <branch>');
   assert.ok(check > 0 && check < body.indexOf('git switch <branch>'), 'the check comes before the switch');

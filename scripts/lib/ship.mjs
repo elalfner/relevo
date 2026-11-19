@@ -35,10 +35,10 @@ export function latestReviews(reviews = []) {
 const MISSING_COMMAND = {
   built: '/relevo:review',
   'in-review': '/relevo:review',
-  'qa-failed': '/relevo:fix',
+  'build-failed': '/relevo:fix',
   'changes-requested': '/relevo:fix',
 };
-const STATE_KEYS = ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open', 'qa-failed', 'changes-requested', 'needs-spec', 'blocked'];
+const STATE_KEYS = ['ready', 'queued', 'building', 'built', 'in-review', 'pr-open', 'build-failed', 'changes-requested', 'needs-spec', 'blocked'];
 
 /** Summarise the checks of a pull request: none, passing, failing or pending. */
 export function checkRollup(rollup = []) {
@@ -101,11 +101,13 @@ export function shipDecision({ config, pr, invoker, baseline, labels, issue, bas
   // approved head still vouch for the code when only the specifications changed since.
   let checks = checkRollup(pr.statusCheckRollup);
   let checksFrom = 'head';
+  let checksOid = pr.headRefOid ?? null;
   if (checks.state === 'none' && baselineChecks?.archiveOnly) {
     const carried = checkRollup(baselineChecks.rollup);
     if (carried.state !== 'none') {
       checks = carried;
       checksFrom = 'baseline';
+      checksOid = baseline ?? null;
     }
   }
   if (checks.state === 'failing') reasons.push(`checks are failing: ${checks.failing.join(', ')}`);
@@ -168,6 +170,6 @@ export function shipDecision({ config, pr, invoker, baseline, labels, issue, bas
     allowed: reasons.length === 0,
     reasons,
     confirm,
-    summary: { pr: pr.number, title: pr.title, author, branch: pr.headRefName, base: pr.baseRefName, head: pr.headRefOid ?? null, mode, approvedBy, checks: checks.state, checksFrom, ...(warnings.length > 0 ? { warnings } : {}) },
+    summary: { pr: pr.number, title: pr.title, author, branch: pr.headRefName, base: pr.baseRefName, head: pr.headRefOid ?? null, mode, approvedBy, checks: checks.state, checksFrom, checksOid, ...(warnings.length > 0 ? { warnings } : {}) },
   };
 }

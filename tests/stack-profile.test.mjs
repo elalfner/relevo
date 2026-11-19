@@ -532,3 +532,103 @@ test('Scenario: Defaults of Supabase / Remote database in test - a container log
   });
   assert.match(parseProfile(REVIEW_PROFILE('review:\n  log: docker:bad name\n')).errors.join(' '), /"review\.log" names a container as docker:<name>/);
 });
+
+// ---- a repository profile declares the api review adapter (declared-review-adapter)
+
+const declaredProfile = (review, extra = '') => `---\nstack: nhost\n${extra}review:\n${review}---\n`;
+const NHOST_OK = '  adapter: api\n  needs: [nhost, docker]\n  log: compose:postgres,auth\n  test: npm run --silent test:integration\n';
+const resolveWith = (files, stack = 'nhost') => resolveProfile({ platform: { stack }, pluginRoot: '/p', read: (path) => files[path] ?? null });
+const repoFile = (text, stack = 'nhost') => ({ [`.relevo/stacks/${stack}.md`]: text });
+
+test('Scenario: Declared in a repository-only stack - the resolved profile carries adapter, needs, log and test', () => {
+  const r = resolveWith(repoFile(declaredProfile(NHOST_OK)));
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.deepEqual(r.profile.review, { adapter: 'api', needs: ['nhost', 'docker'], log: 'compose:postgres,auth', test: 'npm run --silent test:integration' });
+});
+
+test('Scenario: Another kind - device and browser are refused and the message names review.adapter and the one value', () => {
+  ['browser', 'device'].forEach((kind) => {
+    const errors = parseProfile(declaredProfile(`  adapter: ${kind}\n`)).errors.join(' ');
+    assert.match(errors, /"review\.adapter" must be "api"/, kind);
+    assert.match(errors, /only adapter a profile can declare/, kind);
+  });
+});
+
+test('Scenario: Needs that is not a list / with a path - review.needs is named', () => {
+  assert.match(parseProfile(declaredProfile('  needs: docker\n')).errors.join(' '), /"review\.needs" must be a list of tool names/);
+  assert.match(parseProfile(declaredProfile('  needs: ["./tools/run"]\n')).errors.join(' '), /"review\.needs" lists names of tools, never a path/);
+  assert.match(parseProfile(declaredProfile('  needs: ["a b"]\n')).errors.join(' '), /"review\.needs"/);
+});
+
+test('Scenario: Declared in a profile of the plugin - it is refused and the message says where it belongs', () => {
+  const r = resolveWith({ '/p/stacks/nhost.md': declaredProfile(NHOST_OK) });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(' '), /"review\.adapter" belongs in the repository's profile/);
+  assert.match(r.errors.join(' '), /"review\.needs" belongs in the repository's profile/);
+});
+
+test('Scenario: Missing log or test - resolving names the missing key', () => {
+  const noLog = resolveWith(repoFile(declaredProfile('  adapter: api\n  test: npm test\n')));
+  assert.equal(noLog.ok, false);
+  assert.match(noLog.errors.join(' '), /"review\.log" is missing/);
+  const noTest = resolveWith(repoFile(declaredProfile('  adapter: api\n  log: compose:\n')));
+  assert.equal(noTest.ok, false);
+  assert.match(noTest.errors.join(' '), /"review\.test" is missing/);
+});
+
+test('Scenario: A stack with targets - a declared adapter is for a stack with no targets', () => {
+  const r = resolveWith(repoFile(declaredProfile(NHOST_OK, 'targets:\n  web: ""\n')));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(' '), /for a stack with no targets/);
+});
+
+test('Scenario: Remote address in the test / Address with a variable host / Remote flag / Local address', () => {
+  const withTest = (cmd) => resolveWith(repoFile(declaredProfile(`  adapter: api\n  log: compose:\n  test: ${cmd}\n`)));
+  ['curl https://api.example.com', 'curl https://$HOST/graphql', 'curl http://${URL}/x', 'run --db-url postgres://x', 'curl http://user@evil.example.com:80/'].forEach((cmd) => {
+    const r = withTest(cmd);
+    assert.equal(r.ok, false, cmd);
+    assert.match(r.errors.join(' '), /"review\.test"/, cmd);
+  });
+  ['curl http://127.0.0.1:8080', 'curl http://localhost:1337/v1/graphql', 'curl http://[::1]:8080/x'].forEach((cmd) => assert.equal(withTest(cmd).ok, true, cmd));
+  const remoteLog = resolveWith(repoFile(declaredProfile('  adapter: api\n  test: npm test\n  log: curl https://logs.example.com/x\n')));
+  assert.match(remoteLog.errors.join(' '), /"review\.log"/);
+});
+
+test('the same URL in the test of a shipped stack is not newly refused', () => {
+  const r = resolveWith({ '/p/stacks/laravel.md': '---\nstack: laravel\nreview:\n  test: php artisan test\n---\n', ...repoFile('---\nstack: laravel\nreview:\n  test: curl https://api.example.com\n---\n', 'laravel') }, 'laravel');
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+});
+
+test('Scenario: Log of Compose services / with a bad name', () => {
+  assert.equal(resolveWith(repoFile(declaredProfile('  adapter: api\n  test: npm test\n  log: compose:postgres,auth\n'))).ok, true);
+  assert.equal(resolveWith(repoFile(declaredProfile('  adapter: api\n  test: npm test\n  log: compose:\n'))).ok, true, 'none means every service');
+  const bad = resolveWith(repoFile(declaredProfile('  adapter: api\n  test: npm test\n  log: "compose:postgres;rm"\n')));
+  assert.equal(bad.ok, false);
+  assert.match(bad.errors.join(' '), /"review\.log" names the services/);
+});
+
+test('Scenario: Ignored for a shipped stack - the plugin keeps its review and both keys are listed as ignored', () => {
+  const plugin = '---\nstack: supabase\nreview:\n  log: docker:supabase_db_{project_id}\n  test: supabase test db\n---\n';
+  const r = resolveWith({ '/p/stacks/supabase.md': plugin, ...repoFile('---\nstack: supabase\nreview:\n  adapter: api\n  needs: [docker]\n---\n', 'supabase') }, 'supabase');
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.profile.review.adapter, undefined);
+  assert.equal(r.profile.review.needs, undefined);
+  assert.equal(r.profile.review.test, 'supabase test db');
+  assert.deepEqual(r.profile.ignored.map((x) => x.key), ['review.adapter', 'review.needs']);
+});
+
+test('Scenario: Other keys still replace - the repository test replaces, the declaration is ignored', () => {
+  const plugin = '---\nstack: laravel\nreview:\n  log: storage/logs/*.log\n  test: php artisan test\n---\n';
+  const r = resolveWith({ '/p/stacks/laravel.md': plugin, ...repoFile('---\nstack: laravel\nreview:\n  adapter: api\n  test: php artisan test --parallel\n---\n', 'laravel') }, 'laravel');
+  assert.equal(r.ok, true);
+  assert.equal(r.profile.review.test, 'php artisan test --parallel');
+  assert.deepEqual(r.profile.ignored.map((x) => x.key), ['review.adapter']);
+  assert.deepEqual(r.profile.reviewReplaced, ['review.test']);
+});
+
+test('a repository-only stack keeps all four keys', () => {
+  const repo = parseProfile(declaredProfile(NHOST_OK)).profile;
+  const merged = mergeProfiles(null, repo);
+  assert.deepEqual(Object.keys(merged.review).sort(), ['adapter', 'log', 'needs', 'test']);
+  assert.deepEqual(merged.ignored, []);
+});

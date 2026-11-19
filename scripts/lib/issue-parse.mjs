@@ -2,6 +2,7 @@
 // The expected shape is documented in docs/issue-format.md.
 
 import { section } from './issue-sections.mjs';
+import { matchesGlob } from './protected-paths.mjs';
 
 export const ATTACHMENT_HOSTS = ['github.com', 'user-images.githubusercontent.com', 'private-user-images.githubusercontent.com'];
 export const MAX_REFERENCES = 5;
@@ -14,10 +15,11 @@ const THEN_RE = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?THEN(?:\*\*|__)?(?:\s|:)/i;
 const EDGE_RE = /\b(edge[ -]?cases?|casos?\s+(?:borde|l[ií]mite|extremos?))\b/i;
 const DEPENDS_RE = /^\s*(?:[-*+]\s+)?Depend(?:s[- ]on|e(?:\s+de)?):\s*(.+)$/i;
 const ALLOW_RE = /^\s*(?:[-*+]\s+)?Allow-paths:\s*(.+)$/i;
+const PATTERN_RE = /^\s*(?:[-*+]\s+)?Pattern:\s*(.+)$/i;
 const PLATFORM_RE = /^\s*(?:[-*+]\s+)?Platform:\s*(.+)$/i;
 
 /** Remove fenced code blocks so examples inside them are not counted. */
-function withoutCode(body) {
+export function withoutCode(body) {
   const out = [];
   let inFence = false;
   String(body ?? '').split('\n').forEach((line) => {
@@ -211,6 +213,8 @@ export function parseExternalInputs(body) {
  *   dependsOnExternal: { repo, number }[],   // issues of other repositories from "Depends-on: owner/repo#N"
  *   dependsOnInvalid: string[], // tokens of a Depends-on line that look like a repository but are not owner/repo#N
  *   allowPaths: string[],       // paths and globs from "Allow-paths:" lines (dependency files the change may touch)
+ *   pattern: number|null,       // the issue of this repository named by a "Pattern: #N" line (the change to copy), or null
+ *   patternProblems: string[],  // a Pattern line that is not exactly one "#N" of this repository, or a second one
  *   platform: string[],         // every name written on a "Platform:" line, in order (the platform the issue is for)
  *   openQuestions: string[],    // the lines written under an "Open questions" heading (the template's comment and "none" excluded)
  *   needsClarification: boolean,// the literal text NEEDS CLARIFICATION outside code blocks
@@ -276,6 +280,24 @@ export function parseIssueBody(body) {
     m[1].split(',').map((p) => p.trim().replace(/^`+|`+$/g, '').trim()).filter(Boolean).forEach((p) => platform.push(p));
   });
 
+  // `Pattern: #N`: one issue of this repository whose merged change is the template. Anything else is a problem and is not used.
+  let pattern = null;
+  const patternProblems = [];
+  lines.forEach((line) => {
+    const m = line.match(PATTERN_RE);
+    if (!m) return;
+    const value = m[1].trim().replace(/^`+|`+$/g, '').trim();
+    const ref = value.match(/^#(\d+)$/);
+    if (!ref) {
+      patternProblems.push(`"Pattern: ${value.slice(0, 40)}" is not one issue of this repository: write "Pattern: #N"`);
+    } else if (pattern !== null) {
+      patternProblems.push('the issue has more than one Pattern: line: name one');
+    } else {
+      pattern = Number.parseInt(ref[1], 10);
+    }
+  });
+  if (patternProblems.length > 0) pattern = null;
+
   const none = /^(?:none|nothing|n\/a|ninguna?|nada|-)\.?$/i;
   const openQuestions = String(section(body, 'Open questions')?.text ?? '')
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -311,5 +333,65 @@ export function parseIssueBody(body) {
   const design = parseDesign(body);
   const codePointers = parseCodePointers(body);
   const externalInputs = parseExternalInputs(body);
-  return { design, codePointers, externalInputs, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
+  return { design, codePointers, externalInputs, scenarios, edgeCases, dependsOn, dependsOnExternal, dependsOnInvalid, allowPaths, pattern, patternProblems, platform, openQuestions, needsClarification, decisionIds, constraintIds, idProblems, missing };
+}
+
+const GLOB_CHARS_RE = /[*?]/;
+// A backticked token that is a path of this repository: no scheme, no colon, and a slash or a file extension.
+const LOCAL_PATH_RE = /^[A-Za-z0-9_@.*?\-]+(?:\/[A-Za-z0-9_@.*?\- ]+)*$/;
+
+function localPathsOfBullets(text) {
+  const paths = [];
+  let inFence = false;
+  String(text ?? '').split('\n').forEach((line) => {
+    if (FENCE_RE.test(line)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence || !/^\s*[-*+]\s+/.test(line)) return;
+    [...line.matchAll(/`([^`]+)`/g)].forEach((m) => {
+      const token = m[1].trim().replace(/^\.\//, '');
+      if (!LOCAL_PATH_RE.test(token) || !(token.includes('/') || /\.[A-Za-z0-9]+$/.test(token))) return;
+      if (leavesRepository(token)) return;
+      paths.push(token);
+    });
+  });
+  return paths;
+}
+
+/**
+ * The files of this repository that an issue names, for the queue: the local paths of "Code pointers" and "Design
+ * reference", the `file:` inputs of "External inputs" and the entries of `Allow-paths:`. A file of another repository
+ * (`owner/repo:path`) and a link are not named files. Returns a list without repeats, in the order found.
+ */
+export function namedFiles(body) {
+  const found = [
+    ...localPathsOfBullets(section(body, 'Code pointers')?.text),
+    ...parseDesign(body).references.filter((r) => r.kind === 'path').map((r) => r.path.replace(/^\.\//, '')),
+    ...parseExternalInputs(body).inputs.filter((i) => i.kind === 'file').map((i) => i.name.replace(/^\.\//, '')),
+    ...parseIssueBody(body).allowPaths.map((p) => p.replace(/^\.\//, '')),
+  ];
+  return [...new Set(found.filter(Boolean))];
+}
+
+/**
+ * The files that two lists of named files share. Two entries collide when they are equal or when one is a glob that
+ * matches the other; two different globs do not collide. A file that matches a glob of `exclude` (the append-only and
+ * the generated files of relevo.yml) is not compared. Returns the colliding files, the literal one when only one is a glob.
+ */
+export function sharedFiles(a, b, { exclude = [] } = {}) {
+  const kept = (list) => list.filter((f) => !exclude.some((g) => g === f || (!GLOB_CHARS_RE.test(f) && matchesGlob(f, g))));
+  const out = [];
+  kept(a).forEach((x) => {
+    kept(b).forEach((y) => {
+      const xGlob = GLOB_CHARS_RE.test(x);
+      const yGlob = GLOB_CHARS_RE.test(y);
+      let hit = null;
+      if (x === y) hit = x;
+      else if (xGlob && !yGlob && matchesGlob(y, x)) hit = y;
+      else if (yGlob && !xGlob && matchesGlob(x, y)) hit = x;
+      if (hit && !out.includes(hit)) out.push(hit);
+    });
+  });
+  return out;
 }

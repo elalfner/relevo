@@ -4,6 +4,8 @@
 // Everything outside the process is injected, so the checks can be tested without OpenSpec, git or GitHub:
 //   readConfig() -> the text of relevo.yml (throws when it cannot be read)
 //   run(command, args) -> { status, stdout, stderr }
+//   installed(path) -> true when the file is still as the install step of the job left it before the agent started
+//                      (see tree-baseline.mjs); optional, and without it every change counts
 
 import { loadConfig } from './config.mjs';
 
@@ -42,10 +44,19 @@ function checkOpenspecRoot({ run }) {
   return root && typeof root === 'object' ? pass('openspec-root') : fail('openspec-root', 'OpenSpec finds no root for this repository', 'run /relevo:doctor (and openspec init if the project is not set up)');
 }
 
-function checkCleanTree({ run }) {
+/** The path of a line of `git status --porcelain`: the new name of a rename, without the quotes git adds. */
+export function porcelainPath(line) {
+  const rest = line.slice(3);
+  const name = rest.includes(' -> ') ? rest.slice(rest.lastIndexOf(' -> ') + 4) : rest;
+  return name.replace(/^"(.*)"$/, '$1');
+}
+
+function checkCleanTree({ run, installed }) {
   const r = run('git', ['status', '--porcelain']);
   if (r.status !== 0) return fail('clean-tree', 'git could not read the working tree', 'run it inside the repository');
-  const lines = r.stdout.split('\n').filter(Boolean);
+  // A file that the install step of the job rewrote before the agent started (a lockfile, `analysis_options.yaml`) is not
+  // somebody's uncommitted work, so it does not stop the run; a file changed after that still does.
+  const lines = r.stdout.split('\n').filter(Boolean).filter((line) => !(installed && installed(porcelainPath(line))));
   if (lines.length === 0) return pass('clean-tree');
   const shown = lines.slice(0, 5).map((l) => `  ${l}`).join('\n');
   return fail('clean-tree', `the working tree has uncommitted changes:\n${shown}${lines.length > 5 ? `\n  ... and ${lines.length - 5} more` : ''}`, 'commit or stash them first');
@@ -58,10 +69,10 @@ function checkGh({ run }) {
 const IMPLEMENTATION = { config: checkConfig, openspec: checkOpenspec, 'openspec-root': checkOpenspecRoot, 'clean-tree': checkCleanTree, gh: checkGh };
 
 /** Run the named checks, in order. Returns { ok, results: [{ check, ok, message?, fix? }] }. */
-export function runPreflight({ checks = DEFAULT_CHECKS, readConfig, run }) {
+export function runPreflight({ checks = DEFAULT_CHECKS, readConfig, run, installed }) {
   const unknown = checks.filter((c) => !IMPLEMENTATION[c]);
   if (unknown.length > 0) throw new Error(`unknown check "${unknown[0]}": expected one of ${CHECKS.join(', ')}`);
-  const results = checks.map((check) => IMPLEMENTATION[check]({ readConfig, run }));
+  const results = checks.map((check) => IMPLEMENTATION[check]({ readConfig, run, installed }));
   return { ok: results.every((r) => r.ok), results };
 }
 

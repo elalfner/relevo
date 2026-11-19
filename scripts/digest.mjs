@@ -30,13 +30,16 @@ const { config } = loaded;
 
 const now = arg('now') ? new Date(arg('now')) : new Date();
 const day = now.getUTCDay();
-if (day === 0 || day === 6) process.exit(0);
+const weekend = day === 0 || day === 6;
 
 const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
 let data;
 if (arg('input')) {
+  // The file is read (and a restricted one refused) on every day, so the answer does not depend on the calendar.
   data = JSON.parse(readFileSync(arg('input') === '-' ? 0 : arg('input'), 'utf8'));
+  if (weekend) process.exit(0);
 } else {
+  if (weekend) process.exit(0);
   if (!repo) fail('give --repo owner/name (or set GITHUB_REPOSITORY), or --input state.json');
   data = gatherStatus({ gh: realGh, ghLinks: realGhLinks(), repo, config, withUsage: true, withStages: true, now });
 }

@@ -56,7 +56,7 @@ Discarded: <the alternative> (<why not>)
 
 ## Assumptions
 
-<!-- Optional. What the person approved without being sure. -->
+<!-- Optional. What the person approved without being sure. An assumption about a name that exists outside the repository (a permission, endpoint or field), written in backticks, is warned about when no file of the repository holds it: confirm it, or list it under External inputs as manual, or ask it under Open questions. -->
 
 - <an assumption>
 

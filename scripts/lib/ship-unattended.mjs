@@ -19,10 +19,16 @@ import { baselineChecks, loadPr, requiredChecks } from './ship-github.mjs';
 const ARCHIVE_SUBJECT = 'chore(openspec): archive ';
 const CONFLICT_REASON = /has conflicts/;
 
+const short = (sha) => String(sha ?? '').slice(0, 7);
+// What the comment of a merge records: which commit's checks were relied on, and the checks of the merged commit when it was merged.
 const NOTES = {
+  own: {
+    en: (merged) => `The checks of the merged commit ${merged} were the ones relied on: all had finished and passed when it was merged.`,
+    es: (merged) => `Se confió en los checks del commit fusionado ${merged}: todos habían terminado y pasaban al fusionarlo.`,
+  },
   baseline: {
-    en: (sha) => `The archive commit changes only openspec/ and had no checks of its own, so the checks of the approved head ${sha} were used.`,
-    es: (sha) => `El commit del archivo solo cambia openspec/ y no tuvo checks propios, así que se usaron los checks del head aprobado ${sha}.`,
+    en: (sha, merged) => `The checks of the approved head ${sha} were relied on: the merged commit ${merged} changes only openspec/ and had no checks of its own when it was merged, so none was running or failing on it.`,
+    es: (sha, merged) => `Se confió en los checks del head aprobado ${sha}: el commit fusionado ${merged} solo cambia openspec/ y no tenía checks propios al fusionarlo, así que ninguno estaba en curso ni fallaba.`,
   },
   none: {
     en: () => 'No check ran on this code: only the review vouched for it (review.ship_without_ci is true).',
@@ -79,6 +85,9 @@ export async function runUnattendedShip(ctx) {
   const settleMs = ctx.settleMs ?? 3 * 60 * 1000;
   const pollMs = ctx.pollMs ?? 20 * 1000;
   const headPollMs = ctx.headPollMs ?? 10 * 1000;
+  // GitHub computes mergeability lazily and answers UNKNOWN right after a push: wait for it, about 90 seconds at most.
+  const mergeableTries = ctx.mergeableTries ?? 9;
+  const mergeablePollMs = ctx.mergeablePollMs ?? 10 * 1000;
   const n = String(issue);
 
   const run = (cmd, args, opts = {}) => sh(cmd, args, { cwd: workDir, ...opts });
@@ -161,6 +170,16 @@ export async function runUnattendedShip(ctx) {
         pr = loadPr(gh, repo, branch);
       }
       if (pr && pr.headRefOid !== local) stopReasons('the branch moved while shipping: apply the label again');
+      // The label stays while it waits: only a stop removes it. A conflict is settled, so it is not waited for.
+      const unsettled = (p) => p && p.state === 'OPEN' && p.mergeable !== 'MERGEABLE' && p.mergeable !== 'CONFLICTING';
+      for (let tries = 0; unsettled(pr) && tries < mergeableTries; tries += 1) {
+        await sleep(mergeablePollMs);
+        pr = loadPr(gh, repo, branch);
+        if (pr && pr.headRefOid !== local) stopReasons('the branch moved while shipping: apply the label again');
+      }
+      if (unsettled(pr)) {
+        stopReasons(`GitHub did not finish checking whether the pull request can be merged after ${mergeableTries} tries over about ${Math.round((mergeableTries * mergeablePollMs) / 1000)} seconds: the state never settled. Apply the label again to retry`);
+      }
       return { pr, decision: decide(pr, withBaseline) };
     };
 
@@ -250,7 +269,9 @@ export async function runUnattendedShip(ctx) {
       // The short head is close enough for the report.
     }
     const lang = language === 'es' ? 'es' : 'en';
-    const note = decision.summary.checksFrom === 'baseline' ? NOTES.baseline[lang](String(baseline).slice(0, 7)) : decision.summary.checks === 'none' ? NOTES.none[lang]() : '';
+    const note = decision.summary.checksFrom === 'baseline'
+      ? NOTES.baseline[lang](short(decision.summary.checksOid ?? baseline), short(merged))
+      : decision.summary.checks === 'none' ? NOTES.none[lang]() : NOTES.own[lang](short(merged));
     gh(['issue', 'comment', n, '--repo', repo, '--body', renderMessage('ship_done', { issue: n, pr: `#${pr.number}`, base, commit, actor, checks_note: note }, language)]);
 
     // A close made with the workflow token starts no workflow: tell the queue, so dependent issues are unblocked now.

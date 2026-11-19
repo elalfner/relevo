@@ -50,11 +50,15 @@ A repository SHALL be able to use a Console API key (secret `ANTHROPIC_API_KEY`)
 - **THEN** `doctor` warns and says which one the workflow uses
 
 ### Requirement: A usage limit is reported as a usage limit
-When a cloud run ends because the usage limit, the quota or the credit was reached, the final step SHALL say so and say to apply `ready` again later, instead of the generic "ended without a result".
+When a cloud run ends because the usage limit, the quota or the credit was reached, the final step SHALL say so and say when the issue will retry (see the capability `usage-limit-retry`), instead of the generic "ended without a result" and instead of telling a person to apply `ready` again later. When the retry is not possible (the retries are used up or the work could not be kept) it SHALL say so and ask a person.
 
 #### Scenario: Limit reached
 - **WHEN** the execution log of the failed run shows that a usage limit was reached: its final result is an error whose text says so, or a rate-limit event has a status other than `allowed`
-- **THEN** the issue is marked `qa-failed` as for any failure and the comment says the usage limit was reached and to label the issue `ready` again later
+- **THEN** the issue returns to the queue with a retry time, is not marked `qa-failed`, and the comment says the usage limit was reached and when it will retry
+
+#### Scenario: Retries used up
+- **WHEN** the run of the third retry ends at a usage limit
+- **THEN** the issue is marked `qa-failed` and the comment says the usage limit was reached again and asks a person
 
 #### Scenario: Another failure
 - **WHEN** the run failed for any other reason, including a log whose rate-limit events all report `allowed`
@@ -218,3 +222,135 @@ The secret that exists decides the mode, and the active credential line of the `
 #### Scenario: Agreement
 - **WHEN** the line and the secret are for the same mode
 - **THEN** the mode is reported as before and nothing is added
+
+### Requirement: The consumption of a run is shown by agent and by model
+When the execution log has them, the comment about a cloud run SHALL list for the main agent and each subagent its model, effort, turns, minutes, tokens and an estimated cost, and SHALL give the real cost of each model. The cost of an agent SHALL be written as an estimate. The launches of replicas SHALL NOT be in that list: they are shown apart (see "The usage comment shows the replicas apart from the rest"). The hidden marker of the comment SHALL carry the same figures under `agents` and `models`. A figure the log does not have SHALL be left out, and a log with none of these figures SHALL give the comment it gives today.
+
+#### Scenario: A run with subagents
+- **WHEN** the log shows a developer and four QA lenses, each with its model and tool calls
+- **THEN** the comment lists each of them with model, effort, turns, minutes, tokens and "about" its cost, and the real cost of each model
+
+#### Scenario: The costs add up
+- **WHEN** the estimated costs of the agents of a model are added
+- **THEN** they equal the real cost of that model in the log
+
+#### Scenario: A log without the details
+- **WHEN** the log has only the totals of the run
+- **THEN** the comment and the marker are the same as before this requirement
+
+#### Scenario: The marker is read by the digest
+- **WHEN** the daily digest reads a marker that carries `agents` and `models`
+- **THEN** it reads the totals as before and ignores the new keys
+
+### Requirement: A run that stopped at a limit says so
+The comment about a run that stopped at a limit SHALL name the limit that was reached (turns of the subagents, minutes or cost) and the agents that did not run.
+
+#### Scenario: A time limit
+- **WHEN** a run stops because `limits.run_max_minutes` passed
+- **THEN** the comment says the minutes limit was reached, how many minutes the run had used and which agents did not run
+
+#### Scenario: A limit of the runner
+- **WHEN** the runner cuts the agent at its turn limit or its cost limit and the log says which
+- **THEN** the comment says which of the two it was
+
+#### Scenario: The log does not say
+- **WHEN** the job was cancelled or timed out, or the log has no such result
+- **THEN** the comment keeps its general wording
+
+### Requirement: The comment says which model each role used and why
+The comment about a cloud run SHALL say, for each role of the model plan, the model and the effort that were used, the source (`config`, `auto` or `issue`) and the reason, in addition to the consumption by agent. The hidden marker SHALL carry the same under `plan`. A log without a plan SHALL give the comment it gives today, and the daily digest SHALL read the totals as before and ignore the new key.
+
+#### Scenario: A run with a plan
+- **WHEN** a run launched the developer on `haiku` because the issue was small and the lenses on their defaults
+- **THEN** the comment says that, with the reason, and the marker has the `plan` key
+
+#### Scenario: A run without a plan
+- **WHEN** a run made before this requirement has no plan
+- **THEN** the comment and the marker are the same as before
+
+#### Scenario: The digest
+- **WHEN** the daily digest reads a marker with `plan`
+- **THEN** it reads the totals as before and ignores the key
+
+### Requirement: The comment says when the developer went up
+When the developer ran a retry on a model higher than the one of the attempt before, the usage comment SHALL say, for each step, the models, the attempt and whether the gate was red or QA rejected, and the usage marker SHALL carry the same steps under `escalated`. A run with no step SHALL give the comment and the marker it gave before.
+
+#### Scenario: A retry went up
+- **WHEN** the developer ran on `haiku` and the retry on `sonnet` after a QA rejection
+- **THEN** the comment says "The developer went up on a retry: haiku to sonnet on attempt 2 (QA rejected)" and the marker carries `escalated`
+
+#### Scenario: No retry went up
+- **WHEN** no retry ran or none changed the model
+- **THEN** the comment and the marker have no mention of it
+
+### Requirement: The run comment shows the seconds of each check
+When the receipt of the validation gate exists in the working folder, the usage comment SHALL list each check with its seconds, marking those that were reused, and the hidden marker SHALL carry the same figures. When there is no readable receipt, nothing is added.
+
+#### Scenario: A run ends
+- **WHEN** a run ends and the gate wrote a receipt
+- **THEN** the comment shows the seconds per check, with "reused" where the gate did not run it
+
+#### Scenario: No receipt
+- **WHEN** the run ended before the gate
+- **THEN** the comment is as it was
+
+### Requirement: The usage comment shows the quota window and its utilisation
+When the execution log carries rate-limit events with a window and a utilisation, the usage comment SHALL say, for each window, the utilisation at the start and at the end of the run, and the reset time when the log has it; the hidden marker SHALL carry the same under `quota`. When the log has none (an API-key repository has no weekly window), no quota phrase and no `quota` key SHALL be written, and nothing SHALL be estimated.
+
+#### Scenario: Subscription run
+- **WHEN** the log has rate-limit events for the 5-hour and the weekly window
+- **THEN** the comment says each window went from its first utilisation to its last
+
+#### Scenario: API-key repository
+- **WHEN** the log has no rate-limit events with a window
+- **THEN** the comment is as it was, with no quota line
+
+#### Scenario: A malformed figure
+- **WHEN** an event has a utilisation that is not a number between 0 and 1
+- **THEN** that figure is left out and the others are shown
+
+### Requirement: The usage comment shows the replicas apart from the rest
+When a log has launches of replicas, the usage comment SHALL list each target apart from the other agents, with its model, its attempts (launches), its turns and an estimated cost, and SHALL say what the replicas cost together and what the rest of the run cost, when the figures are there. The hidden marker SHALL carry the same under `replicas`. When no replica ran, no replica phrase and no `replicas` key SHALL be written, and the comment SHALL be the one it was.
+
+#### Scenario: Replicas ran
+- **WHEN** a run has two replica targets, one of them launched twice
+- **THEN** the comment lists both targets with model, attempts, turns and cost, apart from the other agents, with the cost of the replicas and of the rest
+
+#### Scenario: No replica ran
+- **WHEN** the log has no replica launch
+- **THEN** the comment and the marker have no replica phrase or key
+
+#### Scenario: The cost of a replica is not in the log
+- **WHEN** a replica's cost cannot be estimated
+- **THEN** the target is listed without a cost and no total is claimed
+
+#### Scenario: The marker is read by the digest
+- **WHEN** the daily digest reads a marker with `replicas`
+- **THEN** it reads the totals as before and ignores the key
+
+### Requirement: The usage comment says why each replica ran on its model
+When the usage comment lists the replicas of a run, it SHALL say after each target why its replica ran on that model: the reason the model was chosen with, from the last launch of that target, quoted as written, with the words around it from the message catalog in English and Spanish. The hidden marker SHALL carry the same reason in each replica's entry. A target with no recorded reason SHALL be listed as before.
+
+#### Scenario: The developer is not on auto
+- **WHEN** a replicated build runs with a developer whose model is written in `relevo.yml`
+- **THEN** each replica is listed with its model and the reason that the repository decided the model
+
+#### Scenario: The replicas ran on a cheaper model
+- **WHEN** the developer is on `auto` and a replica ran one name below the planned model
+- **THEN** the replica is listed with its model and the reason that it is one name below the planned model, not below the floor
+
+#### Scenario: A target launched again on a stronger model
+- **WHEN** a target failed twice and its last launch used the planned model
+- **THEN** the reason shown for that target is the one of the last launch
+
+#### Scenario: No reason was kept
+- **WHEN** the reasons were not recorded for the run (an older `go` skill, or no progress folder)
+- **THEN** the replicas are listed as before, with no reason, and the marker has no `why`
+
+#### Scenario: Spanish repository
+- **WHEN** `language` is `es`
+- **THEN** the words around the reason are in Spanish and the reason is quoted as written
+
+#### Scenario: The marker is read by the digest
+- **WHEN** the daily digest reads a marker whose replicas carry `why`
+- **THEN** it reads the totals as before and ignores the key

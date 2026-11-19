@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { adapterFor, autopilotNotice, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
+import { adapterFor, autopilotNotice, hasShippedAdapter, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
 
 const CLI = new URL('../scripts/review-adapter.mjs', import.meta.url).pathname;
 
@@ -109,4 +109,39 @@ test('Scenario: Web with autopilot off - the advice recommends verify, names pre
   assert.match(out.advice, /precheck es la opción prudente/);
   writeFileSync(config, 'language: es\nreview:\n  autopilot: verify\nlimits:\n  run_max_cost: 5\nplatforms:\n  site:\n    stack: vue\n    targets: [web]\n');
   assert.equal(JSON.parse(spawnSync('node', [CLI, '--config', config, '--platform', 'site'], { encoding: 'utf8' }).stdout).advice, null);
+});
+
+test('every stack the plugin ships a profile for has an entry in the table of adapters', () => {
+  const stacks = readdirSync(new URL('../stacks', import.meta.url)).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
+  assert.ok(stacks.length >= 4);
+  stacks.forEach((stack) => assert.equal(hasShippedAdapter(stack), true, `${stack} has a profile in the plugin but no adapter`));
+  assert.equal(hasShippedAdapter('nhost'), false);
+});
+
+// ---- a declared adapter (declared-review-adapter)
+
+const DECLARED = { adapter: 'api', needs: ['nhost', 'docker'], log: 'compose:postgres,auth', test: 'npm run --silent test:integration' };
+
+test('Scenario: Declared adapter - a stack with no table entry and no target is api, marked declared, with the log, test and needs', () => {
+  const a = adapterFor({ stack: 'nhost', target: null, review: DECLARED });
+  assert.deepEqual([a.supported, a.kind, a.declared, a.log, a.test, a.driver, a.capture, a.needs, a.reason], [true, 'api', true, 'compose:postgres,auth', 'npm run --silent test:integration', 'npm run --silent test:integration', null, ['nhost', 'docker'], null]);
+  assert.equal(needsAutopilot(a), false);
+});
+
+test('the five shipped combinations are unchanged and ignore a review argument', () => {
+  [['flutter', 'android'], ['flutter', 'web'], ['vue', 'web'], ['laravel', null], ['supabase', null]].forEach(([stack, target]) => {
+    const plain = adapterFor({ stack, target });
+    assert.deepEqual(adapterFor({ stack, target, review: DECLARED }), plain, `${stack}/${target}`);
+    assert.equal(plain.declared, undefined);
+  });
+});
+
+test('a stack with a target stays unsupported, and so does one that declares nothing', () => {
+  assert.equal(adapterFor({ stack: 'nhost', target: 'web', review: DECLARED }).supported, false);
+  assert.equal(adapterFor({ stack: 'nhost', target: null, review: { log: 'x', test: 'y' } }).supported, false);
+  assert.equal(adapterFor({ stack: 'nhost', target: null }).supported, false);
+});
+
+test('Scenario: No adapter - the message says that a stack of the repository with no targets can declare an api adapter', () => {
+  assert.match(adapterFor({ stack: 'django', target: null }).reason, /stack of the repository with no targets can declare an api adapter/);
 });

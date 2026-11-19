@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Tells whether an issue's description may be rewritten. Usage:
 //   gh issue view 42 --json number,title,body,state,labels | node scripts/can-edit-issue.mjs [--input issue.json] [--config relevo.yml]
-// Prints `editable`, or `refused: <label> - <reason>` (the label is left out when the issue is closed).
-// exit 0: editable   exit 1: refused   exit 2: bad arguments
+// Prints `editable`, `withdrawable: <label> - <reason>` (the issue is `ready` with no `go` label: the approval may be withdrawn to
+// edit it), or `refused: <label> - <reason>` (the label is left out when the issue is closed).
+// exit 0: editable   exit 1: refused   exit 2: bad arguments   exit 3: withdrawable
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -41,6 +42,10 @@ const r = canEditIssue(issue, overrides);
 if (r.editable) {
   console.log('editable');
   process.exit(0);
+}
+if (r.withdrawable) {
+  console.log(`withdrawable: ${r.label} - ${r.reason}`);
+  process.exit(3);
 }
 console.log(`refused: ${r.label ? `${r.label} - ` : ''}${r.reason}`);
 process.exit(1);

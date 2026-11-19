@@ -11,9 +11,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { mergeRepositoryRules } from './interface-knowledge.mjs';
-import { QA_LENSES, loadConfig } from './config.mjs';
+import { QA_LENSES, effectiveRunners, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
-import { labelDefinitions } from './labels.mjs';
+import { labelDefinitions, resolveLabelNames } from './labels.mjs';
 import { githubAccess } from './gh-web.mjs';
 import { activeCredentialLine, credentialMode, cloudBuilds, CLOUD_VARIABLE } from './execution-mode.mjs';
 import { platformFolders } from './protected-paths.mjs';
@@ -22,6 +22,7 @@ import { restrictedBlockState } from './agent-workflow.mjs';
 import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
+import { onPath } from './on-path.mjs';
 import { testDatabase } from './api-preflight.mjs';
 import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
@@ -69,6 +70,7 @@ export const OPENSPEC_INSTALL ='npm install --global @fission-ai/openspec (needs
 export const WORKFLOW_FILES = ['relevo-go.yml', 'relevo-queue.yml', 'relevo-review.yml', 'relevo-sla.yml', 'relevo-digest.yml', 'relevo-ship.yml'];
 // The repository variable that pauses the ship workflow, and the secrets of the GitHub App it pushes with.
 export const SHIP_VARIABLE = 'RELEVO_CLOUD_SHIP';
+const PACKAGE_NAME = '@elalfner/relevo';
 export const SHIP_APP_SECRETS = ['RELEVO_SHIP_APP_ID', 'RELEVO_SHIP_APP_KEY'];
 const REQUIRED_WORKFLOWS = new Set(['relevo-go.yml']);
 // How to ask a tool that it is there (most answer --version), and how to install the ones Relevo knows.
@@ -280,6 +282,8 @@ export function gatherFacts(p) {
   // cannot run its commands, and the version is what the workflows should pin.
   const installedRoot = p.pluginRoot ?? PLUGIN_ROOT;
   f.pluginFolders = ['scripts', 'skills', 'agents', 'stacks', 'templates'].filter((d) => tryRun(() => readdirSync(resolve(installedRoot, d)).length > 0, false) !== true);
+  // The changelog that came with the installed plugin says what each version fixed.
+  f.changelog = tryRun(() => readFileSync(resolve(installedRoot, 'CHANGELOG.md'), 'utf8'), null);
   f.pluginVersion = tryRun(() => JSON.parse(readFileSync(resolve(installedRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null, null);
   // The installations Claude Code knows of: the user scope, and the project or local scope of this repository. null when
   // `claude` cannot list them. Only the command is read, never Claude Code's own files.
@@ -340,6 +344,9 @@ export function gatherFacts(p) {
   });
   let names = tryRun(() => p.listDir('.github/workflows'), []);
   f.workflowSource = 'working copy';
+  // The workflows that are not Relevo's (the checks of the project): only their text, for the advice about shared runners.
+  const projectWorkflows = (list, read) => Object.fromEntries(list.filter((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-')).map((n) => [n, { text: tryRun(() => read(n), '') }]));
+  f.otherWorkflows = projectWorkflows(names, (n) => p.read(`.github/workflows/${n}`) ?? '');
 
   if (f.repo && f.ghAuth) {
     const api = (path, paginate = false) => JSON.parse(p.gh(paginate ? ['api', '--paginate', '--slurp', path] : ['api', path]));
@@ -352,6 +359,19 @@ export function gatherFacts(p) {
     const sa = repoInfo.security_and_analysis;
     f.secretScanning = sa ? { scanning: sa.secret_scanning?.status === 'enabled', pushProtection: sa.secret_scanning_push_protection?.status === 'enabled' } : null;
     f.labels = tryRun(() => flat(api(`repos/${f.repo}/labels?per_page=100`, true)).map((l) => l.name));
+    // The open issues that carry the mark of a local build without `building`: the mark then says nothing.
+    {
+      const labelNames = resolveLabelNames(f.config?.labels ?? {});
+      if (f.labels?.includes(labelNames.local)) {
+        f.strayLocal = tryRun(() => flat(api(`repos/${f.repo}/issues?state=open&labels=${encodeURIComponent(labelNames.local)}&per_page=100`, true))
+          .filter((i) => !i.pull_request && !(i.labels ?? []).some((l) => (typeof l === 'string' ? l : l.name) === labelNames.building))
+          .map((i) => i.number), []);
+      }
+    }
+    // `init` names the issues that still carry the former label of a failed build when the new one exists too.
+    if (f.labels?.includes('relevo:qa-failed') && f.labels.includes('relevo:build-failed')) {
+      f.formerLabelIssues = tryRun(() => flat(api(`repos/${f.repo}/issues?state=all&labels=${encodeURIComponent('relevo:qa-failed')}&per_page=100`, true)).map((i) => i.number), []);
+    }
     f.branches = {
       base: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(base)}`); return true; }, false),
       release: tryRun(() => { api(`repos/${f.repo}/branches/${encodeURIComponent(release)}`); return true; }, false),
@@ -398,6 +418,7 @@ export function gatherFacts(p) {
     }
     if (remoteNames !== null) {
       names = remoteNames;
+      f.otherWorkflows = projectWorkflows(remoteNames, (n) => Buffer.from(api(`repos/${f.repo}/contents/.github/workflows/${n}?ref=${ref}`).content, 'base64').toString('utf8'));
       texts = {};
       WORKFLOW_FILES.forEach((file) => {
         const remote = remoteNames.includes(file);
@@ -408,6 +429,22 @@ export function gatherFacts(p) {
       f.workflowSource = `default branch (${f.defaultBranch})`;
     }
     derivePluginFacts();
+    // The repository variables a `runs-on` reads: its value wins over runner.labels. A missing variable is "not set";
+    // any other failure is "could not be read", which is never taken for a match.
+    f.runnerVariables = {};
+    runnerVariableNames(f.workflows).forEach((name) => {
+      try {
+        f.runnerVariables[name] = { value: api(`repos/${f.repo}/actions/variables/${encodeURIComponent(name)}`).value ?? null };
+      } catch (err) {
+        f.runnerVariables[name] = /404|Not Found/i.test(String(err.stderr ?? err.message ?? err)) ? { value: null } : { unreadable: true };
+      }
+    });
+    // The version the registry publishes: asked only when a workflow pins one, with a short timeout; null offline, for a
+    // private package or on any error.
+    f.publishedVersion = Object.values(f.pluginPins ?? {}).some(Boolean) ? tryRun(() => {
+      const v = String(p.tool('npm', ['view', PACKAGE_NAME, 'version', '--fetch-timeout=8000', '--fetch-retries=0'])).trim();
+      return /^\d+\.\d+\.\d+$/.test(v) ? v : null;
+    }, null) : null;
     const plugin = f.pluginMarketplace && /^https:\/\/(?:.*@)?github\.com\/([^/@\s]+\/[^/@\s]+?)(?:\.git)?$/.exec(f.pluginMarketplace);
     const slug = plugin ? plugin[1] : f.pluginCheckouts[0]?.repo;
     f.pluginRepoPrivate = slug ? tryRun(() => api(`repos/${slug}`).private, null) : null;
@@ -441,6 +478,18 @@ export function gatherFacts(p) {
     f.pluginStamps = {};
     WORKFLOW_FILES.forEach((file) => {
       if (typeof texts[file] === 'string') f.pluginStamps[file] = (/^# relevo-template: (\d+\.\d+\.\d+)\s*$/m.exec(texts[file]) ?? [])[1] ?? null;
+    });
+    // The actions the workflows use, active lines only: [{ file, action, ref, version, line }]. `version` is the tag, or the `# vX.Y.Z`
+    // that follows a commit SHA (null when it says none, and then the pin cannot be judged).
+    f.actionPins = [];
+    WORKFLOW_FILES.forEach((file) => {
+      if (typeof texts[file] !== 'string') return;
+      texts[file].split('\n').forEach((text, i) => {
+        const m = /^\s*(?:- )?uses:\s*([\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@([^\s#]+)(?:\s+#\s*(v?\d+(?:\.\d+){0,2}))?/.exec(text);
+        if (!m) return;
+        const version = /^v?\d+(\.\d+){0,2}$/.test(m[2]) ? m[2] : m[3] ?? null;
+        f.actionPins.push({ file, action: m[1], ref: m[2], version, line: i + 1 });
+      });
     });
     f.hasCi = names.some((n) => /\.ya?ml$/.test(n) && !n.startsWith('relevo-'));
   }
@@ -615,8 +664,23 @@ function gatherPlatforms(f, p, tryRun) {
         };
       }
       // An api review (Laravel) runs the project's tests: whether its dependencies are installed and which database the tests use.
-      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform) });
-      if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
+      const adapter = adapterFor({ stack: platform.stack, target: targetOf(platform), review: resolved.profile.review });
+      if (adapter.declared) {
+        // A declared adapter (the repository's own stack): the tools of review.needs are looked for on the PATH, never run, and the
+        // Docker daemon is asked when docker is listed. Nothing is started, and the log and the test command are not run.
+        const found = (tool) => (p.onPath ? tryRun(() => Boolean(p.onPath(tool)), false) : available(tool));
+        entry.declared = {
+          needs: adapter.needs.map((tool) => {
+            if (tool === 'docker') {
+              const cliOk = found('docker');
+              const daemonOk = cliOk ? tryRun(() => Boolean(p.tool('docker', ['info'])), false) : false;
+              return { tool, ok: daemonOk, cliOk };
+            }
+            return { tool, ok: found(tool) };
+          }),
+          filter: String(adapter.test ?? '').includes('{filter}'),
+        };
+      } else if (adapter.supported && adapter.kind === 'api' && platform.stack === 'supabase') {
         // A Supabase review runs pgTAP against the local containers: the config, whether the stack runs, and its log container.
         const at = (file) => (platform.path === '.' || platform.path === '' ? file : `${platform.path}/${file}`);
         const hasConfig = p.exists(at('supabase/config.toml'));
@@ -706,7 +770,7 @@ function gatherPlatforms(f, p, tryRun) {
     f.autopilot = {
       mode,
       platforms: Object.entries(f.config.platforms).map(([name, platform]) => {
-        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets };
+        const entry = { name, stack: platform.stack, path: platform.path, targets: platform.targets, review: f.platformFacts.find((x) => x.name === name)?.profile?.review };
         if (platform.stack === 'flutter') {
           entry.driverEntry = p.exists(join(platform.path, 'lib/main_driver.dart'));
           const pubspec = p.exists(join(platform.path, 'pubspec.yaml')) ? tryRun(() => p.read(join(platform.path, 'pubspec.yaml')), '') : '';
@@ -803,11 +867,18 @@ function executionChecks(f) {
     }
   }
 
-  const variable = f.cloudVariable ?? null;
-  if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
-  else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
-  else r.push(pass('execution.cloud', 'the go workflow is not installed: ready issues are built on machines with /relevo:go'));
+  r.push(goLabelCheck(f, installed, mode !== 'none'));
   return r;
+}
+
+/** What the `go` label does in the repository: starts a cloud build, waits for the cloud to resume, only comments, or nothing. */
+function goLabelCheck(f, installed, hasCredential) {
+  const variable = f.cloudVariable ?? null;
+  if (!installed) return pass('execution.cloud', 'the go workflow is not installed: the go label has no effect, and approved issues are built with /relevo:go <n>');
+  if (String(variable ?? '').trim().toLowerCase() === 'off') return pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): builds run locally with /relevo:go <n>, and a go label waits on the issue until the cloud resumes`);
+  if (!hasCredential) return pass('execution.cloud', 'no model credential: a go label only produces the comment of a local run, and approved issues are built with /relevo:go <n>');
+  if (cloudBuilds({ workflowPresent: installed, variable })) return pass('execution.cloud', `a go label on a ready issue starts a cloud build (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`);
+  return pass('execution.cloud', 'approved issues are built with /relevo:go <n>');
 }
 
 /** Where `go` builds when the agent is Antigravity: the key by name, and what stands in for the limits it lacks. */
@@ -816,10 +887,7 @@ function antigravityExecutionChecks(f) {
   const installed = Boolean(f.workflows?.['relevo-go.yml']?.present);
   if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('execution.credential', 'the cloud builds with a Gemini key: Antigravity has no cost limit, so limits.run_max_tokens (enforced by the run guard) and the quota of the Google Cloud project that owns the key are the ceiling; use a key made only for Relevo'));
   else r.push(pass('execution.credential', installed ? 'no GEMINI_API_KEY secret: the cloud cannot build (see the warning about the secret)' : 'no GEMINI_API_KEY and no go workflow: go builds on machines only'));
-  const variable = f.cloudVariable ?? null;
-  if (String(variable ?? '').trim().toLowerCase() === 'off') r.push(pass('execution.cloud', `the cloud is paused (${CLOUD_VARIABLE} is off): ready issues are built on machines with /relevo:go`));
-  else if (cloudBuilds({ workflowPresent: installed, variable })) r.push(pass('execution.cloud', `the cloud builds ready issues (set the repository variable ${CLOUD_VARIABLE} to off to pause it)`));
-  else r.push(pass('execution.cloud', 'the go workflow is not installed: ready issues are built on machines with /relevo:go'));
+  r.push(goLabelCheck(f, installed, f.secrets.includes('GEMINI_API_KEY')));
   return r;
 }
 
@@ -833,13 +901,16 @@ function linkChecks(f) {
   const r = [];
   links.forEach((l) => {
     if (l.reachable) r.push(pass(`links.${l.repo}`, `${l.repo} can be read (${l.private ? 'private' : 'public'})`));
-    else r.push(fail(`links.${l.repo}`, `${l.repo} in links cannot be read with your sign-in`, 'check the name in links, and that you have access to the repository'));
+    else r.push(fail(`links.${l.repo}`, `${l.repo} in links cannot be read with your sign-in, so the automation may not read it either (a file in it would answer 404)`, `check the name in links; if it is private, make sure the token stored as the secret RELEVO_LINKS_TOKEN has read access to issues, pull requests and contents on ${l.repo}, or copy the file the issue points to into this repository`));
   });
   const anyPrivate = links.some((l) => l.private === true);
   if (!Array.isArray(f.secrets)) {
     r.push(warn('links.secret', 'could not list the repository secrets, so RELEVO_LINKS_TOKEN was not checked', 'check that you may read them, or look in Settings > Secrets'));
   } else if (f.secrets.includes('RELEVO_LINKS_TOKEN')) {
     r.push(pass('links.secret', 'the RELEVO_LINKS_TOKEN secret exists for reading linked repositories'));
+    // The value of the secret is never read, so which repositories its token covers cannot be known from here.
+    const privates = links.filter((l) => l.private === true && l.reachable).map((l) => l.repo);
+    if (privates.length > 0) r.push(note('links.token-scope', `${privates.join(', ')} ${privates.length === 1 ? 'is' : 'are'} private: doctor never reads the value of RELEVO_LINKS_TOKEN, so it cannot tell whether that token has read access to issues, pull requests and contents there; if a build answers 404 for a file in it, grant the token access to the repository or copy the file into this one`));
   } else if (anyPrivate) {
     r.push(fail('links.secret', `${links.filter((l) => l.private).map((l) => l.repo).join(', ')} is private and there is no RELEVO_LINKS_TOKEN secret, so a dependency on it can never be read`, 'create a fine-grained token with read access to issues, pull requests and contents of that repository and store it as the secret RELEVO_LINKS_TOKEN (Relevo only reads with it)'));
   } else {
@@ -873,7 +944,8 @@ function platformChecks(f) {
       if (missing.length > 0) r.push(warn(`platform.${e.name}.commands`, `platform ${e.name}: the profile of ${e.stack} defines no ${missing.join(' and no ')}, so QA has no command to run for it`, `write ${missing.join(' and ')} in .relevo/stacks/${e.stack}.md, or set platforms.${e.name}.checks in relevo.yml`));
     }
     (e.profile.ignored ?? []).forEach((x) => {
-      r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
+      const reviewAdapterKey = x.key === 'review.adapter' || x.key === 'review.needs';
+      r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, reviewAdapterKey ? `remove ${x.key} from .relevo/stacks/${e.stack}.md: only a stack the plugin has no review adapter for can declare one` : `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
     // What an api review needs, and what the review block of the profile says.
     if (e.api) {
@@ -892,6 +964,14 @@ function platformChecks(f) {
       if (sb.config && sb.running === false) r.push(note(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is not running; the review asks before it runs \`supabase start\``));
       else if (sb.running) r.push(pass(`review.supabase.${e.name}.stack`, `platform ${e.name}: the local Supabase stack is running`));
       if (sb.logContainerFound === false) r.push(warn(`review.log.${e.name}`, `platform ${e.name}: review.log names the container ${sb.logContainer}, which does not exist while the local stack is running, so the audit would read no log`, 'check review.log in the profile; the database container is supabase_db_<project_id>'));
+    }
+    if (e.declared) {
+      e.declared.needs.forEach(({ tool, ok, cliOk }) => {
+        const id = `review.needs.${e.name}.${tool}`;
+        if (tool === 'docker' && !ok && cliOk) r.push(warn(id, `platform ${e.name}: review.needs lists docker and the engine is stopped, so the review cannot run its tests`, 'start Docker Desktop or OrbStack'));
+        else if (!ok) r.push(warn(id, `platform ${e.name}: review.needs lists ${tool}, which is not installed, so the review cannot run its tests`, TOOL_INSTALL[tool] ?? `install ${tool}`));
+      });
+      if (e.declared.needs.every((n) => n.ok)) r.push(pass(`review.declared.${e.name}`, `platform ${e.name}: the review is declared by .relevo/stacks/${e.stack}.md (adapter api)${e.declared.needs.length > 0 ? `, and ${e.declared.needs.map((n) => n.tool).join(', ')} ${e.declared.needs.length === 1 ? 'is' : 'are'} available` : ''}`));
     }
     (e.profile.reviewReplaced ?? []).forEach((key) => {
       r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));
@@ -983,8 +1063,13 @@ function platformChecks(f) {
     } else if (e.stack === 'vue') {
       if (!e.playwright) r.push(warn(`autopilot.${e.name}.playwright`, `review.autopilot is ${f.autopilot.mode} but Playwright cannot be resolved from this project (platform ${e.name})`, `run /relevo:init, which offers it, or \`${e.path && e.path !== '.' ? `cd ${e.path} && ` : ''}npm install -D playwright && npx playwright install chromium\` and commit package.json and the lock file`));
       else r.push(pass(`autopilot.${e.name}.playwright`, `Playwright is available for platform ${e.name}`));
-    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }) }).kind === 'api') {
-      r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
+    } else if (adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }), review: e.review }).kind === 'api') {
+      const adapter = adapterFor({ stack: e.stack, target: targetOf({ stack: e.stack, targets: e.targets ?? [] }), review: e.review });
+      if (adapter.declared && !String(adapter.test ?? '').includes('{filter}')) {
+        r.push(note(`autopilot.${e.name}.filter`, `platform ${e.name}: review.test has no {filter}, so with autopilot ${f.autopilot.mode} the agent marks no line by itself: it runs the whole suite once at the end and you confirm every line`));
+      } else {
+        r.push(pass(`autopilot.${e.name}.adapter`, `platform ${e.name}: the agent proves a line by running the test that covers it (autopilot ${f.autopilot.mode})`));
+      }
     } else {
       r.push(warn(`autopilot.${e.name}.adapter`, `review.autopilot is ${f.autopilot.mode}, but a driven review of the stack ${e.stack} (platform ${e.name}) is not available`, 'set review.autopilot to off, or review that platform by hand'));
     }
@@ -1048,6 +1133,8 @@ export function runChecks(f) {
     if (missing === null) r.push(warn('repo.labels', 'could not read the labels', 'check your access to the repository'));
     else if (missing.length === 0) r.push(pass('repo.labels', 'all lifecycle labels exist'));
     else r.push(fail('repo.labels', `missing labels: ${missing.join(', ')}`, 'run /relevo:init to create them'));
+    r.push(...strayLocalChecks(f));
+    if (f.labels?.includes(FORMER_BUILD_FAILED)) r.push(fail('repo.labels.former', `the repository still has the label ${FORMER_BUILD_FAILED}, which is now ${labelDefinitions(f.config.labels).find((l) => l.key === 'build-failed').name}: the planner does not read it`, 'run /relevo:init: it renames the label and the issues that carry it keep it'));
     r.push(f.branches.base ? pass('repo.base-branch', `base branch ${f.config.branches.base} exists`) : fail('repo.base-branch', `base branch ${f.config.branches.base} does not exist`, `create it from ${f.config.branches.release}, or run /relevo:init`));
   }
   const cb = f.configOnBranches;
@@ -1072,6 +1159,12 @@ export function runChecks(f) {
       if (p?.lastPushApproval) r.push(fail(`repo.last-push.${key}`, `${name} requires the most recent push to be approved by someone else; the spec archive commit pushed by \`ship\` would need a new approval`, `turn off "require approval of the most recent reviewable push" on ${name}`));
     });
   }
+  if (!f.protectionUnavailable && !f.protectionError && f.protection?.base) {
+    const baseName = f.config?.branches?.base ?? 'base';
+    r.push(f.protection.base.requiredChecks
+      ? pass('repo.protection.checks', `${baseName} requires status checks to pass before a merge`)
+      : warn('repo.protection.checks', `${baseName} does not require status checks: \`ship\` relies on them, so a pull request could merge with its checks failing or not run`, `require status checks on ${baseName} (a ruleset rule "Require status checks to pass", with the checks of your CI); /relevo:init lists it as a step and changes nothing`));
+  }
   if (!f.protectionUnavailable && !f.protectionError) {
     r.push(f.pushScope ? pass('repo.push-scope', 'the agent can only create feature/* branches') : warn('repo.push-scope', 'nothing stops the unattended agent from creating branches other than feature/*', 'run /relevo:init to add the relevo-push-scope ruleset'));
   }
@@ -1088,12 +1181,12 @@ export function runChecks(f) {
   if (f.secrets === null) r.push(warn('automation.secret', 'could not list the repository secrets', 'check that you may read them, or look in Settings > Secrets'));
   else if (f.config?.agent?.build === 'antigravity') {
     if (f.secrets.includes('GEMINI_API_KEY')) r.push(pass('automation.secret', 'a model credential secret exists (GEMINI_API_KEY)'));
-    else r.push(warn('automation.secret', 'no GEMINI_API_KEY secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add a key made only for Relevo, in its own Google Cloud project with a quota, to the repository secrets (init never touches it); for local builds nothing is needed'));
+    else r.push(warn('automation.secret', 'no GEMINI_API_KEY secret, so the cloud cannot build: a go label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add a key made only for Relevo, in its own Google Cloud project with a quota, to the repository secrets (init never touches it); for local builds nothing is needed'));
   } else if (f.secrets.some((n) => ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(n))) {
     const mismatch = credentialMismatch(f);
     r.push(pass('automation.secret', mismatch ? `a model credential secret exists (${mismatch.secret}), but the workflow does not use it: see execution.credential-line` : 'a model credential secret exists'));
   }
-  else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a ready label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
+  else r.push(warn('automation.secret', 'no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, so the cloud cannot build: a go label only leaves a comment that says to run /relevo:go on a machine', 'for the cloud, add one to the repository secrets (init never touches it; for a subscription token remove all whitespace before storing it); for local builds nothing is needed'));
 
   // One result per cause: the workflows in the same state, with the same status and the same fix, are one result that names them.
   const groups = new Map();
@@ -1130,6 +1223,7 @@ export function runChecks(f) {
   }
   r.push(...linkChecks(f));
   r.push(...executionChecks(f));
+  r.push(...runMinutesChecks(f));
   r.push(...shipChecks(f));
   // The token is for reading the plugin repository, which only a workflow that still loads the plugin through a marketplace
   // (or clones it, the older layout) does; one that loads it from the pinned package needs none.
@@ -1262,6 +1356,37 @@ function installStepChecks(f) {
     });
 }
 
+/** The `timeout-minutes` of the `build` job in the text of the go workflow, or null when it cannot be read. */
+export function buildTimeoutMinutes(text) {
+  const lines = String(text ?? '').split('\n');
+  const start = lines.findIndex((l) => /^ {2}build:\s*$/.test(l));
+  if (start === -1) return null;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^ {2}\S[^:]*:\s*$/.test(lines[i])) return null; // the next job begins
+    const m = /^\s+timeout-minutes:\s*(\d+)\s*(?:#.*)?$/.exec(lines[i]);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+// Minutes the job keeps after `limits.run_max_minutes` for the work that is kept when a run is cut and for the reports.
+const RUN_MINUTES_MARGIN = 5;
+
+/**
+ * Does the build job of the installed go workflow outlive `limits.run_max_minutes` by the margin? A job that is cut
+ * before the guard acts gives the guard no time to keep the work. Nothing is said when the workflow is not installed or
+ * its timeout cannot be read.
+ */
+function runMinutesChecks(f) {
+  const go = f.workflows?.['relevo-go.yml'];
+  const max = f.config?.limits?.run_max_minutes;
+  if (!go?.present || typeof go.text !== 'string' || !Number.isFinite(max)) return [];
+  const timeout = buildTimeoutMinutes(go.text);
+  if (timeout === null || timeout >= max + RUN_MINUTES_MARGIN) return [];
+  return [warn('execution.run-minutes', `limits.run_max_minutes is ${max}, but the build job of the go workflow is cut after ${timeout} minutes, so it can end before the guard keeps the work of a long run`,
+    `set limits.run_max_minutes to ${Math.max(5, timeout - RUN_MINUTES_MARGIN)} or less, or raise timeout-minutes of the build job in .github/workflows/relevo-go.yml to ${max + RUN_MINUTES_MARGIN} or more`)];
+}
+
 const HOSTED_RUNNER = ['ubuntu-latest'];
 
 /** The labels written in a `runs-on` line: `[self-hosted, linux-build]` or `ubuntu-latest`; null for an expression we cannot judge. */
@@ -1271,35 +1396,186 @@ function parseRunsOn(value) {
   return inner.split(',').map((l) => l.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
+/** The labels of a runner value: a JSON list (`["self-hosted","linux"]`), or one label. null when empty or not readable. */
+function parseRunnerValue(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (text.startsWith('[')) {
+    try {
+      const list = JSON.parse(text);
+      return Array.isArray(list) && list.length > 0 && list.every((l) => typeof l === 'string') ? list : null;
+    } catch {
+      return null;
+    }
+  }
+  // GitHub reads a plain string as ONE label, so `self-hosted, linux` is a single (and unlikely) label, not two.
+  const label = text.replace(/^['"]|['"]$/g, '').trim();
+  return label ? [label] : null;
+}
+
+/** The repository variables that the `runs-on` lines of the workflows read (`${{ vars.NAME || 'fallback' }}`). */
+export function runnerVariableNames(workflows) {
+  const names = new Set();
+  Object.values(workflows ?? {}).forEach((w) => {
+    if (typeof w?.text !== 'string') return;
+    [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*$/gm)].forEach((m) => {
+      const v = /\$\{\{.*?\bvars\.([A-Za-z_][A-Za-z0-9_]*)/.exec(m[1]);
+      if (v) names.add(v[1]);
+    });
+  });
+  return [...names];
+}
+
+/** What a `runs-on` expression that reads a variable resolves to: { name, value, labels } (`value` null when the variable is not set), or null when it cannot be judged. */
+function resolveVariableRunsOn(expression, variables) {
+  const v = /\bvars\.([A-Za-z_][A-Za-z0-9_]*)/.exec(expression);
+  if (!v) return null;
+  const name = v[1];
+  const state = variables?.[name];
+  if (!state || state.unreadable) return { name, unreadable: true };
+  if (state.value !== null && state.value !== undefined && String(state.value).trim() !== '') return { name, value: String(state.value), labels: parseRunnerValue(state.value) };
+  const fallback = /\|\|\s*(?:'([^']*)'|"([^"]*)")/.exec(expression);
+  return { name, value: null, labels: fallback ? parseRunnerValue(fallback[1] ?? fallback[2]) : null };
+}
+
+const sameLabels = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
+
+/** The runner each job of a workflow text asks for: [{ job, value }] with `value` the text after `runs-on:`. A line outside any job has job null. */
+function jobRunsOn(text) {
+  const out = [];
+  let inJobs = false;
+  let job = null;
+  String(text).split('\n').forEach((line) => {
+    if (/^jobs:/.test(line)) inJobs = true;
+    const name = inJobs ? /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line) : null;
+    if (name) job = name[1];
+    const m = /^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/.exec(line);
+    if (m) out.push({ job, value: m[1] });
+  });
+  return out;
+}
+
+/** The labels the settings give the jobs: the build job of the go workflow (`build`) and every other job (`other`). */
+function wantedRunners(f) {
+  const { build, other } = effectiveRunners({ runner: { labels: f.config?.runner?.labels ?? HOSTED_RUNNER, build_labels: f.config?.runner?.build_labels ?? null } });
+  return { build, other, split: Boolean(f.config?.runner?.build_labels) };
+}
+const isBuildJob = (file, job) => file === 'relevo-go.yml' && job === 'build';
+const labelText = (labels) => `[${labels.join(', ')}]`;
+
 /**
- * Does every Relevo workflow run on the runner that relevo.yml names (`runner.labels`, else ubuntu-latest)? A workflow
- * edited by hand to another runner is reported with the file, because the next copy of the template would undo it. A
- * runner that is not GitHub's is only assumed to persist: Relevo cannot tell, and says so instead of claiming.
+ * The workflows whose `runs-on` reads a repository variable: { overrides, unread, unparsed }. `overrides` are those whose
+ * effective runner differs from the setting of their job (the variable wins); `unread` the variables that could not be read.
+ */
+export function variableRunners(f) {
+  const wantedBy = wantedRunners(f);
+  const overrides = new Map();
+  const unread = new Set();
+  const unparsed = new Set();
+  Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
+    if (!w.present || typeof w.text !== 'string') return;
+    jobRunsOn(w.text).filter(({ value }) => value.includes('${{') && /\bvars\./.test(value)).forEach(({ job, value: l }) => {
+      const res = resolveVariableRunsOn(l, f.runnerVariables);
+      if (!res) return;
+      const build = isBuildJob(file, job);
+      const wanted = build ? wantedBy.build : wantedBy.other;
+      if (res.unreadable) unread.add(res.name);
+      else if (!res.labels) unparsed.add(`${file} (${res.name})`);
+      else if (!sameLabels(res.labels, wanted)) {
+        const setting = build && wantedBy.split ? 'runner.build_labels' : 'runner.labels';
+        const key = `${res.name}\u0000${res.labels.join(', ')}\u0000${res.value ?? ''}\u0000${setting}`;
+        overrides.set(key, { name: res.name, labels: res.labels, value: res.value, wanted, setting, files: [...(overrides.get(key)?.files ?? []), file] });
+      }
+    });
+  });
+  return { overrides: [...overrides.values()], unread, unparsed };
+}
+
+/**
+ * Does every job of every Relevo workflow run on the runner that relevo.yml names for it (`runner.build_labels` for the
+ * build job of `go` when it is set, else `runner.labels`, else ubuntu-latest)? A workflow edited by hand to another
+ * runner is reported with the file, because the next copy of the template would undo it. A workflow whose `runs-on` reads
+ * a repository variable runs on what the variable says: the variable wins over the setting, so a difference prints both.
+ * A runner that is not GitHub's is only assumed to persist: Relevo cannot tell, and says so instead of claiming.
  */
 function runnerChecks(f) {
-  const wanted = f.config?.runner?.labels ?? HOSTED_RUNNER;
-  const same = (a, b) => a.length === b.length && [...a].sort().every((l, i) => l === [...b].sort()[i]);
+  const wantedBy = wantedRunners(f);
   const r = [];
   let judged = 0;
-  // One result per cause: the files that run on the same other runner are one failure that names all of them.
+  // One result per cause: the files that run on the same other runner, where the same one is wanted, are one failure that names all of them.
   const differing = new Map();
   Object.entries(f.workflows ?? {}).forEach(([file, w]) => {
     if (!w.present || typeof w.text !== 'string') return;
     judged += 1;
-    const found = [...w.text.matchAll(/^[ \t]+runs-on:[ \t]*(.+?)[ \t]*(?:#.*)?$/gm)].map((m) => parseRunsOn(m[1])).filter((l) => l !== null);
-    const other = found.find((labels) => !same(labels, wanted));
-    if (!other) return;
-    const key = other.join(', ');
-    differing.set(key, [...(differing.get(key) ?? []), file]);
+    jobRunsOn(w.text).forEach(({ job, value }) => {
+      const labels = parseRunsOn(value);
+      if (labels === null) return;
+      const build = isBuildJob(file, job);
+      const wanted = build ? wantedBy.build : wantedBy.other;
+      if (sameLabels(labels, wanted)) return;
+      const key = `${labels.join(', ')}\u0000${wanted.join(', ')}`;
+      const entry = differing.get(key) ?? { labels: labels.join(', '), wanted, files: [], onlyBuild: true };
+      if (!entry.files.includes(file)) entry.files.push(file);
+      if (!build) entry.onlyBuild = false;
+      differing.set(key, entry);
+    });
   });
-  [...differing.entries()].forEach(([labels, files]) => {
+  const causes = [...differing.values()];
+  causes.forEach(({ labels, wanted, files, onlyBuild }) => {
     const names = files.join(', ');
-    const id = differing.size === 1 ? 'automation.runner' : `automation.runner.${labels}`;
-    r.push(fail(id, `${names} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says [${wanted.join(', ')}]`, same(wanted, HOSTED_RUNNER) ? `set runner.labels: [${labels}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${names}` : `change runs-on in ${names} to [${wanted.join(', ')}], or change runner.labels in relevo.yml`));
+    const id = causes.length === 1 ? 'automation.runner' : `automation.runner.${labels}${onlyBuild ? '.build' : ''}`;
+    const jobs = onlyBuild ? ' (the build job)' : '';
+    if (onlyBuild) {
+      const text = wantedBy.split
+        ? `change runs-on of the build job in ${names} to ${labelText(wanted)}, or change runner.build_labels in relevo.yml`
+        : `set runner.build_labels: [${labels}] in relevo.yml if that is the runner you want for the builds, or restore runs-on: ${wanted.length === 1 ? wanted[0] : labelText(wanted)} in the build job of ${names}`;
+      r.push(fail(id, `${names}${jobs} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says ${labelText(wanted)}`, text));
+    } else {
+      r.push(fail(id, `${names} ${files.length === 1 ? 'runs' : 'run'} on [${labels}] and relevo.yml says ${labelText(wanted)}`, sameLabels(wanted, HOSTED_RUNNER) ? `set runner.labels: [${labels}] in relevo.yml if that is the runner you want, or restore runs-on: ubuntu-latest in ${names}` : `change runs-on in ${names} to ${labelText(wanted)}, or change runner.labels in relevo.yml`));
+    }
   });
-  if (r.length > 0) return r;
-  if (judged > 0) r.push(pass('automation.runner', `the Relevo workflows run on [${wanted.join(', ')}]`));
-  if (!same(wanted, HOSTED_RUNNER)) r.push(warn('automation.runner.persistence', `the runner [${wanted.join(', ')}] is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
+  const { overrides, unread, unparsed } = variableRunners(f);
+  overrides.forEach(({ name, labels, value, files, wanted, setting }) => {
+    const where = value === null ? `the repository variable ${name} is not set, so the fallback in the workflow applies` : `the repository variable ${name} is ${JSON.stringify(value)}`;
+    r.push(warn(`automation.runner.variable.${name}`, `${files.join(', ')} ${files.length === 1 ? 'runs' : 'run'} on [${labels.join(', ')}] (${where}), but relevo.yml ${setting} says ${labelText(wanted)}: the variable wins, so the file describes a runner that is not used`, `set the variable ${name} to match ${setting} ${labelText(wanted)}, delete it if the workflow default is right, or change ${setting} in relevo.yml to [${labels.join(', ')}]`));
+  });
+  if (unread.size > 0) r.push(note('automation.runner.variable', `the repository variable ${[...unread].join(', ')} that the runner of the workflows is read from could not be read, so the effective runner was not checked`));
+  if (unparsed.size > 0) r.push(note('automation.runner.unparsed', `the runner of ${[...unparsed].join(', ')} comes from a variable that has no usable runner (unset with no fallback, or not a runner name or a list of them), so it was not judged`));
+  if (r.some((x) => x.status === 'fail' || x.status === 'warn')) return [...r, ...buildRunnerAdvice(f)];
+  const apart = !sameLabels(wantedBy.build, wantedBy.other);
+  if (judged > 0 && unread.size === 0 && unparsed.size === 0) {
+    r.push(pass('automation.runner', apart
+      ? `the build job of the go workflow runs on ${labelText(wantedBy.build)} and every other job of the Relevo workflows on ${labelText(wantedBy.other)}`
+      : `the Relevo workflows run on ${labelText(wantedBy.other)}`));
+  }
+  const unhosted = [wantedBy.other, ...(apart ? [wantedBy.build] : [])].filter((l) => !sameLabels(l, HOSTED_RUNNER));
+  if (unhosted.length > 0) r.push(warn('automation.runner.persistence', `the runner ${unhosted.map(labelText).join(' and ')} is not GitHub's: Relevo assumes it keeps its files between jobs, and the code the agent writes runs with the permissions of the runner's user`, 'an ephemeral runner (created for one job) or a container is the real barrier; Relevo installs its tools under the temporary folder of the job and removes what it adds, but cannot make the machine a sandbox (docs/security.md)'));
+  return [...r, ...buildRunnerAdvice(f)];
+}
+
+const HOSTED_IMAGE = /^(ubuntu|windows|macos)-(latest|\d[\w.-]*)$/;
+const isSelfHosted = (labels) => !labels.every((l) => HOSTED_IMAGE.test(l));
+
+/**
+ * Advice, never a failure and never a change: builds that run on self-hosted runners that other work also uses. Once when the
+ * builds have no runner of their own (`runner.build_labels` absent) and the runners of the workflows are self-hosted, and once
+ * listing the workflows of the project (not Relevo's) that run on the labels of the build job. On the runners of GitHub every
+ * job gets its own machine, so there is nothing to say.
+ */
+function buildRunnerAdvice(f) {
+  const wantedBy = wantedRunners(f);
+  const r = [];
+  const machine = 'limits.concurrent_agents limits the builds of one repository, not of a machine: a machine is limited by the runners that can take a build job';
+  if (!wantedBy.split && isSelfHosted(wantedBy.other)) {
+    r.push(note('automation.runner.build-shared', `the builds run on ${labelText(wantedBy.other)}, the same runners as the other jobs of the Relevo workflows, so a build that lasts an hour can hold a runner that the others need. Give the builds runners of their own with runner.build_labels (the number of build runners is the number of cloud builds the machine runs at once); ${machine}`));
+  }
+  if (isSelfHosted(wantedBy.build)) {
+    const sharing = Object.entries(f.otherWorkflows ?? {}).filter(([, w]) => typeof w?.text === 'string'
+      && jobRunsOn(w.text).some(({ value }) => { const l = parseRunsOn(value); return l !== null && sameLabels(l, wantedBy.build); })).map(([name]) => name);
+    if (sharing.length > 0) {
+      r.push(note('automation.runner.build-project', `${sharing.join(', ')} ${sharing.length === 1 ? 'is a workflow' : 'are workflows'} of the project, not Relevo's, and ${sharing.length === 1 ? 'runs' : 'run'} on the labels of the build job ${labelText(wantedBy.build)}, so a build can hold the runner its checks need. Relevo does not write or change them: to keep the checks from waiting behind a build, give them labels the build job does not use. ${machine}`));
+    }
+  }
   return r;
 }
 
@@ -1386,11 +1662,65 @@ function pluginInstallChecks(f) {
   if (unpinned.length > 0) r.push(fail('automation.plugin-pin', `${unpinned.join(', ')} do not pin the version of the Relevo package`, 'copy the current templates, which set RELEVO_VERSION'));
   const old = f.pluginVersion ? Object.entries(pins).filter(([, v]) => v !== null && v !== f.pluginVersion).map(([file, v]) => `${file} (${v})`) : [];
   if (old.length > 0) r.push(warn('automation.plugin-version', `${old.join(', ')} pin a different version than the installed plugin (${f.pluginVersion})`, 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog (that moves the scripts, not the text)'));
-  r.push(...versionChecks(f), ...workflowTextChecks(f));
+  r.push(...stalePinChecks(f), ...versionChecks(f), ...workflowTextChecks(f), ...formerLabelWorkflowChecks(f), ...workflowTriggerChecks(f), ...actionPinChecks(f));
   return r;
 }
 
-const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
+/**
+ * The actions of the Relevo templates that ran on Node.js 20, with the last major that did: GitHub is retiring that runtime, and
+ * every run of a workflow that uses one prints a warning. A pin of a release after that is current. A commit SHA is judged by the
+ * `# vX.Y.Z` that follows it; one that says no version is not reported, because nothing here says what it is.
+ */
+export const NODE20_ACTIONS = {
+  'actions/checkout': 4,
+  'actions/setup-node': 4,
+  'actions/create-github-app-token': 2,
+  'supabase/setup-cli': 2,
+};
+
+/** Does any workflow use one of those actions at a release that runs on Node.js 20? Reports only: it never changes a file. */
+function actionPinChecks(f) {
+  if (!Array.isArray(f.actionPins)) return [];
+  const old = f.actionPins.filter((p) => NODE20_ACTIONS[p.action] !== undefined && p.version && Number(p.version.replace(/^v/, '').split('.')[0]) <= NODE20_ACTIONS[p.action]);
+  if (old.length === 0) return f.actionPins.length > 0 ? [pass('automation.action-pins', 'the workflows use no action that runs on Node.js 20')] : [];
+  const list = old.map((p) => `${p.file}:${p.line} ${p.action}@${p.ref}`).join(', ');
+  return [warn('automation.action-pins', `${list} run on Node.js 20, which GitHub is retiring: every run prints a deprecation warning and it will stop working`, 'run /relevo:init: it merges the new templates, which pin current releases by commit, and keeps your own changes; doctor changes nothing, so a pin you chose on purpose stays as it is')];
+}
+
+/** The changelog entries of the versions after `from` up to `to`: one line per heading, with the first sentence of each bullet. */
+export function changelogBetween(text, from, to) {
+  if (typeof text !== 'string') return [];
+  const sections = text.split(/^## /m).slice(1).map((chunk) => {
+    const m = /^\[?(\d+\.\d+\.\d+)\]?/.exec(chunk);
+    return m ? { version: m[1], body: chunk } : null;
+  }).filter(Boolean).filter((sec) => byVersion(sec.version, from) > 0 && byVersion(sec.version, to) <= 0);
+  return sections.sort((a, b) => byVersion(a.version, b.version)).flatMap((sec) => {
+    const bullets = [...sec.body.matchAll(/^- (.+)$/gm)].map((m) => m[1].replace(/\*\*/g, '').split(/(?<=\.)\s/)[0].trim().slice(0, 160));
+    return [`${sec.version}: ${bullets.slice(0, 3).join(' | ') || 'see the changelog'}`];
+  });
+}
+
+/**
+ * Is the version the workflows pin older than the published one? The pin decides which scripts a cloud run uses, so a fix
+ * released later is not there. The comparison needs the registry: when it cannot be read it is skipped with a note,
+ * never a warning.
+ */
+function stalePinChecks(f) {
+  const pins = Object.entries(f.pluginPins ?? {}).filter(([, v]) => v);
+  if (pins.length === 0) return [];
+  if (!f.publishedVersion) return [note('automation.plugin-latest', 'the published version of the Relevo package could not be read (offline or a private package), so the pins of the workflows were not compared with it')];
+  const old = pins.filter(([, v]) => byVersion(v, f.publishedVersion) < 0);
+  if (old.length === 0) return [pass('automation.plugin-latest', `the workflows pin the published version (${f.publishedVersion})`)];
+  const oldest = old.map(([, v]) => v).sort(byVersion)[0];
+  const fixes = changelogBetween(f.changelog, oldest, f.publishedVersion);
+  // The changelog on disk comes with the installed plugin, so it stops at that version.
+  const behind = f.pluginVersion && byVersion(f.pluginVersion, f.publishedVersion) < 0;
+  const what = fixes.length > 0 ? `; the newer versions changed: ${fixes.join('; ')}${behind ? ` (the changelog here stops at ${f.pluginVersion}; read the one of ${f.publishedVersion} for the rest)` : ''}` : `; read the changelog of ${f.publishedVersion} for what changed`;
+  const fix = behind ? `update the installed plugin first (claude plugin update relevo@relevo --scope user), then run /relevo:init: it merges the new template into each workflow and moves the pin to the installed version` : 'run /relevo:init: it updates a workflow by merging it with the new template and keeps your own changes; or change RELEVO_VERSION by hand after reading the changelog';
+  return [warn('automation.plugin-latest', `${old.map(([file, v]) => `${file} (${v})`).join(', ')} pin an older version than the published ${f.publishedVersion}${what}`, fix)];
+}
+
+export const byVersion = (a, b) => a.split('.').map(Number).reduce((x, n, i) => x || n - Number(b.split('.')[i]), 0);
 
 /**
  * Which version each part is on, from what can be read here: the plugin in use, each installation `claude` lists and the
@@ -1416,6 +1746,43 @@ function versionChecks(f) {
     r.push(warn('plugin.scopes', `the plugin is on different versions: ${scopes.map((e) => `${e.scope} ${e.version}`).join(', ')}`, `update the lagging scope: ${lagging.map((s) => `claude plugin update relevo@relevo --scope ${s}`).join('; ')}`));
   }
   return r;
+}
+
+/** The label of a failed build was `relevo:qa-failed`; a workflow that still applies it marks builds that nothing reads. */
+const FORMER_BUILD_FAILED = 'relevo:qa-failed';
+function formerLabelWorkflowChecks(f) {
+  const files = WORKFLOW_FILES.filter((file) => typeof f.workflows?.[file]?.text === 'string'
+    && f.workflows[file].text.split('\n').some((line) => /gh issue edit/.test(line) && line.includes(FORMER_BUILD_FAILED)));
+  if (files.length === 0) return [];
+  return [fail('automation.workflow-label', `${files.join(', ')} still ${files.length === 1 ? 'names' : 'name'} the label ${FORMER_BUILD_FAILED}, which is now relevo:build-failed: the workflow marks failed builds with a label that nothing reads`, 'run /relevo:init: it updates the workflow by merging it with the new template and keeps your own changes')];
+}
+
+/**
+ * The go workflow starts on the label its `if` names. It must be the effective `go` label: a workflow of an earlier version starts on
+ * `ready`, so approving an issue would build it. Read from the text on the default branch; nothing is said when it is unknown.
+ */
+function workflowTriggerChecks(f) {
+  const text = f.workflows?.['relevo-go.yml']?.text;
+  if (typeof text !== 'string' || !f.workflows['relevo-go.yml'].present) return [];
+  const names = resolveLabelNames(f.config?.labels ?? {});
+  const named = [...text.matchAll(/github\.event\.label\.name\s*==\s*'([^']+)'/g)].map((m) => m[1]);
+  if (named.length === 0 || named.every((n) => n === names.go)) return [];
+  const wrong = named.find((n) => n !== names.go);
+  const ready = wrong === names.ready;
+  return [fail('automation.workflow-trigger', `.github/workflows/relevo-go.yml starts when ${wrong} is applied${ready ? ': approving an issue would start a build, because the label that starts a cloud build is now the go label' : `, which is not the go label of relevo.yml (${names.go})`}`,
+    `update the workflow with /relevo:init, which makes it start on ${names.go}${ready ? '; until it is merged, do not approve issues, or pause the cloud with RELEVO_CLOUD_GO' : ''}`)];
+}
+
+/**
+ * The `local` label marks a local build next to `building`. Alone it means nothing, and a person may have applied it expecting it to
+ * keep the cloud away: the open issues that carry it without `building` are named.
+ */
+function strayLocalChecks(f) {
+  const stray = f.strayLocal ?? [];
+  if (stray.length === 0) return [];
+  const names = resolveLabelNames(f.config?.labels ?? {});
+  return [warn('repo.local-label', `${stray.map((n) => `#${n}`).join(', ')} ${stray.length === 1 ? 'carries' : 'carry'} ${names.local} without ${names.building}: the label is applied by a local build and does not keep the cloud from building`,
+    `remove ${names.local} from ${stray.length === 1 ? 'it' : 'them'}; to build an issue on a machine run /relevo:go <n>, which applies it itself`)];
 }
 
 /** Is the text of each workflow as current as the scripts it runs? The stamp is the version of the text; the pin is the scripts'. */

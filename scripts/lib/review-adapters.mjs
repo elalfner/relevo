@@ -20,8 +20,13 @@ const ADAPTERS = {
 const IOS_ADAPTER = { kind: 'device', log: 'xcrun simctl log show', capture: 'xcrun simctl io screenshot', driver: null, needs: ['xcrun'] };
 
 const EXISTING = 'flutter on android, any stack on ios, flutter on web, vue on web, laravel (api) and supabase (api)';
-const NEXT_STEP = `The adapters that exist are ${EXISTING}. The issue stays built. Open the pull request by hand after reading the diff, or ask for an adapter for this stack. A stack that has an adapter can tune its review in the "review" block of .relevo/stacks/<stack>.md.`;
+const NEXT_STEP = `The adapters that exist are ${EXISTING}. The issue stays built. Open the pull request by hand after reading the diff, or ask for an adapter for this stack. A stack that has an adapter can tune its review in the "review" block of .relevo/stacks/<stack>.md, and a stack of the repository with no targets can declare an api adapter in the "review" block of its own profile (adapter: api, with log, test and needs).`;
 
+
+/** Whether the plugin ships an adapter for this stack (any target): the table is what "shipped" means. */
+export function hasShippedAdapter(stack) {
+  return Object.keys(ADAPTERS).some((key) => key.startsWith(`${stack}/`));
+}
 
 /** The target a platform is reviewed on when none is given: its first target, or the usual one of its stack. */
 export function targetOf({ stack, targets = [] }) {
@@ -30,13 +35,17 @@ export function targetOf({ stack, targets = [] }) {
 
 /**
  * Returns { supported, stack, target, kind, log, capture, driver, needs, reason }.
- * `reason` says why a combination is not supported.
+ * `reason` says why a combination is not supported. `review` is the resolved `review` block of the profile: it is read only
+ * for a stack the table has no entry for, with no target, and declares `adapter: api` (then `declared` is true and `test` is set).
  */
-export function adapterFor({ stack, target }) {
+export function adapterFor({ stack, target, review }) {
   const key = `${stack}/${target}`;
   if (target === 'ios') return { supported: true, stack, target, ...IOS_ADAPTER, reason: null };
   if (ADAPTERS[key]) return { supported: true, stack, target, ...ADAPTERS[key], reason: null };
   if (!target && ADAPTERS[`${stack}/-`]) return { supported: true, stack, target: null, ...ADAPTERS[`${stack}/-`], reason: null };
+  if (!target && !hasShippedAdapter(stack) && review?.adapter === 'api') {
+    return { supported: true, stack, target: null, kind: 'api', declared: true, log: review.log, capture: null, driver: review.test, test: review.test, needs: [...(review.needs ?? [])], reason: null };
+  }
   const why = target ? `there is no review adapter for the stack "${stack}" on the target "${target}"` : `the platform of stack "${stack}" names no target to review`;
   return {
     supported: false, stack, target, kind: null, log: null, capture: null, driver: null, needs: [],

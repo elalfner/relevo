@@ -138,6 +138,35 @@ review:
 - Un review de Laravel no tiene dispositivo ni navegador. Con `review.autopilot` en `off` corres los tests del proyecto y se lo dices al review (`ran <código de salida>`); con `precheck` o `verify` el agente corre el test que ya existe para cada línea y nunca escribe uno. Una corrida de tests que pasa no escribe nada en `storage/logs`, así que lo que muestra que el código se ejercitó es la corrida registrada, no el log.
 - Un review de Supabase tampoco tiene dispositivo ni navegador, y solo toca los contenedores locales: `review.test` se rechaza si nombra `--linked`, `--db-url`, `link`, `push` o `pull`, y el review nunca lee archivos `.env` ni `supabase/.temp`, aunque la carpeta esté enlazada a un proyecto remoto. Cada línea se prueba con el archivo pgTAP de su escenario en `supabase/tests/` (`supabase test db <archivo>`); el log es el del contenedor de la base de datos, leído desde que empezó el review. Un `throws_ok` captura su denegación dentro del test y no la escribe en el log, así que la prueba de que una política deniega es la corrida registrada; un error de permiso, de row-level security o de constraints que sí llegue al log se lista como denegación esperada, y la entrada `FATAL: role "postgres" does not exist` de un `supabase db reset` como entrada de arranque esperada. Cualquier otro `FATAL`, un deadlock o cualquier otro `ERROR` es un hallazgo.
 
+### Declara un adaptador de review para tu propio stack
+
+El plugin trae un adaptador de review para `flutter`, `vue`, `laravel` y `supabase`. Un stack que escribes tú (ver [Tu propio stack](#tu-propio-stack)) no tiene ninguno, y `/relevo:review` se detiene para él dejando el issue en `built`. Un backend sin pantalla puede declarar un adaptador `api` en el bloque `review` de su propio `.relevo/stacks/<stack>.md`, sin esperar una versión del plugin:
+
+```markdown
+---
+stack: backend-api
+commands:
+  analyze: npm run --silent analyze
+  test: npm run --silent test:integration
+tools: [node]
+review:
+  adapter: api
+  log: compose:postgres,api,auth
+  test: npm run --silent test:integration
+  needs: [node, docker]
+---
+
+# Backend API
+```
+
+- **Qué se puede declarar.** Solo `adapter: api`, con un `log` y un `test` (los dos obligatorios) y una lista `needs`. Un dispositivo o un navegador necesita `adb`, un simulador o Playwright, que se quedan en el plugin, así que `adapter: browser` o `adapter: device` es inválido. Un stack que define `targets` no puede declarar uno. El perfil de un stack que trae el plugin no puede cambiar su adaptador: `adapter` y `needs` se ignoran ahí, y `/relevo:doctor` avisa.
+- **`needs`.** Nombres de herramientas, nunca rutas. El review busca cada una en el `PATH` sin ejecutarla, y para `docker` además comprueba que el demonio responde (`node scripts/api-preflight.mjs --needs node,docker`). Una herramienta que falta detiene el review antes de cambiar nada, y `/relevo:doctor` avisa.
+- **`log: compose:<servicios>`.** El log de servicios de un proyecto de Docker Compose, como una lista de nombres separados por comas (todos los servicios si no nombras ninguno). Se lee con `docker compose logs --since <inicio>` desde la carpeta de la plataforma, solo lo que los servicios escribieron desde que empezó el review. Cuando no se puede leer (no hay archivo de Compose, Docker está detenido, un servicio no existe) el veredicto es `REVIEW INCONCLUSIVE` y no se puede perdonar. Compose puede leer por su cuenta un `.env` de esa carpeta, cosa que Relevo nunca hace: si no puede arrancar sin él, el log es ilegible y el review queda inconcluso, nunca un falso pase. También sirven una ruta, un glob o `docker:<contenedor>`.
+- **Solo lo local.** `review.test` y `review.log` se rechazan si nombran `--linked`, `--db-url`, `link`, `push` o `pull`, o una dirección `esquema://host` cuyo host no es `localhost`, `127.0.0.1` ni `[::1]` o es una variable. Es una alarma, no una garantía: no ve un host suelto (`psql -h db.example.com`) ni una dirección que defina un archivo de entorno. La guarda que importa es la siguiente.
+- **La confirmación.** Antes de que el agente corra nada, el review pide en un solo mensaje tu palabra escrita de que los datos que tocan los tests no son de producción y de que la instancia local está arriba. El agente nunca arranca ni detiene esa instancia, nunca escribe un test y nunca lee archivos `.env`. Con `review.autopilot` en `off` el agente no corre nada: corres `review.test` en tu terminal y se lo dices al review (`ran <código de salida>`), y no se pregunta nada.
+- **`{filter}`.** `review.test` puede llevar el marcador `{filter}`, como `npm run test:integration -- {filter}`. Con `precheck` o `verify` el agente lo reemplaza por un solo nombre de test hecho de letras, dígitos y `_ . / : # @ -` y prueba la línea con ese test; una línea sin ese nombre queda para ti. Sin el marcador el agente no prueba ninguna línea: corre la suite completa una vez al final y tú confirmas cada línea. Es lo correcto para una suite que no se puede filtrar o que tiene un límite de peticiones. `/relevo:doctor` lo avisa como nota cuando `review.autopilot` no es `off`.
+- **Qué marca la auditoría.** El tramo del log desde que empezó el review: `FATAL`, `PANIC`, un deadlock, falta de memoria, un `ERROR` de base de datos que no sea una denegación y un estado HTTP de 500 o más son hallazgos. Los errores de permisos y de constraints se listan como esperados mientras hay una corrida registrada. Un error sin esas señales, como una petición rechazada que un servicio registra como `"level":"error"`, no se detecta, y el informe lo dice: la prueba es la corrida registrada. Un tramo vacío sin corrida registrada es `REVIEW INCONCLUSIVE`.
+
 ## Qué lee cada revisor de QA de un perfil
 
 QA se compone de cuatro revisores (lentes), y cada uno lee solo la parte del perfil que necesita, así que ninguno carga el contexto de los demás:
@@ -236,7 +265,7 @@ El agente y QA ejecutan los comandos del perfil, y necesitan que existan las dep
 ```
 
 - Instala sin los scripts de los paquetes donde la herramienta lo permita (`npm ci --ignore-scripts`, `composer install --no-scripts`). `flutter pub get` no ejecuta ninguno.
-- El paso "Check the toolchain" busca, cuando las herramientas están, cada ruta que el perfil lista en `installed`. Cuando falta alguna el issue pasa a `relevo:qa-failed`, el comentario nombra la ruta y dice que se active el paso de instalación, y no se gasta ningún turno del modelo.
+- El paso "Check the toolchain" busca, cuando las herramientas están, cada ruta que el perfil lista en `installed`. Cuando falta alguna el issue pasa a `relevo:build-failed`, el comentario nombra la ruta y dice que se active el paso de instalación, y no se gasta ningún turno del modelo.
 - `/relevo:doctor` avisa, por cada plataforma cuyo perfil lista `installed`, cuando el workflow de go no tiene un paso activo que instale sus dependencias. Un ejemplo comentado, y una instalación en otra carpeta (los pasos que instalan OpenSpec y los scripts de Relevo), no cuentan.
 
 ## Skills extra por rol
@@ -251,7 +280,7 @@ El agente y QA ejecutan los comandos del perfil, y necesitan que existan las dep
 
 ## Lo que una ejecución sin supervisión no puede cambiar
 
-- `relevo.yml`, todo lo que está en `.relevo/`, las carpetas de skills y `skills-lock.json` (también dentro de la carpeta de cada plataforma), porque deciden las verificaciones a las que se somete el trabajo. Una ejecución que los toca termina en `qa-failed`.
+- `relevo.yml`, todo lo que está en `.relevo/`, las carpetas de skills y `skills-lock.json` (también dentro de la carpeta de cada plataforma), porque deciden las verificaciones a las que se somete el trabajo. Una ejecución que los toca termina en `build-failed`.
 - Los archivos que listas en `qa.rules_from`.
 - Los archivos fuera de la carpeta de la plataforma del issue (salvo la spec del propio cambio, `GLOSSARY.md` y `docs/adr/`), a menos que el issue los liste en `Allow-paths:`.
 - El comando de una verificación, desde un perfil: solo `relevo.yml` puede reemplazarlo.

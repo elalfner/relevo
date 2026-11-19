@@ -61,7 +61,7 @@ test('safety rules are stated', () => {
 test('the issue keeps its place: labels come from fix-state, and the reviewer is re-requested', () => {
   assert.match(body, /fix-state\.mjs --current/);
   assert.match(body, /gh pr edit <number> --add-reviewer <login>/);
-  assert.match(body, /`qa-failed` issue to `built`, and a `changes-requested` one to `pr-open`/);
+  assert.match(body, /`build-failed` issue to `built`, and a `changes-requested` one to `pr-open`/);
 });
 
 test('the review skill supports what fix relies on: retest and sync', () => {
@@ -106,7 +106,8 @@ test('Scenario: Nothing the developer can fix - fix does not retry, stashes the 
 
 test('Scenario: Branch with only the specification - fix stops and says to start again', () => {
   assert.match(body, /branch-work\.mjs --base <base> --change <change>/);
-  assert.match(body, /delete the remote branch and apply the label relevo:ready again/);
+  assert.match(body, /delete the remote branch and then build the issue again, with the label relevo:go where the cloud builds or with `\/relevo:go <issue> --retry` on a machine/);
+  assert.match(body, /never by applying relevo:ready again/);
 });
 
 test('the task list is checked before the developer and before the commit', () => {
@@ -125,4 +126,16 @@ test('Scenario: A failed go left its worktree - fix asks who holds the branch be
   assert.ok(before > 0 && before < body.indexOf('`git switch <branch>`'), 'the check comes before the switch');
   assert.match(body, /held by that worktree and its path/);
   assert.match(body, /change nothing, say that the branch is held/);
+});
+
+test('Scenario: fix launches the developer with the model plan, as go does', () => {
+  assert.match(body, /Make the model plan as `go` does in its step 4/);
+  assert.match(body, /with the `model` and `effort` of `dev` in that plan/);
+  assert.doesNotMatch(body, /`effort` of `agents\.dev`/, 'it no longer reads agents directly');
+});
+
+test('Scenario: Corrections of an iteration - the developer is launched once, in the foreground, with a description that names the iteration', () => {
+  assert.match(body, /one Agent call in the foreground, never in the background, and your turn does not end while it runs/);
+  assert.match(body, /`description` `fix iteration <k>` \(for example `fix iteration 2`/);
+  assert.match(body, /goes back to `relevo:dev` in \*\*fix\*\* mode with the end of its output/);
 });

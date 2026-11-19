@@ -7,22 +7,26 @@ Renders Relevo for tools other than Claude Code from one source of skills, agent
 ## Requirements
 
 ### Requirement: One source renders a plugin for each tool
-Relevo SHALL render a plugin for a tool other than Claude Code from the files in `skills/`, `agents/`, `scripts/`, `stacks/` and `templates/`, with one renderer per tool, and SHALL NOT change what the Claude Code plugin installs.
+Relevo SHALL render a plugin for a tool other than Claude Code from the files in `skills/`, `agents/`, `scripts/`, `stacks/`, `knowledge/` and `templates/`, with one renderer per tool, and SHALL NOT change what the Claude Code plugin installs.
 
 #### Scenario: Rendering for Antigravity
 - **WHEN** the Antigravity renderer runs
-- **THEN** it writes `plugin.json` with the name `relevo` and the package version, one `SKILL.md` per skill, the agents `relevo-dev` and `relevo-qa`, and a copy of the scripts, stacks and templates
+- **THEN** it writes `plugin.json` with the name `relevo` and the package version, one `SKILL.md` per skill, the agents `relevo-dev` and `relevo-qa`, and a copy of the scripts, stacks, knowledge and templates
 
 #### Scenario: Claude Code unaffected
 - **WHEN** the package is packed after the renderer exists
 - **THEN** no file of the Claude plugin is removed or renamed, its manifest and agents are unchanged, its skills differ only by the question that `init` asks about the agent, and the new files are additions
 
+#### Scenario: The scripts find the knowledge
+- **WHEN** a script of the rendered plugin selects interface rules
+- **THEN** it finds the knowledge folder next to the scripts, as it does in the Claude plugin
+
 ### Requirement: Names and text are rewritten for the tool
-A rendered file SHALL name commands and agents the way the tool does and SHALL contain no Claude Code token: commands keep `/relevo:<name>` through the plugin name, agents are `relevo-dev` and `relevo-qa`, and scripts are called by absolute path.
+A rendered file SHALL name commands and agents the way the tool does and SHALL contain no Claude Code token: commands keep `/relevo:<name>` through the plugin name, agents are `relevo-dev`, `relevo-qa-spec`, `relevo-qa-security`, `relevo-qa-code` and `relevo-qa-interface`, and scripts are called by absolute path.
 
 #### Scenario: No Claude token remains
 - **WHEN** every rendered file is scanned
-- **THEN** none contains `${CLAUDE_PLUGIN_ROOT}`, `relevo:dev`, `relevo:qa` or a Claude-only agent key (`model`, `effort`, `disallowedTools`), and a test fails if one does
+- **THEN** none contains `${CLAUDE_PLUGIN_ROOT}`, `relevo:dev`, a `relevo:qa-` name or a Claude-only agent key (`model`, `effort`, `disallowedTools`), and a test fails if one does
 
 #### Scenario: Script calls
 - **WHEN** a skill text called a script of the package
@@ -40,10 +44,10 @@ A skill that is reserved for a person in Claude Code SHALL keep `disable-model-i
 - **THEN** its frontmatter has `disable-model-invocation: true` and a test fails if any of the reserved skills loses it
 
 ### Requirement: Agents are rendered with an explicit tool list
-A rendered agent SHALL list its tools explicitly as a YAML list of the tool's own names, the QA agent SHALL list no tool that writes or edits files, and the renderer SHALL refuse a tool it cannot map.
+A rendered agent SHALL list its tools explicitly as a YAML list of the tool's own names, each lens agent SHALL list no tool that writes or edits files, and the renderer SHALL refuse a tool it cannot map.
 
 #### Scenario: QA is read-only
-- **WHEN** `relevo-qa` is rendered
+- **WHEN** a lens agent such as `relevo-qa-security` is rendered
 - **THEN** its tool list contains the command tool and no write or edit tool
 
 #### Scenario: Bash tool mapping
@@ -146,3 +150,21 @@ The rendered settings and the documentation SHALL NOT rely on a `.gitignore` ent
 #### Scenario: A tool that names no such file
 - **WHEN** Relevo renders the denials for an agent
 - **THEN** it writes only settings that the tool's documentation lists as denying a read
+
+### Requirement: Every lens agent renders with a valid name
+The renderer SHALL write the four lens agents with the names `relevo-qa-spec`, `relevo-qa-security`, `relevo-qa-code` and `relevo-qa-interface`, SHALL rewrite every reference to them in the skills, and a test SHALL fail when an agent file of the plugin renders to an invalid name.
+
+#### Scenario: Rendering the lenses
+- **WHEN** the Antigravity renderer runs
+- **THEN** the four lens agents are written with those names and no `relevo:qa-` token remains
+
+#### Scenario: A new agent file
+- **WHEN** an agent file is added to the plugin
+- **THEN** the test checks that it renders to a valid name
+
+### Requirement: With Antigravity the lenses are called one at a time
+In this version the rendered `go`, `fix` and `review` SHALL call the lens agents one at a time and wait for each report before the next, as they do for the developer agent.
+
+#### Scenario: Several lenses
+- **WHEN** four lenses are active
+- **THEN** the rendered text calls the first, ends its turn until the report arrives, and then calls the next

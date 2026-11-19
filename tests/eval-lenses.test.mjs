@@ -167,3 +167,15 @@ test('the interface lens gets the rules that interface-rules.mjs selects for the
   assert.match(seen[0], /Interface rules for QA/);
   assert.doesNotMatch(seen[1], /Interface rules for QA/);
 });
+
+test('--model overrides the model of every lens and is named in the report', async () => {
+  assert.equal(parseArgs([]).model, null);
+  const opts = parseArgs(['--model', 'haiku', '--dry-run', '--lens', 'code']);
+  assert.equal(opts.model, 'haiku');
+  assert.throws(() => parseArgs(['--model']), /needs a value/);
+  const seen = [];
+  const cases = selectCases(loadCases(), opts).slice(0, 1);
+  const stub = stubRunner({ cases });
+  await evaluate(cases, opts, async (call) => { seen.push(call.model); return stub(call); }, process.cwd());
+  assert.ok(seen.length > 0 && seen.every((m) => m === 'haiku'));
+});

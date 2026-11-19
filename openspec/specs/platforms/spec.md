@@ -206,7 +206,7 @@ When the body of the plugin's `flutter` profile refers to the Dart and Flutter M
 - **THEN** the profile tells it to use the profile's `format` command on the files it changed, not the MCP `dart_format` tool, which formats the whole project root including generated files
 
 ### Requirement: A profile can say how its stack is reviewed
-A profile header MAY carry a `review` block with `log` (a path or a glob of the files the audit reads, or `docker:<container>` for the log of a container), `test` (the base command that runs the project's tests) and `serve` (a `command`, a `url` and `env` for a server the agent may start, where `{port}` stands for the port the agent chose). In a `docker:` name `{project_id}` stands for the `project_id` of `supabase/config.toml`. The plugin's `laravel` profile SHALL set `log` to the files under `storage/logs` and `test` to `php artisan test`, and no `serve`. The plugin's `supabase` profile SHALL set `log` to `docker:supabase_db_{project_id}` and `test` to `supabase test db`, and no `serve`. A `test` that names `--linked` or `--db-url` SHALL be invalid. A profile body MAY have a section `Review`; it SHALL be read by the agent only in a review, joined after the plugin's, and SHALL be left out of the body that `dev` and `qa` receive.
+A profile header MAY carry a `review` block with `log` (a path or a glob of the files the audit reads, `docker:<container>` for the log of a container, or `compose:<services>` for the log of services of a Docker Compose project, every service when none is named), `test` (the base command that runs the project's tests; in a repository profile that declares an adapter it MAY contain `{filter}`) and `serve` (a `command`, a `url` and `env` for a server the agent may start, where `{port}` stands for the port the agent chose). In a `docker:` name `{project_id}` stands for the `project_id` of `supabase/config.toml`. The plugin's `laravel` profile SHALL set `log` to the files under `storage/logs` and `test` to `php artisan test`, and no `serve`. The plugin's `supabase` profile SHALL set `log` to `docker:supabase_db_{project_id}` and `test` to `supabase test db`, and no `serve`. A `test` that names `--linked` or `--db-url` SHALL be invalid. A profile body MAY have a section `Review`; it SHALL be read by the agent only in a review, joined after the plugin's, and SHALL be left out of the body that `dev` and `qa` receive.
 
 #### Scenario: Defaults of Laravel
 - **WHEN** the profile of `laravel` is resolved with no repository file
@@ -223,6 +223,14 @@ A profile header MAY carry a `review` block with `log` (a path or a glob of the 
 #### Scenario: Remote database in test
 - **WHEN** the repository's profile sets `review.test` to `supabase test db --db-url postgres://...`
 - **THEN** resolving the profile fails and names `review.test`
+
+#### Scenario: Log of Compose services
+- **WHEN** a repository profile sets `review.log` to `compose:postgres,auth`
+- **THEN** the resolved profile has that `log`
+
+#### Scenario: Compose log with a bad name
+- **WHEN** a profile sets `review.log` to `compose:postgres;rm`
+- **THEN** resolving the profile fails and names `review.log`
 
 #### Scenario: Agents other than review
 - **WHEN** the profile is resolved for `dev` or `qa`
@@ -390,3 +398,131 @@ The body of the plugin's `supabase` profile SHALL tell the developer to read rel
 #### Scenario: Questions for the writer keep their number
 - **WHEN** the profile of `supabase` is resolved with the role `issue`
 - **THEN** its questions still cover RLS, cascades, storage and the filtered columns, and have at least five items
+
+### Requirement: A profile can list the paths that exist once its dependencies are installed
+A stack profile MAY list paths, relative to the folder of the platform, that must exist after its dependencies are installed. The profiles of the plugin for the stacks that install dependencies SHALL list them. A profile of the repository SHALL be able to add paths and SHALL NOT remove one of the plugin's. Without the list no check is made.
+
+#### Scenario: A plugin stack that installs dependencies
+- **WHEN** the profile of the `vue` stack is resolved
+- **THEN** it lists the folder where its package manager installs dependencies
+
+#### Scenario: A repository adds a path
+- **WHEN** `.relevo/stacks/<stack>.md` lists another path
+- **THEN** the resolved profile has the plugin's paths and the added one
+
+#### Scenario: A repository cannot remove a path
+- **WHEN** `.relevo/stacks/<stack>.md` tries to remove a path of the plugin's profile
+- **THEN** the path stays in the resolved profile
+
+#### Scenario: A stack with no installed dependencies
+- **WHEN** the profile of a stack lists no paths
+- **THEN** the build job makes no check for it
+
+### Requirement: A profile says whether its stack has an interface
+A stack profile SHALL say which interface kinds its stack has: `web`, `mobile` or both, or `none`. The profiles of the plugin SHALL give `mobile` for Flutter, `web` for Vue and for Laravel, and `none` for Supabase. A stack of the repository SHALL declare its own, and a stack that declares none SHALL be treated as having no interface.
+
+#### Scenario: The plugin profiles
+- **WHEN** the profiles of the plugin are resolved
+- **THEN** each has the interface kinds of this requirement
+
+#### Scenario: A repository's own stack
+- **WHEN** `.relevo/stacks/<stack>.md` declares `web`
+- **THEN** the interface rules and previews for the web apply to its platforms
+
+#### Scenario: A stack that declares nothing
+- **WHEN** a stack of the repository has no interface key
+- **THEN** it is treated as having none and no interface rule or preview is offered for it
+
+### Requirement: A mobile stack with a web target also gets the rules for the web
+When the platform of a `mobile` stack lists `web` among its targets, the interface rules for `web` SHALL apply to it as well as those for `mobile`.
+
+#### Scenario: A web target
+- **WHEN** a platform of the Flutter stack has the target `web`
+- **THEN** the rules for `web` are selected for it too
+
+### Requirement: A profile can carry sections for each lens
+A profile MAY have the sections `Security for the developer` and `Security review`, besides the sections it already has. The profile command SHALL print, for a lens, only the sections that lens reads: `code` the verification, the architecture and what the auditor looks for in the diff, `security` the security review, `interface` the interface rules, and `spec` none. The developer agent SHALL receive the sections for the developer, including the security ones.
+
+#### Scenario: The security lens
+- **WHEN** the profile is resolved for the `security` lens
+- **THEN** the output holds the `Security review` section and no section for the developer
+
+#### Scenario: The spec lens
+- **WHEN** the profile is resolved for the `spec` lens
+- **THEN** no section of the stack is printed
+
+#### Scenario: A stack without the new sections
+- **WHEN** a profile has no security sections
+- **THEN** the lenses use the generic content of their agents and nothing fails
+
+### Requirement: The plugin's profiles have security sections with their sources
+Each profile of the plugin for a stack with code that handles users or data SHALL have `Security for the developer` and `Security review` sections whose items each cite a source and the date it was read.
+
+#### Scenario: A plugin profile
+- **WHEN** the profile of a plugin stack is read
+- **THEN** its security sections list items with a source and a date
+
+#### Scenario: A repository adds to the section
+- **WHEN** `.relevo/stacks/<stack>.md` adds to a security section
+- **THEN** the resolved profile has the plugin's items followed by the repository's, and none is removed
+
+### Requirement: A repository profile can declare the api review adapter of its own stack
+The `review` block of a repository profile MAY carry `adapter` (only `api`, which requires `log` and `test`) and `needs` (a list of tool names, never a path). A declaration on a stack that defines targets, any other value, a `needs` that is not a list of names, and `adapter` or `needs` in a profile of the plugin SHALL be invalid, and resolving the profile SHALL fail naming the key.
+
+#### Scenario: Declared in a repository-only stack
+- **WHEN** no plugin profile exists for the stack and the repository's profile sets `review.adapter: api` with `log`, `test` and `needs`
+- **THEN** the resolved profile carries all four
+
+#### Scenario: Missing log or test
+- **WHEN** a profile sets `adapter: api` without `log` or without `test`
+- **THEN** resolving the profile fails and names the missing key
+
+#### Scenario: Another kind
+- **WHEN** a profile sets `review.adapter: browser` or `review.adapter: device`
+- **THEN** resolving the profile fails, names `review.adapter` and says that `api` is the only value
+
+#### Scenario: Needs that is not a list
+- **WHEN** a profile sets `review.needs: docker`
+- **THEN** resolving the profile fails and says that `review.needs` is a list of tool names
+
+#### Scenario: Needs with a path
+- **WHEN** a profile sets `review.needs: ["./tools/run"]`
+- **THEN** resolving the profile fails and names `review.needs`
+
+#### Scenario: A stack with targets
+- **WHEN** the profile of a stack that defines `targets` sets `review.adapter: api`
+- **THEN** resolving the profile fails and says that a declared adapter is for a stack with no targets
+
+#### Scenario: Declared in a profile of the plugin
+- **WHEN** a profile of the plugin sets `review.adapter`
+- **THEN** resolving it fails and says that the declaration belongs in the repository's profile
+
+### Requirement: A repository profile cannot change the adapter of a shipped stack
+When the plugin has a profile for the stack (`flutter`, `vue`, `laravel`, `supabase`), the `adapter` and `needs` of the repository's `review` block SHALL be ignored and reported as ignored, with the adapter the plugin keeps, so that the repository cannot change how a shipped stack is reviewed. The other keys of the block keep their rule: a key the repository writes replaces the plugin's.
+
+#### Scenario: Ignored for a shipped stack
+- **WHEN** the repository's `.relevo/stacks/supabase.md` sets `review.adapter: api` and `review.needs: [docker]`
+- **THEN** the resolved profile keeps the plugin's adapter, has no `adapter` or `needs` of the repository and lists both as ignored
+
+#### Scenario: Other keys still replace
+- **WHEN** the repository's `.relevo/stacks/laravel.md` sets `review.adapter: api` and `review.test: php artisan test --parallel`
+- **THEN** `review.test` is the repository's, the declaration is reported as ignored and the review uses the plugin's adapter of Laravel
+
+### Requirement: The commands of a declared adapter reach only what is local
+For a declared adapter, `review.test` and `review.log` SHALL be invalid when they name a remote target: `--linked`, `--db-url`, `link`, `push` or `pull`, or an address of the form `scheme://host` whose host is not `localhost`, `127.0.0.1` or `[::1]`, or whose host the text does not spell out (for example a variable). A name that does not look like an address is not read, so the check is a tripwire; the person's written confirmation about the data is the guard.
+
+#### Scenario: Remote address in the test
+- **WHEN** `review.test` of a declared adapter contains `https://api.example.com`
+- **THEN** resolving the profile fails and names `review.test`
+
+#### Scenario: Local address in the test
+- **WHEN** `review.test` of a declared adapter contains `http://127.0.0.1:8080`
+- **THEN** resolving the profile succeeds
+
+#### Scenario: Address with a variable host
+- **WHEN** `review.test` of a declared adapter contains `https://$HOST/graphql`
+- **THEN** resolving the profile fails and names `review.test`
+
+#### Scenario: Remote flag
+- **WHEN** `review.test` of a declared adapter contains `--db-url`
+- **THEN** resolving the profile fails and names `review.test`

@@ -40,6 +40,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-check.mjs --repo <owner/name> --branch <
 
 It prints a decision and exits 0 when the pull request may be merged, 1 when it must stop. On exit 1, show the person every reason and stop, changing nothing. The reasons say what to do: run the command that is missing (the issue must be `pr-open`: `/relevo:review` or `/relevo:fix`), open the pull request, wait for an approval on the current code, resolve requested changes, synchronise the branch, wait for the checks, or let an eligible person run ship (a member of the team who is not the author or the spec writer).
 
+If the only reason is "GitHub has not finished checking whether the pull request can be merged", GitHub is still computing it, and the state usually settles within a minute: run the same command again about 10 seconds later, up to 6 times, before stopping. Stop on any other reason at once. If it is still the only reason after the last try, say that the state never settled and that the person can run ship again in a minute.
+
 Record the head the approval was given on, to use after the archive: `git fetch origin <branch>` then `git rev-parse origin/<branch>`. Call it `<baseline>`.
 
 Then scan what will be merged. First ask whether another worktree holds the branch, because `git switch` refuses it with an error that names nothing: `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch>`. If it exits 1 it prints the path of that worktree (a run of `go` that failed keeps its worktree, for example): stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path, and that the person can ship from there or remove it with `git worktree remove` and run ship again. If the scan reports anything, stop and show the file and line:
@@ -129,7 +131,7 @@ The subject is the pull request title, which already ends with the issue number.
 
 ## Report
 
-Finish with one short block: the issue, the pull request, the merge commit, that the issue is closed and the labels removed.
+Finish with one short block: the issue, the pull request, the merge commit, that the issue is closed and the labels removed, and which commit's checks it relied on: the merged commit, or `<baseline>` (the summary's `checksOid`) when the archive commit had none of its own, and that the checks of the merged commit were finished and passing, or that it had none of its own.
 
 End with this reminder: promoting `<base>` to `<release>` is a separate pull request, with a version tag. `ship` does not do it.
 
