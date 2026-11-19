@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-19
+
 ### Added
 
 - **A fifth QA lens, `bugs`, looks for correctness defects and, by default, only leaves notes.** `agents/qa-bugs.md` reads the diff for what the other lenses do not own: a wrong or missing condition, a falsy check that treats a valid zero as missing, a changed function that breaks a caller, and what holds only at one moment (a value changeable later by another path, a second actor, a repeated call, a sensitive action with no trace). Each finding is labelled `CONFIRMED` (the input and the line are shown) or `PLAUSIBLE` (a fact outside the diff decides it). The new key `qa.bugs` is `advisory` (the default: every finding is a note in the hand-off, so a run that passed before still passes), `blocking` (a `CONFIRMED` finding sends the work back to the developer) or `off` (the lens does not run); a finding that cites a hard rule of the project blocks in every mode. `agents.qa.bugs.model` and `agents.qa.bugs.effort` are valid keys (default `sonnet`, `high`), `/relevo:doctor` checks the agent and notes a `blocking` or `off` mode, and the usage comment, the budget record and the renderer for other tools know the lens. Its first evaluation (4 seeded cases, 4 defects found, no good variant flagged, 3 findings `CONFIRMED`, 0.90 USD) is in `docs/lens-evaluation.md`; the sample is too small to let it block by default.
