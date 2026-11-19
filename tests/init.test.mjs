@@ -918,7 +918,7 @@ test('a recommended install is shown in the plan with its command', () => {
 });
 
 // A stack the plugin does not ship: the file of the repository is the whole profile.
-const SHIPPED = ['flutter', 'vue', 'laravel', 'supabase'];
+const SHIPPED = ['flutter', 'vue', 'laravel', 'supabase', 'nhost'];
 const ownFacts = { configText: null, config: null, configErrors: [], openspecRoot: true, labels: [], branches: { base: false, release: true }, skills: {} };
 const goAnswers = (extra = {}) => ({ ...ANSWERS, platform: undefined, platforms: { app: { stack: 'go', path: '.' } }, ...extra });
 const profileOf = (items, stack) => items.find((i) => i.id === `stack-profile.${stack}`);
@@ -1335,4 +1335,9 @@ test('a written workflow starts on the go label, and a workflow of an earlier ve
   assert.equal(upgraded.status, 'todo', JSON.stringify({ status: upgraded.status, description: upgraded.description }));
   assert.match(upgraded.content, /github\.event\.label\.name == 'relevo:go'/);
   assert.match(upgraded.diff, /^-.*github\.event\.label\.name == 'relevo:ready'/m);
+});
+
+test('Scenario: Init for Nhost - the plugin ships the profile, so the plan has no .relevo/stacks/nhost.md', () => {
+  const items = planInit({ facts: ownFacts, answers: goAnswers({ platforms: { backend: { stack: 'nhost', path: 'backend' } } }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true });
+  assert.equal(profileOf(items, 'nhost'), undefined);
 });

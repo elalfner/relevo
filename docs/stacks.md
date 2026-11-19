@@ -44,6 +44,7 @@ The header can also say which kind of interface the stack builds with `interface
 | `vue` | `vue-tsc --build` then `eslint . --cache` | `vitest run` | `prettier --write src/` | `web` |
 | `laravel` | `vendor/bin/pint --test` | `php artisan test` | `vendor/bin/pint` | none |
 | `supabase` | `supabase db lint` | `supabase test db` | `npx prettier --write supabase/` | none |
+| `nhost` | `npm run --silent analyze` | `npm run --silent test` | none | none |
 
 - The commands QA runs never rewrite your code. This matters for Vue: the `lint` script that `npm create vue` generates uses `--fix`, so the profile calls the tools directly (through `npx --no-install`, with the versions your project pins) and does not use `npm run lint`.
 - The `flutter` profile follows the official Flutter documentation (architecture, data and backend, testing, performance, and the Dart MCP server), as read on 2026-10-22. The developer avoids, and QA looks for in the diff, the common layout errors, costly work in `build()`, long lists without a builder, `Opacity` and clipping in animations, heavy parsing on the UI isolate and `dart:html` (it prevents the Wasm build). With the Dart MCP server the agents use only the tools that write nothing (`analyze_files`, `lsp`, `read_package_uris`, `run_tests` when enabled). The profile does not impose an architecture: the agents follow the one your rules declare, and only with none declared does new code use the layers of Flutter's architecture guide. QA reports an architecture finding only against a rule you wrote down. If your project requires Command and Result objects, a state-management package or a layout of folders, write it in your rules (`qa.rules_from`).
@@ -118,7 +119,7 @@ This section follows the Supabase documentation (local development workflow and 
 
 ## Tuning how a stack is reviewed
 
-The header of `.relevo/stacks/<stack>.md` can carry a `review` block, and its body a section `## Review`. The plugin's `laravel` and `supabase` profiles set the defaults, so a Laravel or Supabase repository needs neither.
+The header of `.relevo/stacks/<stack>.md` can carry a `review` block, and its body a section `## Review`. The plugin's `laravel`, `supabase` and `nhost` profiles set the defaults, so a Laravel or Supabase repository needs neither.
 
 ```yaml
 review:
@@ -137,6 +138,12 @@ review:
 - The section `## Review` is free text for the agent, read only in a review. It can add steps and ask for more evidence. It cannot change that you confirm every line, that the log is audited, that `decide` gates the pull request, that restricted files (the list in [Security](security.md)) are never read, that no waiver is suggested or that no code is patched in a review: `/relevo:doctor` warns about a line that asks for one of them, and the review ignores it.
 - A Laravel review has no device and no browser. With `review.autopilot` `off` you run the project's tests and tell the review (`ran <exit code>`); with `precheck` or `verify` the agent runs the existing test of each line and never writes one. A test run that passes writes nothing to `storage/logs`, so the recorded run, and not the log, is what shows that the code was exercised.
 - A Supabase review has no device and no browser either, and it only ever touches the local containers: `review.test` is refused when it names `--linked`, `--db-url`, `link`, `push` or `pull`, and the review never reads `.env` files or `supabase/.temp`, even when the folder is linked to a remote project. Each line is proved by the pgTAP file of its scenario in `supabase/tests/` (`supabase test db <file>`); the log is the database container's, read since the review started. A policy test provokes permission, row-level security and constraint errors on purpose, so the report lists those as expected denials, and a `FATAL`, a deadlock or any other `ERROR` is a finding.
+
+### The `nhost` profile
+
+A backend on Nhost (Postgres, Hasura, Auth and a functions service in the containers of one Docker Compose project) has its own review adapter, `api`, with no `review` block to write. Its defaults are `log: compose:` (the log of every service of the Compose project in the platform's folder, read since the review started), `test: npm run --silent test` and the tools `docker` and `npm`. It is the same adapter as a declared one: you confirm in writing that the data is not production before the agent runs anything, you start the instance yourself, and the review proves no line one by one because the suite has no filter and runs once.
+
+Replace `log` and `test` in `.relevo/stacks/nhost.md` when your project differs, for example `log: compose:postgres,graphql,auth,functions` (a name the project does not have makes the log unreadable) and `test: npm run --silent test:integration`. `needs` and `adapter` stay the plugin's, and both keys must reach only `localhost`, `127.0.0.1` or `[::1]`. The commands of the gate (`analyze`, `test`) are replaced with `checks` in `relevo.yml`, not in the profile: if you have a full own `nhost` profile from before, `/relevo:doctor` warns about each command it ignores.
 
 ### Declaring a review adapter for your own stack
 

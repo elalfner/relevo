@@ -2967,10 +2967,10 @@ test('Scenario: The lens blocks, is off or is the default - doctor notes the fir
 // ---------- a review adapter the repository declares
 
 const DECLARED_REVIEW = '  adapter: api\n  log: compose:postgres,auth\n  test: npm run --silent test:integration\n  needs: [nhost, docker]\n';
-const declaredProfile = (review) => `---\nstack: nhost\ncommands:\n  analyze: npm run --silent analyze\n  test: npm run --silent test:integration\ntools: [node]\nreview:\n${review}---\n\n# Nhost\n`;
+const declaredProfile = (review) => `---\nstack: pocketbase\ncommands:\n  analyze: npm run --silent analyze\n  test: npm run --silent test:integration\ntools: [node]\nreview:\n${review}---\n\n# Nhost\n`;
 function declaredFacts({ review = DECLARED_REVIEW, mode = 'off', found = { nhost: true, docker: true }, daemon = true, calls = [] } = {}) {
-  const text = `limits:\n  run_max_cost: 5\n${mode === 'off' ? '' : `review:\n  autopilot: ${mode}\n`}platforms:\n  backend:\n    stack: nhost\n    path: backend\n`;
-  const files = { 'relevo.yml': text, '.relevo/stacks/nhost.md': declaredProfile(review) };
+  const text = `limits:\n  run_max_cost: 5\n${mode === 'off' ? '' : `review:\n  autopilot: ${mode}\n`}platforms:\n  backend:\n    stack: pocketbase\n    path: backend\n`;
+  const files = { 'relevo.yml': text, '.relevo/stacks/pocketbase.md': declaredProfile(review) };
   return gatherFacts({
     tool: (name, args) => { calls.push([name, ...args].join(' ')); if (name === 'docker' && args[0] === 'info' && !daemon) throw new Error('the daemon does not answer'); return 'ok'; },
     onPath: (name) => Boolean(found[name]),
@@ -3000,7 +3000,7 @@ test('Scenario: Everything in place - the declared adapter passes and doctor say
   const results = declaredChecks(f);
   assert.deepEqual(f.platformFacts[0].declared, { needs: [{ tool: 'nhost', ok: true }, { tool: 'docker', ok: true, cliOk: true }], filter: false });
   assert.equal(byId(results, 'review.declared.backend').status, 'pass');
-  assert.match(byId(results, 'review.declared.backend').message, /declared by \.relevo\/stacks\/nhost\.md/);
+  assert.match(byId(results, 'review.declared.backend').message, /declared by \.relevo\/stacks\/pocketbase\.md/);
   assert.equal(results.filter((r) => r.id.startsWith('review.needs.')).length, 0);
   assert.ok(!calls.some((c) => c.startsWith('nhost')), 'a tool the repository names is looked for on the PATH, never run');
 });
@@ -3048,4 +3048,30 @@ test('doctor looks for the tools of review.needs through the probe onPath when t
   const calls = [];
   declaredFacts({ calls, found: { nhost: true, docker: true } });
   assert.deepEqual(calls.filter((c) => c.startsWith('docker')), ['docker info']);
+});
+
+// ---- the plugin's nhost stack (nhost-review-adapter)
+
+function nhostFacts({ own = null, found = { docker: true, npm: true, node: true }, mode = 'off' } = {}) {
+  const text = `limits:\n  run_max_cost: 5\n${mode === 'off' ? '' : `review:\n  autopilot: ${mode}\n`}platforms:\n  backend:\n    stack: nhost\n    path: backend\n`;
+  const files = { 'relevo.yml': text, ...(own ? { '.relevo/stacks/nhost.md': own } : {}) };
+  return gatherFacts({
+    tool: () => 'ok', onPath: (name) => Boolean(found[name]), gh: () => { throw new Error('no network'); },
+    exists: (p) => p in files, read: (p) => files[p], listDir: () => [], skillDirs: [], repo: null,
+  });
+}
+
+test('Scenario: Doctor finds Docker missing - for the stack nhost the missing tool is reported with the fix', () => {
+  const r = byId(declaredChecks(nhostFacts({ found: { docker: false, npm: true, node: true } })), 'review.needs.backend.docker');
+  assert.equal(r.status, 'warn');
+  assert.match(r.fix, /Docker/i);
+});
+
+test('Scenario: Doctor with an old full profile - a command that differs from the plugin is warned as ignored, with checks as the fix', () => {
+  const own = '---\nstack: nhost\ncommands:\n  test: npm run --silent test:integration\n---\n';
+  const results = declaredChecks(nhostFacts({ own }));
+  const w = results.find((x) => x.id === 'platform.backend.ignored.commands.test');
+  assert.ok(w, results.map((x) => x.id).join(' '));
+  assert.equal(w.status, 'warn');
+  assert.match(w.fix, /checks/);
 });

@@ -60,7 +60,7 @@ test('Scenario: Supabase - a stack with no targets is the api adapter driven by 
 test('Scenario: No adapter - the message names the adapters that exist, that the issue stays built and how to tune', () => {
   const r = adapterFor({ stack: 'django', target: null }).reason;
   assert.match(r, /names no target to review/);
-  assert.match(r, /flutter on android.*vue on web.*laravel \(api\) and supabase \(api\)/);
+  assert.match(r, /flutter on android.*vue on web.*laravel \(api\), supabase \(api\) and nhost \(api\)/);
   assert.match(r, /issue stays built/);
   assert.match(r, /"review" block of \.relevo\/stacks/);
 });
@@ -114,8 +114,8 @@ test('Scenario: Web with autopilot off - the advice recommends verify, names pre
 test('every stack the plugin ships a profile for has an entry in the table of adapters', () => {
   const stacks = readdirSync(new URL('../stacks', import.meta.url)).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
   assert.ok(stacks.length >= 4);
+  assert.equal(hasShippedAdapter('pocketbase'), false);
   stacks.forEach((stack) => assert.equal(hasShippedAdapter(stack), true, `${stack} has a profile in the plugin but no adapter`));
-  assert.equal(hasShippedAdapter('nhost'), false);
 });
 
 // ---- a declared adapter (declared-review-adapter)
@@ -123,7 +123,7 @@ test('every stack the plugin ships a profile for has an entry in the table of ad
 const DECLARED = { adapter: 'api', needs: ['nhost', 'docker'], log: 'compose:postgres,auth', test: 'npm run --silent test:integration' };
 
 test('Scenario: Declared adapter - a stack with no table entry and no target is api, marked declared, with the log, test and needs', () => {
-  const a = adapterFor({ stack: 'nhost', target: null, review: DECLARED });
+  const a = adapterFor({ stack: 'pocketbase', target: null, review: DECLARED });
   assert.deepEqual([a.supported, a.kind, a.declared, a.log, a.test, a.driver, a.capture, a.needs, a.reason], [true, 'api', true, 'compose:postgres,auth', 'npm run --silent test:integration', 'npm run --silent test:integration', null, ['nhost', 'docker'], null]);
   assert.equal(needsAutopilot(a), false);
 });
@@ -137,11 +137,32 @@ test('the five shipped combinations are unchanged and ignore a review argument',
 });
 
 test('a stack with a target stays unsupported, and so does one that declares nothing', () => {
-  assert.equal(adapterFor({ stack: 'nhost', target: 'web', review: DECLARED }).supported, false);
-  assert.equal(adapterFor({ stack: 'nhost', target: null, review: { log: 'x', test: 'y' } }).supported, false);
-  assert.equal(adapterFor({ stack: 'nhost', target: null }).supported, false);
+  assert.equal(adapterFor({ stack: 'pocketbase', target: 'web', review: DECLARED }).supported, false);
+  assert.equal(adapterFor({ stack: 'pocketbase', target: null, review: { log: 'x', test: 'y' } }).supported, false);
+  assert.equal(adapterFor({ stack: 'pocketbase', target: null }).supported, false);
 });
 
 test('Scenario: No adapter - the message says that a stack of the repository with no targets can declare an api adapter', () => {
   assert.match(adapterFor({ stack: 'django', target: null }).reason, /stack of the repository with no targets can declare an api adapter/);
+});
+
+// ---- the plugin's nhost adapter (nhost-review-adapter)
+
+const NHOST_REVIEW = { log: 'compose:', test: 'npm run --silent test' };
+
+test('Scenario: Nhost with no review block - the shipped entry is api, marked declared, filled from the review block, with its own needs', () => {
+  assert.equal(hasShippedAdapter('nhost'), true);
+  const a = adapterFor({ stack: 'nhost', target: null, review: NHOST_REVIEW });
+  assert.deepEqual([a.supported, a.kind, a.declared, a.log, a.test, a.driver, a.capture, a.needs, a.reason], [true, 'api', true, 'compose:', 'npm run --silent test', 'npm run --silent test', null, ['docker', 'npm'], null]);
+  assert.equal(needsAutopilot(a), false);
+});
+
+test('Scenario: Nhost with the repository test command - the override replaces test, never needs or adapter', () => {
+  const a = adapterFor({ stack: 'nhost', target: null, review: { ...NHOST_REVIEW, test: 'npm run --silent test:integration', needs: ['x'], adapter: 'api' } });
+  assert.equal(a.test, 'npm run --silent test:integration');
+  assert.deepEqual(a.needs, ['docker', 'npm']);
+});
+
+test('Scenario: Stop message - names nhost among the adapters that exist', () => {
+  assert.match(adapterFor({ stack: 'go', target: null }).reason, /nhost \(api\)/);
 });

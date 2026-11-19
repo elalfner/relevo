@@ -8,9 +8,9 @@ import { parseProfile, resolveProfile } from '../scripts/lib/stack-profile.mjs';
 import { adapterFor } from '../scripts/lib/review-adapters.mjs';
 
 const CLI = new URL('../scripts/review-adapter.mjs', import.meta.url).pathname;
-const CONFIG = 'limits:\n  run_max_cost: 5\nplatforms:\n  backend:\n    stack: nhost\n    path: backend\n';
+const CONFIG = 'limits:\n  run_max_cost: 5\nplatforms:\n  backend:\n    stack: pocketbase\n    path: backend\n';
 
-function repo(profile, config = CONFIG, stack = 'nhost') {
+function repo(profile, config = CONFIG, stack = 'pocketbase') {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-decl-'));
   writeFileSync(join(dir, 'relevo.yml'), config);
   mkdirSync(join(dir, '.relevo/stacks'), { recursive: true });
@@ -18,7 +18,7 @@ function repo(profile, config = CONFIG, stack = 'nhost') {
   return dir;
 }
 const run = (dir, ...args) => spawnSync('node', [CLI, '--config', join(dir, 'relevo.yml'), ...args], { encoding: 'utf8', cwd: dir });
-const profile = (review) => `---\nstack: nhost\nreview:\n${review}---\n`;
+const profile = (review) => `---\nstack: pocketbase\nreview:\n${review}---\n`;
 
 test('Scenario: Declared adapter - exit 0 with kind api, declared, log, test and needs', () => {
   const r = run(repo(profile('  adapter: api\n  needs: [nhost, docker]\n  log: compose:postgres,auth\n  test: npm run --silent test:integration\n')), '--platform', 'backend');
