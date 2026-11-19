@@ -1,0 +1,29 @@
+{"app_name": "ProbeExec", "timestamp": "2026-11-19 10:58:45.00 -0600", "bundleID": "dev.probe.ios", "name": "ProbeExec", "bug_type": "309"}
+{
+ "captureTime": "2026-11-19 10:58:33.2326 -0600",
+ "procLaunch": "2026-11-19 10:58:32.7162 -0600",
+ "procPath": "/Users/USER/Library/Developer/CoreSimulator/Devices/94E35096-C3C1-4FB7-A807-DFD9020E7E00/data/Containers/Bundle/Application/APP/Probe.app/ProbeExec",
+ "procName": "ProbeExec",
+ "bundleInfo": {
+  "CFBundleShortVersionString": "1.0",
+  "CFBundleVersion": "1",
+  "CFBundleIdentifier": "dev.probe.ios"
+ },
+ "exception": {
+  "codes": "0x0000000000000001, 0x00000001c16c415c",
+  "rawCodes": [
+   1,
+   7540064604
+  ],
+  "type": "EXC_BREAKPOINT",
+  "signal": "SIGTRAP"
+ },
+ "termination": {
+  "flags": 0,
+  "code": 5,
+  "namespace": "SIGNAL",
+  "indicator": "Trace/BPT trap: 5",
+  "byProc": "exc handler",
+  "byPid": 32898
+ }
+}

@@ -96,6 +96,8 @@ What Relevo assumes of the runner:
 
 A runner with `limits.concurrent_agents: 1` is the same machine that runs your pull request checks, so a build of up to 60 minutes holds them up. Add runners with the same labels rather than raising the limit.
 
+An iOS build needs macOS with Xcode, so a cloud run for an iOS platform needs `runner.labels` that name a Mac runner. `review` is a local step: the iOS review runs on your Mac against a booted simulator and never on the Linux runner.
+
 ### Several runners on one machine
 
 Each runner process runs one job at a time, so several runners on one machine are how builds run in parallel there. What they keep apart and what they share:
