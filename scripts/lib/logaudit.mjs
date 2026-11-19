@@ -85,6 +85,12 @@ const PG_RULES = [
   { cls: 'database-error', test: (l) => /\bERROR:\s/.test(l) && !/deadlock detected|out of memory/i.test(l) && !PG_DENIAL.test(l) },
 ];
 
+// A declared adapter reads the log of any backend: only the signals that belong to no framework. An HTTP status of 500 or
+// above is the Laravel pattern; an error that carries none of these signals (a service may write level "error" for any rejected
+// request) is not a finding, and the report says so.
+const DECLARED_RULES = [...PG_RULES, API_RULES.find((r) => r.cls === 'server-error')];
+export const DECLARED_NOT_DETECTED = 'Errors that carry none of those signals (a fatal entry, a deadlock, out of memory, a database error or an HTTP status of 500 or above) are not detected, and the recorded run is the proof.';
+
 /**
  * Audit the slice of the Laravel log of an api review, with the test runs recorded in the state ([{ exit, tests, by, line,
  * filter, failing }]). The latest run of each line (or filter) counts, so a run repeated after a fix replaces the one before.
@@ -93,7 +99,9 @@ const PG_RULES = [
  * Returns { verdict, findings, counts, reason? }.
  */
 export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel' } = {}) {
-  const postgres = flavor === 'postgres';
+  // `declared` reads a Postgres-like log with only the signals every backend shares; it has no Supabase startup entry.
+  const declared = flavor === 'declared';
+  const postgres = flavor === 'postgres' || declared;
   const latest = new Map();
   runs.forEach((r) => latest.set(r.line ?? r.filter ?? '*', r));
   const findings = [];
@@ -116,7 +124,7 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
     const line = raw.replace(ANSI_RE, '');
     const excerpt = line.trim().slice(0, MAX_EXCERPT);
     if (postgres) {
-      if (PG_STARTUP.test(line)) {
+      if (!declared && PG_STARTUP.test(line)) {
         startup.push({ line: idx + 1, excerpt });
         return;
       }
@@ -125,7 +133,7 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
         else add('denial', idx + 1, excerpt);
         return;
       }
-      PG_RULES.forEach((rule) => {
+      (declared ? DECLARED_RULES : PG_RULES).forEach((rule) => {
         if (rule.test(line)) add(rule.cls, idx + 1, excerpt);
       });
       return;
@@ -156,7 +164,8 @@ export function auditReport(audit, { issue, scope } = {}) {
   }
   if (scope?.kind === 'api') {
     lines.push(`Scope: what ${scope.pattern} received since the review started, and the test runs of the review (${scope.runs ?? 0} recorded).`, '');
-    if (audit.findings.length === 0 && scope.flavor === 'postgres') lines.push('The log slice has no fatal entry, deadlock, out-of-memory or database error, and no recorded run failed.');
+    if (audit.findings.length === 0 && scope.flavor === 'declared') lines.push('The log slice has no fatal entry, deadlock, out-of-memory, database error or server error, and no recorded run failed.');
+    else if (audit.findings.length === 0 && scope.flavor === 'postgres') lines.push('The log slice has no fatal entry, deadlock, out-of-memory or database error, and no recorded run failed.');
     else if (audit.findings.length === 0) lines.push('The log slice has no unhandled exception, server error, database error or lazy-loading violation, and no recorded run failed.');
   } else if (scope?.pids?.length) {
     lines.push(`Scope: only the processes of \`${scope.package}\` (pid ${scope.pids.join(', ')}); other apps' log lines were ignored.`, '');
@@ -179,6 +188,7 @@ export function auditReport(audit, { issue, scope } = {}) {
     lines.push('', `${audit.startup.length} expected startup entr${audit.startup.length === 1 ? 'y' : 'ies'}: \`FATAL: role "postgres" does not exist\`, which a database reset writes while it recreates the database; not a finding.`);
     audit.startup.slice(0, 5).forEach((e) => lines.push(`- (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
   }
+  if (scope?.flavor === 'declared') lines.push('', DECLARED_NOT_DETECTED);
   if (!(audit.expected?.length > 0) && scope?.flavor === 'postgres' && audit.verdict === PASSED) {
     lines.push('', 'No denial appears in the log. A pgTAP test that catches a denial does not write it there: the proof is the recorded run and its assertions, not the log.');
   }

@@ -89,3 +89,35 @@ export function supabasePreflight({ cwd }, deps) {
   if (deps.run('supabase', ['status']).status !== 0) return { ...base, ok: true, check: 'stack_stopped', detail: 'the local Supabase stack is not running', install: 'supabase start', exit: SUPABASE_EXIT.stack_stopped };
   return { ...base, ok: true, check: 'ready', detail: 'the Supabase CLI and Docker are there and the local stack is running', exit: 0 };
 }
+
+// A declared adapter: the names the repository chose are tools to find, never programs to run.
+export const NEEDS_EXIT = { invalid: 2, tool: 3, docker: 4 };
+const NEEDS_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const INSTALL_HINTS = { docker: 'install Docker (https://docs.docker.com/get-docker/)' };
+
+/**
+ * Look for an executable called `name` in the directories of `pathVar`, without running it. deps: isExecutable(file) -> boolean.
+ * `sep` and `ext` let a test stand in for another platform.
+ */
+export function findOnPath(name, pathVar, deps, { sep = ':', ext = [''] } = {}) {
+  return String(pathVar ?? '').split(sep).filter(Boolean).some((dir) => ext.some((e) => deps.isExecutable(`${dir}/${name}${e}`)));
+}
+
+/**
+ * Check the tools a declared adapter needs. deps: find(name) -> boolean (on the path, not run), run(command, args) -> { status }.
+ * Returns { ok, check, detail, install, missing, exit }: exit 0 ready, 3 a tool is missing, 4 the Docker daemon does not answer,
+ * 2 a name that is not a tool name. It installs nothing, starts nothing and reads no file.
+ */
+export function needsPreflight({ needs }, deps) {
+  const base = { install: null, missing: [] };
+  const names = [...new Set(needs ?? [])];
+  const bad = names.filter((n) => !NEEDS_NAME_RE.test(n));
+  if (bad.length > 0) return { ...base, ok: false, check: 'invalid', detail: `${bad.map((n) => `"${n}"`).join(', ')} ${bad.length === 1 ? 'is' : 'are'} not a tool name: --needs takes names, never a path or a command`, exit: NEEDS_EXIT.invalid };
+  const missing = names.filter((n) => !deps.find(n));
+  if (missing.length > 0) {
+    const hints = missing.map((n) => INSTALL_HINTS[n]).filter(Boolean);
+    return { ...base, ok: false, check: 'tool', detail: `${missing.join(' and ')} not found on the path`, install: hints.length > 0 ? hints.join('; ') : null, missing, exit: NEEDS_EXIT.tool };
+  }
+  if (names.includes('docker') && deps.run('docker', ['info']).status !== 0) return { ...base, ok: false, check: 'docker', detail: 'the Docker daemon does not answer: start Docker', install: 'start Docker Desktop or the Docker service', exit: NEEDS_EXIT.docker };
+  return { ...base, ok: true, check: 'ready', detail: names.length > 0 ? `${names.join(', ')} found${names.includes('docker') ? ' and the Docker daemon answers' : ''}` : 'the declared adapter needs no tool', exit: 0 };
+}
