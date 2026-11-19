@@ -11,18 +11,19 @@ const ADAPTERS = {
   'vue/web': { kind: 'browser', log: 'the browser runner', capture: 'capture(name, check) of the browser runner', driver: 'playwright', needs: ['playwright'] },
   // A stack with no targets is keyed `<stack>/-`: a backend has nothing to drive and nothing to capture, only tests and a log.
   'laravel/-': { kind: 'api', log: 'storage/logs', capture: null, driver: 'php artisan test', needs: ['php', 'composer'] },
-  // Supabase: the tests are pgTAP files run by the CLI against the local containers, and the log is the database container's.
   // Nhost: the generic api adapter (`declared`) whose log, test and driver come from the `review` block of the profile; `needs` is fixed here.
   'nhost/-': { kind: 'api', declared: true, capture: null, needs: ['docker', 'npm'] },
+  // Supabase: the tests are pgTAP files run by the CLI against the local containers, and the log is the database container's.
   'supabase/-': { kind: 'api', log: 'docker:supabase_db_{project_id}', capture: null, driver: 'supabase test db', needs: ['supabase', 'docker'] },
 };
 
-const EXISTING = 'flutter on android, flutter on web, vue on web, laravel (api), supabase (api) and nhost (api)';
+// iOS: a simulator driven with xcrun, observe-only (the person drives, there is no driver for the agent yet). The adapter belongs
+// to the target, not to the stack, so Flutter, SwiftUI and any other stack that declares the target `ios` get it.
+const IOS_ADAPTER = { kind: 'device', log: 'xcrun simctl log show', capture: 'xcrun simctl io screenshot', driver: null, needs: ['xcrun'] };
+
+const EXISTING = 'flutter on android, any stack on ios, flutter on web, vue on web, laravel (api), supabase (api) and nhost (api)';
 const NEXT_STEP = `The adapters that exist are ${EXISTING}. The issue stays built. Open the pull request by hand after reading the diff, or ask for an adapter for this stack. A stack that has an adapter can tune its review in the "review" block of .relevo/stacks/<stack>.md, and a stack of the repository with no targets can declare an api adapter in the "review" block of its own profile (adapter: api, with log, test and needs).`;
 
-const NOT_AVAILABLE = {
-  'flutter/ios': 'the review of iOS is not available yet: it needs a macOS machine with a simulator (xcrun), and nothing in Relevo has been run there',
-};
 
 /** Whether the plugin ships an adapter for this stack (any target): the table is what "shipped" means. */
 export function hasShippedAdapter(stack) {
@@ -46,6 +47,7 @@ export function targetOf({ stack, targets = [] }) {
  */
 export function adapterFor({ stack, target, review }) {
   const key = `${stack}/${target}`;
+  if (target === 'ios') return { supported: true, stack, target, ...IOS_ADAPTER, reason: null };
   if (ADAPTERS[key]) return { supported: true, stack, target, ...ADAPTERS[key], reason: null };
   if (!target && isGenericApi(stack) && review?.log && review?.test) {
     return { supported: true, stack, target: null, ...ADAPTERS[`${stack}/-`], log: review.log, driver: review.test, test: review.test, reason: null };
@@ -54,7 +56,7 @@ export function adapterFor({ stack, target, review }) {
   if (!target && !hasShippedAdapter(stack) && review?.adapter === 'api') {
     return { supported: true, stack, target: null, kind: 'api', declared: true, log: review.log, capture: null, driver: review.test, test: review.test, needs: [...(review.needs ?? [])], reason: null };
   }
-  const why = NOT_AVAILABLE[key] ?? (target ? `there is no review adapter for the stack "${stack}" on the target "${target}"` : `the platform of stack "${stack}" names no target to review`);
+  const why = target ? `there is no review adapter for the stack "${stack}" on the target "${target}"` : `the platform of stack "${stack}" names no target to review`;
   return {
     supported: false, stack, target, kind: null, log: null, capture: null, driver: null, needs: [],
     reason: `${why}. ${NEXT_STEP}`,
@@ -75,4 +77,10 @@ const ADVICE = {
 export function autopilotAdvice(adapter, { autopilot = 'off', language = 'en' } = {}) {
   if (!needsAutopilot(adapter) || autopilot !== 'off') return null;
   return ADVICE[pickLanguage(language)];
+}
+
+/** What to tell the person when the autopilot is on for an iOS platform: the agent has no iOS driver yet, so the review proceeds as with `off`. */
+export function autopilotNotice(adapter, { autopilot = 'off' } = {}) {
+  if (!adapter.supported || adapter.target !== 'ios' || autopilot === 'off') return null;
+  return `review.autopilot is "${autopilot}", but the agent cannot drive an iOS app yet: the review proceeds as with "off". You drive the app in the simulator and confirm every line.`;
 }

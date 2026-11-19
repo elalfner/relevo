@@ -13,12 +13,18 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
   - **Held to what is local, and the person's word first.** `review.test` and `review.log` are refused when they name `--linked`, `--db-url`, `link`, `push`, `pull` or an address whose host is not local or is a variable. Before the agent runs anything the review asks in writing that the data is not production and that the local instance is up; with `review.autopilot` `off` the agent runs nothing. The agent never starts or stops the instance, never writes a test and never reads `.env` files.
   - **`{filter}` decides whether a line can be proved.** With it in `review.test`, `precheck` and `verify` prove a line with one test name; without it the agent proves no line, runs the whole suite once at the end and the person confirms every line. `/relevo:doctor` notes it.
   - **`/relevo:doctor` checks the declaration.** It looks for each tool of `review.needs` and the Docker daemon, reports an invalid declaration as an invalid profile and no longer warns that a driven review of that stack is not available.
+- **`/relevo:review` reviews an iOS app in the iOS Simulator.** A platform whose target is `ios` (Flutter, or a SwiftUI stack defined in `.relevo/stacks/`) now has a review adapter: `device.mjs --target ios` picks the one booted simulator (or `IOS_SIMULATOR`), `capture.mjs --target ios` saves screenshots with `xcrun simctl io`, and `review-state.mjs init ... --target ios --process <executable>` makes the audit read the app's log with `simctl spawn ... log show --style ndjson`. A `Fault` and an `Error` of the app or of a library that is not Apple's are findings; the errors of Apple frameworks are counted as system noise; an empty log or a simulator that is gone is inconclusive; a crash report of the app (`~/Library/Logs/DiagnosticReports/`) newer than the start of the review is a `crash` finding even when the log is empty. It is observe-only: with `review.autopilot` `precheck` or `verify` on an iOS platform the review says that there is no iOS driver yet and proceeds as `off`. `/relevo:doctor` checks `simctl`, a runtime and a booted simulator.
+
+### Changed
+
+- The stop message of `review` no longer says that iOS is not available; its list of adapters now includes Flutter and SwiftUI on iOS.
 
 ### Known limits
 
 - Only the `api` adapter can be declared; a device or a browser review still needs a stack the plugin ships.
 - The check for a remote address is a tripwire: it does not see a bare host or an address that an environment file defines, so the written confirmation is the guard that matters.
 - The audit detects only the signals every backend log shares; an application error without them passes, and the recorded run is the proof.
+- A physical iPhone is not supported, and the iOS review has no driver for `precheck` or `verify` yet.
 
 ## [0.16.0] - 2026-11-17
 

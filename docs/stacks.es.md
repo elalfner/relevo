@@ -27,7 +27,7 @@ Un perfil es el archivo `stacks/<stack>.md` del plugin. Su encabezado lo leen lo
 
 - Los comandos que verifican el código: `analyze`, `test` y `format`.
 - Los archivos generados que se dejan fuera del diff que revisa QA.
-- Las herramientas que necesita el stack y la que necesita cada destino (en Flutter: `adb` para Android, `xcrun` para iOS, que solo corre en macOS, y nada para la web).
+- Las herramientas que necesita el stack y la que necesita cada destino (en Flutter: `adb` para Android, `xcrun` para iOS, que solo corre en macOS, y nada para la web). La revisión de un destino iOS corre en un iOS Simulator arrancado con `xcrun simctl`, solo de observación; un stack SwiftUI definido en `.relevo/stacks/swiftui.md` recibe la misma revisión.
 - Las rutas que existen una vez instaladas sus dependencias (`installed`): Vue lista `node_modules`, Laravel `vendor` y Flutter `.dart_tool/package_config.json`, y Supabase no lista ninguna. El job de construcción las comprueba antes de que empiece el agente y se detiene, sin gastar un turno del modelo, cuando falta alguna (ver [Instalar las dependencias](#instalar-las-dependencias-antes-del-agente)). Un perfil de tu repositorio agrega rutas y nunca quita una.
 - Las skills que requiere y las skills extra de cada rol.
 - Un texto con la higiene que sigue el desarrollador y lo que QA busca en el diff.

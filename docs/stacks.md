@@ -27,7 +27,7 @@ A profile is the file `stacks/<stack>.md` of the plugin. Its header is read by s
 
 - The commands that verify the code: `analyze`, `test` and `format`.
 - The generated files that are left out of the diff QA reviews.
-- The tools the stack needs, and the tool each target needs (for Flutter: `adb` for Android, `xcrun` for iOS, which runs only on macOS, and nothing for the web).
+- The tools the stack needs, and the tool each target needs (for Flutter: `adb` for Android, `xcrun` for iOS, which runs only on macOS, and nothing for the web). The review of an iOS target runs in a booted iOS Simulator with `xcrun simctl`, observe-only; a SwiftUI stack defined in `.relevo/stacks/swiftui.md` gets the same review.
 - The paths that exist once its dependencies are installed (`installed`): Vue lists `node_modules`, Laravel `vendor` and Flutter `.dart_tool/package_config.json`, and Supabase lists none. The build job checks them before the agent starts and stops, without spending a model turn, when one is missing (see [Installing the dependencies](#installing-the-dependencies-before-the-agent)). A profile of your repository adds paths and never removes one.
 - The skills it requires and the extra skills for each role.
 - A text with the hygiene the developer follows and what QA looks for in the diff.
