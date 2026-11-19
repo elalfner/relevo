@@ -12,6 +12,7 @@ import { exitCode, gatherFacts, readOnlyGh, renderReport, reportHeader, runCheck
 import { findRepo, isRemote } from './lib/gh-web.mjs';
 import { findRestrictedFiles } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { onPath } from './lib/on-path.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,6 +49,7 @@ const repoTop = (() => {
 const facts = gatherFacts({
   adapters: () => adapterFacts({ root: repoTop, home: homedir() }),
   tool,
+  onPath: (name) => onPath(name), // the tools of review.needs are looked for on the PATH and never run
   gh: readOnlyGh(gh),
   exists: existsSync,
   read: (p) => readFileSync(p, 'utf8'),

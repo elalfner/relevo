@@ -7,9 +7,16 @@ import { existsSync, openSync, readSync, closeSync, readdirSync, readFileSync, s
 import { join } from 'node:path';
 
 const DOCKER_PREFIX = 'docker:';
+const COMPOSE_PREFIX = 'compose:';
 
 /** Is the log setting the log of a container (`docker:<name>`) and not a path or a glob? */
 export const isDockerLog = (pattern) => String(pattern).startsWith(DOCKER_PREFIX);
+
+/** Is the log setting the log of the services of a Docker Compose project (`compose:<service>,<service>`)? */
+export const isComposeLog = (pattern) => String(pattern).startsWith(COMPOSE_PREFIX);
+
+/** The service names a `compose:` setting lists; empty means every service of the project. */
+export const servicesOf = (pattern) => String(pattern).slice(COMPOSE_PREFIX.length).split(',').map((n) => n.trim()).filter(Boolean);
 
 /** The `project_id` of supabase/config.toml in `cwd`, or null. */
 export function projectIdOf({ cwd = '.' } = {}) {
@@ -28,8 +35,8 @@ export function containerOf(pattern, { cwd = '.' } = {}) {
   return name.replaceAll('{project_id}', id);
 }
 
-const defaultRun = (command, args) => {
-  const r = spawnSync(command, args, { encoding: 'utf8' });
+const defaultRun = (command, args, { cwd } = {}) => {
+  const r = spawnSync(command, args, { encoding: 'utf8', ...(cwd ? { cwd } : {}) });
   if (r.error) return { status: 127, stdout: '', stderr: r.error.message };
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 };
@@ -59,6 +66,8 @@ export function expandLog(pattern, { cwd = '.' } = {}) {
  */
 export function snapshotLog(pattern, { cwd = '.', now = () => new Date() } = {}) {
   // A container has no offsets: what it wrote since this moment is the slice. Nothing is cleared or restarted.
+  // The services of a Compose project are read the same way, from the folder of the platform where the Compose file lives.
+  if (isComposeLog(pattern)) return { pattern, source: 'compose', services: servicesOf(pattern), since: now().toISOString() };
   if (isDockerLog(pattern)) return { pattern, source: 'docker', container: containerOf(pattern, { cwd }), since: now().toISOString() };
   const offsets = {};
   expandLog(pattern, { cwd }).forEach((f) => { offsets[f] = statSync(join(cwd, f)).size; });
@@ -93,6 +102,16 @@ export function readSlice(snapshot, { cwd = '.', run = defaultRun } = {}) {
       return { text: '', files: [], unreadable: [{ file: snapshot.container, reason: why }] };
     }
     return { text: `${r.stdout ?? ''}${r.stderr ?? ''}`, files: [snapshot.container], unreadable: [] };
+  }
+  if (snapshot.source === 'compose') {
+    // Only a read: nothing is restarted or recreated. Any failure (no Compose file, the daemon is down, an unknown service) is an unreadable source.
+    const label = `compose${snapshot.services.length > 0 ? `:${snapshot.services.join(',')}` : ''}`;
+    const r = run('docker', ['compose', 'logs', '--no-color', '--since', snapshot.since, ...snapshot.services], { cwd });
+    if (r.status !== 0) {
+      const why = String(r.stderr || r.stdout || `docker compose exited ${r.status}`).trim().split('\n')[0];
+      return { text: '', files: [], unreadable: [{ file: label, reason: why }] };
+    }
+    return { text: `${r.stdout ?? ''}${r.stderr ?? ''}`, files: [label], unreadable: [] };
   }
   const files = expandLog(snapshot.pattern, { cwd });
   const unreadable = [];
