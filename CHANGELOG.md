@@ -4,6 +4,22 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **A repository can declare the `api` review adapter of its own stack.** The `review` block of `.relevo/stacks/<stack>.md` accepts `adapter: api` and `needs` (the tools the review requires) next to `log` and `test`, so `/relevo:review` no longer stops for a backend the plugin has no adapter for. Only `api` can be declared; a stack that defines targets cannot declare one, and a profile of a shipped stack (`flutter`, `vue`, `laravel`, `supabase`) cannot change its adapter: `adapter` and `needs` are ignored there and `/relevo:doctor` warns. `docs/stacks.md` and its Spanish page explain it with an example profile.
+  - **The preflight looks for the tools and runs none of them.** `api-preflight.mjs --needs a,b` finds each name on the `PATH` and, for `docker`, asks the daemon; it installs and starts nothing and reads no file.
+  - **The log of Docker Compose services.** `log: compose:<services>` (every service when none is named) is read with `docker compose logs --since <start>` from the folder of the platform, only what arrived since the review started. A log that cannot be read is `REVIEW INCONCLUSIVE` and cannot be waived.
+  - **A `declared` audit flavor.** It flags `FATAL` and `PANIC`, a deadlock, out of memory, a database error that is not a denial and an HTTP status of 500 or more, lists permission and constraint errors as expected while a run is recorded, and says that other errors are not detected: the recorded run is the proof.
+  - **Held to what is local, and the person's word first.** `review.test` and `review.log` are refused when they name `--linked`, `--db-url`, `link`, `push`, `pull` or an address whose host is not local or is a variable. Before the agent runs anything the review asks in writing that the data is not production and that the local instance is up; with `review.autopilot` `off` the agent runs nothing. The agent never starts or stops the instance, never writes a test and never reads `.env` files.
+  - **`{filter}` decides whether a line can be proved.** With it in `review.test`, `precheck` and `verify` prove a line with one test name; without it the agent proves no line, runs the whole suite once at the end and the person confirms every line. `/relevo:doctor` notes it.
+  - **`/relevo:doctor` checks the declaration.** It looks for each tool of `review.needs` and the Docker daemon, reports an invalid declaration as an invalid profile and no longer warns that a driven review of that stack is not available.
+
+### Known limits
+
+- Only the `api` adapter can be declared; a device or a browser review still needs a stack the plugin ships.
+- The check for a remote address is a tripwire: it does not see a bare host or an address that an environment file defines, so the written confirmation is the guard that matters.
+- The audit detects only the signals every backend log shares; an application error without them passes, and the recorded run is the proof.
+
 ## [0.16.0] - 2026-11-17
 
 ### Added
