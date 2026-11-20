@@ -61,10 +61,13 @@ The person must never review a stale base.
 Before switching, ask whether another worktree holds the branch (`git switch` refuses it with an error that names nothing):
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch> --base <base> --json
 ```
 
-If it exits 1 it prints the path of that worktree (a run of `go` that failed keeps its worktree, for example): leave the issue as `built`, change nothing, say that the branch is held by that worktree and its path, and that the person can review there or remove it with `git worktree remove` and run the review again. Then stop.
+If it exits 1 it prints JSON with `holder` (the path of that worktree; a run of `go` that failed keeps its worktree, for example), `removable`, `reasons` and `holds`. Leave the issue as `built` and change nothing until the person answers, say that the branch is held by that worktree and its path, and then:
+- when `holds` is `spec-only` or `empty`, there is nothing to review in it: say that the way out is to delete the remote branch and build the issue again, and stop;
+- when `removable` is true, say that the worktree holds nothing that is not on the remote, give `git worktree remove "<holder>"` and ask the person whether to remove it. Only on a yes run that command (never with `--force`, which would discard what git refuses to) and go on from the start of this step. On any other answer stop;
+- otherwise name each of `reasons`, remove nothing, say that the person can review there or save that work first and run the review again, and stop.
 
 ```bash
 git fetch origin <base> <branch>

@@ -190,6 +190,15 @@ test('Scenario: A failure that leaves only the specification on the pushed branc
   assert.match(failure, /never `fix`/);
 });
 
+test('Scenario: A hand-off leaves the branch free in a worktree that go did not create, and a failure keeps it', () => {
+  const exit4 = body.slice(body.indexOf('- Exit 4:'), body.indexOf('- Any other exit'));
+  assert.match(exit4, /after a hand-off[^\n]*`git switch --detach`/);
+  assert.match(exit4, /not after a failure/);
+  const end = body.slice(body.indexOf('At the end of the run, before the final report, leave the worktree'));
+  assert.match(end, /go-worktree\.mjs remove <issue>` when the outcome is `built`/);
+  assert.match(end, /After the failure path[^\n]*leave the worktree on disk/);
+});
+
 test('Scenario: Monorepo - go reads the platform from the decision, passes it on and commits inside its folder', () => {
   assert.match(body, /`platform` \(its name\), `stack`, `path` \(its folder\) and `targets`/);
   assert.match(body, /stack-profile\.mjs --platform <platform>/);
