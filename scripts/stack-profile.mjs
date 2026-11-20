@@ -4,7 +4,7 @@
 // With `--role issue` it prints only the questions the stack has for the issue writer ({ platform, stack, questions });
 // without it the questions are not part of the output, so dev and qa never receive them.
 // With `--role review` it prints the review block, the keys the repository replaced, the section Review and the lines
-// that ask for what a review never changes ({ platform, stack, review, review_replaced, notes, warnings }).
+// that ask for what a review never changes ({ platform, stack, review, review_replaced, review_ignored, notes, warnings }).
 // The profile is the plugin's stacks/<stack>.md plus the repository's .relevo/stacks/<stack>.md, with the
 // `platforms.<name>.checks` of relevo.yml applied. The agents receive this output; they do not look for profiles.
 // With `--lens spec|security|code|interface` it prints only the sections that QA lens reads ({ platform, stack, lens, sections }).
@@ -53,7 +53,7 @@ if (arg('role') === 'issue') {
   process.exit(0);
 }
 if (arg('role') === 'review') {
-  console.log(JSON.stringify({ platform: name, stack: profile.stack, review: profile.review, review_replaced: profile.reviewReplaced ?? [], notes: profile.reviewBody, warnings: profile.reviewWarnings }, null, 2));
+  console.log(JSON.stringify({ platform: name, stack: profile.stack, review: profile.review, review_replaced: profile.reviewReplaced ?? [], review_ignored: (profile.ignored ?? []).filter((x) => x.key.startsWith('review.')), notes: profile.reviewBody, warnings: profile.reviewWarnings }, null, 2));
   process.exit(0);
 }
 if (arg('lens') !== undefined) {

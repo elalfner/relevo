@@ -145,6 +145,15 @@ A backend on Nhost (Postgres, Hasura, Auth and a functions service in the contai
 
 Replace `log` and `test` in `.relevo/stacks/nhost.md` when your project differs, for example `log: compose:postgres,graphql,auth,functions` (a name the project does not have makes the log unreadable) and `test: npm run --silent test:integration`. `needs` and `adapter` stay the plugin's, and both keys must reach only `localhost`, `127.0.0.1` or `[::1]`. The commands of the gate (`analyze`, `test`) are replaced with `checks` in `relevo.yml`, not in the profile: if you have a full own `nhost` profile from before, `/relevo:doctor` warns about each command it ignores.
 
+Errors that your own rules raise on purpose (a trigger or function with `RAISE EXCEPTION 'code: text'`, provoked by a test tied to a scenario) would each be a `database-error` finding. List the codes in `.relevo/stacks/nhost.md` and the audit reports them as expected instead:
+
+```yaml
+review:
+  expected_errors: [permiso_denegado, bitacora_inmutable]
+```
+
+Each entry is a plain text (3 to 100 characters of letters, digits, space and `_ . : , ' / -`) that the message after `ERROR:` contains, for example `bitacora_inmutable` in `ERROR:  bitacora_inmutable: no se puede modificar`. A matching line is listed in `evidence/review-report.md` with the pattern, its count and a few log lines, while a test run is recorded; it is not a finding. A `FATAL`, a deadlock, an out-of-memory message and an HTTP status of 500 or above stay findings whatever you list, an entry that names one of them (or `ERROR` itself) is invalid, and an `ERROR` that matches no entry is still a finding. The key is read only for a declared adapter (`nhost` or a stack with `adapter: api`); on `supabase` and `laravel` it is ignored and `/relevo:doctor` warns. The plugin's `nhost` profile has no default list, because the codes belong to your project. The list is your declaration, reviewed in the pull request that changes it; the agent never adds a code and never waives a finding, which stays the person's decision.
+
 ### Declaring a review adapter for your own stack
 
 The plugin has a review adapter for `flutter`, `vue`, `laravel` and `supabase`. A stack you write yourself (see [Your own stack](#your-own-stack)) has none, and `/relevo:review` stops for it with the issue left `built`. A backend with no screen can declare an `api` adapter in the `review` block of its own `.relevo/stacks/<stack>.md`, with no release of the plugin:

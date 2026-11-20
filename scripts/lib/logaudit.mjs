@@ -85,6 +85,18 @@ const PG_RULES = [
   { cls: 'database-error', test: (l) => /\bERROR:\s/.test(l) && !/deadlock detected|out of memory/i.test(l) && !PG_DENIAL.test(l) },
 ];
 
+/**
+ * The entry of `patterns` that an `ERROR:` line matches, or null. Only the message after the first `ERROR:` is read, and a line
+ * with a fatal signal (a FATAL or PANIC level, a deadlock, out of memory, an HTTP status of 500 or above) is never matched.
+ */
+export function ownExpected(line, patterns) {
+  const at = line.search(/\bERROR:\s/);
+  if (at === -1) return null;
+  if (/\b(FATAL|PANIC):\s/.test(line) || /deadlock detected|out of memory/i.test(line) || /\bHTTP\/\d(?:\.\d)?"? 5\d\d\b|\bresponse 5\d\d\b|\b500 Internal Server Error\b/.test(line)) return null;
+  const message = line.slice(at + 'ERROR:'.length);
+  return patterns.find((p) => message.includes(p)) ?? null;
+}
+
 // A declared adapter reads the log of any backend: only the signals that belong to no framework. An HTTP status of 500 or
 // above is the Laravel pattern; an error that carries none of these signals (a service may write level "error" for any rejected
 // request) is not a finding, and the report says so.
@@ -98,7 +110,7 @@ export const DECLARED_NOT_DETECTED = 'Errors that carry none of those signals (a
  * was exercised, and only an empty slice with no run at all is inconclusive.
  * Returns { verdict, findings, counts, reason? }.
  */
-export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel' } = {}) {
+export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel', expectedErrors = [] } = {}) {
   // `declared` reads a Postgres-like log with only the signals every backend shares; it has no Supabase startup entry.
   const declared = flavor === 'declared';
   const postgres = flavor === 'postgres' || declared;
@@ -119,6 +131,9 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   // Expected denials of a Postgres log: counted and listed, a finding only when no run is recorded to explain them.
   const expected = [];
   const startup = [];
+  // Errors of the repository's own rules (`RAISE EXCEPTION`), declared in review.expected_errors; read for a declared adapter only.
+  const patterns = declared ? expectedErrors : [];
+  const declaredExpected = [];
   const denialsExplained = runs.length > 0;
   String(text).split('\n').forEach((raw, idx) => {
     const line = raw.replace(ANSI_RE, '');
@@ -133,6 +148,12 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
         else add('denial', idx + 1, excerpt);
         return;
       }
+      const own = patterns.length > 0 ? ownExpected(line, patterns) : null;
+      if (own) {
+        if (denialsExplained) declaredExpected.push({ line: idx + 1, excerpt, pattern: own });
+        else add('denial', idx + 1, excerpt);
+        return;
+      }
       (declared ? DECLARED_RULES : PG_RULES).forEach((rule) => {
         if (rule.test(line)) add(rule.cls, idx + 1, excerpt);
       });
@@ -144,7 +165,7 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   });
   const counts = {};
   findings.forEach((f) => { counts[f.class] = (counts[f.class] ?? 0) + 1; });
-  const extra = { ...(unreadable.length ? { unreadable } : {}), ...(postgres ? { expected, startup } : {}) };
+  const extra = { ...(unreadable.length ? { unreadable } : {}), ...(postgres ? { expected, startup, ...(patterns.length > 0 ? { declaredExpected } : {}) } : {}) };
   if (findings.length > 0) return { verdict: REJECTED, findings, counts, ...extra };
   if (unreadable.length > 0) {
     return { verdict: INCONCLUSIVE, reason: `a log source could not be read (${unreadable.map((u) => `${u.file}: ${u.reason}`).join('; ')}), so the audit cannot say the log is clean`, findings, counts, unreadable };
@@ -152,7 +173,7 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   if (runs.length === 0 && String(text).trim() === '') {
     return { verdict: INCONCLUSIVE, reason: 'no test run is recorded and the log has nothing since the review started: run the tests and say so (ran <exit code>)', findings, counts };
   }
-  return { verdict: PASSED, findings, counts, ...(postgres ? { expected, startup } : {}) };
+  return { verdict: PASSED, findings, counts, ...(postgres ? { expected, startup, ...(patterns.length > 0 ? { declaredExpected } : {}) } : {}) };
 }
 
 /** Markdown report of an audit. */
@@ -188,6 +209,13 @@ export function auditReport(audit, { issue, scope } = {}) {
   if (audit.expected?.length > 0) {
     lines.push('', `${audit.expected.length} expected denial(s): permission, row-level security or constraint errors; they are not findings.`);
     audit.expected.slice(0, 5).forEach((e) => lines.push(`- (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
+  }
+  if (audit.declaredExpected?.length > 0) {
+    lines.push('', `${audit.declaredExpected.length} expected error(s) that match a pattern the repository declared in \`review.expected_errors\`; they are not findings. The patterns are the repository's declaration, and a waiver stays the person's decision.`);
+    const counts = new Map();
+    audit.declaredExpected.forEach((e) => counts.set(e.pattern, (counts.get(e.pattern) ?? 0) + 1));
+    counts.forEach((n, pattern) => lines.push(`- \`${pattern}\`: ${n} time${n === 1 ? '' : 's'}`));
+    audit.declaredExpected.slice(0, 5).forEach((e) => lines.push(`  - (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
   }
   if (audit.startup?.length > 0) {
     lines.push('', `${audit.startup.length} expected startup entr${audit.startup.length === 1 ? 'y' : 'ies'}: \`FATAL: role "postgres" does not exist\`, which a database reset writes while it recreates the database; not a finding.`);
