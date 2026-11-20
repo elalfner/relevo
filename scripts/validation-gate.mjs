@@ -11,6 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { commandWarnings } from './lib/stack-profile.mjs';
 import { intentToAdd } from './lib/intent-to-add.mjs';
 import { checkKey, currentDiff, treeHash, ensureExcluded, gitIn, readStore, recordResult, resolveContext, reusable } from './lib/check-store.mjs';
 import { checkRestricted, formatRestricted, restrictedInDiff, restrictedListFromText } from './lib/restricted-paths.mjs';
@@ -83,7 +84,14 @@ try {
 
   console.log(status);
   if (status === 'could-not-run') console.log(`automated validation could not run: ${commands.filter((c) => c.status === 126 || c.status === 127 || c.error || /not found/i.test(c.output)).map((c) => toolOf(c.command)).join(', ')} is missing`);
-  if (status === 'red') receipt.commands.filter((c) => c.exit_code !== 0).forEach((c) => console.log(`${c.name} failed: ${c.command}`));
+  if (status === 'red') {
+    const ignored = commandWarnings(profile, ctx.name);
+    receipt.commands.filter((c) => c.exit_code !== 0).forEach((c) => {
+      console.log(`${c.name} failed: ${c.command}`);
+      // The repository's profile may have tried to replace this very command: say why it did not take effect.
+      ignored.filter((w) => w.command === c.name).forEach((w) => console.log(w.text));
+    });
+  }
   process.exit(EXIT[status]);
 } catch (err) {
   bad(`the gate could not read the repository: ${String(err.stderr || err.message).trim()}`);

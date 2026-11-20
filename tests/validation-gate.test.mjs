@@ -275,3 +275,44 @@ test('Scenario: No argument records a green without a run - an unknown flag is i
   gate(dir);
   assert.equal(runs(dir), 2);
 });
+
+// A platform on the nhost stack whose repository profile tries to replace `test`. The commands are plugin commands that
+// fail in a folder with no package.json, so the gate is red without any tool of the stack.
+function nhostRepo({ checks = '' } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-gate-ignored-'));
+  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'config', 'user.email', 'a@b');
+  git(dir, 'config', 'user.name', 't');
+  writeFileSync(join(dir, 'relevo.yml'), `limits:\n  run_max_cost: 5\nplatforms:\n  api:\n    path: .\n    stack: nhost\n${checks}`);
+  mkdirSync(join(dir, '.relevo/stacks'), { recursive: true });
+  writeFileSync(join(dir, '.relevo/stacks/nhost.md'), '---\nstack: nhost\ncommands:\n  test: npm run --silent test:core\n---\n');
+  writeFileSync(join(dir, '.gitignore'), 'runs.txt\n');
+  git(dir, 'add', '.');
+  git(dir, 'commit', '-qm', 'base');
+  git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  return dir;
+}
+
+test('Scenario: The ignored command is the one that failed - the red result says why', () => {
+  const dir = nhostRepo({ checks: '    checks:\n      analyze: "true"\n' });
+  const r = gate(dir);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /test failed: npm run --silent test\n/);
+  assert.match(r.stdout, /sets commands\.test to "npm run --silent test:core", which is ignored/);
+  assert.match(r.stdout, /platforms\.api\.checks\.test/);
+});
+
+test('Scenario: A command that was not ignored fails - the ignored one is not mentioned', () => {
+  const dir = nhostRepo({ checks: '    checks:\n      analyze: "false"\n      test: "true"\n' });
+  const r = gate(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /analyze failed: false/);
+  assert.doesNotMatch(r.stdout, /ignored/);
+});
+
+test('Scenario: Nothing was ignored - the red output is what it always was', () => {
+  const dir = repo({ test: 'false' });
+  const r = gate(dir);
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout.trim().split('\n').filter((l) => /failed|ignored/.test(l)).join('|'), 'test failed: false');
+});

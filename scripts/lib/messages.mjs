@@ -676,7 +676,25 @@ function buildFailedReason(values) {
 const POLICY_STOPS = {
   'protected path in the diff': { next: 'protected', en: 'an unattended run cannot edit a protected path, so the commit was refused and nothing was pushed; QA did not reject the work', es: 'una corrida sin supervisión no puede editar una ruta protegida, así que se rechazó el commit y no se subió nada; QA no rechazó el trabajo' },
 };
-const policyStop = (values) => POLICY_STOPS[values.reason] ?? null;
+// A refused checkpoint after earlier checkpoints were pushed: the branch holds code, so "nothing was pushed" would be false.
+const partialPush = (values) => (values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed')) === 'unsafe' && present(values.pushed_groups);
+const policyStop = (values) => (partialPush(values) ? null : POLICY_STOPS[values.reason] ?? null);
+
+// The branch line of a partial push: which groups are on the remote and which one was refused, with the path and the line that allows it.
+function partialLine(values, es) {
+  const of = present(values.of_groups) ? (es ? ` de ${values.of_groups}` : ` of ${values.of_groups}`) : '';
+  const refused = present(values.refused_group) ? (es ? `el grupo ${values.refused_group}` : `group ${values.refused_group}`) : (es ? 'el grupo siguiente' : 'the next group');
+  const head = es
+    ? `La rama ${values.branch} tiene subidos como checkpoints los grupos ${values.pushed_groups}${of}; ${refused} NO se subió, y sus archivos siguen sin commit en el worktree de la ejecución. El estado no avanzó y no se abrió ningún pull request.`
+    : `The branch ${values.branch} has groups ${values.pushed_groups}${of} pushed as checkpoints; ${refused} was NOT pushed, and its files stay uncommitted in the worktree of the run. The state did not advance and no pull request was opened.`;
+  const path = present(values.refused_path)
+    ? (es ? `\nRuta rechazada: ${values.refused_path}${present(values.refused_reason) ? ` (${values.refused_reason})` : ''}.` : `\nRefused path: ${values.refused_path}${present(values.refused_reason) ? ` (${values.refused_reason})` : ''}.`)
+    : '';
+  const allow = present(values.allow_line)
+    ? (es ? `\nPara permitirla, añade esta línea al issue: ${values.allow_line}` : `\nTo allow it, add this line to the issue: ${values.allow_line}`)
+    : '';
+  return `${head}${path}${allow}`;
+}
 
 // The reasons of the failure path that are a QA rejection. A comment with no reason is one too (the older callers never gave one).
 // Any other reason is a stop for that reason, including one the catalog does not know: a reason added to the skill later is never
@@ -946,14 +964,14 @@ export function renderMessage(kind, data = {}, language = 'en') {
 
   // The next step comes from one table. needs-spec depends on why the issue came back, build-failed on what the branch holds.
   if (STATE_OF[kind]) {
-    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'build_failed' ? values.recovery ?? classReason(values) ?? policyStop(values)?.next ?? buildFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
+    const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'build_failed' ? values.recovery ?? (partialPush(values) ? 'partial' : null) ?? classReason(values) ?? policyStop(values)?.next ?? buildFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
     const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_, branch: present(values.branch) ? values.branch : null });
     if (!present(values.command) && step.command) values.command = step.command;
     if (kind === 'toolchain_missing' || kind === 'installed_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
     if (kind === 'build_failed') {
       // For kept work the next step says what the command does and the other way forward; the others are the bare command.
-      const kept = ['kept', 'input', 'spec', 'policy', 'protected'].includes(step.reason);
+      const kept = ['kept', 'input', 'spec', 'policy', 'protected', 'partial'].includes(step.reason);
       values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}${kept ? ` (${step.hint})` : ''}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
     }
   }
@@ -990,7 +1008,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
         ? `La rama ${values.branch} ya existía en el remoto, así que no se tocó; el estado no avanzó y no se abrió ningún pull request.`
         : `The branch ${values.branch} already existed on the remote, so it was not touched; the state did not advance and no pull request was opened.`,
     };
-    values.branch_line = branchLines[state];
+    values.branch_line = partialPush(values) ? partialLine(values, es) : branchLines[state];
     values.reason_suffix = present(values.reason) ? ` (${values.reason})` : '';
     // When no finding could be corrected by the developer agent the retries were never run, so the line says that.
     // QA passed, but the base branch could not be integrated before the hand-off, or the checks failed once it was.

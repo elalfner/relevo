@@ -115,6 +115,8 @@ This section follows the Supabase documentation (local development workflow and 
 | 2 | `platforms.<name>.checks` in `relevo.yml` | Another command for a check, for example `fvm flutter test`. |
 | 3 | `.relevo/stacks/<stack>.md` | More hygiene, tools or skills for a stack. It adds to the plugin's profile and never replaces it. A stack the plugin does not ship is defined only by this file ([how](#your-own-stack)). |
 
+**A profile cannot replace a command.** If `.relevo/stacks/<stack>.md` sets `commands.test` (or `analyze`, or `format`) on a stack the plugin ships, the plugin's command stays, so a repository cannot weaken the gate. You are told without running `/relevo:doctor`: `stack-profile.mjs` lists the ignored key under `warnings`, and a red gate prints, below the command that failed, what the profile asked for and what the plugin kept. To use your own command, set it in `relevo.yml`, for example `platforms.api.checks.test: npm run --silent test:core`; `checks` replaces the plugin's command and then nothing is ignored. (The `test` of the `review` block in the profile is another key, the command the review runs, and it can be replaced there.)
+
 `/relevo:init` can create a commented file for the third layer and leaves it for you to commit. Commit it: the cloud run and your teammates read it from git, so a file that stays only on your machine applies only there. `/relevo:doctor` shows which layers each platform uses, and warns while that file is not tracked by git.
 
 ## Tuning how a stack is reviewed

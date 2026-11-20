@@ -829,3 +829,43 @@ test('Scenario: A note from the bugs lens - the hand-off names the lens, shows h
   assert.deepEqual(JSON.parse(marker[1]).map((n) => n.lens), ['bugs', 'bugs']);
   assert.match(JSON.parse(marker[1])[0].text, /^CONFIRMED: /);
 });
+
+const PARTIAL = { ...FAILED, branch_state: 'unsafe', reason: 'outside the platform', finding: 'docs/x.md  outside the platform', pushed_groups: '1-3', refused_group: 4, of_groups: 4, refused_path: 'docs/x.md', refused_reason: 'outside the platform', allow_line: 'Allow-paths: docs/x.md' };
+
+test('Scenario: Group 4 of 4 refused after three pushed - the comment names the groups, the path and /relevo:fix', () => {
+  const en = renderMessage('build_failed', PARTIAL);
+  assert.match(en, /groups 1-3 of 4 pushed as checkpoints; group 4 was NOT pushed/);
+  assert.match(en, /uncommitted in the worktree of the run/);
+  assert.match(en, /Refused path: docs\/x\.md \(outside the platform\)/);
+  assert.match(en, /Allow-paths: docs\/x\.md/);
+  assert.match(en, /Your next step: \/relevo:fix 31/);
+  assert.doesNotMatch(en, /--retry|nothing was pushed|BRANCH.*NOT pushed|was NOT pushed \(a possible/);
+  const es = renderMessage('build_failed', PARTIAL, 'es');
+  assert.match(es, /subidos como checkpoints los grupos 1-3 de 4; el grupo 4 NO se subió/);
+  assert.match(es, /Ruta rechazada: docs\/x\.md/);
+  assert.match(es, /Allow-paths: docs\/x\.md/);
+  assert.match(es, /Tu siguiente paso: \/relevo:fix 31/);
+  assert.doesNotMatch(es, /--retry|no se subió nada/);
+});
+
+test('Scenario: The first checkpoint is refused - nothing was pushed, so the comment is the one it always was', () => {
+  const { pushed_groups, refused_group, of_groups, refused_path, refused_reason, allow_line, ...first } = PARTIAL;
+  const en = renderMessage('build_failed', first);
+  assert.match(en, /was NOT pushed/);
+  assert.match(en, /nothing was pushed, so there is no branch to fix/);
+  assert.doesNotMatch(en, /\/relevo:fix/);
+});
+
+test('Scenario: A refusal that no Allow-paths line can fix - no Allow-paths line, still fix for the pushed groups', () => {
+  const { allow_line, ...restricted } = { ...PARTIAL, reason: 'restricted file in the diff', refused_path: '.env', refused_reason: 'restricted file' };
+  const en = renderMessage('build_failed', restricted);
+  assert.doesNotMatch(en, /Allow-paths/);
+  assert.match(en, /Refused path: \.env \(restricted file\)/);
+  assert.match(en, /Your next step: \/relevo:fix 31/);
+});
+
+test('a partial push after a protected-path refusal does not claim that nothing was pushed', () => {
+  const en = renderMessage('build_failed', { ...PARTIAL, reason: 'protected path in the diff' });
+  assert.doesNotMatch(en, /nothing was pushed/);
+  assert.match(en, /groups 1-3 of 4 pushed/);
+});

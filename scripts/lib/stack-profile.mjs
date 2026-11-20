@@ -375,6 +375,21 @@ export function applyChecks(profile, checks = {}) {
   return out;
 }
 
+/**
+ * What the repository's profile asked for and the plugin did not accept, as warnings that a person reads without running doctor:
+ * one per ignored `commands.<name>`. A command that `platforms.<name>.checks` replaces is left out, since the repository's value is moot.
+ * Returns [{ key, command, asked, kept, text }]; `platformName` fills the example of the way out.
+ */
+export function commandWarnings(profile, platformName = '<name>') {
+  const replaced = new Set(profile?.overridden ?? []);
+  return (profile?.ignored ?? [])
+    .filter((x) => x.key.startsWith('commands.') && !replaced.has(x.key.slice('commands.'.length)))
+    .map((x) => {
+      const command = x.key.slice('commands.'.length);
+      return { key: x.key, command, asked: x.value, kept: x.kept, text: `the repository profile sets ${x.key} to "${x.value}", which is ignored: the plugin keeps "${x.kept}". A profile cannot replace a command; set platforms.${platformName}.checks.${command} in relevo.yml to replace it` };
+    });
+}
+
 export const pluginProfilePath = (pluginRoot, stack) => `${pluginRoot}/stacks/${stack}.md`;
 export const repositoryProfilePath = (stack) => `.relevo/stacks/${stack}.md`;
 
