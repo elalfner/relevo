@@ -663,3 +663,43 @@ test('Scenario: Nhost override of log and test - replaced; needs and adapter are
   assert.equal(remote.ok, false);
   assert.match(remote.errors.join(' '), /"review\.test"/);
 });
+
+// ---------- an ignored command is a warning
+
+import { commandWarnings } from '../scripts/lib/stack-profile.mjs';
+
+const NHOST_CONFIG = (extra = '') => `limits:\n  run_max_cost: 5\nplatforms:\n  api:\n    stack: nhost\n${extra}`;
+const NHOST_OWN = '---\nstack: nhost\ncommands:\n  test: npm run --silent test:core\n---\n';
+
+test('Scenario: The repository tries to replace test - the plugin keeps its command and the output warns', () => {
+  const dir = repo({ 'relevo.yml': NHOST_CONFIG(), '.relevo/stacks/nhost.md': NHOST_OWN });
+  const out = JSON.parse(run(dir, '--plugin-root', PLUGIN_ROOT).stdout);
+  assert.equal(out.commands.test, 'npm run --silent test');
+  assert.equal(out.ignored.length, 1);
+  assert.equal(out.warnings.length, 1);
+  const [w] = out.warnings;
+  assert.equal(w.key, 'commands.test');
+  assert.equal(w.asked, 'npm run --silent test:core');
+  assert.equal(w.kept, 'npm run --silent test');
+  assert.match(w.text, /platforms\.api\.checks\.test/);
+});
+
+test('Scenario: A command that only the repository defines - it is used and there is no warning', () => {
+  const dir = repo({ 'relevo.yml': NHOST_CONFIG(), '.relevo/stacks/nhost.md': '---\nstack: nhost\ncommands:\n  lint: npm run lint\n---\n' });
+  const out = JSON.parse(run(dir, '--plugin-root', PLUGIN_ROOT).stdout);
+  assert.equal(out.commands.lint, 'npm run lint');
+  assert.deepEqual(out.warnings, []);
+});
+
+test('Scenario: Nothing ignored - warnings is empty', () => {
+  const out = JSON.parse(run(repo({ 'relevo.yml': NHOST_CONFIG() }), '--plugin-root', PLUGIN_ROOT).stdout);
+  assert.deepEqual(out.warnings, []);
+});
+
+test('a command that platforms.<name>.checks replaces gives no warning', () => {
+  const dir = repo({ 'relevo.yml': NHOST_CONFIG('    checks:\n      test: npm run --silent test:core\n'), '.relevo/stacks/nhost.md': NHOST_OWN });
+  const out = JSON.parse(run(dir, '--plugin-root', PLUGIN_ROOT).stdout);
+  assert.equal(out.commands.test, 'npm run --silent test:core');
+  assert.deepEqual(out.warnings, []);
+  assert.deepEqual(commandWarnings({ ignored: [{ key: 'interface', value: 'web', kept: 'none' }] }), [], 'only commands are warned about');
+});

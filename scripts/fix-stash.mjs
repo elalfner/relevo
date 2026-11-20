@@ -26,6 +26,10 @@ if (command === 'save') {
     console.error('the working tree is clean: there is nothing to save');
     process.exit(1);
   }
+  // A new file that intent-to-add.mjs made visible to the diff has an empty entry in the index (" A"), and `git stash` refuses it
+  // ("Entry ... not uptodate"). Remove that mark and only that: the content stays in the tree, and a file with staged content ("A ") is not touched.
+  const marked = git('status', '--porcelain=v1', '-z', '--untracked-files=all').split('\0').filter((entry) => entry.startsWith(' A ')).map((entry) => entry.slice(3));
+  if (marked.length > 0) git('reset', '-q', '--', ...marked);
   const message = stashMessage(issue, arg('iteration'));
   git('stash', 'push', '--include-untracked', '-m', message);
   console.log(`saved as "${message}". Resume with /relevo:fix ${issue}; the stash is local to this clone.`);

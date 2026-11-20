@@ -786,3 +786,15 @@ test('Scenario: the QA reference launches the bugs lens with the others, gives i
   assert.match(ref, /the findings of the `bugs` lens that do not block \(each starts with its label/);
   assert.match(body, /`relevo:qa-bugs`/);
 });
+
+test('Scenario: a refused checkpoint after pushed ones - the failure path passes the groups and recommends fix, not --retry', () => {
+  ['pushed_groups', 'refused_group', 'of_groups', 'refused_path', 'allow_line', 'Allow-paths: <path>', '`partial`', '/relevo:fix <issue>'].forEach((s) => assert.ok(text.includes(s), `the failure path must mention ${s}`));
+  assert.match(text, /never `\/relevo:go <issue> --retry`/);
+  assert.match(text, /stay uncommitted in the worktree/);
+  assert.match(text, /a restricted file, a credential, a temporary marker or a protected path of the hard tier get no `allow_line`/);
+});
+
+test('the push of each checkpoint is still a fast-forward without force', () => {
+  assert.match(text, /pushing to it is a fast-forward and is fine/);
+  assert.match(text, /never force-push/);
+});

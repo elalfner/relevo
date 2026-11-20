@@ -202,3 +202,17 @@ test('Scenario: an issue that carries relevo:build-failed - the work of the fail
   assert.equal(r.kept, true);
   assert.equal(r.found, true);
 });
+
+test('Scenario: The last commit is a checkpoint - the lookup reports kept after a refused checkpoint, so fix asks for no defect', () => {
+  const comment = renderMessage('build_failed', { assignee: 'ana', issue: 20, title: 'Report', finding: 'docs/x.md  outside the platform', branch: 'feature/20-report', branch_state: 'unsafe', reason: 'outside the platform', pushed_groups: '1-3', refused_group: 4, of_groups: 4, refused_path: 'docs/x.md', allow_line: 'Allow-paths: docs/x.md' });
+  const found = failureContext({ comments: [{ body: comment }], subject: 'wip: checkpoint 3/4 (#20)', issue: 20 });
+  assert.equal(found.kept, true);
+  assert.equal(found.found, true, 'the comment of a partial push is found by its title');
+  assert.match(found.finding, /outside the platform/);
+  assert.equal(failureContext({ comments: [{ body: comment }], subject: 'wip: checkpoint 3/4 (#21)', issue: 20 }).kept, false, 'a checkpoint of another issue');
+});
+
+test('Scenario: The last commit is a person\'s commit - the lookup does not report kept', () => {
+  assert.equal(failureContext({ comments: [], subject: 'fix: the summary screen (#20)', issue: 20 }).kept, false);
+  assert.equal(failureContext({ comments: [], subject: 'docs: specification for #20', issue: 20 }).kept, false);
+});
