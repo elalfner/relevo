@@ -147,3 +147,37 @@ After the developer agent has done the correction tasks, `fix` SHALL run the val
 #### Scenario: A correction that passes
 - **WHEN** the gate is green and no blocking lens rejects
 - **THEN** `fix` goes on as it does after a passed QA
+
+### Requirement: The change folder is given as a name or as a path
+The check for a branch without implementation SHALL accept the change as the name of its folder (`31-summary`) or as its path (`openspec/changes/31-summary`, with or without a trailing slash), and SHALL ignore every file under that folder, whatever its name, when it decides whether the branch holds implementation. A value that is empty or does not name a folder of the change SHALL be refused as a usage error and SHALL NOT be answered as if the branch had code.
+
+#### Scenario: Every file of the change, given by name
+- **WHEN** the only files that differ from the base branch are `.openspec.yaml`, `README.md`, `proposal.md`, `design.md`, `tasks.md` and files under `specs/` of `openspec/changes/31-summary/`, and the change is given as `31-summary`
+- **THEN** the check says the branch holds only the specification, and `fix` stops before it changes anything
+
+#### Scenario: The same files, given by path
+- **WHEN** the same branch is checked with the change given as `openspec/changes/31-summary` or `openspec/changes/31-summary/`
+- **THEN** the answer is the same: only the specification
+
+#### Scenario: Code beside the specification
+- **WHEN** a file outside the change folder also differs from the base branch
+- **THEN** the check says the branch holds implementation and lists only the files outside the change folder
+
+#### Scenario: A value that names no folder
+- **WHEN** the change is given as an empty value or as a path that does not end in a folder of `openspec/changes/`
+- **THEN** the check exits with the usage error and prints no verdict
+
+### Requirement: A held branch says whether its worktree can be removed
+When another worktree holds the branch of the issue, `fix` SHALL say whether that worktree can be removed, on the same terms as `review`: its tree is clean and every commit of its branch is on the remote branch. When it can, `fix` SHALL give the command, ask the person, and only on a yes remove it with `git worktree remove` without `--force` and go on from the start of the step. When it cannot, `fix` SHALL name what prevents it and change nothing. A branch that holds only the specification SHALL be said to hold nothing to correct.
+
+#### Scenario: A finished worktree that holds nothing that is not on the remote
+- **WHEN** the worktree that holds the branch is clean and its `HEAD` is on `origin/<branch>`
+- **THEN** `fix` says so, gives `git worktree remove "<path>"`, asks, and changes no file or label until the person answers
+
+#### Scenario: The worktree has unsaved work
+- **WHEN** the worktree has an uncommitted change or a commit that is not on the remote
+- **THEN** `fix` names it and removes nothing
+
+#### Scenario: Only the specification
+- **WHEN** the branch differs from the base branch only inside the change folder
+- **THEN** `fix` says there is no code to correct and that the way out is to delete the remote branch and build the issue again

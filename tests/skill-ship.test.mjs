@@ -136,7 +136,18 @@ test('Scenario: A failed go left its worktree - ship asks who holds the branch b
   const check = body.indexOf('scripts/branch-worktree.mjs --branch <branch>');
   assert.ok(check > 0 && check < body.indexOf('git switch <branch>'), 'the check comes before the switch');
   assert.ok(check < body.indexOf('openspec archive "<change folder name>" -y'), 'and before anything is archived');
-  assert.match(body, /stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path/);
+  assert.match(body, /Stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path/);
+});
+
+test('Scenario: A finished worktree that holds nothing that is not on the remote - ship offers to remove it and archives nothing before the answer', () => {
+  assert.match(body, /branch-worktree\.mjs --branch <branch> --base <base> --json/);
+  assert.match(body, /`removable` is true/);
+  assert.match(body, /holds nothing that is not on the remote/);
+  assert.match(body, /git worktree remove "<holder>"/);
+  assert.match(body, /never with `--force`/);
+  assert.match(body, /Only on a yes/);
+  assert.match(body, /name each of `reasons`, remove nothing/);
+  assert.match(body, /archive, push and merge nothing until the person answers/);
 });
 
 test('Scenario: Ship in a worktree - the tidy runs only under the condition review uses, and the branch is not deleted otherwise', () => {

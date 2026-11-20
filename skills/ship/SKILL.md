@@ -44,7 +44,11 @@ If the only reason is "GitHub has not finished checking whether the pull request
 
 Record the head the approval was given on, to use after the archive: `git fetch origin <branch>` then `git rev-parse origin/<branch>`. Call it `<baseline>`.
 
-Then scan what will be merged. First ask whether another worktree holds the branch, because `git switch` refuses it with an error that names nothing: `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch>`. If it exits 1 it prints the path of that worktree (a run of `go` that failed keeps its worktree, for example): stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path, and that the person can ship from there or remove it with `git worktree remove` and run ship again. If the scan reports anything, stop and show the file and line:
+Then scan what will be merged. First ask whether another worktree holds the branch, because `git switch` refuses it with an error that names nothing: `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch> --base <base> --json`. If it exits 1 it prints JSON with `holder` (the path of that worktree; a run of `go` that failed keeps its worktree, for example), `removable`, `reasons` and `holds`. Stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path, and then:
+- when `removable` is true, say that the worktree holds nothing that is not on the remote, give `git worktree remove "<holder>"` and ask the person whether to remove it; archive, push and merge nothing until the person answers. Only on a yes run that command (never with `--force`, which would discard what git refuses to) and go on with the scan. On any other answer stop;
+- otherwise name each of `reasons`, remove nothing, say that the person can ship from there or save that work first and run ship again, and stop.
+
+If the scan reports anything, stop and show the file and line:
 
 ```bash
 git fetch origin <base> <branch>

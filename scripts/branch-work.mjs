@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Says whether the current branch holds implementation beyond the change's specification. Usage:
-//   node scripts/branch-work.mjs --base dev --change 31-summary
+//   node scripts/branch-work.mjs --base dev --change 31-summary   (or --change openspec/changes/31-summary)
 // Prints {"implementation":true|false,"files":[...]}.   exit 0: there is code to correct   exit 1: only the specification   exit 2: bad arguments
 
 import { execFileSync } from 'node:child_process';
@@ -11,8 +11,9 @@ const arg = (name) => {
   return i === -1 ? undefined : process.argv[i + 1];
 };
 const base = arg('base');
-const change = arg('change');
-if (!base || !change) {
+// The change is its folder name (31-summary) or its path (openspec/changes/31-summary/): both name the same folder.
+const change = (arg('change') ?? '').trim().replace(/^openspec\/changes\//, '').replace(/\/+$/, '');
+if (!base || !change || change.includes('/')) {
   console.error('usage: branch-work.mjs --base <branch> --change <change folder name>');
   process.exit(2);
 }

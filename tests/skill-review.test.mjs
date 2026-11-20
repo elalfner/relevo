@@ -359,8 +359,21 @@ test('Scenario: Autopilot off / Capture asked for - the api review names its pre
 test('Scenario: A failed go left its worktree - review asks who holds the branch before it switches, and leaves the issue built', () => {
   const step1 = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('git switch <branch>'));
   assert.match(step1, /scripts\/branch-worktree\.mjs --branch <branch>/);
-  assert.match(step1, /If it exits 1 it prints the path of that worktree/);
-  assert.match(step1, /leave the issue as `built`, change nothing/);
+  assert.match(step1, /If it exits 1 it prints JSON with `holder`/);
+  assert.match(step1, /Leave the issue as `built` and change nothing until the person answers/);
+});
+
+test('Scenario: A finished worktree that holds nothing that is not on the remote - review offers to remove it, asks, and never forces', () => {
+  const step1 = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('git switch <branch>'));
+  assert.match(step1, /branch-worktree\.mjs --branch <branch> --base <base> --json/);
+  assert.match(step1, /`removable` is true/);
+  assert.match(step1, /holds nothing that is not on the remote/);
+  assert.match(step1, /git worktree remove "<holder>"/);
+  assert.match(step1, /never with `--force`/);
+  assert.match(step1, /Only on a yes/);
+  assert.match(step1, /name each of `reasons`, remove nothing/);
+  assert.match(step1, /`holds` is `spec-only` or `empty`[^\n]*delete the remote branch and build the issue again/);
+  assert.match(step1, /Leave the issue as `built`/);
 });
 
 // --- a conflict with the base branch (spec: review, "Synchronise with the base branch first")

@@ -173,6 +173,32 @@ test('Scenario: the profile and the role skills come from scripts, and the skill
     .forEach((f) => assert.ok(source.includes(`'${f}'`), `role-skills does not implement --${f}`));
 });
 
+test('Scenario: The profile cannot be resolved - it is resolved before the specification is committed, so nothing is pushed', () => {
+  const profile = body.indexOf('scripts/stack-profile.mjs --platform <platform>');
+  const commit = body.indexOf('--message "docs: specification for #<issue>"');
+  const specStep = body.indexOf('### 3. Specification');
+  assert.ok(profile > 0 && profile < specStep, 'the profile is resolved in step 2, before the specification');
+  assert.ok(profile < commit, 'the profile is resolved before the commit of the specification');
+  assert.equal(body.split('scripts/stack-profile.mjs --platform <platform>').length - 1, 1, 'it is resolved once');
+  assert.match(body, /`profile not resolved`[^\n]*nothing is committed or pushed/);
+});
+
+test('Scenario: A failure that leaves only the specification on the pushed branch gives the recovery delete-branch', () => {
+  const failure = body.slice(body.indexOf("Anything you cannot recover from ends here"), body.indexOf("### 1. Plan and claim"));
+  assert.match(failure, /scripts\/branch-state\.mjs <base> <branch> <change_id>/);
+  assert.match(failure, /`spec-only`[^\n]*`recovery` `delete-branch`/);
+  assert.match(failure, /never `fix`/);
+});
+
+test('Scenario: A hand-off leaves the branch free in a worktree that go did not create, and a failure keeps it', () => {
+  const exit4 = body.slice(body.indexOf('- Exit 4:'), body.indexOf('- Any other exit'));
+  assert.match(exit4, /after a hand-off[^\n]*`git switch --detach`/);
+  assert.match(exit4, /not after a failure/);
+  const end = body.slice(body.indexOf('At the end of the run, before the final report, leave the worktree'));
+  assert.match(end, /go-worktree\.mjs remove <issue>` when the outcome is `built`/);
+  assert.match(end, /After the failure path[^\n]*leave the worktree on disk/);
+});
+
 test('Scenario: Monorepo - go reads the platform from the decision, passes it on and commits inside its folder', () => {
   assert.match(body, /`platform` \(its name\), `stack`, `path` \(its folder\) and `targets`/);
   assert.match(body, /stack-profile\.mjs --platform <platform>/);

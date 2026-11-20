@@ -52,6 +52,16 @@ test('build-failed goes to fix, or says to delete the branch when it holds only 
   assert.match(spec.line, /apply relevo:go so that the cloud builds it again, or run \/relevo:go 9 --retry on your machine/);
 });
 
+test('Scenario: delete-branch names the command that deletes the branch when the branch is known, in both languages', () => {
+  const en = nextStep({ state: 'build-failed', reason: 'delete-branch', issue: 9, branch: 'feature/9-summary' });
+  assert.match(en.hint, /delete the remote branch \(`git push origin --delete feature\/9-summary`\), then apply relevo:go/);
+  const es = nextStep({ state: 'build-failed', reason: 'delete-branch', issue: 9, branch: 'feature/9-summary', language: 'es' });
+  assert.match(es.hint, /borra la rama remota \(`git push origin --delete feature\/9-summary`\), luego ponle relevo:go/);
+  const bare = nextStep({ state: 'build-failed', reason: 'delete-branch', issue: 9 });
+  assert.match(bare.hint, /delete the remote branch, then apply relevo:go/);
+  assert.doesNotMatch(bare.hint, /\{delete\}|git push/);
+});
+
 test('Scenario: Rebuild variant - build-failed with nothing pushed has no command and names the go label and --retry', () => {
   const step = nextStep({ state: 'build-failed', reason: 'rebuild', issue: 37 });
   assert.equal(step.command, null);
