@@ -214,7 +214,7 @@ test('Scenario: Failed because the branch already exists with implementation com
 test('Scenario: Failed because the branch already exists with only the specification - delete it and build again with go', () => {
   const text = renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' });
   assert.match(text, /already existed on the remote/);
-  assert.match(text, /Your next step: the branch holds only the specification: delete the remote branch, then apply relevo:go so that the cloud builds it again, or run \/relevo:go 31 --retry on your machine\./);
+  assert.match(text, /Your next step: the branch holds only the specification: delete the remote branch \(`git push origin --delete feature\/31-summary`\), then apply relevo:go so that the cloud builds it again, or run \/relevo:go 31 --retry on your machine\./);
   assert.doesNotMatch(text, /\/relevo:fix/);
 });
 
@@ -222,7 +222,7 @@ test('the same recoveries in Spanish', () => {
   const fix = renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'fix' }, 'es');
   assert.match(fix, /ya existía en el remoto, así que no se tocó/);
   assert.match(fix, /Tu siguiente paso: \/relevo:fix 31/);
-  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' }, 'es'), /borra la rama remota, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta \/relevo:go 31 --retry en tu máquina/);
+  assert.match(renderMessage('build_failed', { ...FAILED, branch_state: 'existing', recovery: 'delete-branch' }, 'es'), /borra la rama remota \(`git push origin --delete feature\/31-summary`\), luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta \/relevo:go 31 --retry en tu máquina/);
 });
 
 test('branch_state unsafe is the same as the older pushed: false, and now names a protected path too', () => {
@@ -236,6 +236,20 @@ test('a plain failed build is unchanged: pushed branch and the fix command', () 
   const text = renderMessage('build_failed', FAILED);
   assert.match(text, /is pushed/);
   assert.match(text, /Your next step: \/relevo:fix 31$/);
+});
+
+test('Scenario: Failure between the specification and the build - the branch is pushed, holds only the specification and names the deletion, not fix', () => {
+  for (const [language, command] of [['en', /delete the remote branch \(`git push origin --delete feature\/31-summary`\)/], ['es', /borra la rama remota \(`git push origin --delete feature\/31-summary`\)/]]) {
+    const text = renderMessage('build_failed', { ...FAILED, finding: 'profile not resolved', reason: 'profile not resolved', branch_state: 'pushed', recovery: 'delete-branch' }, language);
+    assert.match(text, command);
+    assert.doesNotMatch(text, /\/relevo:fix/);
+  }
+});
+
+test('Scenario: Failure after work was kept - the next step is still the one for kept work', () => {
+  const text = renderMessage('build_failed', { ...FAILED, branch_state: 'kept' });
+  assert.match(text, /\/relevo:fix 31/);
+  assert.doesNotMatch(text, /git push origin --delete/);
 });
 
 test('build_failed rejects an unknown branch state and an existing branch without a recovery', () => {

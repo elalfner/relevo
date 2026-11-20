@@ -947,7 +947,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
   // The next step comes from one table. needs-spec depends on why the issue came back, build-failed on what the branch holds.
   if (STATE_OF[kind]) {
     const reason = kind === 'needs_spec' ? values.reason ?? 'missing' : kind === 'build_failed' ? values.recovery ?? classReason(values) ?? policyStop(values)?.next ?? buildFailedReason(values) : kind === 'toolchain_missing' ? 'toolchain' : kind === 'installed_missing' ? 'installed' : null;
-    const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_ });
+    const step = nextStep({ state: STATE_OF[kind], reason, issue: values.issue, language: language_, branch: present(values.branch) ? values.branch : null });
     if (!present(values.command) && step.command) values.command = step.command;
     if (kind === 'toolchain_missing' || kind === 'installed_missing') values.next_line = `${nextStepPrefix(language_)}: ${step.hint}.`;
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;

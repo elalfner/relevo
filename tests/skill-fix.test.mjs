@@ -108,6 +108,7 @@ test('Scenario: Branch with only the specification - fix stops and says to start
   assert.match(body, /branch-work\.mjs --base <base> --change <change>/);
   assert.match(body, /delete the remote branch and then build the issue again, with the label relevo:go where the cloud builds or with `\/relevo:go <issue> --retry` on a machine/);
   assert.match(body, /never by applying relevo:ready again/);
+  assert.match(body, /`<change>` is the name of the folder, `<issue>-<slug>`, not its path/);
 });
 
 test('the task list is checked before the developer and before the commit', () => {

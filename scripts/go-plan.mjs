@@ -12,7 +12,8 @@
 //           edited after `ready` is not built. Only that issue is read (one GraphQL query). With --input it is `last_edited` of the
 //           file, keyed by issue number (`{ "7": { "ok": true, "at": null } }`); without it the body is not checked there.
 // --only N  keeps only the decision for issue N (the whole queue is still planned, so limits stay correct).
-// --retry   with --only N: plans the issue N, which must be `build-failed` and have no branch on the remote, as if the person who
+// --retry   with --only N: plans the issue N, which must be `build-failed` and have no branch on the remote (when the branch holds only
+//           the specification the refusal says how to delete it; nothing is deleted), as if the person who
 //           runs this (the user of `gh`) had made it `ready`; the claim moves it from `build-failed` to `building`. It never adds `ready`,
 //           so the cloud does not start. With --input the person is `retry_by` of the file and the branch is not looked for.
 // --apply   carries out every decision except `start` (labels, assignees, comments).
@@ -32,6 +33,7 @@ import { applyDecisions, gather, readLastEdited, realGh, realGhLinks } from './l
 import { planGo, withoutCredential } from './lib/plan.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { readBranchKind, retryRefusal } from './lib/retry-refusal.mjs';
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -87,7 +89,10 @@ if (arg('input')) {
     } catch {
       fail('could not look for the branch of the issue on the remote: check the connection and run it again');
     }
-    if (branches) fail(`#${retryIssue} already has a branch on the remote (${branches.split('\n')[0].split('\trefs/heads/')[1]}): run /relevo:fix ${retryIssue} to correct it, or delete the branch to build again`);
+    if (branches) {
+      const branch = branches.split('\n')[0].split('\trefs/heads/')[1];
+      fail(retryRefusal({ issue: retryIssue, branch, kind: readBranchKind({ base: config.branches.base, branch }) }));
+    }
     retry = { issue: retryIssue, by };
   }
   state = gather({ gh: realGh, ghLinks: realGhLinks(), repo, config, running, retry, only: Number.isInteger(onlyArg) ? onlyArg : null, person });
