@@ -54,3 +54,32 @@ test('the script exits 1 for a specification-only branch and 0 for one with code
   assert.equal(r2.status, 0);
   assert.equal(spawnSync('node', [CLI], { encoding: 'utf8' }).status, 2);
 });
+
+const ALL_CHANGE_FILES = ['.openspec.yaml', 'README.md', 'proposal.md', 'design.md', 'tasks.md', 'specs/a/spec.md'].map((f) => `${DIR}/${f}`);
+
+test('Scenario: Every file of the change, given by name or by path, is only the specification', () => {
+  const spec = repoWithBranch(ALL_CHANGE_FILES);
+  for (const change of ['31-summary', 'openspec/changes/31-summary', 'openspec/changes/31-summary/']) {
+    const r = spawnSync('node', [CLI, '--base', 'dev', '--change', change], { cwd: spec, encoding: 'utf8' });
+    assert.equal(r.status, 1, `change given as ${change}`);
+    assert.deepEqual(JSON.parse(r.stdout), { implementation: false, files: [] });
+  }
+});
+
+test('Scenario: Code beside the specification lists only the code, whichever way the change is given', () => {
+  const code = repoWithBranch([...ALL_CHANGE_FILES, 'lib/main.dart']);
+  for (const change of ['31-summary', 'openspec/changes/31-summary/']) {
+    const r = spawnSync('node', [CLI, '--base', 'dev', '--change', change], { cwd: code, encoding: 'utf8' });
+    assert.equal(r.status, 0);
+    assert.deepEqual(JSON.parse(r.stdout), { implementation: true, files: ['lib/main.dart'] });
+  }
+});
+
+test('Scenario: A value that names no folder is a usage error with no verdict', () => {
+  const spec = repoWithBranch(ALL_CHANGE_FILES);
+  for (const change of ['', 'openspec/changes/', '/', 'a/b']) {
+    const r = spawnSync('node', [CLI, '--base', 'dev', '--change', change], { cwd: spec, encoding: 'utf8' });
+    assert.equal(r.status, 2, `change given as "${change}"`);
+    assert.equal(r.stdout.trim(), '');
+  }
+});

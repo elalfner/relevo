@@ -108,6 +108,7 @@ test('Scenario: Branch with only the specification - fix stops and says to start
   assert.match(body, /branch-work\.mjs --base <base> --change <change>/);
   assert.match(body, /delete the remote branch and then build the issue again, with the label relevo:go where the cloud builds or with `\/relevo:go <issue> --retry` on a machine/);
   assert.match(body, /never by applying relevo:ready again/);
+  assert.match(body, /`<change>` is the name of the folder, `<issue>-<slug>`, not its path/);
 });
 
 test('the task list is checked before the developer and before the commit', () => {
@@ -125,7 +126,18 @@ test('Scenario: A failed go left its worktree - fix asks who holds the branch be
   const before = body.indexOf('scripts/branch-worktree.mjs --branch <branch>');
   assert.ok(before > 0 && before < body.indexOf('`git switch <branch>`'), 'the check comes before the switch');
   assert.match(body, /held by that worktree and its path/);
-  assert.match(body, /change nothing, say that the branch is held/);
+  assert.match(body, /Change nothing until the person answers, say that the branch is held/);
+});
+
+test('Scenario: A finished worktree that holds nothing that is not on the remote - fix offers to remove it, asks, and never forces', () => {
+  assert.match(body, /branch-worktree\.mjs --branch <branch> --base <base> --json/);
+  assert.match(body, /`removable` is true/);
+  assert.match(body, /holds nothing that is not on the remote/);
+  assert.match(body, /git worktree remove "<holder>"/);
+  assert.match(body, /never with `--force`/);
+  assert.match(body, /Only on a yes/);
+  assert.match(body, /name each of `reasons`, remove nothing/);
+  assert.match(body, /`holds` is `spec-only` or `empty`[^\n]*delete the remote branch and build the issue again/);
 });
 
 test('Scenario: fix launches the developer with the model plan, as go does', () => {

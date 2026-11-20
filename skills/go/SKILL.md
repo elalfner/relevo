@@ -92,7 +92,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/go-worktree.mjs create <issue>
 ```
 
 - Exit 0: it prints `{"worktree": "<path>", "base": "<base>", "state": "<path>"}`. Enter it with `EnterWorktree` and its `path` (never its `name`, which would branch from the default branch and not from the base of the project). From then on every step, command and agent works in that folder.
-- Exit 4: the session is already in a linked worktree (a run of `go-local.mjs`, or one the person made). Build where you are, make no worktree, and skip the exit below.
+- Exit 4: the session is already in a linked worktree (a run of `go-local.mjs`, or one the person made). Build where you are, make no worktree, and skip the exit below. This worktree is not yours to remove, but after a hand-off (the outcome `built`) free its branch for the review: run `git switch --detach` there, once the branch is pushed and the final report is ready, so `review` can check the branch out elsewhere; not after a failure, which keeps the branch checked out where the work is.
 - Any other exit (for example 3, the worktree of this issue already exists because another run is building it or a failed one left it): show its message and stop without changing anything.
 
 The `state` folder beside the worktrees holds the progress of this build: the scripts that record the progress and the budget find it from the worktree, so you set no variable and prefix no command. The person can read it from another terminal with `node ${CLAUDE_PLUGIN_ROOT}/scripts/go-local.mjs status <issue>`, and the budget guard of "The budget of the run" works as in an unattended run. What an interactive build does not have is a limit for you: there is no turn or cost limit of Relevo on the main agent, because a session cannot set one for itself, and it runs on the model and the context of the session. A build with hard limits is `--local`.
@@ -124,13 +124,14 @@ Anything you cannot recover from ends here. Use it whenever a step below says "t
    ```
 
    For the reason `run limit reached` the message is `wip: stopped by limit (#<issue>)`, a blank line and `Issue-hash: <issue_hash>` instead (the hash lets a later run resume from it). Each message is that exact subject and never changes: `fix` recognises the work by it. If the script exits 0, the work is on the branch and the `branch_state` is `kept` (with `tasks_done` and `tasks_total` from `openspec instructions apply --change "<change_id>" --json`). If it exits 1 it has refused (a protected path, a file outside the platform, a temporary marker or a possible credential): **do not push**, and the `branch_state` is `unsafe`, naming the file and line. If it fails for any other reason, do not push and use `not_pushed`. For every other reason there is no work to keep: go on.
-2. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, a restricted file in the diff, a path outside the platform, an issue that changed after `ready`, or when the commit of step 1 was refused; and never touch a branch that already existed before this run. The branch that your own checkpoints created is yours: pushing to it is a fast-forward and is fine, and a push that would not be a fast-forward is not made.
+2. Push the branch with `git push -u origin <branch>`; never force-push. **Do not push anything** when the reason is a possible credential or temporary marker, a protected path in the diff, a restricted file in the diff, a path outside the platform, an issue that changed after `ready`, a stack profile that was not resolved, or when the commit of step 1 was refused; and never touch a branch that already existed before this run. The branch that your own checkpoints created is yours: pushing to it is a fast-forward and is fine, and a push that would not be a fast-forward is not made.
 3. Record the class of the exit: `qa-non-fixable` for the reason `QA rejected: nothing the developer agent can fix`, `qa-fixable-after-retries` for `QA rejected after the retries`, `limit` for `run limit reached`, and `other` for every other reason, except that the reasons `conflict with the base branch` and `automated validation failed after merging the base branch` record `conflict` and `other` respectively. Then move the issue to `build-failed`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/label-change.mjs --to build-failed --current "<current labels, comma separated>"`, then apply the result with `gh issue edit`.
 4. Post one comment built by `render-message.mjs build_failed` with: `assignee`, `issue`, `title`, `finding` (the first QA finding, or the reason), `file` and `line` when known, `branch`, `reason`, `finding_class` (`input`, `spec` or `policy`, only when QA classified the first finding that the developer agent could not fix) and `retries_skipped` (`true` when the retries were skipped for that reason), the four `contradiction_*` values of step 5 of `qa-run.md` when the lenses contradict each other, `log_url` when the run has one (`$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID` in a workflow), and `branch_state`:
    - `kept` when you committed the work that QA rejected and pushed it (step 1);
    - `pushed` (the default) when you pushed the branch and there was no work to keep;
+     Before you post, ask what that branch holds: `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-state.mjs <base> <branch> <change_id>`. When it prints `spec-only` (the run failed after the specification was pushed and before anything was built), give the `recovery` `delete-branch` (the person deletes the remote branch and builds the issue again), never `fix`: there is no code to correct. For any other answer, or when it fails, give no `recovery`;
    - `unsafe` when you did not push because of a possible credential, a temporary marker, a protected path, a restricted file or a path outside the platform;
-   - `not_pushed` when you did not push for another reason, such as an issue that changed after `ready`;
+   - `not_pushed` when you did not push for another reason, such as an issue that changed after `ready` or a stack profile that was not resolved;
    - `existing` when the branch already existed, together with `recovery` (step 2).
 5. Stop. Do not open a pull request and do not advance the state.
 
@@ -200,6 +201,18 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-state.mjs <base> <branch> <change_id>
 ```
 
 It prints `implementation`, `spec-only` or `empty`. The recovery is `fix` for `implementation` (the person runs `/relevo:fix <issue>`) and `delete-branch` for the others (the person deletes the remote branch and applies `ready` again).
+
+Resolve the profile now, in a resumed run as well: step 3 and step 4 use this same output.
+
+Before anything is committed, resolve the stack profile of the repository's platform and the extra skills of each role. The agents contain no knowledge of any stack; it comes from here:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role dev --platform <platform>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role qa --platform <platform>
+```
+
+If `stack-profile.mjs` fails, take the failure path with the reason `profile not resolved` and its message: nothing is committed or pushed, so no branch is left on the remote for the issue, and the `branch_state` is `not_pushed`. `role-skills.mjs` prints each skill as a path or as left out with a reason: give the agent only the paths, and mention the skills left out in your final report.
 
 ### 3. Specification
 
@@ -279,15 +292,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/commit-change.mjs --message "docs: specificat
 
 Announce the phase: `node ${CLAUDE_PLUGIN_ROOT}/scripts/progress.mjs phase development`.
 
-First resolve the stack profile of the repository's platform and the extra skills of each role. The agents contain no knowledge of any stack; it comes from here:
-
-```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/stack-profile.mjs --platform <platform>
-node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role dev --platform <platform>
-node ${CLAUDE_PLUGIN_ROOT}/scripts/role-skills.mjs --role qa --platform <platform>
-```
-
-If `stack-profile.mjs` fails, take the failure path with the reason `profile not resolved` and its message. `role-skills.mjs` prints each skill as a path or as left out with a reason: give the agent only the paths, and mention the skills left out in your final report.
+The stack profile and the role skills were resolved in step 2: use that output.
 
 **Interface rules (only when the platform's stack has an interface and the change has a visible part).** After the specification is written, select the rules for the two agents from the text of the issue and the tasks:
 

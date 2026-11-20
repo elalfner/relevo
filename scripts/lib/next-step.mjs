@@ -161,8 +161,8 @@ const TABLE = {
       command: null,
       who: 'assignee',
       hint: {
-        en: 'the branch holds only the specification: delete the remote branch, then apply relevo:go so that the cloud builds it again, or run /relevo:go {n} --retry on your machine',
-        es: 'la rama solo tiene la especificación: borra la rama remota, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
+        en: 'the branch holds only the specification: delete the remote branch{delete}, then apply relevo:go so that the cloud builds it again, or run /relevo:go {n} --retry on your machine',
+        es: 'la rama solo tiene la especificación: borra la rama remota{delete}, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
       },
     },
     // Nothing was pushed, so there is no branch to correct: the cause is resolved first, then the issue is built again.
@@ -239,15 +239,17 @@ export const NEXT_STEP_REASONS = {
   'build-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild'],
 };
 
-const fill = (text, issue) => String(text).replaceAll('{n}', String(issue ?? ''));
+// `{delete}` is the command that deletes the branch when the branch is known, and nothing otherwise.
+const fill = (text, issue, branch = null) => String(text).replaceAll('{n}', String(issue ?? '')).replaceAll('{delete}', branch ? ` (\`git push origin --delete ${branch}\`)` : '');
 
 /**
  * The next step for an issue in `state`.
+ * `branch` (optional) names the branch, so that `delete-branch` gives the command that deletes it.
  * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `build-failed`
  * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
-export function nextStep({ state, reason = null, issue = null, language = 'en' } = {}) {
+export function nextStep({ state, reason = null, issue = null, language = 'en', branch = null } = {}) {
   const entry = TABLE[state];
   if (!entry) throw new Error(`unknown state "${state}": expected one of ${NEXT_STEP_STATES.join(', ')}`);
   const variants = NEXT_STEP_REASONS[state];
@@ -263,7 +265,7 @@ export function nextStep({ state, reason = null, issue = null, language = 'en' }
   if (needsIssue && (issue === null || issue === undefined || issue === '')) throw new Error(`the next step of "${state}" needs the issue number`);
 
   const command = chosen.command === null ? null : fill(chosen.command, issue);
-  const hint = fill(chosen.hint[lang], issue);
+  const hint = fill(chosen.hint[lang], issue, branch);
   const who = WHO[lang][chosen.who];
   const person = who ? ` (${who})` : '';
   const line = command === null
