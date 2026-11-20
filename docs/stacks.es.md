@@ -145,6 +145,15 @@ Un backend en Nhost (Postgres, Hasura, Auth y un servicio de funciones en los co
 
 Reemplaza `log` y `test` en `.relevo/stacks/nhost.md` cuando tu proyecto sea distinto, por ejemplo `log: compose:postgres,graphql,auth,functions` (un nombre que el proyecto no tiene deja el log ilegible) y `test: npm run --silent test:integration`. `needs` y `adapter` siguen siendo los del plugin, y ambas claves solo pueden alcanzar `localhost`, `127.0.0.1` o `[::1]`. Los comandos de la compuerta (`analyze`, `test`) se reemplazan con `checks` en `relevo.yml`, no en el perfil: si ya tienes un perfil propio completo de `nhost`, `/relevo:doctor` avisa de cada comando que ignora.
 
+Los errores que tus propias reglas lanzan a propósito (un disparador o función con `RAISE EXCEPTION 'código: texto'`, provocado por una prueba ligada a un escenario) serían cada uno un hallazgo `database-error`. Lista los códigos en `.relevo/stacks/nhost.md` y la auditoría los reporta como esperados:
+
+```yaml
+review:
+  expected_errors: [permiso_denegado, bitacora_inmutable]
+```
+
+Cada entrada es un texto plano (de 3 a 100 caracteres de letras, dígitos, espacio y `_ . : , ' / -`) que el mensaje después de `ERROR:` contiene, por ejemplo `bitacora_inmutable` en `ERROR:  bitacora_inmutable: no se puede modificar`. Una línea que coincide se lista en `evidence/review-report.md` con el patrón, su cuenta y unas líneas del log, mientras haya una ejecución de pruebas registrada; no es un hallazgo. Un `FATAL`, un deadlock, un mensaje de memoria agotada y un estado HTTP de 500 o más siguen siendo hallazgos pase lo que pase con la lista; una entrada que nombre alguno de ellos (o `ERROR` mismo) es inválida, y un `ERROR` que no coincide con ninguna entrada sigue siendo un hallazgo. La clave solo la lee un adaptador declarado (`nhost` o un stack con `adapter: api`); en `supabase` y `laravel` se ignora y `/relevo:doctor` avisa. El perfil `nhost` del plugin no trae lista por defecto, porque los códigos son de tu proyecto. La lista es tu declaración, revisada en el pull request que la cambia; el agente nunca agrega un código ni exonera un hallazgo, que sigue siendo decisión de la persona.
+
 ### Declara un adaptador de review para tu propio stack
 
 El plugin trae un adaptador de review para `flutter`, `vue`, `laravel` y `supabase`. Un stack que escribes tú (ver [Tu propio stack](#tu-propio-stack)) no tiene ninguno, y `/relevo:review` se detiene para él dejando el issue en `built`. Un backend sin pantalla puede declarar un adaptador `api` en el bloque `review` de su propio `.relevo/stacks/<stack>.md`, sin esperar una versión del plugin:

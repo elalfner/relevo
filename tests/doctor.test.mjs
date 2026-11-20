@@ -3075,3 +3075,30 @@ test('Scenario: Doctor with an old full profile - a command that differs from th
   assert.equal(w.status, 'warn');
   assert.match(w.fix, /checks/);
 });
+
+// ---- the errors a repository expects (expected-errors-review)
+
+const NHOST_OWN = (list) => `---\nstack: nhost\nreview:\n  expected_errors: ${list}\n---\n`;
+
+test('Scenario: Declared patterns - doctor notes how many and that a waiver stays the person\'s decision', () => {
+  const n = byId(declaredChecks(nhostFacts({ own: NHOST_OWN('[permiso_denegado, bitacora_inmutable]') })), 'review.expected_errors.backend');
+  assert.equal(n.status, 'note');
+  assert.match(n.message, /2 expected-error patterns declared in review\.expected_errors/);
+  assert.match(n.message, /waiver stays your decision/);
+});
+
+test('Scenario: Not set - doctor adds no check for expected errors', () => {
+  assert.equal(byId(declaredChecks(nhostFacts()), 'review.expected_errors.backend'), undefined);
+});
+
+test('Scenario: Invalid entry - doctor reports the profile as invalid and names the key', () => {
+  const results = declaredChecks(nhostFacts({ own: NHOST_OWN('[FATAL]') }));
+  assert.ok(results.some((r) => r.status === 'fail' && /review\.expected_errors/.test(r.message)), JSON.stringify(results.filter((r) => r.status === 'fail')));
+});
+
+test('Scenario: Ignored on a shipped stack - doctor warns that the key is ignored', () => {
+  const f = apiFacts({ files: { 'apps/api/vendor/autoload.php': '', '.relevo/stacks/laravel.md': '---\nstack: laravel\nreview:\n  expected_errors: [permiso_denegado]\n---\n' } });
+  const w = idIn(runChecks({ ...healthy(), ...f, config: f.config }), 'platform.api.ignored.review.expected_errors');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /ignored/);
+});
