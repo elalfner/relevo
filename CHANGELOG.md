@@ -4,6 +4,24 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-11-19
+
+### Fixed
+
+- **`fix` stops on a branch that holds only the specification.** `branch-work.mjs` takes the change as the name of its folder (`31-summary`) or as its path (`openspec/changes/31-summary/`); with a path it counted every file of the change as code, so `/relevo:fix` went on over a branch with no implementation. A value that names no folder is a usage error (exit 2).
+- **A run of `go` that cannot resolve the stack profile no longer leaves a half-built branch.** The profile is resolved at the end of step 2, before the specification is committed, so `profile not resolved` pushes nothing and the `branch_state` is `not_pushed`.
+- **A failure that leaves only the specification on the pushed branch says how to recover.** The comment gives `recovery` `delete-branch` and names `git push origin --delete <branch>` (in English and Spanish) instead of recommending `/relevo:fix`, which has no code to correct. `go-plan.mjs --retry` on such a branch says to delete it and retry, and never deletes anything itself; a branch with code, or one that cannot be read, keeps the old message.
+
+### Added
+
+- **`review`, `fix` and `ship` say whether the worktree that holds the branch can be removed.** `branch-worktree.mjs` takes `--base` and `--json` and reports `removable` (its tree is clean and every commit of its branch is on the remote), the `reasons` it is not, and what the branch `holds` (`empty`, `spec-only` or `implementation`). When it can be removed the skill gives `git worktree remove "<path>"` and asks; it removes the worktree only on the person's yes and never with `--force`. A branch that holds only the specification is said to have nothing to review or correct. The path on stdout and the exit codes of the script do not change without `--json`.
+- **`go` frees the branch after a hand-off in a worktree it did not create** (a worktree of the Claude app, or of a local run): it runs `git switch --detach` there, so `review` can check the branch out elsewhere. After a failure the branch stays checked out where the work is.
+
+### Known limits
+
+- A clean worktree whose commits are on the remote can still be in use by another session, which is why the removal always asks. The detach after a hand-off is an instruction of the skill, covered by a test of its text and not by a run.
+- Reusing or resuming a branch that holds only the specification (`go --retry` building on it) is not part of this release: the branch is deleted and built again.
+
 ## [0.17.1] - 2026-11-19
 
 ### Added
