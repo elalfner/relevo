@@ -165,6 +165,15 @@ const TABLE = {
         es: 'la rama solo tiene la especificación: borra la rama remota{delete}, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
       },
     },
+    // A checkpoint was refused after earlier ones were pushed: the branch holds code, so it is corrected, not built again.
+    partial: {
+      command: '/relevo:fix {n}',
+      who: 'assignee',
+      hint: {
+        en: 'the pushed groups are on the branch and the refused one is not: allow the path in the issue if it is right, then it checks and corrects the work that was kept (no description of the defect is needed)',
+        es: 'los grupos subidos están en la rama y el rechazado no: permite la ruta en el issue si es correcta, y luego verifica y corrige el trabajo que se guardó (no hace falta describir el defecto)',
+      },
+    },
     // Nothing was pushed, so there is no branch to correct: the cause is resolved first, then the issue is built again.
     rebuild: {
       command: null,
@@ -236,7 +245,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
-  'build-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild'],
+  'build-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild', 'partial'],
 };
 
 // `{delete}` is the command that deletes the branch when the branch is known, and nothing otherwise.
@@ -246,7 +255,7 @@ const fill = (text, issue, branch = null) => String(text).replaceAll('{n}', Stri
  * The next step for an issue in `state`.
  * `branch` (optional) names the branch, so that `delete-branch` gives the command that deletes it.
  * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `build-failed`
- * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, or `rebuild` when nothing was pushed).
+ * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, `rebuild` when nothing was pushed, or `partial` when a checkpoint was refused after earlier ones were pushed).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
 export function nextStep({ state, reason = null, issue = null, language = 'en', branch = null } = {}) {

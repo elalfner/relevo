@@ -198,3 +198,14 @@ test('every text that used to say "apply ready again" names the go label or --re
     });
   });
 });
+
+test('Scenario: Partial variant - a refused checkpoint after pushed ones goes to fix and never to --retry', () => {
+  assert.ok(NEXT_STEP_REASONS['build-failed'].includes('partial'));
+  const step = nextStep({ state: 'build-failed', reason: 'partial', issue: 20 });
+  assert.equal(step.command, '/relevo:fix 20');
+  assert.equal(step.who, 'assignee');
+  assert.doesNotMatch(step.line, /--retry/);
+  const es = nextStep({ state: 'build-failed', reason: 'partial', issue: 20, language: 'es' });
+  assert.equal(es.command, '/relevo:fix 20');
+  assert.doesNotMatch(es.line, /--retry/);
+});

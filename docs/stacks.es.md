@@ -115,6 +115,8 @@ Esta sección sigue la documentación de Supabase (guías de flujo de desarrollo
 | 2 | `platforms.<nombre>.checks` en `relevo.yml` | Otro comando para una verificación, por ejemplo `fvm flutter test`. |
 | 3 | `.relevo/stacks/<stack>.md` | Más higiene, herramientas o skills para un stack. Se suma al perfil del plugin y nunca lo reemplaza. Un stack que el plugin no trae se define solo con este archivo ([cómo](#tu-propio-stack)). |
 
+**Un perfil no puede reemplazar un comando.** Si `.relevo/stacks/<stack>.md` define `commands.test` (o `analyze`, o `format`) en un stack que el plugin trae, el comando del plugin se queda, así que un repositorio no puede debilitar la compuerta. Lo sabes sin ejecutar `/relevo:doctor`: `stack-profile.mjs` lista la clave ignorada en `warnings`, y una compuerta en rojo imprime, bajo el comando que falló, lo que pedía el perfil y lo que conservó el plugin. Para usar tu propio comando, defínelo en `relevo.yml`, por ejemplo `platforms.api.checks.test: npm run --silent test:core`; `checks` reemplaza el comando del plugin y entonces no se ignora nada. (El `test` del bloque `review` del perfil es otra clave, el comando que ejecuta el review, y ahí sí se puede reemplazar.)
+
 `/relevo:init` puede crear un archivo comentado para la tercera capa y lo deja para que le hagas commit. Hazle commit: la ejecución en la nube y tus compañeros lo leen de git, así que un archivo que se queda solo en tu máquina solo aplica ahí. `/relevo:doctor` muestra qué capas usa cada plataforma, y avisa mientras git no rastree ese archivo.
 
 ## Ajusta cómo se revisa un stack

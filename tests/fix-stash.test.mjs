@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { findStash, stashMessage } from '../scripts/lib/fix-stash.mjs';
@@ -97,4 +97,42 @@ test('bad arguments exit 2', () => {
   const { cli } = repo();
   assert.equal(cli('save', '--issue', 'x').status, 2);
   assert.equal(cli('nope').status, 2);
+});
+
+const INTENT = new URL('../scripts/intent-to-add.mjs', import.meta.url).pathname;
+
+test('Scenario: A new file marked for the diff - save succeeds, the stash is named and the tree is clean', () => {
+  const { dir, git, cli } = repo();
+  writeFileSync(join(dir, 'new.txt'), 'made by the developer\n');
+  const mark = spawnSync('node', [INTENT, 'new.txt'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(mark.status, 0, mark.stderr);
+  assert.match(git('status', '--porcelain'), /^ A new\.txt/m, 'the file really is marked with intent-to-add');
+  const r = cli('save', '--issue', '42', '--iteration', '2');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(git('stash', 'list'), /relevo-fix #42 iteration 2/);
+  assert.equal(git('status', '--porcelain').trim(), '');
+});
+
+test('Scenario: Restoring brings the file back with its content', () => {
+  const { dir, git, cli } = repo();
+  writeFileSync(join(dir, 'new.txt'), 'made by the developer\n');
+  spawnSync('node', [INTENT, 'new.txt'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(cli('save', '--issue', '42', '--iteration', '1').status, 0);
+  assert.equal(cli('pop', '--issue', '42').status, 0);
+  assert.equal(readFileSync(join(dir, 'new.txt'), 'utf8'), 'made by the developer\n');
+  assert.match(git('status', '--porcelain'), /new\.txt/);
+});
+
+test('Scenario: A file really staged - the step does not unstage it', () => {
+  const { dir, git, cli } = repo();
+  writeFileSync(join(dir, 'staged.txt'), 'staged content\n');
+  git('add', 'staged.txt');
+  writeFileSync(join(dir, 'marked.txt'), 'marked\n');
+  spawnSync('node', [INTENT, 'marked.txt'], { cwd: dir, encoding: 'utf8' });
+  assert.match(git('status', '--porcelain'), /^A  staged\.txt/m);
+  assert.equal(cli('save', '--issue', '7', '--iteration', '1').status, 0);
+  // Restoring with --index is not what pop does, so look in the stash itself: the staged file is in its index commit.
+  assert.match(git('stash', 'show', '--name-only', '--include-untracked', 'stash@{0}'), /staged\.txt/);
+  assert.equal(cli('pop', '--issue', '7').status, 0);
+  assert.equal(readFileSync(join(dir, 'staged.txt'), 'utf8'), 'staged content\n');
 });

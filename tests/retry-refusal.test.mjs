@@ -24,6 +24,20 @@ test('Scenario: The branch holds code or cannot be read - the refusal sends the 
   }
 });
 
+test('Scenario: The branch holds checkpoints - the refusal says it holds code and that fix needs no description of the defect', () => {
+  const text = retryRefusal({ issue: 20, branch: 'feature/20-x', kind: 'implementation' });
+  assert.match(text, /it holds code/);
+  assert.match(text, /\/relevo:fix 20/);
+  assert.match(text, /needs no description of the defect/);
+  assert.doesNotMatch(text, /git push origin --delete/);
+  assert.doesNotMatch(text, /holds only the specification/);
+});
+
+test('the refusals for a branch that cannot be read and for one with only the specification are unchanged', () => {
+  assert.equal(retryRefusal({ issue: 20, branch: 'feature/20-x', kind: null }), '#20 already has a branch on the remote (feature/20-x): run /relevo:fix 20 to correct it, or delete the branch to build again');
+  assert.match(retryRefusal({ issue: 20, branch: 'feature/20-x', kind: 'spec-only' }), /holds only the specification, so there is no code to fix/);
+});
+
 function remoteWith(files) {
   const origin = mkdtempSync(join(tmpdir(), 'relevo-rr-'));
   const git = (...a) => execFileSync('git', a, { cwd: origin, encoding: 'utf8' });

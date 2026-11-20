@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.mjs';
-import { LENSES, lensText, resolveProfile } from './lib/stack-profile.mjs';
+import { LENSES, commandWarnings, lensText, resolveProfile } from './lib/stack-profile.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -83,6 +83,7 @@ console.log(JSON.stringify({
   skills_disable_ignored: profile.skillsDisableIgnored,
   layers: profile.layers,
   ignored: profile.ignored,
+  warnings: commandWarnings(profile, name),
   overridden: profile.overridden,
   body: profile.body,
 }, null, 2));

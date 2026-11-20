@@ -4,6 +4,25 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-11-20
+
+### Fixed
+
+- **A command that a repository profile tried to replace is no longer ignored in silence.** The rule is unchanged: only `platforms.<name>.checks` in `relevo.yml` replaces `analyze`, `test` or `format`, so a profile cannot weaken the gate. A red gate now prints, under the command that failed, what the profile asked for, that it was ignored and the `checks` key that replaces it; `stack-profile.mjs` lists the same in `warnings`; and `docs/stacks.md` says it.
+- **`fix-stash.mjs save` works with files marked for the diff.** A new file marked with `intent-to-add.mjs` made `git stash push --include-untracked` fail with `not uptodate`; `save` now removes that mark, and only that, before the stash. A file with staged content is left as it is.
+- **A checkpoint refused after earlier ones were pushed no longer says that nothing was pushed.** The `build_failed` comment names the groups that are on the branch and the one that is not, the refused path with its `Allow-paths:` line when one can allow it, and recommends `/relevo:fix <issue>` instead of `/relevo:go <issue> --retry`, which the planner refuses on a branch with code. The push of each checkpoint does not change.
+- **`go-plan.mjs --retry` on a branch with checkpoints says so.** The refusal states that the branch holds code and that `/relevo:fix <n>` needs no description of the defect when the branch ends at a commit that `go` made for a build that did not finish.
+- **A test pins that `fix` closes an interrupted build without a description of the defect**: the failure lookup reports the work as kept after `wip: checkpoint <k>/<n>`, including after the new comment.
+
+### Added
+
+- **`stack-profile.mjs` prints `warnings`**, one entry per ignored `commands.<name>` (`key`, `command`, `asked`, `kept`, `text`), next to `ignored`, which does not change; it is empty when nothing was ignored, and a command that `checks` replaces is not listed.
+- **The next step `partial` of a `build-failed` issue** (`next-step.mjs --reason partial`) and the optional values `pushed_groups`, `refused_group`, `of_groups`, `refused_path`, `refused_reason` and `allow_line` of the `build_failed` message. Without `pushed_groups` the comment is the one it was.
+
+### Known limits
+
+- The files of the group whose checkpoint was refused stay uncommitted in the worktree of the run. A `fix` in another clone does not have them; the comment names the refused path.
+
 ## [0.17.2] - 2026-11-19
 
 ### Fixed
