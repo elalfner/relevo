@@ -945,6 +945,10 @@ function platformChecks(f) {
     }
     (e.profile.ignored ?? []).forEach((x) => {
       const reviewAdapterKey = x.key === 'review.adapter' || x.key === 'review.needs';
+      if (x.key === 'review.expected_errors') {
+        r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets review.expected_errors, which is ignored: only the audit of a declared adapter reads it`, `remove review.expected_errors from .relevo/stacks/${e.stack}.md`));
+        return;
+      }
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, reviewAdapterKey ? `remove ${x.key} from .relevo/stacks/${e.stack}.md: only a stack the plugin has no review adapter for can declare one` : `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
     });
     // What an api review needs, and what the review block of the profile says.
@@ -972,6 +976,10 @@ function platformChecks(f) {
         else if (!ok) r.push(warn(id, `platform ${e.name}: review.needs lists ${tool}, which is not installed, so the review cannot run its tests`, TOOL_INSTALL[tool] ?? `install ${tool}`));
       });
       if (e.declared.needs.every((n) => n.ok)) r.push(pass(`review.declared.${e.name}`, `platform ${e.name}: the review is declared by .relevo/stacks/${e.stack}.md (adapter api)${e.declared.needs.length > 0 ? `, and ${e.declared.needs.map((n) => n.tool).join(', ')} ${e.declared.needs.length === 1 ? 'is' : 'are'} available` : ''}`));
+    }
+    if (e.profile.review?.expected_errors?.length > 0) {
+      const n = e.profile.review.expected_errors.length;
+      r.push(note(`review.expected_errors.${e.name}`, `platform ${e.name}: ${n} expected-error pattern${n === 1 ? '' : 's'} declared in review.expected_errors; the audit lists an error that contains one and does not flag it, and a waiver stays your decision`));
     }
     (e.profile.reviewReplaced ?? []).forEach((key) => {
       r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));

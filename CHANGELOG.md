@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **A repository can list the errors its own tests provoke on purpose.** The `review` block of `.relevo/stacks/<stack>.md` accepts `expected_errors`, a list of plain texts (3 to 100 characters, no quote, `$`, backtick or backslash). In the audit of a declared `api` adapter (`nhost`, or a stack of the repository), a Postgres `ERROR:` whose message contains one of them, such as the code of a `RAISE EXCEPTION` in a trigger, is listed in `evidence/review-report.md` with the pattern and its count and is not a finding, as long as a test run is recorded. A `FATAL`, a deadlock, out of memory or an HTTP 5xx stays a finding whatever the list says, an entry that names one of them is invalid, and the key is ignored (and `/relevo:doctor` warns) on a stack the plugin ships an adapter for, `supabase` and `laravel`. The shipped `nhost` profile has no list, and a waiver stays the person's decision.
+
 ## [0.17.0] - 2026-11-19
 
 ### Added

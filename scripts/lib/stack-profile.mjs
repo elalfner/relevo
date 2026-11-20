@@ -12,7 +12,21 @@ export const ROLES = ['dev', 'qa', 'issue', 'review'];
 const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'installed', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review', 'interface']);
 // The kind of interface a stack builds, for the interface rules: none when the key is missing.
 export const INTERFACE_KINDS = ['mobile', 'web', 'none'];
-const REVIEW_KEYS = new Set(['log', 'test', 'serve', 'adapter', 'needs']);
+const REVIEW_KEYS = new Set(['log', 'test', 'serve', 'adapter', 'needs', 'expected_errors']);
+// An expected error is a plain substring of a Postgres message the project's own tests provoke on purpose. The characters are
+// the ones that are safe in a command line and in a report; the words are the signals the audit never excuses.
+export const EXPECTED_ERROR_RE = /^[A-Za-z0-9][A-Za-z0-9 _.:,'/-]{2,99}$/;
+const NEVER_EXCUSED = ['fatal', 'panic', 'deadlock detected', 'deadlock', 'out of memory', 'error', 'http', 'response', 'internal server'];
+const FIVE_HUNDRED_RE = /\b5\d\d\b/;
+/** Why an entry of review.expected_errors is invalid, or null. */
+export function expectedErrorProblem(entry) {
+  if (typeof entry !== 'string' || !EXPECTED_ERROR_RE.test(entry)) return 'a plain text of 3 to 100 characters (letters, digits, space and _ . : , \' / -), starting with a letter or a digit';
+  const low = entry.toLowerCase().trim();
+  if (low.length < 3) return 'at least 3 characters';
+  if (FIVE_HUNDRED_RE.test(low)) return 'not a server error status (500 or above)';
+  if (NEVER_EXCUSED.some((w) => low.includes(w) || (low.length >= 3 && w.includes(low)))) return 'not one of the signals a review never excuses (FATAL, PANIC, deadlock, out of memory, ERROR, an HTTP status of 500 or above)';
+  return null;
+}
 // The only kind of review adapter a repository profile can declare: the others need tools the plugin drives itself.
 const DECLARABLE_ADAPTERS = ['api'];
 // A name the repository chose for a tool or a Compose service: no path, no space, no shell character.
@@ -175,6 +189,15 @@ function parseReviewBlock(raw) {
     if (!isStringList(raw.needs)) errors.push('"review.needs" must be a list of tool names, such as [nhost, docker]');
     else if (raw.needs.some((n) => !TOOL_NAME_RE.test(n))) errors.push(`"review.needs" lists names of tools, never a path or a command (got ${JSON.stringify(raw.needs)}); a name has letters, digits, dots, underscores and hyphens`);
     else value.needs = unique(raw.needs);
+  }
+  if (raw.expected_errors !== undefined) {
+    const list = raw.expected_errors;
+    if (!Array.isArray(list) || list.length === 0) errors.push('"review.expected_errors" must be a list of texts, such as [permiso_denegado, bitacora_inmutable]');
+    else {
+      const bad = list.map((e) => [e, expectedErrorProblem(e)]).filter(([, why]) => why);
+      bad.forEach(([e, why]) => errors.push(`"review.expected_errors" has the entry ${JSON.stringify(e)}: it must be ${why}`));
+      if (bad.length === 0) value.expected_errors = unique(list);
+    }
   }
   if (raw.serve !== undefined) {
     const serve = raw.serve;
@@ -393,7 +416,7 @@ export function resolveProfile({ platform, pluginRoot, read }) {
   const repository = readProfile(read, repositoryProfilePath(platform.stack));
   const errors = [...plugin.errors, ...repository.errors];
   if (plugin.profile?.skillsDisable.length > 0) errors.push(`${pluginProfilePath(pluginRoot, platform.stack)}: "skills.${SKILLS_DISABLE}" belongs in the repository's profile, not in the plugin's`);
-  ['adapter', 'needs'].forEach((key) => {
+  ['adapter', 'needs', 'expected_errors'].forEach((key) => {
     if (plugin.profile?.review[key] !== undefined) errors.push(`${pluginProfilePath(pluginRoot, platform.stack)}: "review.${key}" belongs in the repository's profile, not in the plugin's`);
   });
   if (errors.length > 0) return { ok: false, errors };
@@ -403,6 +426,13 @@ export function resolveProfile({ platform, pluginRoot, read }) {
   if (declaredErrors.length > 0) return { ok: false, errors: declaredErrors.map((e) => `${repositoryProfilePath(platform.stack)}: ${e}`) };
   const profile = applyChecks(merged, platform.checks ?? {});
   profile.stack = platform.stack;
+  // The list of expected errors is read by the audit of a declared adapter only; on any other stack it is dropped and reported.
+  profile.reviewIgnoredKeys = [];
+  if (profile.review.expected_errors !== undefined && profile.review.adapter !== 'api' && !isGenericApi(platform.stack)) {
+    profile.ignored = [...(profile.ignored ?? []), { key: 'review.expected_errors', value: profile.review.expected_errors.join(', '), kept: 'the audit of the plugin for this stack, which has no list of expected errors' }];
+    profile.reviewIgnoredKeys.push('review.expected_errors');
+    delete profile.review.expected_errors;
+  }
   // What the repository's text asked for that the review will not do; the review and doctor report it.
   profile.reviewWarnings = fixedRuleWarnings(repository.profile?.reviewBody);
   return { ok: true, profile };

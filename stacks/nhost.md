@@ -50,3 +50,5 @@ Check the diff against each item. Report one only with the line that breaks it.
 A Nhost review has no device and no browser: the checklist comes from the scenarios and the project's tests run once, against the local instance, with the command of `review.test`. The person starts the instance and says it is up; you never start or stop it, never add a remote address to a command and never read `.env` files. The tests leave data in the local instance, and a full run is not repeated in a loop: some services limit sign-ins.
 
 The log is the containers' log, read since the review started. A permission or constraint error that a test provokes on purpose is an expected denial; a `FATAL`, a deadlock, an out-of-memory message, a database error that is not a denial or a server error is a finding.
+
+A project whose triggers and functions raise their own errors on purpose (`RAISE EXCEPTION 'code: text'`) lists the codes its tests provoke in `review.expected_errors` of its own `.relevo/stacks/nhost.md`; an error with such a code is listed in the report and is not a finding, and you never add a code to the list yourself. Waiving a finding stays the person's decision.
