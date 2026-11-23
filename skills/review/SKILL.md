@@ -105,7 +105,7 @@ When the synchronisation succeeded, claim the issue: `node ${CLAUDE_PLUGIN_ROOT}
 
 ### 2. Start, or resume
 
-If `evidence/review-state.json` exists, first run `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs owner openspec/changes/<change folder>` (add `--adapter api` for an api review, `--target ios` for an iOS one). Exit `1` says the state is of another change or kind, or that its owner is unknown: show its message, resume nothing and ask the person whether the file is theirs or to remove it. Otherwise, if it exists for this issue, resume: show the confirmed lines and captures it already holds, and continue at step 4. If a fix changed the specification since the state was saved, run `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs sync openspec/changes/<change folder>` first: confirmed lines stay, failed lines and new scenarios are pending.
+If `evidence/review-state.json` exists, first run `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs owner openspec/changes/<change folder>` (add `--adapter api` for an api review, `--target ios` for an iOS one). Exit `1` says the state is of another change or kind, that it is the state of another review (an older state that records no change and none of whose lines is a scenario of this change), or that its owner is unknown: show its message, resume nothing, remove nothing yourself and ask the person whether the file is theirs or to remove it. Otherwise, if it exists for this issue, resume: show the confirmed lines and captures it already holds, and continue at step 4. If a fix changed the specification since the state was saved, run `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs sync openspec/changes/<change folder>` first: confirmed lines stay, failed lines and new scenarios are pending.
 
 Otherwise: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs init openspec/changes/<change folder> --autopilot <review.autopilot>`, then clear the log so the audit only sees this session: `adb -s <serial> logcat -c`. Then ask the person to start the app, or restart it if it was already open, so that the log names its process and the audit can ignore other apps on the device.
 
@@ -211,7 +211,7 @@ If it is `REVIEW REJECTED`, offer a micro-fix loop and wait for the person to ac
 
 Ask the person about any checklist line still unconfirmed. When the audit passed and every line is confirmed (by the person, or verified automatically in `verify`), ask whether to open the pull request. Only on a clear yes: `review-state.mjs agree`.
 
-Then `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs decide`. If it exits non-zero it prints the reasons: report them to the person, leave the issue `in-review`, and stop. **Do not open the pull request.**
+Then `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs decide openspec/changes/<change folder>` (add `--adapter api` for an api review, `--target ios` for an iOS one), which also checks that the state is the review of this change. If it exits non-zero it prints the reasons: report them to the person, leave the issue `in-review`, and stop. **Do not open the pull request.**
 
 ### 7. Open the pull request
 
