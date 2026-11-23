@@ -210,3 +210,96 @@ test('the Laravel and Supabase modes are unchanged by --needs', () => {
   const none = spawnSync(process.execPath, [CLI, '--stack', 'supabase'], { cwd: mkdtempSync(join(tmpdir(), 'relevo-needs-')), encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
   assert.equal(none.status, 3);
 });
+
+// ---- harden-api-review-audit: the checkout of a declared adapter, by the existence of paths
+
+const checkout = (...present) => ({ find: () => true, run: () => ({ status: 0 }), exists: (p) => present.includes(p) });
+
+test('Scenario: Checkout without dependencies - node_modules is named with the install command, exit 5 and nothing installed', () => {
+  const r = needsPreflight({ needs: ['npm'], cwd: '/p' }, checkout('/p/package.json'));
+  assert.deepEqual([r.ok, r.check, r.exit, r.warnings.map((w) => w.path), r.install], [true, 'checkout', 5, ['node_modules'], 'npm ci']);
+  assert.match(r.detail, /lacks node_modules/);
+  assert.equal(needsPreflight({ needs: ['docker'], cwd: '/p' }, checkout('/p/package.json')).exit, 0, 'without npm in needs the dependencies are not asked for');
+});
+
+test('Scenario: Checkout without environment file - .env is named, and neither file is opened', () => {
+  const opened = [];
+  const deps = { ...checkout('/p/.env.example'), read: (f) => opened.push(f) };
+  const r = needsPreflight({ needs: ['npm'], cwd: '/p/' }, deps);
+  assert.deepEqual([r.exit, r.warnings.map((w) => w.path)], [5, ['.env']]);
+  assert.deepEqual(opened, []);
+  assert.equal(needsPreflight({ needs: [], cwd: '/p' }, checkout('/p/.env.sample')).warnings[0].path, '.env');
+});
+
+test('Scenario: No example file, and Everything present - nothing is said about an environment file, and a complete checkout is ready', () => {
+  assert.equal(needsPreflight({ needs: ['npm'], cwd: '/p' }, checkout()).exit, 0);
+  assert.equal(needsPreflight({ needs: ['npm'], cwd: '/p' }, checkout('/p/package.json', '/p/node_modules', '/p/.env.example', '/p/.env')).exit, 0);
+  const both = needsPreflight({ needs: ['npm'], cwd: '/p' }, checkout('/p/package.json', '/p/.env.example'));
+  assert.deepEqual(both.warnings.map((w) => w.path), ['node_modules', '.env']);
+});
+
+test('the command exits 5 on a checkout with a package.json and no node_modules, and 0 once it has them', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-checkout-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'npm'), '#!/bin/sh\nexit 0\n');
+  chmodSync(join(bin, 'npm'), 0o755);
+  writeFileSync(join(dir, 'package.json'), '{}');
+  writeFileSync(join(dir, '.env.example'), 'A=1');
+  const run = () => spawnSync(process.execPath, [CLI, '--needs', 'npm'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: bin } });
+  const first = run();
+  assert.equal(first.status, 5, first.stdout);
+  assert.deepEqual(JSON.parse(first.stdout).warnings.map((w) => w.path), ['node_modules', '.env']);
+  mkdirSync(join(dir, 'node_modules'));
+  writeFileSync(join(dir, '.env'), 'A=1');
+  assert.equal(run().status, 0);
+});
+
+// ---- harden-api-review-audit: the Compose project is compared with the checkout
+
+import { composeNote, composeWorkdir } from '../scripts/lib/compose-dir.mjs';
+
+const compose = ({ ps = ['abc'], dirs = ['/other/backend'], psStatus = 0, inspectStatus = 0 } = {}) => ({
+  capture: (command, args) => (args[0] === 'compose' ? { status: psStatus, stdout: ps.join('\n') } : { status: inspectStatus, stdout: dirs.join('\n') }),
+  real: (p) => p,
+  branchOf: (d) => ({ '/other/backend': 'feature/21', '/p/backend': 'dev' })[d] ?? null,
+});
+
+test('Scenario: Instance from another worktree - both folders and branches are named, as a warning', () => {
+  const r = composeWorkdir({ cwd: '/p/backend' }, compose());
+  assert.deepEqual([r.state, r.dirs], ['other', ['/other/backend']]);
+  const note = composeNote(r);
+  assert.match(note, /running from \/other\/backend \(branch feature\/21\), not from \/p\/backend \(branch dev\)/);
+  assert.match(note, /may be another branch/);
+});
+
+test('Scenario: Same folder - nothing to say', () => {
+  const r = composeWorkdir({ cwd: '/p/backend' }, compose({ dirs: ['/p/backend', '/p/backend'] }));
+  assert.equal(r.state, 'same');
+  assert.equal(composeNote(r), null);
+  assert.equal(composeWorkdir({ cwd: '/link' }, { ...compose({ dirs: ['/p/backend'] }), real: () => '/p/backend' }).state, 'same', 'links are resolved before comparing');
+});
+
+test('Scenario: Not running - it is said, and a failure to read is a note, not an error', () => {
+  const none = composeWorkdir({ cwd: '/p/backend' }, compose({ ps: [] }));
+  assert.equal(none.state, 'not-running');
+  assert.match(composeNote(none), /no running Compose project was found/);
+  assert.equal(composeWorkdir({ cwd: '/p' }, compose({ psStatus: 1 })).state, 'unknown');
+  assert.equal(composeWorkdir({ cwd: '/p' }, compose({ dirs: [] })).state, 'unknown', 'no label recorded');
+  assert.match(composeNote(composeWorkdir({ cwd: '/p' }, compose({ inspectStatus: 1 }))), /could not tell where the Compose project runs from/);
+});
+
+test('the command with --compose warns with exit 5 when the instance runs from another folder, and says nothing when it is the same', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-compose-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'docker'), `#!/bin/sh\ncase "$1" in compose) echo c1;; inspect) echo "$WORKDIR";; info) ;; esac\nexit 0\n`);
+  chmodSync(join(bin, 'docker'), 0o755);
+  const run = (workdir) => spawnSync(process.execPath, [CLI, '--needs', 'docker', '--compose'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKDIR: workdir } });
+  const other = run('/somewhere/else');
+  assert.equal(other.status, 5, other.stdout);
+  assert.match(JSON.parse(other.stdout).compose.warning, /running from \/somewhere\/else/);
+  const same = run(dir);
+  assert.equal(same.status, 0, same.stdout);
+  assert.equal(JSON.parse(same.stdout).compose, undefined);
+});

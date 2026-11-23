@@ -3102,3 +3102,32 @@ test('Scenario: Ignored on a shipped stack - doctor warns that the key is ignore
   assert.equal(w.status, 'warn');
   assert.match(w.message, /ignored/);
 });
+
+// ---- the fatal messages a repository expects (declare-expected-fatals)
+
+const NHOST_FATALS = (list) => `---\nstack: nhost\nreview:\n  expected_fatals: ${list}\n---\n`;
+const AUTOVACUUM_FATAL = 'terminating autovacuum process due to administrator command';
+
+test('Scenario: Declared fatals - doctor notes how many and that a waiver stays the person\'s decision', () => {
+  const n = byId(declaredChecks(nhostFacts({ own: NHOST_FATALS(`[${AUTOVACUUM_FATAL}]`) })), 'review.expected_fatals.backend');
+  assert.equal(n.status, 'note');
+  assert.match(n.message, /1 expected-fatal message declared in review\.expected_fatals/);
+  assert.match(n.message, /whole message equals one/);
+  assert.match(n.message, /waiver stays your decision/);
+});
+
+test('Scenario: Fatals not set - doctor adds no check for expected fatals', () => {
+  assert.equal(byId(declaredChecks(nhostFacts()), 'review.expected_fatals.backend'), undefined);
+});
+
+test('Scenario: Invalid fatal entry - doctor reports the profile as invalid and names the key', () => {
+  const results = declaredChecks(nhostFacts({ own: NHOST_FATALS('[PANIC: could not write]') }));
+  assert.ok(results.some((r) => r.status === 'fail' && /review\.expected_fatals/.test(r.message)), JSON.stringify(results.filter((r) => r.status === 'fail')));
+});
+
+test('Scenario: Fatals ignored on a shipped stack - doctor warns that the key is ignored', () => {
+  const f = apiFacts({ files: { 'apps/api/vendor/autoload.php': '', '.relevo/stacks/laravel.md': `---\nstack: laravel\nreview:\n  expected_fatals: [${AUTOVACUUM_FATAL}]\n---\n` } });
+  const w = idIn(runChecks({ ...healthy(), ...f, config: f.config }), 'platform.api.ignored.review.expected_fatals');
+  assert.equal(w.status, 'warn');
+  assert.match(w.message, /ignored/);
+});

@@ -945,8 +945,8 @@ function platformChecks(f) {
     }
     (e.profile.ignored ?? []).forEach((x) => {
       const reviewAdapterKey = x.key === 'review.adapter' || x.key === 'review.needs';
-      if (x.key === 'review.expected_errors') {
-        r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets review.expected_errors, which is ignored: only the audit of a declared adapter reads it`, `remove review.expected_errors from .relevo/stacks/${e.stack}.md`));
+      if (x.key === 'review.expected_errors' || x.key === 'review.expected_fatals') {
+        r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key}, which is ignored: only the audit of a declared adapter reads it`, `remove ${x.key} from .relevo/stacks/${e.stack}.md`));
         return;
       }
       r.push(warn(`platform.${e.name}.ignored.${x.key}`, `platform ${e.name}: the repository profile sets ${x.key} = "${x.value}", which is ignored (the plugin keeps "${x.kept}")`, reviewAdapterKey ? `remove ${x.key} from .relevo/stacks/${e.stack}.md: only a stack the plugin has no review adapter for can declare one` : `a command is replaced with platforms.${e.name}.checks in relevo.yml, not in the profile`));
@@ -980,6 +980,10 @@ function platformChecks(f) {
     if (e.profile.review?.expected_errors?.length > 0) {
       const n = e.profile.review.expected_errors.length;
       r.push(note(`review.expected_errors.${e.name}`, `platform ${e.name}: ${n} expected-error pattern${n === 1 ? '' : 's'} declared in review.expected_errors; the audit lists an error that contains one and does not flag it, and a waiver stays your decision`));
+    }
+    if (e.profile.review?.expected_fatals?.length > 0) {
+      const n = e.profile.review.expected_fatals.length;
+      r.push(note(`review.expected_fatals.${e.name}`, `platform ${e.name}: ${n} expected-fatal message${n === 1 ? '' : 's'} declared in review.expected_fatals; the audit lists a fatal line whose whole message equals one and does not flag it, and a waiver stays your decision`));
     }
     (e.profile.reviewReplaced ?? []).forEach((key) => {
       r.push(note(`review.block.${e.name}.${key}`, `platform ${e.name}: the repository replaced ${key} of the plugin's profile`));

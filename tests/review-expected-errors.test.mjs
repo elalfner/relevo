@@ -4,8 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { auditApi, auditReport } from '../scripts/lib/logaudit.mjs';
-import { expectedErrorProblem, parseProfile, resolveProfile } from '../scripts/lib/stack-profile.mjs';
+import { auditApi, auditReport, ownExpectedFatal } from '../scripts/lib/logaudit.mjs';
+import { expectedErrorProblem, expectedFatalProblem, parseProfile, resolveProfile } from '../scripts/lib/stack-profile.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const STATE_CLI = join(ROOT, 'scripts/review-state.mjs');
@@ -143,7 +143,7 @@ function project(logText) {
   mkdirSync(join(dir, 'bin'), { recursive: true });
   writeFileSync(join(dir, 'change/specs/cap/spec.md'), SPEC);
   writeFileSync(join(dir, 'docker.out'), '');
-  writeFileSync(join(dir, 'bin/docker'), `#!/bin/sh\ncat "${dir}/docker.out"\n`);
+  writeFileSync(join(dir, 'bin/docker'), `#!/bin/sh\ncase "$*" in *"config --services"*) echo postgres; exit 0;; esac\ncat "${dir}/docker.out"\n`);
   chmodSync(join(dir, 'bin/docker'), 0o755);
   const state = join(dir, 'evidence/review-state.json');
   const env = { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}` };
@@ -177,4 +177,151 @@ test('a project listing its codes gets REVIEW PASSED, and REVIEW REJECTED when a
   assert.match(p.run('audit').stdout, /REVIEW REJECTED/);
   p.setLog('postgres-1  | 2026-11-19 ERROR:  codigo_nuevo: no\n');
   assert.match(p.run('audit').stdout, /REVIEW REJECTED/);
+});
+
+// ---------- expected_fatals (declare-expected-fatals): the profile
+
+const AUTOVACUUM = 'terminating autovacuum process due to administrator command';
+const fatals = (list) => `---\nstack: nhost\nreview:\n  expected_fatals: ${list}\n---\n`;
+
+test('Scenario: Valid list of fatals - the resolved review block has the entry and the plugin log and test', () => {
+  const r = resolve('nhost', fatals(`[${AUTOVACUUM}]`));
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.deepEqual(r.profile.review.expected_fatals, [AUTOVACUUM]);
+  assert.equal(r.profile.review.log, 'compose:');
+  assert.equal(r.profile.review.expected_errors, undefined, 'the two lists are separate');
+});
+
+test('Scenario: Not a list of strings (fatals) and Unsafe characters - the key is named', () => {
+  [AUTOVACUUM, '[]', '[x, ""]', '[12345]'].forEach((v) => {
+    assert.ok(parseProfile(fatals(v)).errors.some((e) => /review\.expected_fatals/.test(e)), v);
+  });
+  ['a"b c', 'a`b c', 'a$b c', 'a\\b c', 'a\nb c', '-abc', ' abc'].forEach((v) => assert.ok(expectedFatalProblem(v), JSON.stringify(v)));
+});
+
+test('Scenario: Reserved word (fatals) - PANIC, deadlock, out of memory, HTTP, a 5xx status and the FATAL level are refused', () => {
+  ['PANIC: could not write', 'deadlock detected', 'out of memory', '"500"', 'response 503', 'FATAL: terminating autovacuum process', 'fatal'].forEach((v) => {
+    assert.ok(parseProfile(fatals(`[${v}]`)).errors.some((e) => /review\.expected_fatals/.test(e)), v);
+  });
+  assert.match(expectedFatalProblem('FATAL: x y'), /without the level/);
+  assert.equal(expectedFatalProblem(AUTOVACUUM), null);
+  assert.equal(expectedFatalProblem('the database system is shutting down'), null);
+  assert.equal(expectedFatalProblem('a fatal mistake in the plan'), null, 'the word may appear inside a message');
+});
+
+test('Scenario: No default for Nhost and The plugin own profile - the shipped profile has no list and cannot carry one', () => {
+  assert.equal(resolve('nhost', null).profile.review.expected_fatals, undefined);
+  const plugin = resolveProfile({
+    platform: { stack: 'nhost', path: '.', targets: [] },
+    pluginRoot: ROOT,
+    read: (p) => (p.startsWith(ROOT) ? readFileSync(p, 'utf8').replace(/^review:/m, `review:\n  expected_fatals: [${AUTOVACUUM}]`) : null),
+  });
+  assert.equal(plugin.ok, false);
+  assert.ok(plugin.errors.some((e) => /review\.expected_fatals.*belongs in the repository/.test(e)));
+});
+
+test('Scenario: Shipped stack that is not declared (fatals) - ignored and listed, and printed for the review of nhost', () => {
+  const r = resolve('supabase', `---\nstack: supabase\nreview:\n  expected_fatals: [${AUTOVACUUM}]\n---\n`);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.profile.review.expected_fatals, undefined);
+  assert.ok(r.profile.ignored.some((x) => x.key === 'review.expected_fatals'));
+  assert.deepEqual(r.profile.reviewIgnoredKeys, ['review.expected_fatals']);
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-fatals-'));
+  mkdirSync(join(dir, '.relevo/stacks'), { recursive: true });
+  writeFileSync(join(dir, 'relevo.yml'), 'limits:\n  run_max_cost: 5\nplatforms:\n  backend:\n    stack: nhost\n  db:\n    stack: supabase\n');
+  writeFileSync(join(dir, '.relevo/stacks/nhost.md'), fatals(`[${AUTOVACUUM}]`));
+  writeFileSync(join(dir, '.relevo/stacks/supabase.md'), `---\nstack: supabase\nreview:\n  expected_fatals: [${AUTOVACUUM}]\n---\n`);
+  const out = (p) => JSON.parse(spawnSync('node', [PROFILE_CLI, '--config', join(dir, 'relevo.yml'), '--plugin-root', ROOT, '--platform', p, '--role', 'review'], { encoding: 'utf8' }).stdout);
+  assert.deepEqual(out('backend').review.expected_fatals, [AUTOVACUUM]);
+  assert.equal(out('db').review.expected_fatals, undefined);
+  assert.equal(out('db').review_ignored[0].key, 'review.expected_fatals');
+});
+
+// ---------- expected_fatals: the audit
+
+const F = (m) => `postgres-1  | 2026-11-19 10:00:00.000 UTC [88] FATAL:  ${m}`;
+const fatalAudit = (text, over = {}) => auditApi({ text, runs: RUN, flavor: 'declared', expectedFatals: [AUTOVACUUM], ...over });
+
+test('Scenario: Autovacuum ended by the harness - passes, and the report lists the message with its count', () => {
+  const text = [F(AUTOVACUUM), F(AUTOVACUUM), F(AUTOVACUUM), 'postgres-1  | 2026-11-19 10:00:01 UTC [1] LOG:  checkpoint starting: immediate force wait'].join('\n');
+  const a = fatalAudit(text);
+  assert.equal(a.verdict, 'REVIEW PASSED', JSON.stringify(a.findings));
+  assert.equal(a.declaredFatals.length, 3);
+  assert.deepEqual(a.findings, []);
+  const report = auditReport(a, { scope: { kind: 'api', flavor: 'declared', runs: 1 } });
+  assert.match(report, /3 expected fatal\(s\)/);
+  assert.match(report, new RegExp(`\`${AUTOVACUUM}\`: 3 times`));
+  assert.match(report, /repository's declaration, and a waiver stays the person's decision/);
+});
+
+test('Scenario: No run recorded - a listed fatal is a fatal finding', () => {
+  const a = fatalAudit(F(AUTOVACUUM), { runs: [] });
+  assert.equal(a.verdict, 'REVIEW REJECTED');
+  assert.equal(a.findings[0].class, 'fatal');
+});
+
+test('Scenario: A longer or shorter message - each is a fatal finding', () => {
+  ['terminating connection due to administrator command', `${AUTOVACUUM}, then more`, 'terminating autovacuum process'].forEach((m) => {
+    const a = fatalAudit(F(m));
+    assert.equal(a.verdict, 'REVIEW REJECTED', m);
+    assert.equal(a.findings[0].class, 'fatal', m);
+  });
+  assert.equal(fatalAudit(F(`${AUTOVACUUM.replace(/ /g, '   ')}  `)).verdict, 'REVIEW PASSED', 'whitespace is collapsed');
+});
+
+test('Scenario: Unlisted fatal - one finding, while the listed one is still excused', () => {
+  const a = fatalAudit([F(AUTOVACUUM), F('the database system is shutting down')].join('\n'));
+  assert.equal(a.verdict, 'REVIEW REJECTED');
+  assert.equal(a.findings.length, 1);
+  assert.match(a.findings[0].excerpt, /shutting down/);
+  assert.equal(a.declaredFatals.length, 1);
+});
+
+test('Scenario: Fatal signal on a listed message - a line with out of memory, a 500 or a PANIC stays a finding', () => {
+  [`${F(AUTOVACUUM)} out of memory`, `${F(AUTOVACUUM)} response 500`, `PANIC:  ${AUTOVACUUM}`].forEach((line) => {
+    assert.equal(fatalAudit(line, { expectedFatals: [AUTOVACUUM, 'x'] }).verdict, 'REVIEW REJECTED', line);
+  });
+  assert.equal(ownExpectedFatal(F(AUTOVACUUM), []), null);
+  assert.equal(ownExpectedFatal('ERROR:  x', [AUTOVACUUM]), null, 'only a FATAL line');
+});
+
+test('the two lists do not excuse each other, and a Supabase or Laravel audit ignores expected_fatals', () => {
+  assert.equal(fatalAudit(F(AUTOVACUUM), { expectedFatals: [], expectedErrors: [AUTOVACUUM] }).verdict, 'REVIEW REJECTED', 'expected_errors never excuses a FATAL');
+  assert.equal(fatalAudit(E('bitacora_inmutable: x'), { expectedFatals: [AUTOVACUUM] }).verdict, 'REVIEW REJECTED', 'expected_fatals never excuses an ERROR');
+  assert.equal(auditApi({ text: F(AUTOVACUUM), runs: RUN, flavor: 'postgres', expectedFatals: [AUTOVACUUM] }).verdict, 'REVIEW REJECTED');
+  assert.equal(fatalAudit('', { expectedFatals: [] }).declaredFatals, undefined, 'an empty list adds nothing to the result');
+});
+
+// ---------- expected_fatals: init and audit through the CLI
+
+test('init refuses --expected-fatal without --declared and an invalid entry, and records a valid one in the state', () => {
+  const p = project();
+  const a = p.run('init', join(p.dir, 'change'), '--adapter', 'api', '--stack', 'supabase', '--cwd', p.dir, '--expected-fatal', AUTOVACUUM);
+  assert.notEqual(a.status, 0);
+  assert.match(a.stderr, /--expected-fatal goes with a declared adapter/);
+  const b = p.run('init', join(p.dir, 'change'), '--adapter', 'api', '--stack', 'nhost', '--declared', '--log', 'compose:', '--cwd', p.dir, '--expected-fatal', 'PANIC: could not write');
+  assert.notEqual(b.status, 0);
+  assert.match(b.stderr, /--expected-fatal "PANIC: could not write"/);
+  const c = p.run('init', join(p.dir, 'change'), '--adapter', 'api', '--stack', 'nhost', '--declared', '--log', 'compose:', '--cwd', p.dir, '--expected-fatal', AUTOVACUUM);
+  assert.equal(c.status, 0, c.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(p.state, 'utf8')).expectedFatals, [AUTOVACUUM]);
+});
+
+test('a project listing the autovacuum fatal gets REVIEW PASSED, and REVIEW REJECTED for another fatal or one nobody listed', () => {
+  const p = project();
+  const init = p.run('init', join(p.dir, 'change'), '--adapter', 'api', '--stack', 'nhost', '--declared', '--log', 'compose:', '--cwd', p.dir, '--expected-fatal', AUTOVACUUM);
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(p.run('ran', '0', '--by', 'person').status, 0);
+  p.setLog(`${F(AUTOVACUUM)}\n${F(AUTOVACUUM)}\npostgres-1  | 2026-11-19 UTC [1] LOG:  checkpoint starting: immediate force wait\n`);
+  const ok = p.run('audit');
+  assert.match(ok.stdout, /REVIEW PASSED/, ok.stdout + ok.stderr);
+  assert.equal(JSON.parse(readFileSync(p.state, 'utf8')).audit.declaredFatals.length, 2);
+  assert.match(readFileSync(join(p.dir, 'evidence/review-report.md'), 'utf8'), /2 expected fatal\(s\)/);
+  p.setLog(`${F(AUTOVACUUM)}\n${F('the database system is shutting down')}\n`);
+  assert.match(p.run('audit').stdout, /REVIEW REJECTED/);
+  const none = project();
+  none.run('init', join(none.dir, 'change'), '--adapter', 'api', '--stack', 'nhost', '--declared', '--log', 'compose:', '--cwd', none.dir);
+  none.run('ran', '0', '--by', 'person');
+  none.setLog(`${F(AUTOVACUUM)}\n`);
+  assert.match(none.run('audit').stdout, /REVIEW REJECTED/, 'with nothing declared the fatal is a finding, as before');
 });
