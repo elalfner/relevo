@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-23
+
 ### Fixed
 
 - **The audit of a Compose log no longer fails as a whole when a service's log is large.** `review-state.mjs audit` read every service in one `docker compose logs` call limited to 1 MiB, and an overflow (`ENOBUFS`) ended in `REVIEW INCONCLUSIVE`, which cannot be waived. Each service is now read on its own with room for 256 MiB, and a service that still does not fit is named in the report with what `reset-log` does and costs.
@@ -15,6 +17,13 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **A `FATAL` that a repository's own test harness provokes can now be declared.** `review.expected_fatals` in the repository's profile of a declared adapter lists the whole messages of `FATAL:` lines (Postgres ending an autovacuum worker when a temporary database is dropped with `FORCE`, say). An entry matches only a message equal to it, never one that merely contains it; the audit lists it with its count while a run is recorded and never as a finding, and `PANIC`, a deadlock, out of memory and a 5xx stay findings whatever the list says. It follows the same terms as `review.expected_errors`: the repository's declaration only, `--expected-fatal` at `init`, a `doctor` note, a warning when it is ignored, and the agent never adds one.
 - **The preflight of a declared adapter looks at the checkout.** With `npm` in `needs` and a `package.json` it wants `node_modules`; with a `.env.example` or `.env.sample` it wants a `.env`. It only checks that the paths exist, never reads a file, and a missing one is a warning (exit 5) the review asks about before any test.
 - **The review warns when the running Compose project was started from another folder** than the checkout under review (`init` and `api-preflight.mjs --needs ... --compose`).
+
+### Known limits
+
+- A single Compose service whose log since the review started is larger than 256 MiB still cannot be read: the audit is `REVIEW INCONCLUSIVE` and names the service. `reset-log` starts the window from now, and the runs recorded so far then stop proving it, so the suite runs again.
+- The warning about a Compose project started from another folder finds the project through `docker compose ps` in the folder of the platform. When the folder resolves to another project name, the review says that no running project was found for it and cannot compare.
+- The checkout check asks for `.env` only when the folder has a `.env.example` or `.env.sample`, and for `node_modules` only when `npm` is in `needs`. It looks at paths and never at their content.
+- An entry of `review.expected_fatals` is compared with the message as the server wrote it, so a server that does not write English needs the entry in its own language. A review state written before this version records no change and is reported as of unknown owner, which the person confirms before resuming it.
 
 ## [0.17.3] - 2026-11-20
 
