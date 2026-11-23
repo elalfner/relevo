@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Keeps the state of an on-device review and decides whether a pull request may be opened.
 //   review-state.mjs init <change-dir> [--autopilot off|precheck|verify]   build the checklist from the change's scenarios
-//   review-state.mjs init <change-dir> --adapter api [--stack supabase] [--declared] [--expected-error <text>]... [--log <path, glob, docker:name or compose:services>] [--cwd <dir>]
+//   review-state.mjs init <change-dir> --adapter api [--stack supabase] [--declared] [--expected-error <text>]... [--expected-fatal <message>]... [--log <path, glob, docker:name or compose:services>] [--cwd <dir>]
 //                                                 an api review: also records how much of the log files exists now,
 //                                                 or the time a container's log is read from (the Supabase default)
 //   review-state.mjs ran <exit code> [--by person|agent] [--filter <f>] [--tests <n>] [--line <n>] [--failing a,b] [--tap <file>|-]
@@ -39,7 +39,7 @@ import { composeNote, composeWorkdir, realComposeDeps } from './lib/compose-dir.
 import { checklistFromChange } from './lib/checklist.mjs';
 import { listSimulators, pickSimulator, readIosLog, formatLogStart } from './lib/device-ios.mjs';
 import { auditSimulatorSource } from './lib/logaudit-ios.mjs';
-import { expectedErrorProblem } from './lib/stack-profile.mjs';
+import { expectedErrorProblem, expectedFatalProblem } from './lib/stack-profile.mjs';
 import { auditApi, auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
 import { parseTap } from './lib/pgtap.mjs';
 import { applyWaivers, autoItem, ownerOf, autoSection, confirmEnv, decidePr, markStackStarted, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
@@ -100,13 +100,17 @@ try {
       if (expectedErrors.length > 0 && !declared) fail('--expected-error goes with a declared adapter (--declared): only its audit reads the list');
       const badExpected = expectedErrors.map((e) => [e, expectedErrorProblem(e)]).find(([, why]) => why);
       if (badExpected) fail(`--expected-error ${JSON.stringify(badExpected[0])} must be ${badExpected[1]}`);
+      const expectedFatals = rest.flatMap((a, i) => (a === '--expected-fatal' ? [rest[i + 1]] : []));
+      if (expectedFatals.length > 0 && !declared) fail('--expected-fatal goes with a declared adapter (--declared): only its audit reads the list');
+      const badFatal = expectedFatals.map((e) => [e, expectedFatalProblem(e)]).find(([, why]) => why);
+      if (badFatal) fail(`--expected-fatal ${JSON.stringify(badFatal[0])} must be ${badFatal[1]}`);
       const change = basename(resolve(rest[0]));
       if (existsSync(statePath)) {
         const owner = ownerOf(JSON.parse(readFileSync(statePath, 'utf8')), { change, kind: api ? 'api' : ios ? 'ios' : 'device' });
         if (!owner.ok && !owner.unknown) fail(`${statePath} already holds a review that is not this one: ${owner.reason}. Nothing was changed; remove the file if that review is over`);
       }
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared, expectedErrors, change });
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared, expectedErrors, expectedFatals, change });
       if (ios) state.source = { source: 'simulator', udid: pickSimulator(listSimulators(), process.env.IOS_SIMULATOR ?? null), process: flag('process'), since: formatLogStart() };
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
@@ -216,9 +220,9 @@ try {
       if (state.kind === 'api') {
         const slice = readSlice(state.log, { cwd: state.cwd ?? '.' });
         const flavor = state.declared ? 'declared' : state.stack === 'supabase' ? 'postgres' : 'laravel';
-        const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor, expectedErrors: state.expectedErrors ?? [], windowStart: state.log.runsBefore ?? 0 });
+        const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor, expectedErrors: state.expectedErrors ?? [], expectedFatals: state.expectedFatals ?? [], windowStart: state.log.runsBefore ?? 0 });
         const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor !== 'laravel' ? { flavor } : {}) };
-        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}), ...(audit.declaredExpected ? { declaredExpected: audit.declaredExpected, expectedErrors: state.expectedErrors } : {}) };
+        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}), ...(audit.declaredExpected ? { declaredExpected: audit.declaredExpected, expectedErrors: state.expectedErrors } : {}), ...(audit.declaredFatals ? { declaredFatals: audit.declaredFatals, expectedFatals: state.expectedFatals } : {}) };
         finishAudit(state, audit, scope);
         break;
       }

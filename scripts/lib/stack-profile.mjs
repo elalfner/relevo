@@ -12,7 +12,7 @@ export const ROLES = ['dev', 'qa', 'issue', 'review'];
 const HEADER_KEYS = new Set(['stack', 'commands', 'generated', 'tools', 'installed', 'requires_skills', 'skills', 'skills_when_installed', 'targets', 'review', 'interface']);
 // The kind of interface a stack builds, for the interface rules: none when the key is missing.
 export const INTERFACE_KINDS = ['mobile', 'web', 'none'];
-const REVIEW_KEYS = new Set(['log', 'test', 'serve', 'adapter', 'needs', 'expected_errors']);
+const REVIEW_KEYS = new Set(['log', 'test', 'serve', 'adapter', 'needs', 'expected_errors', 'expected_fatals']);
 // An expected error is a plain substring of a Postgres message the project's own tests provoke on purpose. The characters are
 // the ones that are safe in a command line and in a report; the words are the signals the audit never excuses.
 export const EXPECTED_ERROR_RE = /^[A-Za-z0-9][A-Za-z0-9 _.:,'/-]{2,99}$/;
@@ -25,6 +25,19 @@ export function expectedErrorProblem(entry) {
   if (low.length < 3) return 'at least 3 characters';
   if (FIVE_HUNDRED_RE.test(low)) return 'not a server error status (500 or above)';
   if (NEVER_EXCUSED.some((w) => low.includes(w) || (low.length >= 3 && w.includes(low)))) return 'not one of the signals a review never excuses (FATAL, PANIC, deadlock, out of memory, ERROR, an HTTP status of 500 or above)';
+  return null;
+}
+// An expected fatal is the whole message of a `FATAL:` line that the project's own test harness provokes (Postgres ending an autovacuum
+// worker when a temporary database is dropped, say). The audit compares it for equality, never as a part. The same alphabet as an
+// expected error; the signals a review never excuses cannot be named, and the level is not part of the message.
+const FATAL_NEVER_EXCUSED = ['panic', 'deadlock', 'out of memory', 'http', 'response', 'internal server'];
+/** Why an entry of review.expected_fatals is invalid, or null. */
+export function expectedFatalProblem(entry) {
+  if (typeof entry !== 'string' || !EXPECTED_ERROR_RE.test(entry)) return 'the whole message of a FATAL line: a plain text of 3 to 100 characters (letters, digits, space and _ . : , \' / -), starting with a letter or a digit';
+  const low = entry.toLowerCase().trim();
+  if (/^fatal\b/.test(low)) return 'the message that comes after "FATAL:", without the level';
+  if (FIVE_HUNDRED_RE.test(low)) return 'not a server error status (500 or above)';
+  if (FATAL_NEVER_EXCUSED.some((w) => low.includes(w))) return 'not one of the signals a review never excuses (PANIC, deadlock, out of memory, an HTTP status of 500 or above)';
   return null;
 }
 // The only kind of review adapter a repository profile can declare: the others need tools the plugin drives itself.
@@ -197,6 +210,15 @@ function parseReviewBlock(raw) {
       const bad = list.map((e) => [e, expectedErrorProblem(e)]).filter(([, why]) => why);
       bad.forEach(([e, why]) => errors.push(`"review.expected_errors" has the entry ${JSON.stringify(e)}: it must be ${why}`));
       if (bad.length === 0) value.expected_errors = unique(list);
+    }
+  }
+  if (raw.expected_fatals !== undefined) {
+    const list = raw.expected_fatals;
+    if (!Array.isArray(list) || list.length === 0) errors.push('"review.expected_fatals" must be a list of whole FATAL messages, such as [terminating autovacuum process due to administrator command]');
+    else {
+      const bad = list.map((e) => [e, expectedFatalProblem(e)]).filter(([, why]) => why);
+      bad.forEach(([e, why]) => errors.push(`"review.expected_fatals" has the entry ${JSON.stringify(e)}: it must be ${why}`));
+      if (bad.length === 0) value.expected_fatals = unique(list);
     }
   }
   if (raw.serve !== undefined) {
@@ -431,7 +453,7 @@ export function resolveProfile({ platform, pluginRoot, read }) {
   const repository = readProfile(read, repositoryProfilePath(platform.stack));
   const errors = [...plugin.errors, ...repository.errors];
   if (plugin.profile?.skillsDisable.length > 0) errors.push(`${pluginProfilePath(pluginRoot, platform.stack)}: "skills.${SKILLS_DISABLE}" belongs in the repository's profile, not in the plugin's`);
-  ['adapter', 'needs', 'expected_errors'].forEach((key) => {
+  ['adapter', 'needs', 'expected_errors', 'expected_fatals'].forEach((key) => {
     if (plugin.profile?.review[key] !== undefined) errors.push(`${pluginProfilePath(pluginRoot, platform.stack)}: "review.${key}" belongs in the repository's profile, not in the plugin's`);
   });
   if (errors.length > 0) return { ok: false, errors };
@@ -447,6 +469,11 @@ export function resolveProfile({ platform, pluginRoot, read }) {
     profile.ignored = [...(profile.ignored ?? []), { key: 'review.expected_errors', value: profile.review.expected_errors.join(', '), kept: 'the audit of the plugin for this stack, which has no list of expected errors' }];
     profile.reviewIgnoredKeys.push('review.expected_errors');
     delete profile.review.expected_errors;
+  }
+  if (profile.review.expected_fatals !== undefined && profile.review.adapter !== 'api' && !isGenericApi(platform.stack)) {
+    profile.ignored = [...(profile.ignored ?? []), { key: 'review.expected_fatals', value: profile.review.expected_fatals.join(', '), kept: 'the audit of the plugin for this stack, which has no list of expected fatals' }];
+    profile.reviewIgnoredKeys.push('review.expected_fatals');
+    delete profile.review.expected_fatals;
   }
   // What the repository's text asked for that the review will not do; the review and doctor report it.
   profile.reviewWarnings = fixedRuleWarnings(repository.profile?.reviewBody);

@@ -156,6 +156,15 @@ review:
 
 Each entry is a plain text (3 to 100 characters of letters, digits, space and `_ . : , ' / -`) that the message after `ERROR:` contains, for example `bitacora_inmutable` in `ERROR:  bitacora_inmutable: no se puede modificar`. A matching line is listed in `evidence/review-report.md` with the pattern, its count and a few log lines, while a test run is recorded; it is not a finding. A `FATAL`, a deadlock, an out-of-memory message and an HTTP status of 500 or above stay findings whatever you list, an entry that names one of them (or `ERROR` itself) is invalid, and an `ERROR` that matches no entry is still a finding. The key is read only for a declared adapter (`nhost` or a stack with `adapter: api`); on `supabase` and `laravel` it is ignored and `/relevo:doctor` warns. The plugin's `nhost` profile has no default list, because the codes belong to your project. The list is your declaration, reviewed in the pull request that changes it; the agent never adds a code and never waives a finding, which stays the person's decision.
 
+A `FATAL` your test harness provokes on purpose cannot go in that list. The usual case is a harness that drops its temporary databases with `DROP DATABASE ... WITH (FORCE)`: Postgres ends the autovacuum worker of that database and writes `FATAL:  terminating autovacuum process due to administrator command` (the `LOG:  checkpoint starting: immediate force wait` after it is not a finding). Declare it with its own key:
+
+```yaml
+review:
+  expected_fatals: [terminating autovacuum process due to administrator command]
+```
+
+An entry is the **whole message** after `FATAL:`, compared for equality with the spaces collapsed: `terminating connection due to administrator command`, or the same text with more after it, is still a finding. It has the same alphabet and length as an expected error, it cannot name `PANIC`, a deadlock, out of memory or an HTTP status of 500 or above, and it does not start with `FATAL` (the level is not part of the message). A matching line is listed in `evidence/review-report.md` with the message and its count, while a test run is recorded; with no run recorded it is a finding. The key is read only for a declared adapter, ignored with a warning from `/relevo:doctor` elsewhere, and has no default in the plugin. It is your declaration, reviewed in the pull request that changes it; the agent never adds a message and never waives a finding.
+
 ### Declaring a review adapter for your own stack
 
 The plugin has a review adapter for `flutter`, `vue`, `laravel` and `supabase`. A stack you write yourself (see [Your own stack](#your-own-stack)) has none, and `/relevo:review` stops for it with the issue left `built`. A backend with no screen can declare an `api` adapter in the `review` block of its own `.relevo/stacks/<stack>.md`, with no release of the plugin:

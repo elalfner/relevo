@@ -12,6 +12,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ### Added
 
+- **A `FATAL` that a repository's own test harness provokes can now be declared.** `review.expected_fatals` in the repository's profile of a declared adapter lists the whole messages of `FATAL:` lines (Postgres ending an autovacuum worker when a temporary database is dropped with `FORCE`, say). An entry matches only a message equal to it, never one that merely contains it; the audit lists it with its count while a run is recorded and never as a finding, and `PANIC`, a deadlock, out of memory and a 5xx stay findings whatever the list says. It follows the same terms as `review.expected_errors`: the repository's declaration only, `--expected-fatal` at `init`, a `doctor` note, a warning when it is ignored, and the agent never adds one.
 - **The preflight of a declared adapter looks at the checkout.** With `npm` in `needs` and a `package.json` it wants `node_modules`; with a `.env.example` or `.env.sample` it wants a `.env`. It only checks that the paths exist, never reads a file, and a missing one is a warning (exit 5) the review asks about before any test.
 - **The review warns when the running Compose project was started from another folder** than the checkout under review (`init` and `api-preflight.mjs --needs ... --compose`).
 

@@ -156,6 +156,15 @@ review:
 
 Cada entrada es un texto plano (de 3 a 100 caracteres de letras, dígitos, espacio y `_ . : , ' / -`) que el mensaje después de `ERROR:` contiene, por ejemplo `bitacora_inmutable` en `ERROR:  bitacora_inmutable: no se puede modificar`. Una línea que coincide se lista en `evidence/review-report.md` con el patrón, su cuenta y unas líneas del log, mientras haya una ejecución de pruebas registrada; no es un hallazgo. Un `FATAL`, un deadlock, un mensaje de memoria agotada y un estado HTTP de 500 o más siguen siendo hallazgos pase lo que pase con la lista; una entrada que nombre alguno de ellos (o `ERROR` mismo) es inválida, y un `ERROR` que no coincide con ninguna entrada sigue siendo un hallazgo. La clave solo la lee un adaptador declarado (`nhost` o un stack con `adapter: api`); en `supabase` y `laravel` se ignora y `/relevo:doctor` avisa. El perfil `nhost` del plugin no trae lista por defecto, porque los códigos son de tu proyecto. La lista es tu declaración, revisada en el pull request que la cambia; el agente nunca agrega un código ni exonera un hallazgo, que sigue siendo decisión de la persona.
 
+Un `FATAL` que tu arnés de pruebas provoca a propósito no cabe en esa lista. El caso habitual es un arnés que borra sus bases temporales con `DROP DATABASE ... WITH (FORCE)`: Postgres termina el proceso de autovacuum de esa base y escribe `FATAL:  terminating autovacuum process due to administrator command` (el `LOG:  checkpoint starting: immediate force wait` que viene después no es un hallazgo). Decláralo con su propia clave:
+
+```yaml
+review:
+  expected_fatals: [terminating autovacuum process due to administrator command]
+```
+
+Una entrada es el **mensaje completo** que va después de `FATAL:`, comparado por igualdad con los espacios colapsados: `terminating connection due to administrator command`, o el mismo texto con algo más detrás, sigue siendo un hallazgo. Tiene el mismo alfabeto y largo que un error esperado, no puede nombrar `PANIC`, un deadlock, falta de memoria ni un estado HTTP de 500 o más, y no empieza por `FATAL` (el nivel no es parte del mensaje). Una línea que coincide se lista en `evidence/review-report.md` con el mensaje y su conteo, mientras hay una corrida de pruebas registrada; sin ninguna corrida registrada es un hallazgo. La clave solo la lee un adaptador declarado, se ignora con un aviso de `/relevo:doctor` en cualquier otro, y el plugin no trae ninguna por defecto. Es tu declaración, revisada en el pull request que la cambia; el agente nunca agrega un mensaje ni exonera un hallazgo.
+
 ### Declara un adaptador de review para tu propio stack
 
 El plugin trae un adaptador de review para `flutter`, `vue`, `laravel` y `supabase`. Un stack que escribes tú (ver [Tu propio stack](#tu-propio-stack)) no tiene ninguno, y `/relevo:review` se detiene para él dejando el issue en `built`. Un backend sin pantalla puede declarar un adaptador `api` en el bloque `review` de su propio `.relevo/stacks/<stack>.md`, sin esperar una versión del plugin:
