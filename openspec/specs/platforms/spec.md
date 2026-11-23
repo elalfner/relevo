@@ -253,7 +253,7 @@ Neither the `review` block nor the section `Review` SHALL change that the person
 
 #### Scenario: Unattended change
 - **WHEN** an unattended run changes `.relevo/stacks/laravel.md`
-- **THEN** the run ends in `qa-failed`, as for any protected file
+- **THEN** the run ends in `build-failed`, as for any protected file
 
 #### Scenario: Invalid block
 - **WHEN** the `review` block has an unknown key, a `serve` without a `url`, or a `url` that is not on `localhost`
@@ -616,3 +616,14 @@ The key SHALL be honored for the repository's `adapter: api` and for `nhost`. Fo
 #### Scenario: Printed for the review
 - **WHEN** the resolved profile of `nhost` has the list and `--role review` runs
 - **THEN** the output's `review.expected_fatals` holds it
+
+### Requirement: The plugin ships a profile for Nhost
+The plugin SHALL ship the profile `nhost` (no targets, `interface: none`) with `analyze` and `test` as npm scripts run from the platform's folder, `review.log` and `review.test` as the defaults of its adapter, the tools `docker` and `node`, and security sections with sources and dates. It SHALL carry no `review.adapter` or `review.needs`.
+
+#### Scenario: Nhost profile resolution
+- **WHEN** the profile of `nhost` is read with no repository file
+- **THEN** its commands, tools and `review` block are those above and it defines no targets
+
+#### Scenario: A full repository profile
+- **WHEN** a repository has `.relevo/stacks/nhost.md` with a `test` command that differs from the plugin's
+- **THEN** the resolved profile keeps the plugin's command, lists the other as ignored, and the repository's body follows the plugin's

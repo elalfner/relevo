@@ -41,15 +41,26 @@ export const reviewKind = (state) => (state.kind === 'api' ? 'api' : state.sourc
 const describeKind = (kind) => (kind === 'api' ? 'an api review' : `a${kind === 'ios' ? 'n' : ''} ${kind} review`);
 
 /**
- * Does the state on disk belong to this change and this kind of review? { ok: true }, or { ok: false, reason } naming what differs,
- * or { ok: false, unknown: true, reason } when the state records no change (written before it did).
+ * Does the state on disk belong to this change and this kind of review? { ok: true }, or { ok: false, reason } naming what differs.
+ * A state that records no change (written before it did) is compared by content when `titles`, the titles of the scenarios of the
+ * change, are given: with lines and none of them a scenario of the change it is the state of another review
+ * ({ ok: false, foreign: true, lines, reason }); otherwise its owner is unknown ({ ok: false, unknown: true, reason }). A state that
+ * records a change is decided by its name alone: after a specification edit its lines may differ, and `sync` reconciles them.
  */
-export function ownerOf(state, { change, kind }) {
+export function ownerOf(state, { change, kind, titles = null }) {
   const differs = [];
   if (state.change && state.change !== change) differs.push(`it is for the change ${state.change}, not ${change}`);
   if (reviewKind(state) !== kind) differs.push(`it is for ${describeKind(reviewKind(state))}, not ${describeKind(kind)}`);
   if (differs.length > 0) return { ok: false, reason: differs.join(' and ') };
-  return state.change ? { ok: true } : { ok: false, unknown: true, reason: 'it records no change, so its owner is unknown' };
+  if (state.change) return { ok: true };
+  const lines = (state.items ?? []).length;
+  if (titles && lines > 0) {
+    const known = new Set(titles);
+    if (!state.items.some((i) => known.has(i.title))) {
+      return { ok: false, foreign: true, lines, reason: `it is the state of another review: none of its ${lines} line${lines === 1 ? '' : 's'} is a scenario of ${change}` };
+    }
+  }
+  return { ok: false, unknown: true, reason: 'it records no change, so its owner is unknown' };
 }
 
 /**
@@ -281,8 +292,10 @@ export function autoSection(state) {
  * May the pull request be opened? Only when the log audit passed, every checklist line is confirmed
  * working by the person, and the person agrees. Returns { open, reasons }.
  */
-export function decidePr(state) {
+export function decidePr(state, owner = null) {
   const reasons = [];
+  // `owner` is the result of ownerOf for the change being shipped: a state of another change, kind or review proves nothing about it.
+  if (owner && !owner.ok && !owner.unknown) reasons.push(`the state is not the review of this change: ${owner.reason}`);
   if (!state.audit) reasons.push('the log audit has not run');
   else if (state.audit.verdict === 'REVIEW INCONCLUSIVE') reasons.push('the log audit was inconclusive: it had no log of the app to judge, so it proves nothing');
   else if (!['REVIEW PASSED', 'REVIEW PASSED (with waivers)'].includes(state.audit.verdict)) reasons.push('the log audit found problems');

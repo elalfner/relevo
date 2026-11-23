@@ -263,7 +263,7 @@ When `links` is not empty, `doctor` SHALL check that each linked repository can 
 - **THEN** `relevo.yml` has `links: [acme/api]` and `init` shows what token to create, with read access to issues, pull requests and contents
 
 ### Requirement: Doctor reports the execution mode
-`doctor` SHALL report the credential mode deduced from the secret names (`api_key`, `subscription`, both as a warning, none as a warning that only local runs are possible), the state of the repository variable `RELEVO_CLOUD_GO`, a one-line reminder to read the current Anthropic policy on automated use of a subscription when the mode is `subscription`, and a warning when the mode is `subscription` and `limits.concurrent_agents` is more than 1.
+`doctor` SHALL report the credential mode deduced from the secret names (`api_key`, `subscription`, both as a warning, none as a warning that only local runs are possible), the state of the repository variable `RELEVO_CLOUD_GO`, a one-line reminder to read the current Anthropic policy on automated use of a subscription when the mode is `subscription`, and a warning when the mode is `subscription` and `limits.concurrent_agents` is more than 1. It SHALL say what the `go` label does in the repository: starts a cloud build, waits for the cloud to resume, only leaves a comment, or has no effect.
 
 #### Scenario: Subscription with several agents
 - **WHEN** only `CLAUDE_CODE_OAUTH_TOKEN` exists and `concurrent_agents` is 3
@@ -271,11 +271,15 @@ When `links` is not empty, `doctor` SHALL check that each linked repository can 
 
 #### Scenario: Cloud paused
 - **WHEN** `RELEVO_CLOUD_GO` is `off`
-- **THEN** `doctor` says the cloud is paused and that builds run locally
+- **THEN** `doctor` says the cloud is paused, that builds run locally, and that a `go` label waits until the cloud resumes
 
 #### Scenario: No credential
 - **WHEN** neither secret exists and the go workflow is installed
-- **THEN** `doctor` warns that a `ready` label will only produce the local-run comment
+- **THEN** `doctor` warns that a `go` label will only produce the local-run comment
+
+#### Scenario: No workflow
+- **WHEN** the go workflow is not installed
+- **THEN** `doctor` says that the `go` label has no effect and that approved issues are built with `/relevo:go <n>`
 
 ### Requirement: Init asks where go runs and with which credential
 `init` SHALL ask whether `go` builds in the cloud, on each person's machine or both (default both) and, for the cloud, with an API key or a subscription token. It SHALL generate the `go` workflow with the credential line for the chosen mode, install no `go` and queue workflows for a local-only setup, set `limits.concurrent_agents` to 1 for a subscription, and remind the person to create the secret without reading it.
@@ -1366,3 +1370,74 @@ For a declared adapter whose profile sets `review.expected_fatals`, `doctor` SHA
 #### Scenario: Invalid entry
 - **WHEN** an entry is `PANIC: could not write`
 - **THEN** `doctor` reports the profile as invalid and names `review.expected_fatals`
+
+### Requirement: Doctor reports a workflow that still starts on ready
+`doctor` SHALL fail when the `go` workflow on the default branch starts on the `ready` label instead of the `go` label, with one result that names the file and points to `init`, because such a workflow builds every issue that is approved.
+
+#### Scenario: Workflow of an earlier version
+- **WHEN** `relevo-go.yml` on the default branch starts when `relevo:ready` is applied
+- **THEN** `doctor` fails, names the file, says that approving an issue would start a build, and says to update the workflow with `/relevo:init`
+
+#### Scenario: Current workflow
+- **WHEN** the workflow starts when the effective `go` label is applied
+- **THEN** `doctor` reports nothing about it
+
+#### Scenario: Renamed go label
+- **WHEN** `labels.go` is `team:build` and the workflow starts on `relevo:go`
+- **THEN** `doctor` fails and names the label the workflow should start on
+
+### Requirement: Doctor reports a local mark that marks nothing
+`doctor` SHALL report, as a warning, the open issues that carry the `local` label without `building`, naming each, because the label then says nothing and a person may have applied it expecting an effect.
+
+#### Scenario: Stray label
+- **WHEN** issue 42 is `ready` and carries `relevo:local`
+- **THEN** `doctor` warns, names issue 42, and says that the label is applied by a local build and does not keep the cloud from building
+
+#### Scenario: Local build in progress
+- **WHEN** issue 42 is `building` with `relevo:local`
+- **THEN** `doctor` reports nothing about it
+
+### Requirement: Init and doctor treat Nhost as a shipped stack
+`init` SHALL NOT propose `.relevo/stacks/nhost.md`, because the plugin ships the profile. `doctor` SHALL apply to a platform with stack `nhost` the checks of a declared adapter (the tools of the adapter, an invalid profile, a note when `{filter}` is missing and the autopilot is not `off`) and SHALL warn about a `commands` entry of the repository's profile that the plugin's profile replaced.
+
+#### Scenario: Init for Nhost
+- **WHEN** `init` runs for a platform with stack `nhost`
+- **THEN** the plan does not include `.relevo/stacks/nhost.md`
+
+#### Scenario: Doctor finds Docker missing
+- **WHEN** `doctor` runs for a platform with stack `nhost` and `docker` is not on the path
+- **THEN** it reports the missing tool and the fix next to it
+
+#### Scenario: Doctor with an old full profile
+- **WHEN** the repository's `.relevo/stacks/nhost.md` has an `analyze` that differs from the plugin's
+- **THEN** `doctor` warns that it is ignored and says to set it in `checks` of `relevo.yml`
+
+### Requirement: Init renames the label of a failed build
+When a repository has a label with the former name of the failed-build label (`qa-failed` under its effective name) and none with the new one, `init` SHALL rename that label instead of creating a second one, so that the issues that carry it keep it, and SHALL say that it did. When both exist, `init` SHALL change nothing about them and SHALL say which issues still carry the former one.
+
+#### Scenario: Only the former label exists
+- **WHEN** the repository has `relevo:qa-failed`, two issues carry it, and `init` creates the labels
+- **THEN** the label is renamed to `relevo:build-failed`, the two issues carry it under the new name, and no second label is created
+
+#### Scenario: Neither exists
+- **WHEN** the repository has no label of a failed build
+- **THEN** `init` creates `relevo:build-failed` as it creates the others
+
+#### Scenario: Both exist
+- **WHEN** the repository has both labels and one issue carries the former one
+- **THEN** `init` renames and deletes nothing, and names that issue as still carrying the former label
+
+### Requirement: Doctor reports the former name of the failed-build label
+`doctor` SHALL fail when the repository still has a label with the former name of the failed-build label, and when a Relevo workflow on the default branch still names it, with one result for each that names what it found and points to `init`.
+
+#### Scenario: The former label is still there
+- **WHEN** the repository has `relevo:qa-failed`
+- **THEN** `doctor` fails, names the label and says to run `/relevo:init`, which renames it
+
+#### Scenario: A workflow still names it
+- **WHEN** `relevo-go.yml` on the default branch still applies `relevo:qa-failed`
+- **THEN** `doctor` fails, names the file and says to update the workflow with `/relevo:init`
+
+#### Scenario: Nothing left
+- **WHEN** neither the repository nor its workflows name the former label
+- **THEN** `doctor` reports nothing about it

@@ -51,15 +51,19 @@ The closed list SHALL exclude web access, so that an instruction hidden in a tex
 - **THEN** the runner refuses it, because the web tools and `curl`/`wget` are not on the list
 
 ### Requirement: Trust level
-When `trust` is `public`, the system SHALL restrict automatic runs to issues labelled by maintainers, SHALL NOT run on content from forks, and SHALL require stricter review of generated code.
+When `trust` is `public`, the system SHALL restrict builds to issues that a maintainer approved and whose build a maintainer requested or started, SHALL NOT run on content from forks, and SHALL require stricter review of generated code.
 
 #### Scenario: Public repository
 - **WHEN** `trust` is `public` and a non-maintainer applies `ready`
-- **THEN** no run starts
+- **THEN** no run starts, whoever requests the build
 
 #### Scenario: Public repository without review
 - **WHEN** `trust` is `public` and `review.mode` is `none`
 - **THEN** validation fails, because generated code in a public repository always gets a human review
+
+#### Scenario: Request by a non-maintainer
+- **WHEN** `trust` is `public`, a maintainer applied `ready` and a collaborator who is not a maintainer applies `go`
+- **THEN** no run starts and `go` is removed
 
 ### Requirement: Secrets
 The model API key SHALL live only in the repository's secret store. Workflows SHALL NOT expose secrets to code from forks. A secret scanner with push blocking SHOULD be enabled.
@@ -73,7 +77,7 @@ Each run SHALL have turn and cost limits, and the daily digest SHALL include agg
 
 #### Scenario: Budget reached
 - **WHEN** a run reaches its limit
-- **THEN** it stops and the issue is labelled `qa-failed` with the reason
+- **THEN** it stops and the issue is labelled `build-failed` with the reason
 
 ### Requirement: No telemetry from Relevo's tooling
 Relevo SHALL run the OpenSpec tool with its telemetry disabled in its workflows and documentation.
@@ -90,11 +94,11 @@ Every automated action SHALL be visible as a comment, label or commit attributed
 - **THEN** they can see who triggered the run, what the agent did and who approved
 
 ### Requirement: The issue that is built is the issue that was approved
-When the planner claims an issue it SHALL record a hash of the issue title and body in its decision, and `go` SHALL verify it before writing the specification. If it differs, the run SHALL end in `qa-failed` with the reason "issue changed after ready" and push nothing. Line endings and trailing spaces SHALL NOT change the hash.
+When the planner claims an issue it SHALL record a hash of the issue title and body in its decision, and `go` SHALL verify it before writing the specification. If it differs, the run SHALL end in `build-failed` with the reason "issue changed after ready" and push nothing. Line endings and trailing spaces SHALL NOT change the hash.
 
 #### Scenario: Issue edited after ready
 - **WHEN** the author edits the body of an issue after a maintainer applied `ready` and before `go` reads it
-- **THEN** the hashes differ, nothing is built or pushed, and the issue is labelled `qa-failed` with the reason "issue changed after ready"
+- **THEN** the hashes differ, nothing is built or pushed, and the issue is labelled `build-failed` with the reason "issue changed after ready"
 
 #### Scenario: Issue unchanged
 - **WHEN** the title and body are the same as when the issue was claimed
@@ -109,15 +113,15 @@ When the planner claims an issue it SHALL record a hash of the issue title and b
 - **THEN** the same hash is computed when the issue is claimed and verified before the specification is written
 
 ### Requirement: Protected paths
-A diff produced by the unattended agent SHALL NOT touch workflows (`.github/`), `relevo.yml`, `.relevo/` or the folders of skills. It SHALL touch dependency manifests and lock files only when the issue lists them in an `Allow-paths:` line. A violation SHALL end the run in `qa-failed` with the reason "protected path in the diff", and nothing is pushed.
+A diff produced by the unattended agent SHALL NOT touch workflows (`.github/`), `relevo.yml`, `.relevo/` or the folders of skills. It SHALL touch dependency manifests and lock files only when the issue lists them in an `Allow-paths:` line. A violation SHALL end the run in `build-failed` with the reason "protected path in the diff", and nothing is pushed.
 
 #### Scenario: Workflow edited
 - **WHEN** the diff touches a file under `.github/`
-- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff", even if the issue lists that path
+- **THEN** the run ends in `build-failed` with the reason "protected path in the diff", even if the issue lists that path
 
 #### Scenario: Lock file without permission
 - **WHEN** the diff touches a dependency lock file and the issue has no `Allow-paths:` line naming it
-- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff"
+- **THEN** the run ends in `build-failed` with the reason "protected path in the diff"
 
 #### Scenario: Lock file with permission
 - **WHEN** the issue says `Allow-paths: pubspec.yaml, pubspec.lock` and the diff touches only those protected files
@@ -150,7 +154,7 @@ A skill given to an agent SHALL be one that exists on the base branch. The folde
 
 #### Scenario: Run edits the profile
 - **WHEN** a diff touches `.relevo/stacks/flutter.md`
-- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff"
+- **THEN** the run ends in `build-failed` with the reason "protected path in the diff"
 
 #### Scenario: Disable aimed at a check
 - **WHEN** `skills.disable` names an entry that is not a skill of the plugin's lists
@@ -219,15 +223,15 @@ The folders `.claude/skills/` and `.agents/`, and the file `skills-lock.json`, i
 
 #### Scenario: Skill of a platform edited
 - **WHEN** the platform `app` has `path: app` and a diff touches `app/.claude/skills/dart-add-unit-test/SKILL.md`
-- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff", even if the issue lists that path in `Allow-paths:`
+- **THEN** the run ends in `build-failed` with the reason "protected path in the diff", even if the issue lists that path in `Allow-paths:`
 
 #### Scenario: Skill added to a platform
 - **WHEN** a diff adds a folder under `app/.agents/skills/`
-- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff", and the skill is not given to any agent
+- **THEN** the run ends in `build-failed` with the reason "protected path in the diff", and the skill is not given to any agent
 
 #### Scenario: Lock file of a platform edited
 - **WHEN** the platform `app` has `path: app` and a diff touches `app/skills-lock.json`
-- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff"
+- **THEN** the run ends in `build-failed` with the reason "protected path in the diff"
 
 #### Scenario: Platform at the root
 - **WHEN** a platform has `path: .`
@@ -260,15 +264,15 @@ The base list SHALL cover environment files (`.env` and `.env.*`), private keys 
 - **THEN** the read is refused
 
 ### Requirement: A restricted file in the output of a run fails the run
-A restricted file that appears in the diff of an unattended run, or in the text a script of Relevo is about to publish, SHALL end the run in `qa-failed` with the reason "restricted file in the diff", and nothing is pushed. A restricted file that is versioned in the repository SHALL fail in the same way.
+A restricted file that appears in the diff of an unattended run, or in the text a script of Relevo is about to publish, SHALL end the run in `build-failed` with the reason "restricted file in the diff", and nothing is pushed. A restricted file that is versioned in the repository SHALL fail in the same way.
 
 #### Scenario: A restricted file in the diff
 - **WHEN** the diff of a run adds `config/private.pem`, which is on the list
-- **THEN** the run ends in `qa-failed` with the reason "restricted file in the diff", naming the path, and nothing is pushed
+- **THEN** the run ends in `build-failed` with the reason "restricted file in the diff", naming the path, and nothing is pushed
 
 #### Scenario: A restricted file that is already versioned
 - **WHEN** the base branch contains a versioned `.env`
-- **THEN** the run ends in `qa-failed` with the same reason instead of building around it
+- **THEN** the run ends in `build-failed` with the same reason instead of building around it
 
 ### Requirement: Scripts of Relevo do not read or publish restricted files
 A script of Relevo SHALL NOT open a restricted file, and SHALL NOT put the content of one in a comment, a pull request, a capture or a log. A check that needs to know whether such a file exists SHALL compare path names only.
@@ -359,3 +363,29 @@ The documentation SHALL say that the redactor reduces the chance that a secret r
 #### Scenario: Template check
 - **WHEN** the active lines of `relevo-go.yml` are read
 - **THEN** `show_full_output` is not among the inputs of the action
+
+### Requirement: The approval covers the text as it was approved
+Before an issue is claimed, in the cloud or on a machine, the last edit of its title and of its body SHALL be compared with the moment `ready` was last applied. When either was edited later, by anyone, the issue SHALL NOT be built: `ready` and `go` are removed, the issue is a draft again, and one comment names who had approved it and asks for a new approval. It SHALL NOT become `needs-spec` or `build-failed`.
+
+#### Scenario: Body edited days after the approval
+- **WHEN** issue 42 was approved on Monday, its body was edited on Wednesday and `go` is applied on Thursday
+- **THEN** nothing is built, the issue has no lifecycle label, and one comment names the approver and asks to approve it again
+
+#### Scenario: Edited by the person who approved
+- **WHEN** the person who applied `ready` edits the body afterwards and then starts a local build
+- **THEN** nothing is built and the issue loses `ready`, as for an edit by anyone else
+
+#### Scenario: Title changed
+- **WHEN** only the title was changed after `ready` was applied
+- **THEN** the issue is treated as edited
+
+#### Scenario: Unchanged
+- **WHEN** neither the title nor the body was edited after `ready` was applied
+- **THEN** the gates go on
+
+### Requirement: Nothing is built when the approval cannot be checked
+When the last edit of an issue or the moment of its approval cannot be read, the issue SHALL NOT be claimed or built, its labels SHALL NOT be changed, and the reason SHALL be said. The check SHALL NOT be skipped.
+
+#### Scenario: The edit history cannot be read
+- **WHEN** the request for the last edit of the issue fails
+- **THEN** nothing is built, the issue keeps its labels, and the report says that the approval could not be checked

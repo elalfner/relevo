@@ -6,7 +6,7 @@ TBD - created by archiving change relevo-v1. Update Purpose after archive.
 ## Requirements
 
 ### Requirement: Lifecycle states with a single owner
-An issue SHALL move through these states, each represented by a label and each having exactly one owner: `ready` (spec writer), `queued` (agent), `building` (agent), `built` (assignee), `in-review` (assignee), `pr-open` (peer). The final state is the issue being closed as completed; there is no `merged` label.
+An issue SHALL move through these states, each represented by a label and each having exactly one owner: `ready` (spec writer), `queued` (agent), `building` (agent), `built` (assignee), `in-review` (assignee), `pr-open` (peer). The final state is the issue being closed as completed; there is no `merged` label. `ready` SHALL be the approval of the issue: it says that the text is complete and is what should be built, and it SHALL start nothing by itself. An issue SHALL leave `ready` only when a build claims it, when a build request leaves it waiting, or when a gate sends it back.
 
 #### Scenario: Normal path
 - **WHEN** an issue is built successfully, reviewed on a device, opened as a pull request, approved and merged
@@ -16,19 +16,23 @@ An issue SHALL move through these states, each represented by a label and each h
 - **WHEN** a command changes an issue's state
 - **THEN** it removes the previous lifecycle label and adds the new one in the same operation
 
+#### Scenario: Approved and waiting for a decision
+- **WHEN** a person applies `ready` to an issue and nothing else
+- **THEN** the issue stays `ready`, no build starts in the cloud or anywhere, and it waits until someone requests the build or starts it on a machine
+
 ### Requirement: Side exits
-The lifecycle SHALL provide these exits, each with an owner and a message that says why: `needs-spec` (spec writer), `blocked` (nobody, until the dependency merges), `qa-failed` (assignee), `changes-requested` (author), `needs-reviewer` (spec writer).
+The lifecycle SHALL provide these exits, each with an owner and a message that says why: `needs-spec` (spec writer), `blocked` (nobody, until the dependency merges), `build-failed` (assignee), `changes-requested` (author), `needs-reviewer` (spec writer).
 
 #### Scenario: Exit leaves a reason
 - **WHEN** an issue enters a side exit
 - **THEN** a comment states the reason, the owner and the next command or action expected
 
 ### Requirement: Side exits replace the state, except needs-reviewer
-`needs-spec`, `blocked`, `qa-failed` and `changes-requested` SHALL replace the current state label, so an issue never shows two states. `needs-reviewer` SHALL be added next to the current state and SHALL NOT replace it.
+`needs-spec`, `blocked`, `build-failed` and `changes-requested` SHALL replace the current state label, so an issue never shows two states. `needs-reviewer` SHALL be added next to the current state and SHALL NOT replace it.
 
 #### Scenario: QA fails while building
 - **WHEN** an issue labelled `building` fails QA after its retries
-- **THEN** `building` is removed and `qa-failed` is added in the same operation
+- **THEN** `building` is removed and `build-failed` is added in the same operation
 
 #### Scenario: Review is overdue
 - **WHEN** a pull request labelled `pr-open` exceeds the escalation time
@@ -145,7 +149,7 @@ The lifecycle SHALL have a `ship` label (default name `relevo:ship`) that asks f
 - **THEN** `relevo:ship` is no longer on the issue
 
 ### Requirement: The urgent label is a request, not a state
-The lifecycle SHALL have an `urgent` label (default name `relevo:urgent`) that asks for an issue to be started before the others and without waiting for the assignee's review capacity. It SHALL be added next to the current state and SHALL NOT replace it, it SHALL be renamable in `labels` like the others, and it SHALL NOT change the owner or the next step of the issue. It SHALL NOT close the issue to editing: an issue that is `needs-spec` and `urgent` can still be corrected by its spec writer.
+The lifecycle SHALL have an `urgent` label (default name `relevo:urgent`) that asks for an issue to be started before the others and without waiting for the assignee's review capacity. It SHALL be added next to the current state and SHALL NOT replace it, it SHALL be renamable in `labels` like the others, and it SHALL NOT change the owner or the next step of the issue. It SHALL NOT close the issue to editing: an issue that is `needs-spec` and `urgent` can still be corrected by its spec writer. It SHALL be a request for cloud builds alone: on a `ready` issue it waits with the issue and takes effect when the build is requested, and a local build SHALL ignore it.
 
 #### Scenario: Label applied to a queued issue
 - **WHEN** a person applies `relevo:urgent` to a `queued` issue
@@ -163,6 +167,14 @@ The lifecycle SHALL have an `urgent` label (default name `relevo:urgent`) that a
 - **WHEN** `labels.urgent` is set in `relevo.yml`
 - **THEN** every behaviour of the label applies to the configured name
 
+#### Scenario: Urgent on an approved issue with no request
+- **WHEN** a `ready` issue carries `relevo:urgent` and nobody has applied `go`
+- **THEN** nothing starts, and the label takes effect when `go` is applied
+
+#### Scenario: Urgent and a local build
+- **WHEN** a person starts a local build of an issue that carries `relevo:urgent`
+- **THEN** the build starts or not exactly as it would without the label
+
 ### Requirement: Dependencies are not skipped by urgent
 A `blocked` issue SHALL stay `blocked` while a `Depends-on` issue is not merged, whether or not it is `urgent`, and the notice that makes it `blocked` SHALL say so when the issue carries `urgent`.
 
@@ -174,12 +186,12 @@ A `blocked` issue SHALL stay `blocked` while a `Depends-on` issue is not merged,
 - **WHEN** the last dependency of a `blocked` urgent issue is merged
 - **THEN** the issue is evaluated before the non-urgent ones
 
-### Requirement: A qa-failed issue with no branch is rebuilt, not fixed
-The next-step table SHALL give `qa-failed` a variant for an issue whose build left no branch on the remote. It SHALL have no command, SHALL be owned by the assignee, and its hint SHALL say that nothing was pushed, that the cause named in the comment has to be resolved first, and that the assignee then removes `relevo:qa-failed` and labels the issue `relevo:ready` again. It SHALL exist in every supported language.
+### Requirement: A build-failed issue with no branch is rebuilt, not fixed
+The next-step table SHALL give `build-failed` a variant for an issue whose build left no branch on the remote. It SHALL have no command, SHALL be owned by the assignee, and its hint SHALL say that nothing was pushed, that the cause named in the comment has to be resolved first, and that the assignee then removes `relevo:build-failed` and labels the issue `relevo:ready` again. It SHALL exist in every supported language.
 
 #### Scenario: Rebuild variant
-- **WHEN** the next step is asked for `qa-failed` with the reason `rebuild`
-- **THEN** it has no command, the owner is the assignee, and the hint says to remove `relevo:qa-failed` and label the issue `relevo:ready` again
+- **WHEN** the next step is asked for `build-failed` with the reason `rebuild`
+- **THEN** it has no command, the owner is the assignee, and the hint says to remove `relevo:build-failed` and label the issue `relevo:ready` again
 
 #### Scenario: Spanish repository
 - **WHEN** `language` is `es` and the reason is `rebuild`
@@ -204,12 +216,12 @@ A build that cannot succeed because of what the issue depends on SHALL send the 
 - **WHEN** the repository language is Spanish and a message for either reason is rendered
 - **THEN** it is in Spanish and has the same content as the English one
 
-### Requirement: Missing installed dependencies end in `qa-failed` before the agent
-A build that stops before the agent because the dependencies of the platform are not installed SHALL leave the issue `qa-failed`, as a build that stops for a missing tool does, and SHALL NOT use `needs-spec`, because the cause is the configuration of the runner and not the issue.
+### Requirement: Missing installed dependencies end in `build-failed` before the agent
+A build that stops before the agent because the dependencies of the platform are not installed SHALL leave the issue `build-failed`, as a build that stops for a missing tool does, and SHALL NOT use `needs-spec`, because the cause is the configuration of the runner and not the issue.
 
 #### Scenario: The install step is missing
 - **WHEN** the paths that the profile requires do not exist after the install step
-- **THEN** the issue is `qa-failed` and the comment names the path and the step to enable
+- **THEN** the issue is `build-failed` and the comment names the path and the step to enable
 
 ### Requirement: The hand-off can carry advisory notes
 When a build passes with advisory notes, the hand-off message SHALL say how many there are and name the lens that produced each of the first few, and SHALL carry all of them in a hidden marker. It SHALL NOT notify anyone beyond the person who must act and SHALL add no lifecycle state.
@@ -238,7 +250,7 @@ When the check before the build finds that the issue contradicts the project rul
 - **THEN** it prints the command `/relevo:issue {n}` for the spec writer and a hint that names the override decision
 
 ### Requirement: A protected path that the commit guard refused is reported as a policy
-When a run ends because the safe commit refused a protected path (`protected path in the diff`), the `qa-failed` comment SHALL say that an unattended run cannot edit that path, that QA did not reject the work, and that nothing was pushed, and SHALL NOT say that QA rejected it after the retries. Its next step SHALL be the command that rewrites the issue, with a hint that a person makes the edit or the issue changes. A run that QA rejected keeps its wording.
+When a run ends because the safe commit refused a protected path (`protected path in the diff`), the `build-failed` comment SHALL say that an unattended run cannot edit that path, that QA did not reject the work, and that nothing was pushed, and SHALL NOT say that QA rejected it after the retries. Its next step SHALL be the command that rewrites the issue, with a hint that a person makes the edit or the issue changes. A run that QA rejected keeps its wording.
 
 #### Scenario: The commit guard refuses the rules file
 - **WHEN** a `qa_failed` message has the reason `protected path in the diff`
@@ -291,14 +303,14 @@ The comment posted when an issue becomes `queued` for a free agent SHALL state h
 - **THEN** the same comment is written in Spanish with `desconocido` where `unknown` would be written
 
 ### Requirement: A stop that is not a QA rejection is not reported as one
-The `qa-failed` comment SHALL say that QA rejected the work only for a QA rejection (the reasons `QA rejected after the retries` and `QA rejected: nothing the developer agent can fix`) and for a comment with no reason. For any other reason, including one the catalog does not know, the title and the line that says what happened SHALL say that the run stopped for that reason and that QA did not reject the work, and SHALL NOT say that QA rejected it or that QA did so after the retries. The line that says what happened for the reasons that have wording of their own (a run limit, a protected path in the diff) and the next step of the comment SHALL be as before; their title follows the same rule as any other stop that is not a QA rejection.
+The `build-failed` comment SHALL say that QA rejected the work only for a QA rejection (the reasons `QA rejected after the retries` and `QA rejected: nothing the developer agent can fix`) and for a comment with no reason. For any other reason, including one the catalog does not know, the title and the line that says what happened SHALL say that the run stopped for that reason and that QA did not reject the work, and SHALL NOT say that QA rejected it or that QA did so after the retries. The line that says what happened for the reasons that have wording of their own (a run limit, a protected path in the diff) and the next step of the comment SHALL be as before; their title follows the same rule as any other stop that is not a QA rejection.
 
 #### Scenario: The branch already exists
 - **WHEN** a `qa_failed` message has the reason `branch already exists`
 - **THEN** its title does not say `failed QA`, it says that the run stopped for that reason and that QA did not reject the work, and the next step is the one of the state of the branch
 
 #### Scenario: `fix` still finds the comment
-- **WHEN** a `qa-failed` comment was written for a stop that is not a QA rejection, or for a QA rejection, in either language
+- **WHEN** a `build-failed` comment was written for a stop that is not a QA rejection, or for a QA rejection, in either language
 - **THEN** the reader that `fix` uses finds it by its title and reads its finding, and it still finds the comments written with the earlier titles
 
 #### Scenario: A reason the catalog does not know
@@ -335,3 +347,59 @@ The `qa-failed` comment SHALL say that QA rejected the work only for a QA reject
 #### Scenario: Language of the comment
 - **WHEN** `language` in `relevo.yml` is Spanish
 - **THEN** the comment is in Spanish, like every other message
+
+### Requirement: An issue without a lifecycle label is a draft
+An open issue that carries no lifecycle label SHALL be a draft: its text is free to change, no gate looks at it and nothing builds it. An issue whose approval is withdrawn SHALL return to being a draft, with no lifecycle label.
+
+#### Scenario: A reminder filed for later
+- **WHEN** a person creates an issue with a title and one line, and applies no label
+- **THEN** nothing evaluates or builds it, and `issue` can update it
+
+#### Scenario: Approval withdrawn
+- **WHEN** the `ready` label of an issue is removed and no other lifecycle label is applied
+- **THEN** the issue is a draft again
+
+### Requirement: The go label is a build request, not a state
+The lifecycle SHALL have a `go` label (default name `relevo:go`) that asks the cloud to build an approved issue. It SHALL be added next to `ready` and SHALL NOT replace it, it SHALL be renamable in `labels` like the others, and it SHALL NOT change the owner of the issue. It SHALL be removed when the cloud decides about the issue, whatever the decision.
+
+#### Scenario: Request on an approved issue
+- **WHEN** a person with the permission of `ready` applies `relevo:go` to a `ready` issue
+- **THEN** the cloud evaluates the issue, and after its decision the issue no longer carries `relevo:go`
+
+#### Scenario: Request withdrawn
+- **WHEN** a person moves a `queued` issue back to `ready` by hand
+- **THEN** the issue is approved with no request, and the cloud does not build it until `go` is applied again
+
+#### Scenario: Renamed label
+- **WHEN** `labels.go` is set in `relevo.yml`
+- **THEN** every behaviour of the label applies to the configured name
+
+### Requirement: The local label marks a local build
+The lifecycle SHALL have a `local` label (default name `relevo:local`) that marks an issue as being built on a person's machine. A local build SHALL add it next to `building` when it claims the issue, and it SHALL be removed in the same operation that takes the issue out of `building`. No person is asked to apply it. A `local` label on an issue that is not `building` SHALL mean nothing and SHALL be removed the next time a command changes the state of the issue. It SHALL be renamable in `labels`.
+
+#### Scenario: Local build claimed
+- **WHEN** a person starts a local build of issue 42 and its gates pass
+- **THEN** issue 42 carries `relevo:building` and `relevo:local`
+
+#### Scenario: Local build ends
+- **WHEN** that build ends in `built` or in `build-failed`
+- **THEN** `relevo:local` is removed together with `relevo:building`
+
+#### Scenario: Stray label
+- **WHEN** a `ready` issue carries `relevo:local`
+- **THEN** the gates ignore the label, and it is removed when the issue next changes state
+
+### Requirement: A failed build has one label, whatever the reason
+A build that ends without a hand-off SHALL leave the issue with the `build-failed` label, whatever the reason: QA rejected the work, a limit stopped the run, or the build could not start or finish. There SHALL be one such label, owned by the assignee, and its description SHALL say that the build did not end in a hand-off and that the comment says why and what to do. The name of the label SHALL NOT name one of the reasons.
+
+#### Scenario: QA rejected the work
+- **WHEN** QA still rejects the work after the retries
+- **THEN** the issue is labelled `build-failed` and the comment gives the reason "QA rejected after the retries"
+
+#### Scenario: A limit stopped the run
+- **WHEN** a run stops at its turn limit with work in progress
+- **THEN** the issue is labelled `build-failed`, the same label as for a QA rejection, and the comment says that the run stopped at a limit
+
+#### Scenario: The description of the label
+- **WHEN** the label is created in a repository
+- **THEN** its description says that the build did not end in a hand-off, and does not say that QA rejected it

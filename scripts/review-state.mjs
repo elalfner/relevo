@@ -29,7 +29,7 @@
 //   review-state.mjs waived                       print the "Waived findings" section for the pull request body
 //   review-state.mjs agree                        the person agrees to open the pull request
 //   review-state.mjs show                         print the state as JSON
-//   review-state.mjs decide                       exit 0 when the pull request may be opened, 1 when not
+//   review-state.mjs decide [<change-dir> [--adapter api | --target ios]]   exit 0 when the pull request may be opened, 1 when not; with the change, the state must be its review
 // The state lives in evidence/review-state.json (override with --state). That folder is never committed.
 
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -54,6 +54,15 @@ const [command, ...rest] = args;
 // The log an api review reads when the profile does not say: the files of Laravel, the container of Supabase.
 const DEFAULT_LOG = { supabase: 'docker:supabase_db_{project_id}' };
 const describeLog = (log) => (log.source === 'compose' ? `the log of ${log.services.length > 0 ? `the services ${log.services.join(', ')}` : 'every service'} of the Compose project is read from ${log.since} on` : log.source === 'docker' ? `the log of the container ${log.container} is read from ${log.since} on` : `the log ${log.pattern} is read from now on (${Object.keys(log.offsets).length} file(s) as they are)`);
+
+// The titles of the scenarios of a change, or null when its specification cannot be read: the comparison then falls back to the name and the kind.
+const titlesOf = (changeDir) => {
+  try {
+    return checklistFromChange(changeDir).map((i) => i.title);
+  } catch {
+    return null;
+  }
+};
 
 const fail = (m) => {
   console.error(m);
@@ -106,7 +115,7 @@ try {
       if (badFatal) fail(`--expected-fatal ${JSON.stringify(badFatal[0])} must be ${badFatal[1]}`);
       const change = basename(resolve(rest[0]));
       if (existsSync(statePath)) {
-        const owner = ownerOf(JSON.parse(readFileSync(statePath, 'utf8')), { change, kind: api ? 'api' : ios ? 'ios' : 'device' });
+        const owner = ownerOf(JSON.parse(readFileSync(statePath, 'utf8')), { change, kind: api ? 'api' : ios ? 'ios' : 'device', titles: titlesOf(rest[0]) });
         if (!owner.ok && !owner.unknown) fail(`${statePath} already holds a review that is not this one: ${owner.reason}. Nothing was changed; remove the file if that review is over`);
       }
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
@@ -129,7 +138,7 @@ try {
       const flag = (name) => (rest.indexOf(`--${name}`) === -1 ? undefined : rest[rest.indexOf(`--${name}`) + 1]);
       const kind = flag('adapter') === 'api' ? 'api' : flag('target') === 'ios' ? 'ios' : 'device';
       const change = basename(resolve(rest[0]));
-      const owner = ownerOf(JSON.parse(readFileSync(statePath, 'utf8')), { change, kind });
+      const owner = ownerOf(JSON.parse(readFileSync(statePath, 'utf8')), { change, kind, titles: titlesOf(rest[0]) });
       if (owner.ok) {
         console.log(`${statePath} is the ${kind} review of ${change}`);
         break;
@@ -293,7 +302,13 @@ try {
       console.log(JSON.stringify(load(), null, 2));
       break;
     case 'decide': {
-      const { open, reasons } = decidePr(load());
+      // With a change folder (and --adapter api or --target ios for those reviews) the state must be the review of that change.
+      const flag = (name) => (rest.indexOf(`--${name}`) === -1 ? undefined : rest[rest.indexOf(`--${name}`) + 1]);
+      const changeDir = rest[0] && !rest[0].startsWith('--') ? rest[0] : null;
+      if (changeDir && !existsSync(changeDir)) fail('usage: review-state.mjs decide [<change-directory> [--adapter api | --target ios]]');
+      const state = load();
+      const owner = changeDir ? ownerOf(state, { change: basename(resolve(changeDir)), kind: flag('adapter') === 'api' ? 'api' : flag('target') === 'ios' ? 'ios' : 'device', titles: titlesOf(changeDir) }) : null;
+      const { open, reasons } = decidePr(state, owner);
       if (open) console.log('the pull request may be opened');
       else {
         console.log('the pull request must NOT be opened yet:');

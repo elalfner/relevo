@@ -1110,7 +1110,7 @@ For a declared adapter with a `compose:` log, `init` and the preflight SHALL rea
 - **THEN** the review says that no running project was found and does not warn about a folder
 
 ### Requirement: The state of a review belongs to one change
-The state of a review SHALL record the name of the change and the kind of review (`device`, `api` or iOS) it was created for. `init` SHALL refuse to overwrite a state that belongs to another change or kind, and say which. `review-state.mjs owner <change-dir>` SHALL exit 0 when the state is for that change and that kind, and exit 1 naming what differs when it is not. A state that records no change SHALL be reported as one whose owner is unknown, and the review SHALL ask the person whether it is theirs before resuming it.
+The state of a review SHALL record the name of the change and the kind of review (`device`, `api` or iOS) it was created for. `init` SHALL refuse to overwrite a state that belongs to another change or kind, and say which. `review-state.mjs owner <change-dir>` SHALL exit 0 when the state is for that change and that kind, and exit 1 naming what differs when it is not. A state that records no change SHALL be compared by content: when none of the titles of its lines is a scenario of the change, it SHALL be reported as the state of another review, `init` SHALL refuse to overwrite it and `owner` SHALL exit 1 saying how many of its lines are not in the change; when some are, it SHALL be reported as one whose owner is unknown, and the review SHALL ask the person whether it is theirs before resuming it. `review-state.mjs decide <change-dir>` SHALL refuse to allow the pull request when the state belongs to another change or kind, or is of another review by content, and SHALL behave as before when it is given no change.
 
 #### Scenario: State of another issue
 - **WHEN** `evidence/review-state.json` was created for `add-login` and the review of `rename-orders` starts
@@ -1124,9 +1124,25 @@ The state of a review SHALL record the name of the change and the kind of review
 - **WHEN** the state was created for the change being resumed
 - **THEN** `owner` exits 0 and the review resumes
 
+#### Scenario: Older state of another review
+- **WHEN** the state records no change and none of the titles of its lines is a scenario of the change
+- **THEN** `init` refuses and leaves the file as it is, and `owner` exits 1 saying how many of its lines are not in the change
+
 #### Scenario: Older state
-- **WHEN** the state records no change
-- **THEN** `owner` says the owner is unknown and the review asks the person before resuming it
+- **WHEN** the state records no change and some of its lines are scenarios of the change
+- **THEN** `owner` says the owner is unknown and the review asks the person before resuming it, and `init` does not refuse
+
+#### Scenario: Older state without lines
+- **WHEN** the state records no change and holds no line
+- **THEN** it is reported as of unknown owner and `init` does not refuse
+
+#### Scenario: Pull request over another review
+- **WHEN** `decide` is given the change and the state is of another change, of another kind, or of another review by content
+- **THEN** it exits 1 and says that the state is not the review of this change, whatever its lines and audit say
+
+#### Scenario: Decide without the change
+- **WHEN** `decide` is given no change
+- **THEN** it decides from the state alone, as before
 
 ### Requirement: The audit of a declared adapter treats the fatal messages a repository lists as expected
 For a declared adapter the audit SHALL treat a `FATAL:` line whose message (the text after the first `FATAL:`, with whitespace collapsed) is equal to an entry of `review.expected_fatals` as an expected fatal: listed in the report with the entry that matched and its count, and not a finding, while a run is recorded. With no run recorded it SHALL be a finding of the class `fatal`. A message that only contains an entry, or that an entry only contains, SHALL NOT match. The list SHALL come from the state recorded at `init` and SHALL be read only for a declared adapter. The report SHALL say that these entries are the repository's declaration of what its own test harness provokes, and that a waiver stays the person's decision.
@@ -1154,3 +1170,26 @@ For a declared adapter the audit SHALL treat a `FATAL:` line whose message (the 
 #### Scenario: Empty list
 - **WHEN** the list is empty or absent
 - **THEN** the audit classifies as before
+
+### Requirement: The plugin ships an api adapter for Nhost
+The plugin SHALL ship the generic `api` adapter of a declared adapter for the stack `nhost` (no targets), with the tools `docker` and `npm` and the `log` and `test` of its profile, so a platform with that stack reviews with no `review` block. The stop message for a stack with no adapter SHALL name `nhost` among the adapters that exist.
+
+#### Scenario: Nhost with no review block
+- **WHEN** the platform has the stack `nhost`, which defines no targets, and the repository has no `review` block for it
+- **THEN** the adapter is `api` with the plugin's `log`, `test` and `needs`, and the review does not need `review.autopilot` other than `off`
+
+#### Scenario: Stop message
+- **WHEN** a stack has no adapter
+- **THEN** the message lists `nhost` among the adapters that exist
+
+#### Scenario: Nhost with the repository's test command
+- **WHEN** the repository's profile of `nhost` sets `review.test` to `npm run --silent test:integration`
+- **THEN** the adapter runs that command, and no line is proved one by one because it has no `{filter}`
+
+#### Scenario: Remote address in the override
+- **WHEN** the repository's profile of `nhost` sets `review.test` to a command with `https://db.example.com/`
+- **THEN** the review stops before changing anything and names `review.test`
+
+#### Scenario: A repository cannot relabel the adapter
+- **WHEN** the repository's profile of `nhost` sets `review.needs` or `review.adapter`
+- **THEN** the review ignores them and `doctor` warns, as for any shipped stack
