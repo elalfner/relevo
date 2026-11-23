@@ -143,7 +143,7 @@ function project(logText) {
   mkdirSync(join(dir, 'bin'), { recursive: true });
   writeFileSync(join(dir, 'change/specs/cap/spec.md'), SPEC);
   writeFileSync(join(dir, 'docker.out'), '');
-  writeFileSync(join(dir, 'bin/docker'), `#!/bin/sh\ncat "${dir}/docker.out"\n`);
+  writeFileSync(join(dir, 'bin/docker'), `#!/bin/sh\ncase "$*" in *"config --services"*) echo postgres; exit 0;; esac\ncat "${dir}/docker.out"\n`);
   chmodSync(join(dir, 'bin/docker'), 0o755);
   const state = join(dir, 'evidence/review-state.json');
   const env = { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}` };

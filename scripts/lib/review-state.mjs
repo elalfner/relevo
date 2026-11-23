@@ -18,12 +18,13 @@ export const KINDS = ['device', 'browser', 'api'];
  * time a container's log is read from, when it started), `runs` (the test runs, by the person or by the agent) and the
  * `stack` it reviews; `declared` marks an adapter the repository's profile declares, audited with the common signals only. A Supabase review also records, as `started_stack`, that the agent started the local stack.
  */
-export function newState(items, { autopilot = 'off', kind = 'device', log = null, stack = null, declared = false, expectedErrors = [] } = {}) {
+export function newState(items, { autopilot = 'off', kind = 'device', log = null, stack = null, declared = false, expectedErrors = [], change = null } = {}) {
   if (!AUTOPILOT_MODES.includes(autopilot)) throw new Error(`autopilot must be one of ${AUTOPILOT_MODES.join(', ')}`);
   if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(', ')}`);
   return {
     autopilot,
     kind,
+    ...(change ? { change } : {}),
     ...(kind === 'api' ? { log, runs: [], ...(stack ? { stack } : {}), ...(declared ? { declared: true } : {}), ...(declared && expectedErrors.length > 0 ? { expectedErrors } : {}) } : {}),
     envConfirmed: false,
     items: items.map((i) => ({ id: i.id, title: i.title, status: 'pending', note: null, precheck: null, auto: null })),
@@ -32,6 +33,23 @@ export function newState(items, { autopilot = 'off', kind = 'device', log = null
     waivers: [],
     agreed: false,
   };
+}
+
+/** The kind of review a state is for: `api`, `ios` (a device review that reads the simulator) or `device`. */
+export const reviewKind = (state) => (state.kind === 'api' ? 'api' : state.source?.source === 'simulator' ? 'ios' : 'device');
+
+const describeKind = (kind) => (kind === 'api' ? 'an api review' : `a${kind === 'ios' ? 'n' : ''} ${kind} review`);
+
+/**
+ * Does the state on disk belong to this change and this kind of review? { ok: true }, or { ok: false, reason } naming what differs,
+ * or { ok: false, unknown: true, reason } when the state records no change (written before it did).
+ */
+export function ownerOf(state, { change, kind }) {
+  const differs = [];
+  if (state.change && state.change !== change) differs.push(`it is for the change ${state.change}, not ${change}`);
+  if (reviewKind(state) !== kind) differs.push(`it is for ${describeKind(reviewKind(state))}, not ${describeKind(kind)}`);
+  if (differs.length > 0) return { ok: false, reason: differs.join(' and ') };
+  return state.change ? { ok: true } : { ok: false, unknown: true, reason: 'it records no change, so its owner is unknown' };
 }
 
 /**

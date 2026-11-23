@@ -175,7 +175,9 @@ test('sync after a fix clears the runs and takes the log as it is now; reset-log
   assert.match(r.run('audit').stdout, /^REVIEW PASSED/, 'the entries from before the fix are not read again');
   appendFileSync(r.logFile, ERROR.replace('probe', 'after'));
   r.run('reset-log');
-  assert.match(r.run('audit').stdout, /^REVIEW PASSED/);
+  assert.match(r.run('audit').stdout, /^REVIEW INCONCLUSIVE/, 'the run before the reset does not prove the new window');
+  r.run('ran', '0');
+  assert.match(r.run('audit').stdout, /^REVIEW PASSED/, 'a run after the reset does');
   assert.equal(spawnSync('node', [CLI, 'reset-log', '--state', join(review().dir, 'none.json')], { encoding: 'utf8' }).status, 2);
 });
 
@@ -199,10 +201,37 @@ test('Scenario: Compose log - the snapshot records the services and the start ti
   assert.deepEqual(snapshotLog('compose:', { now: () => new Date('2026-11-18T10:00:00.000Z') }).services, [], 'none means every service');
   const calls = [];
   const slice = readSlice(snap, { cwd: '/backend', run: (command, args, opts) => { calls.push([command, args, opts]); return { status: 0, stdout: 'postgres | ok\n', stderr: '' }; } });
-  assert.deepEqual(calls, [['docker', ['compose', 'logs', '--no-color', '--since', '2026-11-18T10:00:00.000Z', 'postgres', 'auth'], { cwd: '/backend' }]]);
-  assert.equal(slice.text, 'postgres | ok\n');
+  assert.deepEqual(calls, [
+    ['docker', ['compose', 'logs', '--no-color', '--since', '2026-11-18T10:00:00.000Z', 'postgres'], { cwd: '/backend' }],
+    ['docker', ['compose', 'logs', '--no-color', '--since', '2026-11-18T10:00:00.000Z', 'auth'], { cwd: '/backend' }],
+  ], 'one read per service');
+  assert.equal(slice.text, 'postgres | ok\npostgres | ok\n');
   assert.deepEqual(slice.unreadable, []);
-  readSlice({ ...snap, services: [] }, { run: (c, args) => { assert.equal(args.at(-1), '2026-11-18T10:00:00.000Z'); return { status: 0, stdout: '', stderr: '' }; } });
+});
+
+test('Scenario: Every service - the services of the project are listed and each is read since the start', () => {
+  const calls = [];
+  const slice = readSlice({ ...snapshotLog('compose:', { now: () => new Date('2026-11-18T10:00:00.000Z') }) }, { cwd: '/backend', run: (c, args) => {
+    calls.push(args.join(' '));
+    return args[1] === 'config' ? { status: 0, stdout: 'postgres\nauth\nhasura\n', stderr: '' } : { status: 0, stdout: `${args.at(-1)} | up\n`, stderr: '' };
+  } });
+  assert.deepEqual(calls, ['compose config --services', ...['postgres', 'auth', 'hasura'].map((s) => `compose logs --no-color --since 2026-11-18T10:00:00.000Z ${s}`)]);
+  assert.equal(slice.text, 'postgres | up\nauth | up\nhasura | up\n');
+  const down = readSlice(snapshotLog('compose:', { now: () => new Date() }), { run: () => ({ status: 1, stdout: '', stderr: 'Cannot connect to the Docker daemon\nmore' }) });
+  assert.deepEqual(down.unreadable, [{ file: 'compose', reason: 'Cannot connect to the Docker daemon' }]);
+});
+
+test('Scenario: One service too large - the others are read, the service is named and the reset-log way out is said', () => {
+  const snap = snapshotLog('compose:postgres,auth,hasura', { now: () => new Date() });
+  const slice = readSlice(snap, { run: (c, args) => (args.at(-1) === 'postgres' ? { status: 127, stdout: '', stderr: 'spawnSync docker ENOBUFS' } : { status: 0, stdout: `${args.at(-1)} | ok\n`, stderr: '' }) });
+  assert.equal(slice.text, 'auth | ok\nhasura | ok\n', 'the other services are still read');
+  assert.equal(slice.unreadable.length, 1);
+  assert.equal(slice.unreadable[0].file, 'compose:postgres');
+  assert.match(slice.unreadable[0].reason, /log of postgres since the review started is larger than the read allows/);
+  assert.match(slice.unreadable[0].reason, /reset-log starts the window from now.*runs recorded so far then stop proving it/);
+  const audit = auditApi({ text: slice.text, runs: [{ exit: 0, tests: 3 }], unreadable: slice.unreadable, flavor: 'declared' });
+  assert.equal(audit.verdict, 'REVIEW INCONCLUSIVE');
+  assert.match(audit.reason, /compose:postgres: .*reset-log/);
 });
 
 test('Scenario: Unreadable compose log - a failing runner is an unreadable source', () => {
@@ -247,10 +276,10 @@ test('Scenario: Compose log through the command - what the services wrote before
   r.add('1999-01-01T00:00:00.000Z FATAL: from before the review');
   r.run('ran', '0', '--tests', '5');
   assert.match(r.run('audit').stdout, /^REVIEW PASSED/);
-  const call = r.calls().at(-1);
-  assert.deepEqual(call.args.slice(0, 4), ['compose', 'logs', '--no-color', '--since']);
-  assert.deepEqual(call.args.slice(5), ['postgres', 'auth']);
-  assert.match(call.cwd, /backend$/);
+  const calls = r.calls().slice(-2);
+  calls.forEach((call) => assert.deepEqual(call.args.slice(0, 4), ['compose', 'logs', '--no-color', '--since']));
+  assert.deepEqual(calls.map((call) => call.args.at(-1)), ['postgres', 'auth'], 'one read per service');
+  calls.forEach((call) => assert.match(call.cwd, /backend$/));
   r.add(`${LATER} FATAL: terminating connection`);
   assert.match(r.run('audit').stdout, /^REVIEW REJECTED/);
 });
@@ -260,7 +289,8 @@ test('Scenario: Unreadable compose log through the command - inconclusive and it
   r.run('ran', '0', '--tests', '5');
   const out = r.run('audit').stdout;
   assert.match(out, /^REVIEW INCONCLUSIVE/);
-  assert.match(out, /compose:postgres,auth: no configuration file provided/);
+  assert.match(out, /compose:postgres: no configuration file provided/);
+  assert.match(out, /compose:auth: no configuration file provided/);
   const waive = r.run('waive', '1', 'because');
   assert.notEqual(waive.status, 0);
   assert.match(waive.stderr, /inconclusive audit cannot be waived/);
@@ -328,4 +358,93 @@ test('Scenario: A run that reports no count - a declared line is proved only by 
   assert.match(section, /by the agent: exit 0, 12 test\(s\)/);
   assert.match(section, /by the agent for line 1, filter `login`: exit 0, 1 test\(s\)/);
   assert.doesNotMatch(section, /assertion/);
+});
+
+// ---- harden-api-review-audit: a run belongs to the window it was recorded in
+
+test('Scenario: Empty window after a reset - runs from before do not prove it, a run after does, and a failing run before still stands', () => {
+  const runs = [{ exit: 0, tests: 5, by: 'person' }];
+  const empty = auditApi({ text: '', runs, flavor: 'declared', windowStart: 1 });
+  assert.equal(empty.verdict, 'REVIEW INCONCLUSIVE');
+  assert.match(empty.reason, /no test run is recorded since the log was reset/);
+  assert.equal(auditApi({ text: '', runs: [...runs, { exit: 0, tests: 5, by: 'person' }], flavor: 'declared', windowStart: 1 }).verdict, 'REVIEW PASSED');
+  assert.equal(auditApi({ text: '', runs, flavor: 'declared', windowStart: 0 }).verdict, 'REVIEW PASSED', 'no reset, no change');
+  const failing = auditApi({ text: '', runs: [{ exit: 1, line: 1, failing: ['t'], by: 'person' }], flavor: 'declared', windowStart: 1 });
+  assert.equal(failing.verdict, 'REVIEW REJECTED');
+});
+
+test('reset-log after a recorded run says that the run no longer proves the window, and the audit is inconclusive until a new run', () => {
+  const r = declaredReview();
+  r.run('ran', '0', '--tests', '5');
+  const reset = r.run('reset-log');
+  assert.match(reset.stdout, /1 run\(s\) recorded so far no longer prove this window/);
+  assert.equal(r.show().log.runsBefore, 1);
+  const out = r.run('audit').stdout;
+  assert.match(out, /^REVIEW INCONCLUSIVE/);
+  assert.match(out, /since the log was reset/);
+  r.run('ran', '0', '--tests', '5');
+  assert.match(r.run('audit').stdout, /^REVIEW PASSED/);
+  const none = declaredReview();
+  assert.doesNotMatch(none.run('reset-log').stdout, /no longer prove/);
+});
+
+// ---- harden-api-review-audit: the state of a review belongs to one change
+
+test('Scenario: State of another issue - init refuses, names both changes and leaves the file as it is', () => {
+  const r = review();
+  assert.equal(r.run('init', join(r.dir, 'change'), '--adapter', 'api').status, 0);
+  const before = readFileSync(join(r.dir, 'evidence', 'review-state.json'), 'utf8');
+  assert.equal(r.show().change, 'change');
+  const other = join(r.dir, 'rename-orders');
+  mkdirSync(join(other, 'specs', 'cap'), { recursive: true });
+  writeFileSync(join(other, 'specs', 'cap', 'spec.md'), SPEC);
+  const refused = r.run('init', other, '--adapter', 'api');
+  assert.equal(refused.status, 2);
+  assert.match(refused.stderr, /it is for the change change, not rename-orders/);
+  assert.equal(readFileSync(join(r.dir, 'evidence', 'review-state.json'), 'utf8'), before);
+  assert.equal(r.run('init', join(r.dir, 'change'), '--adapter', 'api').status, 0, 'the same change can start again');
+});
+
+test('Scenario: State of another kind and Same change - owner exits 1 naming what differs, 0 when it is this review', () => {
+  const r = review();
+  r.run('init', join(r.dir, 'change'), '--adapter', 'api');
+  const same = r.run('owner', join(r.dir, 'change'), '--adapter', 'api');
+  assert.equal(same.status, 0);
+  assert.match(same.stdout, /is the api review of change/);
+  const kind = r.run('owner', join(r.dir, 'change'));
+  assert.equal(kind.status, 1);
+  assert.match(kind.stdout, /it is for an api review, not a device review/);
+  const change = r.run('owner', join(r.dir, 'change', 'specs'), '--adapter', 'api');
+  assert.equal(change.status, 1);
+  assert.match(change.stdout, /it is for the change change, not specs/);
+  assert.equal(r.run('init', join(r.dir, 'change')).status, 2, 'a device review does not overwrite an api state');
+});
+
+test('Scenario: Older state - owner says the owner is unknown and init does not refuse', () => {
+  const r = review();
+  r.run('init', join(r.dir, 'change'), '--adapter', 'api');
+  const file = join(r.dir, 'evidence', 'review-state.json');
+  const old = r.show();
+  delete old.change;
+  writeFileSync(file, JSON.stringify(old));
+  const out = r.run('owner', join(r.dir, 'change'), '--adapter', 'api');
+  assert.equal(out.status, 1);
+  assert.match(out.stdout, /owner of .* is unknown.*ask the person whether it is theirs/);
+  assert.equal(r.run('init', join(r.dir, 'change'), '--adapter', 'api').status, 0);
+  assert.equal(r.run('owner', join(r.dir, 'change'), '--adapter', 'api').status, 0);
+});
+
+test('init of a compose log says where the running project was started from: a warning for another folder, a note when none runs', () => {
+  assert.match(declaredReview().init.stdout, /no running Compose project was found for this folder/);
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-where-'));
+  mkdirSync(join(dir, 'change', 'specs', 'cap'), { recursive: true });
+  mkdirSync(join(dir, 'backend'));
+  mkdirSync(join(dir, 'bin'));
+  writeFileSync(join(dir, 'change', 'specs', 'cap', 'spec.md'), SPEC);
+  writeFileSync(join(dir, 'bin', 'docker'), '#!/bin/sh\ncase "$1" in compose) echo c1;; inspect) echo /elsewhere/backend;; esac\nexit 0\n');
+  chmodSync(join(dir, 'bin', 'docker'), 0o755);
+  const env = { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}` };
+  const init = spawnSync('node', [CLI, 'init', join(dir, 'change'), '--adapter', 'api', '--declared', '--log', 'compose:', '--cwd', join(dir, 'backend'), '--state', join(dir, 'evidence', 'review-state.json')], { encoding: 'utf8', env });
+  assert.equal(init.status, 0, init.stderr);
+  assert.match(init.stdout, /warning: the Compose project is running from \/elsewhere\/backend.*not from .*backend/);
 });

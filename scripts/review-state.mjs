@@ -12,6 +12,7 @@
 //   review-state.mjs init <change-dir> --target ios --process <executable>   an iOS review: reads the log of the booted simulator
 //   review-state.mjs reset-log                    an api review: take the log files as they are now (after a fix)
 //   review-state.mjs set <id> <ok|fail|pending> [note ...]
+//   review-state.mjs owner <change-dir> [--adapter api | --target ios]   exit 0 when the state is for this change and kind, 1 when it is not or its owner is unknown
 //   review-state.mjs sync <change-dir>            after a fix: keep confirmed lines, retest failed ones, add new scenarios
 //   review-state.mjs capture <path>               record a screenshot that was taken (refused after "agree")
 //   review-state.mjs qa-pass <script>             QA passed this browser review script; the runner runs only this exact content
@@ -32,15 +33,16 @@
 // The state lives in evidence/review-state.json (override with --state). That folder is never committed.
 
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { readSlice, snapshotLog } from './lib/api-log.mjs';
+import { composeNote, composeWorkdir, realComposeDeps } from './lib/compose-dir.mjs';
 import { checklistFromChange } from './lib/checklist.mjs';
 import { listSimulators, pickSimulator, readIosLog, formatLogStart } from './lib/device-ios.mjs';
 import { auditSimulatorSource } from './lib/logaudit-ios.mjs';
 import { expectedErrorProblem } from './lib/stack-profile.mjs';
 import { auditApi, auditLog, auditReport, filterByApp } from './lib/logaudit.mjs';
 import { parseTap } from './lib/pgtap.mjs';
-import { applyWaivers, autoItem, autoSection, confirmEnv, decidePr, markStackStarted, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
+import { applyWaivers, autoItem, ownerOf, autoSection, confirmEnv, decidePr, markStackStarted, newState, precheckItem, qaPass, recordCapture, recordRun, runsSection, setItem, syncState, waivedSection, waiveFinding } from './lib/review-state.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const argv = process.argv.slice(2);
@@ -98,13 +100,38 @@ try {
       if (expectedErrors.length > 0 && !declared) fail('--expected-error goes with a declared adapter (--declared): only its audit reads the list');
       const badExpected = expectedErrors.map((e) => [e, expectedErrorProblem(e)]).find(([, why]) => why);
       if (badExpected) fail(`--expected-error ${JSON.stringify(badExpected[0])} must be ${badExpected[1]}`);
+      const change = basename(resolve(rest[0]));
+      if (existsSync(statePath)) {
+        const owner = ownerOf(JSON.parse(readFileSync(statePath, 'utf8')), { change, kind: api ? 'api' : ios ? 'ios' : 'device' });
+        if (!owner.ok && !owner.unknown) fail(`${statePath} already holds a review that is not this one: ${owner.reason}. Nothing was changed; remove the file if that review is over`);
+      }
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared, expectedErrors });
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared, expectedErrors, change });
       if (ios) state.source = { source: 'simulator', udid: pickSimulator(listSimulators(), process.env.IOS_SIMULATOR ?? null), process: flag('process'), since: formatLogStart() };
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);
       console.log(`${state.items.length} checklist item(s) in ${statePath} (autopilot: ${state.autopilot})${api ? `; ${describeLog(log)}` : ''}`);
+      // A Compose log says where the running project was started from; a different checkout is a warning, never a stop.
+      if (api && log.source === 'compose') {
+        const where = composeWorkdir({ cwd: resolve(flag('cwd') ?? '.') }, realComposeDeps);
+        const note = composeNote(where);
+        if (note) console.log(`${where.state === 'other' ? 'warning: ' : ''}${note}`);
+      }
       break;
+    }
+    case 'owner': {
+      if (!rest[0] || !existsSync(rest[0])) fail('usage: review-state.mjs owner <change-directory> [--adapter api | --target ios]');
+      if (!existsSync(statePath)) fail(`no review in progress (${statePath} not found): run "init" first`);
+      const flag = (name) => (rest.indexOf(`--${name}`) === -1 ? undefined : rest[rest.indexOf(`--${name}`) + 1]);
+      const kind = flag('adapter') === 'api' ? 'api' : flag('target') === 'ios' ? 'ios' : 'device';
+      const change = basename(resolve(rest[0]));
+      const owner = ownerOf(JSON.parse(readFileSync(statePath, 'utf8')), { change, kind });
+      if (owner.ok) {
+        console.log(`${statePath} is the ${kind} review of ${change}`);
+        break;
+      }
+      console.log(owner.unknown ? `the owner of ${statePath} is unknown: ${owner.reason}; ask the person whether it is theirs before resuming it` : `${statePath} is not the ${kind} review of ${change}: ${owner.reason}`);
+      process.exit(1);
     }
     case 'sync': {
       if (!rest[0] || !existsSync(rest[0])) fail('usage: review-state.mjs sync <change-directory>');
@@ -177,9 +204,11 @@ try {
         break;
       }
       if (state.kind !== 'api') fail('reset-log is for an api or an iOS review');
-      state.log = snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' });
+      const before = (state.runs ?? []).length;
+      state.log = { ...snapshotLog(state.log.pattern, { cwd: state.cwd ?? '.' }), ...(before > 0 ? { runsBefore: before } : {}) };
       save(state);
       console.log(describeLog(state.log));
+      if (before > 0) console.log(`the ${before} run(s) recorded so far no longer prove this window: record a run after the reset (ran <exit code>) before the audit; a run that failed still counts until a later run replaces it`);
       break;
     }
     case 'audit': {
@@ -187,7 +216,7 @@ try {
       if (state.kind === 'api') {
         const slice = readSlice(state.log, { cwd: state.cwd ?? '.' });
         const flavor = state.declared ? 'declared' : state.stack === 'supabase' ? 'postgres' : 'laravel';
-        const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor, expectedErrors: state.expectedErrors ?? [] });
+        const audit = auditApi({ text: slice.text, runs: state.runs, unreadable: slice.unreadable, flavor, expectedErrors: state.expectedErrors ?? [], windowStart: state.log.runsBefore ?? 0 });
         const scope = { kind: 'api', pattern: state.log.pattern, runs: (state.runs ?? []).length, ...(flavor !== 'laravel' ? { flavor } : {}) };
         state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ...(audit.reason ? { reason: audit.reason } : {}), ...(audit.unreadable ? { unreadable: audit.unreadable } : {}), ...(audit.expected ? { expected: audit.expected } : {}), ...(audit.startup ? { startup: audit.startup } : {}), ...(audit.declaredExpected ? { declaredExpected: audit.declaredExpected, expectedErrors: state.expectedErrors } : {}) };
         finishAudit(state, audit, scope);

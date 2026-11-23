@@ -4,6 +4,17 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- **The audit of a Compose log no longer fails as a whole when a service's log is large.** `review-state.mjs audit` read every service in one `docker compose logs` call limited to 1 MiB, and an overflow (`ENOBUFS`) ended in `REVIEW INCONCLUSIVE`, which cannot be waived. Each service is now read on its own with room for 256 MiB, and a service that still does not fit is named in the report with what `reset-log` does and costs.
+- **After `reset-log`, a window that no run exercised is no longer `REVIEW PASSED`.** The runs recorded before the reset do not prove the new window: the audit is `REVIEW INCONCLUSIVE` until a run is recorded after it. A run that failed before still stands.
+- **`init` no longer overwrites the review state of another change or kind of review**, and `review-state.mjs owner <change-dir>` says whether the state on disk is the one being resumed.
+
+### Added
+
+- **The preflight of a declared adapter looks at the checkout.** With `npm` in `needs` and a `package.json` it wants `node_modules`; with a `.env.example` or `.env.sample` it wants a `.env`. It only checks that the paths exist, never reads a file, and a missing one is a warning (exit 5) the review asks about before any test.
+- **The review warns when the running Compose project was started from another folder** than the checkout under review (`init` and `api-preflight.mjs --needs ... --compose`).
+
 ## [0.17.3] - 2026-11-20
 
 ### Fixed

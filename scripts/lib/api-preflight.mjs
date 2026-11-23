@@ -91,7 +91,7 @@ export function supabasePreflight({ cwd }, deps) {
 }
 
 // A declared adapter: the names the repository chose are tools to find, never programs to run.
-export const NEEDS_EXIT = { invalid: 2, tool: 3, docker: 4 };
+export const NEEDS_EXIT = { invalid: 2, tool: 3, docker: 4, checkout: 5 };
 const NEEDS_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const INSTALL_HINTS = { docker: 'install Docker (https://docs.docker.com/get-docker/)' };
 
@@ -106,9 +106,12 @@ export function findOnPath(name, pathVar, deps, { sep = ':', ext = [''] } = {}) 
 /**
  * Check the tools a declared adapter needs. deps: find(name) -> boolean (on the path, not run), run(command, args) -> { status }.
  * Returns { ok, check, detail, install, missing, exit }: exit 0 ready, 3 a tool is missing, 4 the Docker daemon does not answer,
- * 2 a name that is not a tool name. It installs nothing, starts nothing and reads no file.
+ * 2 a name that is not a tool name, 5 ready but the checkout lacks something (`warnings` names each, `install` is the command for the
+ * person). With `cwd` and deps.exists(path) it also looks at the checkout by the existence of paths only: `node_modules` when npm is
+ * needed and there is a package.json, `.env` when there is a `.env.example` or `.env.sample`. It installs nothing, starts nothing and
+ * never opens a file, so an environment file is never read.
  */
-export function needsPreflight({ needs }, deps) {
+export function needsPreflight({ needs, cwd }, deps) {
   const base = { install: null, missing: [] };
   const names = [...new Set(needs ?? [])];
   const bad = names.filter((n) => !NEEDS_NAME_RE.test(n));
@@ -119,5 +122,20 @@ export function needsPreflight({ needs }, deps) {
     return { ...base, ok: false, check: 'tool', detail: `${missing.join(' and ')} not found on the path`, install: hints.length > 0 ? hints.join('; ') : null, missing, exit: NEEDS_EXIT.tool };
   }
   if (names.includes('docker') && deps.run('docker', ['info']).status !== 0) return { ...base, ok: false, check: 'docker', detail: 'the Docker daemon does not answer: start Docker', install: 'start Docker Desktop or the Docker service', exit: NEEDS_EXIT.docker };
-  return { ...base, ok: true, check: 'ready', detail: names.length > 0 ? `${names.join(', ')} found${names.includes('docker') ? ' and the Docker daemon answers' : ''}` : 'the declared adapter needs no tool', exit: 0 };
+  const detail = names.length > 0 ? `${names.join(', ')} found${names.includes('docker') ? ' and the Docker daemon answers' : ''}` : 'the declared adapter needs no tool';
+  const warnings = cwd !== undefined && deps.exists ? checkoutWarnings({ names, cwd }, deps.exists) : [];
+  if (warnings.length > 0) {
+    const installs = warnings.map((w) => w.install).filter(Boolean);
+    return { ...base, ok: true, check: 'checkout', detail: `${detail}, but the checkout lacks ${warnings.map((w) => w.path).join(' and ')}`, warnings, install: installs.length > 0 ? installs.join('; ') : null, exit: NEEDS_EXIT.checkout };
+  }
+  return { ...base, ok: true, check: 'ready', detail, exit: 0 };
+}
+
+/** What the checkout lacks, from the existence of paths only: [{ path, detail, install }]. */
+function checkoutWarnings({ names, cwd }, exists) {
+  const at = (name) => `${cwd.replace(/\/$/, '')}/${name}`;
+  const out = [];
+  if (names.includes('npm') && exists(at('package.json')) && !exists(at('node_modules'))) out.push({ path: 'node_modules', detail: 'the checkout has a package.json and no node_modules, so a test fails before it runs', install: 'npm ci' });
+  if ((exists(at('.env.example')) || exists(at('.env.sample'))) && !exists(at('.env'))) out.push({ path: '.env', detail: 'the checkout has an example environment file and no .env: copy the one the project uses, which this review never opens', install: null });
+  return out;
 }

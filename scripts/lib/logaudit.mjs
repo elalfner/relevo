@@ -108,9 +108,10 @@ export const DECLARED_NOT_DETECTED = 'Errors that carry none of those signals (a
  * filter, failing }]). The latest run of each line (or filter) counts, so a run repeated after a fix replaces the one before.
  * A quiet log is not a failure to judge: a run that passes writes nothing, so a recorded run is the evidence that the code
  * was exercised, and only an empty slice with no run at all is inconclusive.
+ * `windowStart` is how many runs were recorded when the log was last reset; with some and none since, the audit is inconclusive.
  * Returns { verdict, findings, counts, reason? }.
  */
-export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel', expectedErrors = [] } = {}) {
+export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel', expectedErrors = [], windowStart = 0 } = {}) {
   // `declared` reads a Postgres-like log with only the signals every backend shares; it has no Supabase startup entry.
   const declared = flavor === 'declared';
   const postgres = flavor === 'postgres' || declared;
@@ -169,6 +170,10 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   if (findings.length > 0) return { verdict: REJECTED, findings, counts, ...extra };
   if (unreadable.length > 0) {
     return { verdict: INCONCLUSIVE, reason: `a log source could not be read (${unreadable.map((u) => `${u.file}: ${u.reason}`).join('; ')}), so the audit cannot say the log is clean`, findings, counts, unreadable };
+  }
+  // The log was reset after runs were recorded: those runs say nothing about this window, so a run recorded since is needed.
+  if (windowStart > 0 && runs.length <= windowStart) {
+    return { verdict: INCONCLUSIVE, reason: 'no test run is recorded since the log was reset, and the runs before it do not prove this window: run the tests and say so (ran <exit code>)', findings, counts };
   }
   if (runs.length === 0 && String(text).trim() === '') {
     return { verdict: INCONCLUSIVE, reason: 'no test run is recorded and the log has nothing since the review started: run the tests and say so (ran <exit code>)', findings, counts };
