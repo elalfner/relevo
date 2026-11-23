@@ -35,8 +35,11 @@ export function containerOf(pattern, { cwd = '.' } = {}) {
   return name.replaceAll('{project_id}', id);
 }
 
+// A service's log can be far larger than the 1 MiB that spawnSync allows by default (ENOBUFS), so a read is allowed 256 MiB.
+const MAX_BUFFER = 256 * 1024 * 1024;
+
 const defaultRun = (command, args, { cwd } = {}) => {
-  const r = spawnSync(command, args, { encoding: 'utf8', ...(cwd ? { cwd } : {}) });
+  const r = spawnSync(command, args, { encoding: 'utf8', maxBuffer: MAX_BUFFER, ...(cwd ? { cwd } : {}) });
   if (r.error) return { status: 127, stdout: '', stderr: r.error.message };
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 };
@@ -89,6 +92,43 @@ function readFrom(file, start) {
   return buffer.toString('utf8');
 }
 
+const firstLine = (r, fallback) => String(r.stderr || r.stdout || fallback).trim().split('\n')[0];
+
+/** Why a service could not be read; a buffer overflow says what to do and what it costs. */
+function composeReason(service, r) {
+  const why = firstLine(r, `docker compose exited ${r.status}`);
+  if (!/ENOBUFS/.test(why)) return why;
+  return `the log of ${service} since the review started is larger than the read allows (${why}); reset-log starts the window from now, and the runs recorded so far then stop proving it, so the tests run again`;
+}
+
+/**
+ * The services of a Compose project are read one at a time, so that one large log does not hide the others. Only a read: nothing is
+ * restarted or recreated. Any failure (no Compose file, the daemon is down, an unknown service, a log too large) is an unreadable
+ * source named by its service.
+ */
+function readCompose(snapshot, { cwd, run }) {
+  const label = `compose${snapshot.services.length > 0 ? `:${snapshot.services.join(',')}` : ''}`;
+  let services = snapshot.services;
+  if (services.length === 0) {
+    const listed = run('docker', ['compose', 'config', '--services'], { cwd });
+    if (listed.status !== 0) return { text: '', files: [], unreadable: [{ file: label, reason: firstLine(listed, `docker compose exited ${listed.status}`) }] };
+    services = String(listed.stdout ?? '').split('\n').map((n) => n.trim()).filter(Boolean);
+  }
+  const parts = [];
+  const unreadable = [];
+  services.forEach((service) => {
+    const r = run('docker', ['compose', 'logs', '--no-color', '--since', snapshot.since, service], { cwd });
+    if (r.status !== 0) {
+      // One service failing leaves the others readable; a single named service keeps the label of the setting.
+      unreadable.push({ file: snapshot.services.length === 1 ? label : `compose:${service}`, reason: composeReason(service, r) });
+      return;
+    }
+    const text = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    if (text) parts.push(text.endsWith('\n') ? text : `${text}\n`);
+  });
+  return { text: parts.join(''), files: [label], unreadable };
+}
+
 /**
  * What the log files received since the snapshot: { text, files, unreadable: [{ file, reason }] }.
  * A file that appeared later is read from its start; a file of the snapshot that is gone, or that cannot be read, is reported.
@@ -103,16 +143,7 @@ export function readSlice(snapshot, { cwd = '.', run = defaultRun } = {}) {
     }
     return { text: `${r.stdout ?? ''}${r.stderr ?? ''}`, files: [snapshot.container], unreadable: [] };
   }
-  if (snapshot.source === 'compose') {
-    // Only a read: nothing is restarted or recreated. Any failure (no Compose file, the daemon is down, an unknown service) is an unreadable source.
-    const label = `compose${snapshot.services.length > 0 ? `:${snapshot.services.join(',')}` : ''}`;
-    const r = run('docker', ['compose', 'logs', '--no-color', '--since', snapshot.since, ...snapshot.services], { cwd });
-    if (r.status !== 0) {
-      const why = String(r.stderr || r.stdout || `docker compose exited ${r.status}`).trim().split('\n')[0];
-      return { text: '', files: [], unreadable: [{ file: label, reason: why }] };
-    }
-    return { text: `${r.stdout ?? ''}${r.stderr ?? ''}`, files: [label], unreadable: [] };
-  }
+  if (snapshot.source === 'compose') return readCompose(snapshot, { cwd, run });
   const files = expandLog(snapshot.pattern, { cwd });
   const unreadable = [];
   const parts = [];

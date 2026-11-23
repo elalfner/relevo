@@ -97,6 +97,21 @@ export function ownExpected(line, patterns) {
   return patterns.find((p) => message.includes(p)) ?? null;
 }
 
+const collapse = (text) => String(text).trim().replace(/\s+/g, ' ');
+
+/**
+ * The entry of `entries` (review.expected_fatals) that a `FATAL:` line is, or null. Only the whole message after the first `FATAL:`
+ * counts, so a message that merely contains an entry, or that an entry merely contains, is not matched. A line that also carries a
+ * PANIC, a deadlock, out of memory or an HTTP status of 500 or above is never matched.
+ */
+export function ownExpectedFatal(line, entries) {
+  const at = line.search(/\bFATAL:\s/);
+  if (at === -1) return null;
+  if (/\bPANIC:\s/.test(line) || /deadlock detected|out of memory/i.test(line) || /\bHTTP\/\d(?:\.\d)?"? 5\d\d\b|\bresponse 5\d\d\b|\b500 Internal Server Error\b/.test(line)) return null;
+  const message = collapse(line.slice(at + 'FATAL:'.length));
+  return entries.find((e) => collapse(e) === message) ?? null;
+}
+
 // A declared adapter reads the log of any backend: only the signals that belong to no framework. An HTTP status of 500 or
 // above is the Laravel pattern; an error that carries none of these signals (a service may write level "error" for any rejected
 // request) is not a finding, and the report says so.
@@ -108,9 +123,10 @@ export const DECLARED_NOT_DETECTED = 'Errors that carry none of those signals (a
  * filter, failing }]). The latest run of each line (or filter) counts, so a run repeated after a fix replaces the one before.
  * A quiet log is not a failure to judge: a run that passes writes nothing, so a recorded run is the evidence that the code
  * was exercised, and only an empty slice with no run at all is inconclusive.
+ * `windowStart` is how many runs were recorded when the log was last reset; with some and none since, the audit is inconclusive.
  * Returns { verdict, findings, counts, reason? }.
  */
-export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel', expectedErrors = [] } = {}) {
+export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'laravel', expectedErrors = [], expectedFatals = [], windowStart = 0 } = {}) {
   // `declared` reads a Postgres-like log with only the signals every backend shares; it has no Supabase startup entry.
   const declared = flavor === 'declared';
   const postgres = flavor === 'postgres' || declared;
@@ -134,6 +150,9 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   // Errors of the repository's own rules (`RAISE EXCEPTION`), declared in review.expected_errors; read for a declared adapter only.
   const patterns = declared ? expectedErrors : [];
   const declaredExpected = [];
+  // The whole messages of `FATAL:` lines the repository's own test harness provokes, declared in review.expected_fatals; declared adapter only.
+  const fatalPatterns = declared ? expectedFatals : [];
+  const declaredFatals = [];
   const denialsExplained = runs.length > 0;
   String(text).split('\n').forEach((raw, idx) => {
     const line = raw.replace(ANSI_RE, '');
@@ -154,6 +173,12 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
         else add('denial', idx + 1, excerpt);
         return;
       }
+      const ownFatal = fatalPatterns.length > 0 ? ownExpectedFatal(line, fatalPatterns) : null;
+      if (ownFatal) {
+        if (denialsExplained) declaredFatals.push({ line: idx + 1, excerpt, pattern: ownFatal });
+        else add('fatal', idx + 1, excerpt);
+        return;
+      }
       (declared ? DECLARED_RULES : PG_RULES).forEach((rule) => {
         if (rule.test(line)) add(rule.cls, idx + 1, excerpt);
       });
@@ -165,15 +190,19 @@ export function auditApi({ text = '', runs = [], unreadable = [], flavor = 'lara
   });
   const counts = {};
   findings.forEach((f) => { counts[f.class] = (counts[f.class] ?? 0) + 1; });
-  const extra = { ...(unreadable.length ? { unreadable } : {}), ...(postgres ? { expected, startup, ...(patterns.length > 0 ? { declaredExpected } : {}) } : {}) };
+  const extra = { ...(unreadable.length ? { unreadable } : {}), ...(postgres ? { expected, startup, ...(patterns.length > 0 ? { declaredExpected } : {}), ...(fatalPatterns.length > 0 ? { declaredFatals } : {}) } : {}) };
   if (findings.length > 0) return { verdict: REJECTED, findings, counts, ...extra };
   if (unreadable.length > 0) {
     return { verdict: INCONCLUSIVE, reason: `a log source could not be read (${unreadable.map((u) => `${u.file}: ${u.reason}`).join('; ')}), so the audit cannot say the log is clean`, findings, counts, unreadable };
   }
+  // The log was reset after runs were recorded: those runs say nothing about this window, so a run recorded since is needed.
+  if (windowStart > 0 && runs.length <= windowStart) {
+    return { verdict: INCONCLUSIVE, reason: 'no test run is recorded since the log was reset, and the runs before it do not prove this window: run the tests and say so (ran <exit code>)', findings, counts };
+  }
   if (runs.length === 0 && String(text).trim() === '') {
     return { verdict: INCONCLUSIVE, reason: 'no test run is recorded and the log has nothing since the review started: run the tests and say so (ran <exit code>)', findings, counts };
   }
-  return { verdict: PASSED, findings, counts, ...(postgres ? { expected, startup, ...(patterns.length > 0 ? { declaredExpected } : {}) } : {}) };
+  return { verdict: PASSED, findings, counts, ...(postgres ? { expected, startup, ...(patterns.length > 0 ? { declaredExpected } : {}), ...(fatalPatterns.length > 0 ? { declaredFatals } : {}) } : {}) };
 }
 
 /** Markdown report of an audit. */
@@ -216,6 +245,13 @@ export function auditReport(audit, { issue, scope } = {}) {
     audit.declaredExpected.forEach((e) => counts.set(e.pattern, (counts.get(e.pattern) ?? 0) + 1));
     counts.forEach((n, pattern) => lines.push(`- \`${pattern}\`: ${n} time${n === 1 ? '' : 's'}`));
     audit.declaredExpected.slice(0, 5).forEach((e) => lines.push(`  - (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
+  }
+  if (audit.declaredFatals?.length > 0) {
+    lines.push('', `${audit.declaredFatals.length} expected fatal(s) whose whole message the repository declared in \`review.expected_fatals\`: the fatal entries its own test harness provokes on purpose; they are not findings. The messages are the repository's declaration, and a waiver stays the person's decision.`);
+    const counts = new Map();
+    audit.declaredFatals.forEach((e) => counts.set(e.pattern, (counts.get(e.pattern) ?? 0) + 1));
+    counts.forEach((n, pattern) => lines.push(`- \`${pattern}\`: ${n} time${n === 1 ? '' : 's'}`));
+    audit.declaredFatals.slice(0, 5).forEach((e) => lines.push(`  - (log line ${e.line}) \`${e.excerpt.replace(/`/g, "'")}\``));
   }
   if (audit.startup?.length > 0) {
     lines.push('', `${audit.startup.length} expected startup entr${audit.startup.length === 1 ? 'y' : 'ies'}: \`FATAL: role "postgres" does not exist\`, which a database reset writes while it recreates the database; not a finding.`);
