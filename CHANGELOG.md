@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- **A review state left by an earlier version is no longer overwritten in silence.** `init` found no change recorded in a state written before 0.18.0, took its owner for unknown and replaced it. A state with no recorded change is now compared with the change by the titles of its lines: when none of them is a scenario of the change it is the state of another review, `init` refuses and leaves the file, and `review-state.mjs owner` exits 1 with the count. `decide` now takes the change folder (`decide openspec/changes/<change>`, with `--adapter api` or `--target ios` as for `owner`), so a state of another review cannot open a pull request even when the review skipped `owner`.
+
 ## [0.18.0] - 2026-11-23
 
 ### Fixed
