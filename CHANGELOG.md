@@ -4,9 +4,21 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-23
+
 ### Fixed
 
-- **A review state left by an earlier version is no longer overwritten in silence.** `init` found no change recorded in a state written before 0.18.0, took its owner for unknown and replaced it. A state with no recorded change is now compared with the change by the titles of its lines: when none of them is a scenario of the change it is the state of another review, `init` refuses and leaves the file, and `review-state.mjs owner` exits 1 with the count. `decide` now takes the change folder (`decide openspec/changes/<change>`, with `--adapter api` or `--target ios` as for `owner`), so a state of another review cannot open a pull request even when the review skipped `owner`.
+- **A review state left by an earlier version is no longer overwritten in silence.** `init` found no change recorded in a state written before 0.18.0, took its owner for unknown and replaced it. A state with no recorded change is now compared with the change by the titles of its lines: when none of them is a scenario of the change it is the state of another review, `init` refuses and leaves the file, and `review-state.mjs owner` exits 1 saying how many of its lines are not in the change.
+
+### Added
+
+- **`review-state.mjs decide` takes the change folder** (`decide openspec/changes/<change>`, with `--adapter api` or `--target ios` as for `owner`). A state of another change, kind or review cannot open a pull request even when the review skipped `owner`. Without the argument it decides from the state alone, as before. If the specification of the folder cannot be read, the comparison falls back to the name and the kind.
+
+### Known limits
+
+- A state that records a change is decided by its name alone: after a specification edit its lines may differ, and `sync` reconciles them. Only a state with no recorded change is compared by its lines.
+- A state of another review that shares at least one scenario title with the change, such as a generic one, is still reported as of unknown owner, and the review asks the person. `decide` lets such a state through once the person resumed it.
+- `init` still restarts the review of the same change without warning about the lines already confirmed; the review skill uses `sync` for that, and a state is never discarded for another change.
 
 ## [0.18.0] - 2026-11-23
 
