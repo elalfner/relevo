@@ -6,23 +6,27 @@ TBD - created by archiving change relevo-v1. Update Purpose after archive.
 ## Requirements
 
 ### Requirement: Trigger
-`go` SHALL start only for an issue that belongs to a milestone and carries the `ready` label, and only when the label was applied by a user with write permission on the repository.
+A cloud build SHALL start only for an issue that belongs to a milestone, has an assignee, carries the `ready` label and receives the `go` label, and only when both labels were applied by users with write permission on the repository. The `ready` label alone SHALL start nothing.
 
 #### Scenario: Authorised label
-- **WHEN** a collaborator with write access applies `ready` to an issue in a milestone
+- **WHEN** a collaborator with write access applies `go` to a `ready` issue in a milestone that a collaborator with write access approved
 - **THEN** the issue is evaluated by the gates
 
 #### Scenario: Unauthorised label
-- **WHEN** a user without write access applies `ready`
-- **THEN** no run starts and the label is removed
+- **WHEN** the `ready` label of the issue was applied by a user without write access and a build is requested or started
+- **THEN** no run starts, and the `ready` and `go` labels are removed
 
 #### Scenario: No milestone
-- **WHEN** `ready` is applied to an issue with no milestone
-- **THEN** no run starts, the `ready` label is removed and a comment asks for a milestone
+- **WHEN** a build is requested for a `ready` issue with no milestone
+- **THEN** no run starts, the `ready` and `go` labels are removed and a comment asks for a milestone
 
 #### Scenario: No assignee
-- **WHEN** `ready` is applied to an issue with no assignee
-- **THEN** no run starts, the `ready` label is removed and a comment asks for an assignee, because there would be nobody to hand the result to
+- **WHEN** a build is requested for a `ready` issue with no assignee
+- **THEN** no run starts, the `ready` and `go` labels are removed and a comment asks for an assignee, because there would be nobody to hand the result to
+
+#### Scenario: Approval alone
+- **WHEN** a collaborator with write access applies `ready` to an issue and nobody applies `go`
+- **THEN** no workflow run builds the issue
 
 ### Requirement: Gate 1, spec
 Before building, `go` SHALL verify that the issue states scenarios and edge cases. It SHALL NOT invent them.
@@ -43,7 +47,7 @@ Before building, `go` SHALL verify that the issue states scenarios and edge case
 - **THEN** the issue is labelled `blocked` and the notice names `acme/api#12`
 
 ### Requirement: Gate 3, capacity
-`go` SHALL NOT start an issue for an assignee who already has `limits.built_unreviewed_per_person` issues in `built`, unless the issue carries a valid `urgent` label. A valid `urgent` label SHALL skip this gate only: every other gate and the limit `limits.concurrent_agents` still apply to the issue.
+A cloud build SHALL NOT start for an assignee who already has `limits.built_unreviewed_per_person` issues in `built`, unless the issue carries a valid `urgent` label. A valid `urgent` label SHALL skip this gate only: every other gate and the limit `limits.concurrent_agents` still apply to the issue. The gate SHALL NOT apply to a local build.
 
 #### Scenario: Assignee at capacity
 - **WHEN** the assignee has 2 issues in `built` and the limit is 2
@@ -64,6 +68,10 @@ Before building, `go` SHALL verify that the issue states scenarios and edge case
 #### Scenario: Urgent issue and no free agent slot
 - **WHEN** the issue carries a valid `urgent` label and `limits.concurrent_agents` agents are already running
 - **THEN** the issue is labelled `queued`, one comment says it waits for a free agent slot, and it is the first to start when a slot frees up
+
+#### Scenario: Local build for an assignee at capacity
+- **WHEN** the assignee has 2 issues in `built`, the limit is 2, and a person starts a local build of an issue assigned to them
+- **THEN** the build starts
 
 ### Requirement: Queue order
 Eligible issues SHALL be started in first-in-first-out order of the time `ready` was applied, except that issues with a valid `urgent` label SHALL be considered before all the others, and in first-in-first-out order among themselves. An ineligible issue SHALL be skipped without blocking the others and SHALL keep its position.
@@ -93,7 +101,7 @@ Eligible issues SHALL be started in first-in-first-out order of the time `ready`
 
 #### Scenario: Run exceeds its budget
 - **WHEN** a run reaches its turn or cost limit
-- **THEN** the runner stops it, the agent pushes nothing, and the final step of the workflow labels the issue `qa-failed` and comments with the job status and a link to the run
+- **THEN** the runner stops it, the agent pushes nothing, and the final step of the workflow labels the issue `build-failed` and comments with the job status and a link to the run
 
 #### Scenario: Retry after a budget cut
 - **WHEN** the person applies `ready` again after a run was cut by its limits
@@ -127,7 +135,7 @@ The workflow that runs `go` SHALL run the gates and claim the issue in a light j
 
 #### Scenario: The light job fails
 - **WHEN** the light job fails and the issue is still `ready`, `queued` or `building`
-- **THEN** the issue is labelled `qa-failed` and a comment links the run
+- **THEN** the issue is labelled `build-failed` and a comment links the run
 
 ### Requirement: Builds started by the queue are accepted
 The workflow SHALL accept a build dispatched by the queue workflow, whose actor is the Actions bot, and SHALL allow that one bot only. It SHALL NOT allow every bot, because that would let outside applications start runs.
@@ -141,26 +149,26 @@ The workflow SHALL accept a build dispatched by the queue workflow, whose actor 
 - **THEN** the agent runner refuses it
 
 ### Requirement: A run that ends without an outcome is reported
-The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `qa-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it.
+The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `build-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it.
 
 #### Scenario: The plugin cannot be installed
 - **WHEN** the run fails before `go` starts and the issue is still `ready`
-- **THEN** the issue is labelled `qa-failed` and a comment links the run
+- **THEN** the issue is labelled `build-failed` and a comment links the run
 
 #### Scenario: The agent ends its session early
 - **WHEN** the job succeeds but the issue is still `building`
-- **THEN** the issue is labelled `qa-failed` and a comment links the run
+- **THEN** the issue is labelled `build-failed` and a comment links the run
 
 #### Scenario: A dispatched run fails before claiming the issue
 - **WHEN** the job fails and the issue is still `queued`
-- **THEN** the issue is labelled `qa-failed` and a comment links the run, so the queue does not dispatch it again every evaluation
+- **THEN** the issue is labelled `build-failed` and a comment links the run, so the queue does not dispatch it again every evaluation
 
 #### Scenario: A run ends normally with the issue queued
 - **WHEN** the job succeeds and the issue is `queued` because there was no capacity
 - **THEN** the final step changes nothing
 
 #### Scenario: The run recorded its outcome
-- **WHEN** the issue is `built`, `queued`, `blocked`, `needs-spec` or `qa-failed` when the job ends
+- **WHEN** the issue is `built`, `queued`, `blocked`, `needs-spec` or `build-failed` when the job ends
 - **THEN** the final step changes nothing
 
 ### Requirement: Labels follow the run
@@ -186,7 +194,7 @@ QA SHALL compare the diff against the issue's scenarios and the project rules in
 
 #### Scenario: QA still rejects
 - **WHEN** QA rejects after the allowed retries
-- **THEN** the branch is pushed, the issue is labelled `qa-failed`, the assignee is mentioned with the QA report, no pull request is opened and the state does not advance
+- **THEN** the branch is pushed, the issue is labelled `build-failed`, the assignee is mentioned with the QA report, no pull request is opened and the state does not advance
 
 #### Scenario: Task marked done without code
 - **WHEN** a task is checked off without code that implements it
@@ -217,11 +225,11 @@ Every commit `go` makes SHALL stage named files only (never "add all"), scan the
 
 #### Scenario: Credential found before pushing
 - **WHEN** the staged diff contains a possible credential
-- **THEN** nothing is pushed, the issue is labelled `qa-failed` with that reason, and the comment states that the branch was not pushed
+- **THEN** nothing is pushed, the issue is labelled `build-failed` with that reason, and the comment states that the branch was not pushed
 
 #### Scenario: Protected path staged
 - **WHEN** the staged diff touches a protected path the issue does not allow
-- **THEN** nothing is committed or pushed and the issue is labelled `qa-failed` with the reason "protected path in the diff"
+- **THEN** nothing is committed or pushed and the issue is labelled `build-failed` with the reason "protected path in the diff"
 
 ### Requirement: A reviewed false positive of the credential scan can be listed with a reason
 A person SHALL be able to list a credential finding as reviewed in `.relevo/scan-exceptions.json`, a list of entries each with a `path`, a `pattern` and a `reason`. The scan of a diff (the safe commit and the validation gate) SHALL NOT report a credential finding whose file matches the `path` and which the `pattern` describes: the pattern is found in the added line on the text that the finding matched (the pattern holds that text or lies inside it). An entry excuses that finding only: another credential on the same line, one the pattern does not touch, SHALL be reported and the line is not excused. The match SHALL NOT depend on the line number. When it cannot be told which finding an entry covers, the finding SHALL be reported. Every other finding SHALL be reported and refused as before. Temporary markers SHALL NOT be excepted. The list SHALL be read from the committed file (HEAD for a commit, the base ref for the gate), never from the working tree, and `.relevo/` is a protected path, so an unattended run cannot change it.
@@ -266,24 +274,24 @@ A person SHALL be able to list a credential finding as reviewed in `.relevo/scan
 - **WHEN** the validation gate scans a diff with a listed finding
 - **THEN** the scan passes and its detail says the exception was applied
 
-### Requirement: Unrecoverable problems end in qa-failed
-Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a stated reason, and SHALL push the branch except when the reason is a possible credential, a temporary marker, a protected path in the diff or an issue that changed after `ready`, or when the branch already exists, which `go` never touches. When the reason is that QA rejected the work after the retries or that tasks were left unfinished, `go` SHALL first commit the work in progress, through the same safe commit as a successful build and with a message that says it is not approved, so that the push keeps it; if that commit is refused, `go` SHALL push nothing. It SHALL NOT open a pull request or advance the state.
+### Requirement: Unrecoverable problems end in build-failed
+Any problem `go` cannot recover from SHALL end in the `build-failed` exit with a stated reason, and SHALL push the branch except when the reason is a possible credential, a temporary marker, a protected path in the diff or an issue that changed after `ready`, or when the branch already exists, which `go` never touches. When the reason is that QA rejected the work after the retries or that tasks were left unfinished, `go` SHALL first commit the work in progress, through the same safe commit as a successful build and with a message that says it is not approved, so that the push keeps it; if that commit is refused, `go` SHALL push nothing. It SHALL NOT open a pull request or advance the state.
 
 #### Scenario: Branch already exists
 - **WHEN** the feature branch already exists on the remote
-- **THEN** `go` leaves it untouched and ends in `qa-failed` with the reason "branch already exists"
+- **THEN** `go` leaves it untouched and ends in `build-failed` with the reason "branch already exists"
 
 #### Scenario: Branch already exists with implementation commits
 - **WHEN** the feature branch already exists on the remote and holds commits other than the specification commit
-- **THEN** `go` leaves it untouched, ends in `qa-failed` with the reason "branch already exists", and the comment says to run `/relevo:fix <n>`
+- **THEN** `go` leaves it untouched, ends in `build-failed` with the reason "branch already exists", and the comment says to run `/relevo:fix <n>`
 
 #### Scenario: Branch already exists with only the specification
 - **WHEN** the feature branch already exists on the remote and holds only the specification commit
-- **THEN** `go` leaves it untouched, ends in `qa-failed` with the reason "branch already exists", and the comment says to delete the remote branch and apply `ready` again
+- **THEN** `go` leaves it untouched, ends in `build-failed` with the reason "branch already exists", and the comment says to delete the remote branch and apply `ready` again
 
 #### Scenario: Specification invalid
 - **WHEN** the generated change specification still fails validation after two corrections
-- **THEN** `go` ends in `qa-failed` with the reason "specification invalid"
+- **THEN** `go` ends in `build-failed` with the reason "specification invalid"
 
 #### Scenario: Ambiguity that changes behaviour
 - **WHEN** the issue is ambiguous in a way that changes observable behaviour
@@ -291,7 +299,7 @@ Any problem `go` cannot recover from SHALL end in the `qa-failed` exit with a st
 
 #### Scenario: QA rejects after the retries
 - **WHEN** QA still rejects the work after the retries and the safe commit accepts it
-- **THEN** the branch is pushed with a commit `wip: rejected by QA (#<n>)` that holds the work, the issue is `qa-failed`, no pull request is opened, and the comment says the branch holds work that QA did not approve
+- **THEN** the branch is pushed with a commit `wip: rejected by QA (#<n>)` that holds the work, the issue is `build-failed`, no pull request is opened, and the comment says the branch holds work that QA did not approve
 
 #### Scenario: QA could not run the checks
 - **WHEN** QA rejected only because the analysis and the tests could not run
@@ -316,17 +324,6 @@ On `QA PASSED`, `go` SHALL push the branch, label the issue `built`, and post th
 - **WHEN** QA passes for an issue that started over the assignee's capacity because of `urgent`
 - **THEN** the message tells the assignee that the issue skipped the queue and how many issues are now waiting for their review
 
-### Requirement: The queue only acts on waiting issues
-The queue SHALL act only on issues that are already `queued` or `blocked`. An issue that has just been marked `ready` is handled by the `go` workflow that the label started, so the queue SHALL NOT apply its decision or dispatch a build for it.
-
-#### Scenario: Issue just marked ready
-- **WHEN** an issue is labelled `ready` and the queue and the `go` workflow both start on that event
-- **THEN** only the `go` workflow decides about it, and its comment is posted once
-
-#### Scenario: Waiting issue becomes eligible
-- **WHEN** a `queued` or `blocked` issue becomes eligible
-- **THEN** the queue starts it
-
 ### Requirement: Queue re-evaluation
 The queue SHALL be re-evaluated on every relevant event (an issue merged, a `built` issue leaving that state, a label change) and on a schedule, so a lost event does not stall the queue.
 
@@ -342,11 +339,11 @@ When a cloud build run ends, whatever its outcome, the `go` workflow SHALL start
 - **THEN** the queue is evaluated right away and the oldest eligible `queued` issue starts, without waiting for the schedule
 
 #### Scenario: A build fails or is cut
-- **WHEN** a build ends as `qa-failed`, `needs-spec`, cancelled or timed out
+- **WHEN** a build ends as `build-failed`, `needs-spec`, cancelled or timed out
 - **THEN** the queue is evaluated right away
 
 #### Scenario: The light job fails after the claim
-- **WHEN** the gates claim the issue as `building` and the light job then fails, leaving it `qa-failed`
+- **WHEN** the gates claim the issue as `building` and the light job then fails, leaving it `build-failed`
 - **THEN** the queue is evaluated right away
 
 #### Scenario: No build ran
@@ -403,7 +400,7 @@ After writing the last artifact, `go` SHALL confirm with OpenSpec that every art
 
 #### Scenario: An artifact is missing
 - **WHEN** OpenSpec reports an artifact that is not done
-- **THEN** `go` writes it and checks again; if it is still missing, the run ends in `qa-failed` with the reason "specification incomplete"
+- **THEN** `go` writes it and checks again; if it is still missing, the run ends in `build-failed` with the reason "specification incomplete"
 
 ### Requirement: The developer starts from the OpenSpec apply instructions
 Before the developer agent runs, `go` SHALL obtain the apply instructions of the change from OpenSpec and give the developer its context files and pending tasks. Whether tasks remain SHALL be read from OpenSpec's progress, not counted by hand.
@@ -414,11 +411,11 @@ Before the developer agent runs, `go` SHALL obtain the apply instructions of the
 
 #### Scenario: Tasks left after the build
 - **WHEN** OpenSpec reports tasks remaining after the developer finished
-- **THEN** the run ends in `qa-failed` with the reason "tasks left unfinished"
+- **THEN** the run ends in `build-failed` with the reason "tasks left unfinished"
 
 #### Scenario: Apply is blocked
 - **WHEN** the apply instructions report that the change cannot be applied yet
-- **THEN** the run ends in `qa-failed` with the reason "specification incomplete"
+- **THEN** the run ends in `build-failed` with the reason "specification incomplete"
 
 ### Requirement: QA reviews the work in progress
 The diff QA reviews SHALL be the difference between the working tree and the base branch, including the developer's new files and excluding generated files. `go` SHALL make new files visible without staging their content, and QA SHALL NOT change the index or any file.
@@ -502,7 +499,7 @@ Before claiming an issue, the planner SHALL resolve its platform. When it cannot
 - **THEN** the decision is `start` and carries that platform
 
 ### Requirement: An issue changes only its platform
-A commit of an unattended run SHALL touch only files inside the folder of the platform of the issue, the change's own specification folder, `GLOSSARY.md` and `docs/adr/`. Any other path SHALL end the run in `qa-failed` with the reason "outside the platform", and nothing is pushed, unless the issue lists the path in an `Allow-paths:` line. A platform whose folder is `.` is not restricted.
+A commit of an unattended run SHALL touch only files inside the folder of the platform of the issue, the change's own specification folder, `GLOSSARY.md` and `docs/adr/`. Any other path SHALL end the run in `build-failed` with the reason "outside the platform", and nothing is pushed, unless the issue lists the path in an `Allow-paths:` line. A platform whose folder is `.` is not restricted.
 
 #### Scenario: Front issue touches the back
 - **WHEN** the diff of an issue for `web` (`apps/web`) touches `apps/api/app/User.php`
@@ -553,11 +550,11 @@ Before gate 2, the planner SHALL check every external reference against `links`.
 - **THEN** the decision is `needs-spec`, nothing is read from `other/repo`, and no run starts
 
 ### Requirement: Without a credential the gate does not claim the issue
-When the workflow tells the gate that no model credential exists, a `start` decision SHALL NOT claim the issue, SHALL NOT move its label and SHALL produce the local-run comment instead; every other decision SHALL be applied as usual.
+When the workflow tells the gate that no model credential exists, a `start` decision SHALL NOT claim the issue, SHALL leave it `ready`, SHALL remove the `go` label and SHALL produce the local-run comment instead; every other decision SHALL be applied as usual.
 
 #### Scenario: Start without credential
 - **WHEN** the gates pass and no credential exists
-- **THEN** the output action is `local`, the issue keeps `relevo:ready`, and the comment names `/relevo:go <n>`
+- **THEN** the output action is `local`, the issue keeps `relevo:ready` and loses `relevo:go`, and the comment names `/relevo:go <n>`
 
 #### Scenario: Other decisions
 - **WHEN** the issue is blocked, needs a spec or is queued and no credential exists
@@ -660,11 +657,11 @@ The fetcher SHALL take its references only from the issue, download only from th
 - **THEN** `dev` reports it instead of inventing one
 
 ### Requirement: The build checks the toolchain before the agent starts
-The build job of the go workflow SHALL check, before the agent step, that every tool listed by the profile of the platform of the issue is on the path of the runner, and when one is missing SHALL stop without running the agent, move the issue to `qa-failed` and post one comment that names the missing tools, says that nothing was built and what to do. It SHALL check nothing for a stack whose profile lists no tools, and SHALL run the check from a copy of the package outside the workspace.
+The build job of the go workflow SHALL check, before the agent step, that every tool listed by the profile of the platform of the issue is on the path of the runner, and when one is missing SHALL stop without running the agent, move the issue to `build-failed` and post one comment that names the missing tools, says that nothing was built and what to do. It SHALL check nothing for a stack whose profile lists no tools, and SHALL run the check from a copy of the package outside the workspace.
 
 #### Scenario: A runner without the Flutter SDK
 - **WHEN** the platform is Flutter and `flutter` is not on the path of the runner
-- **THEN** the agent does not run, the issue is `qa-failed`, and the comment says `flutter` is missing, that no model turns were spent and that the toolchain step of `relevo-go.yml` must be enabled
+- **THEN** the agent does not run, the issue is `build-failed`, and the comment says `flutter` is missing, that no model turns were spent and that the toolchain step of `relevo-go.yml` must be enabled
 
 #### Scenario: A complete toolchain
 - **WHEN** every tool of the profile answers `--version`
@@ -710,7 +707,7 @@ A Relevo workflow SHALL list the tools it needs on the runner beyond what it ins
 
 #### Scenario: A runner without jq
 - **WHEN** the runner has no `jq` on its path
-- **THEN** the build job stops before the agent, the issue becomes `relevo:qa-failed` and the comment names `jq` and says nothing was built
+- **THEN** the build job stops before the agent, the issue becomes `relevo:build-failed` and the comment names `jq` and says nothing was built
 
 ### Requirement: The agent's settings do not outlive the job
 When the agent is configured through a user-level settings file written by the workflow, that file SHALL be written under the temporary folder of the job, or removed by the final step, so that a later job on the same runner does not run with it.
@@ -851,7 +848,7 @@ When GitHub answers 404 or 403 for a file of a linked repository, the reason SHA
 - **THEN** the reason says that the person's `gh` login cannot read `acme/design`
 
 ### Requirement: The failure comment does not offer fix when nothing was pushed
-When `go` ends in `qa-failed` with the branch not pushed (`unsafe` or `not_pushed`) and gives no explicit recovery, the comment SHALL show the next step of the `rebuild` variant and SHALL NOT suggest `/relevo:fix <n>`. A comment for a pushed branch, for kept work and for an existing branch SHALL keep its current next step.
+When `go` ends in `build-failed` with the branch not pushed (`unsafe` or `not_pushed`) and gives no explicit recovery, the comment SHALL show the next step of the `rebuild` variant and SHALL NOT suggest `/relevo:fix <n>`. A comment for a pushed branch, for kept work and for an existing branch SHALL keep its current next step.
 
 #### Scenario: Commit refused by the scanner
 - **WHEN** QA rejected the build, the safe commit of the work in progress was refused because of a possible credential, and `branch_state` is `unsafe`
@@ -865,12 +862,12 @@ When `go` ends in `qa-failed` with the branch not pushed (`unsafe` or `not_pushe
 - **WHEN** `branch_state` is `pushed`
 - **THEN** the next step is still `/relevo:fix <n>`
 
-### Requirement: A qa-failed issue without a branch can be retried
-When the planner is asked to retry an issue (`--retry`, together with `--only <n>`), it SHALL treat that issue, when it is `qa-failed`, as if it were `ready`: the same gates apply and the claim SHALL move it from `qa-failed` to `building`. It SHALL NOT add or require the `ready` label, and the claim SHALL post no comment of its own. In place of the person who applied `ready` it SHALL use the person who runs the retry: only write access, or a maintainer when `trust` is `public`, may retry.
+### Requirement: A build-failed issue without a branch can be retried
+When the planner is asked to retry an issue (`--retry`, together with `--only <n>`), it SHALL treat that issue, when it is `build-failed`, as if it were `ready`: the same gates apply and the claim SHALL move it from `build-failed` to `building`. It SHALL NOT add or require the `ready` label, and the claim SHALL post no comment of its own. In place of the person who applied `ready` it SHALL use the person who runs the retry: only write access, or a maintainer when `trust` is `public`, may retry.
 
 #### Scenario: Retry of a qa-failed issue without a branch
-- **WHEN** issue 67 is `qa-failed`, has no remote branch, and a person with write access runs the planner with `--only 67 --retry --apply --claim`
-- **THEN** the decision is `start`, the issue loses `qa-failed` and gains `building`, no `ready` label is added and no comment is posted
+- **WHEN** issue 67 is `build-failed`, has no remote branch, and a person with write access runs the planner with `--only 67 --retry --apply --claim`
+- **THEN** the decision is `start`, the issue loses `build-failed` and gains `building`, no `ready` label is added and no comment is posted
 
 #### Scenario: The person may not start work
 - **WHEN** the person who runs the retry has only read access, or `trust` is `public` and the person is not a maintainer
@@ -882,10 +879,10 @@ When the planner is asked to retry an issue (`--retry`, together with `--only <n
 
 #### Scenario: Without the flag
 - **WHEN** the planner runs without `--retry`
-- **THEN** a `qa-failed` issue is still ignored
+- **THEN** a `build-failed` issue is still ignored
 
 ### Requirement: A retry is refused when there is something to fix instead
-The planner SHALL refuse a retry, changing nothing, when the issue is not `qa-failed` or when a branch `feature/<n>-*` exists on the remote. The message SHALL send the person to `/relevo:fix <n>` or to delete the branch.
+The planner SHALL refuse a retry, changing nothing, when the issue is not `build-failed` or when a branch `feature/<n>-*` exists on the remote. The message SHALL send the person to `/relevo:fix <n>` or to delete the branch.
 
 #### Scenario: A branch exists
 - **WHEN** `origin/feature/67-...` exists and the retry is requested
@@ -893,7 +890,7 @@ The planner SHALL refuse a retry, changing nothing, when the issue is not `qa-fa
 
 #### Scenario: The issue is not qa-failed
 - **WHEN** the retry is requested for an issue that is `built`
-- **THEN** nothing changes and the message says that only a `qa-failed` issue can be retried
+- **THEN** nothing changes and the message says that only a `build-failed` issue can be retried
 
 ### Requirement: A literal assigned to a secret name is a possible credential
 When the scan of a diff, an issue body or a configuration value finds a name such as `api_key`, `secret`, `token`, `password` or `passwd` assigned with `:` or `=`, it SHALL report a possible credential when the value is quoted and has 16 or more characters, or when the value is unquoted and looks like a literal secret: it mixes letters and digits, or contains `/`, `+` or `=`, and it is not followed by `(`, `.` or `[`.
@@ -956,7 +953,7 @@ When `go` stops because of a limit, it SHALL commit the work in progress with th
 
 #### Scenario: `go` stops at a limit
 - **WHEN** the budget guard says a limit was reached and the developer's work is in the working tree
-- **THEN** the work is committed as `wip: stopped by limit (#N)`, pushed to the branch of the issue, the issue goes to `qa-failed` with the reason `run limit reached`, and the comment says the work was kept
+- **THEN** the work is committed as `wip: stopped by limit (#N)`, pushed to the branch of the issue, the issue goes to `build-failed` with the reason `run limit reached`, and the comment says the work was kept
 
 #### Scenario: `fix` continues from the kept work
 - **WHEN** the last commit of the branch is `wip: stopped by limit (#N)`
@@ -1329,11 +1326,11 @@ When the fetcher refuses a reference of the issue, the cloud build SHALL end wit
 - **THEN** `go` takes the `needs-spec` path itself, as before
 
 ### Requirement: Installed dependencies are checked before the agent starts
-When the profile of the platform lists paths that must exist once its dependencies are installed, the build job SHALL check them right after the check of the tools. When one is missing, the run SHALL end as a missing tool does: no model turn, the issue `qa-failed`, and a comment that names the missing path and the step to enable.
+When the profile of the platform lists paths that must exist once its dependencies are installed, the build job SHALL check them right after the check of the tools. When one is missing, the run SHALL end as a missing tool does: no model turn, the issue `build-failed`, and a comment that names the missing path and the step to enable.
 
 #### Scenario: Dependencies were not installed
 - **WHEN** a listed path does not exist after the install step
-- **THEN** the agent does not start, the issue becomes `qa-failed` and the comment names the path and says to enable the install step
+- **THEN** the agent does not start, the issue becomes `build-failed` and the comment names the path and says to enable the install step
 
 #### Scenario: A profile that lists no paths
 - **WHEN** the profile of the platform lists none
@@ -1677,7 +1674,7 @@ When a run ends cancelled, timed out or without an outcome, and `trust` is not `
 - **THEN** the summary also holds a short, redacted excerpt of each result
 
 #### Scenario: Run with an outcome
-- **WHEN** the run ends with `built` or `qa-failed` through the skill's own exit
+- **WHEN** the run ends with `built` or `build-failed` through the skill's own exit
 - **THEN** no transcript is saved
 
 #### Scenario: The log is missing
@@ -1761,7 +1758,7 @@ After QA passes and before it pushes the branch, `go` SHALL check whether the ba
 
 #### Scenario: Another file conflicts
 - **WHEN** the merge conflicts in a file that is not generated
-- **THEN** the branch is pushed without the merge, the issue goes to `qa-failed` with the outcome `conflict`, and the message lists the conflicted files
+- **THEN** the branch is pushed without the merge, the issue goes to `build-failed` with the outcome `conflict`, and the message lists the conflicted files
 
 #### Scenario: The merge cannot be probed
 - **WHEN** the installed git cannot probe the merge
@@ -1848,3 +1845,89 @@ When the planner refuses a retry because a branch `feature/<n>-*` exists on the 
 #### Scenario: The branch cannot be read
 - **WHEN** the content of the branch cannot be read
 - **THEN** the message is the one for a branch that is corrected, and nothing is deleted
+
+### Requirement: A build request needs the permission of ready
+A `go` label SHALL be valid only when the person who last applied it has the permission that `ready` requires: write or maintain access, and maintain access only when `trust` is `public`. When it is not valid, the label SHALL be removed, one comment SHALL say why and name who applied it, and the issue SHALL stay `ready`. A label applied by an application or a bot SHALL NOT be valid.
+
+#### Scenario: Request by someone without write access
+- **WHEN** a user without write access applies `go` to a `ready` issue
+- **THEN** no run starts, `go` is removed, the issue stays `ready` and one comment says that `go` needs the permission of `ready`
+
+#### Scenario: Public repository
+- **WHEN** `trust` is `public` and a collaborator with write but not maintain access applies `go`
+- **THEN** `go` is removed and the comment says that only a maintainer may request a build
+
+#### Scenario: Applied by a bot
+- **WHEN** an application applies `go`
+- **THEN** no run starts and the label is removed
+
+### Requirement: A build request is refused on an issue that cannot take it
+A `go` label on an issue that is not `ready` SHALL start nothing and SHALL be removed, with one comment that says why and what applies instead, except on a failed build that left no code, which is rebuilt. `go` SHALL NOT stand in for the approval.
+
+#### Scenario: Draft
+- **WHEN** a person applies `go` to an issue with no lifecycle label
+- **THEN** `go` is removed and the comment says that the issue needs `ready` first
+
+#### Scenario: Already building
+- **WHEN** a person applies `go` to a `building` issue
+- **THEN** `go` is removed, the comment says that the issue is being built, and the build in progress is not touched
+
+#### Scenario: Failed build with code
+- **WHEN** a person applies `go` to a `build-failed` issue whose branch holds implementation
+- **THEN** `go` is removed and the comment says to run `/relevo:fix <n>`
+
+#### Scenario: Already built
+- **WHEN** a person applies `go` to a `built`, `in-review` or `pr-open` issue
+- **THEN** `go` is removed and the comment says that the issue is already built
+
+### Requirement: A build request rebuilds a failed build that left no code
+A valid `go` label on a `build-failed` issue that has no branch on the remote SHALL be planned as a retry in the cloud, with the gates of any other issue and without passing through `ready` again, provided that the text has not changed since the approval. The claim SHALL move the issue from `build-failed` to `building`.
+
+#### Scenario: Rebuild in the cloud
+- **WHEN** issue 67 is `build-failed` with no branch, its text is the approved one, and a person with write access applies `go`
+- **THEN** the gates run, the issue becomes `building` and the cloud builds it
+
+#### Scenario: Text changed since the approval
+- **WHEN** the body of that issue was edited after `ready` was last applied
+- **THEN** nothing is built, `go` is removed and the comment asks for a new approval
+
+### Requirement: A build request is consumed by the first decision
+The `go` label SHALL be removed by the decision the cloud takes about the issue, whatever it is: start, queue, block, send back, refuse. An issue that the decision left `queued` or `blocked` SHALL be built by the cloud when it becomes eligible, with no second request. An issue that the decision sent back SHALL need a new request after it is approved again.
+
+#### Scenario: Left waiting
+- **WHEN** `go` is applied to a `ready` issue and the limit of agents is reached
+- **THEN** the issue is `queued` without `go`, and it starts when a slot frees up
+
+#### Scenario: Sent back and corrected
+- **WHEN** `go` is applied, the gate sends the issue to `needs-spec`, and the writer corrects it and applies `ready`
+- **THEN** nothing starts until `go` is applied again
+
+### Requirement: The queue acts on waiting issues and on unanswered requests
+The queue SHALL act on issues that are `queued` or `blocked`, and on a `ready` issue whose `go` label the `go` workflow did not answer. A request that has just been made SHALL belong to the `go` workflow that the label started: the queue SHALL NOT apply its decision or dispatch a build for it. Two runs for one issue SHALL NOT build it twice.
+
+#### Scenario: Request just made
+- **WHEN** `go` is applied and the queue and the `go` workflow both start on that event
+- **THEN** only the `go` workflow decides about the issue, and its comment is posted once
+
+#### Scenario: Waiting issue becomes eligible
+- **WHEN** a `queued` or `blocked` issue becomes eligible
+- **THEN** the queue starts it
+
+#### Scenario: Request made while the cloud was paused
+- **WHEN** `go` was applied while `RELEVO_CLOUD_GO` was `off`, the issue is still `ready` with `go`, and the cloud resumes
+- **THEN** the queue serves the request at its next evaluation, with nothing applied again
+
+#### Scenario: Approved issue with no request
+- **WHEN** an issue is `ready` and carries no `go` label
+- **THEN** the queue does not look at it
+
+### Requirement: The limit of agents counts cloud builds only
+`limits.concurrent_agents` SHALL limit the builds of the cloud. An issue that is `building` with the `local` label SHALL NOT count against it, and a local build SHALL NOT wait for it.
+
+#### Scenario: Local builds do not take slots
+- **WHEN** the limit is 2, two issues are `building` with `local`, and `go` is applied to a third issue
+- **THEN** the third issue starts in the cloud
+
+#### Scenario: Cloud builds do
+- **WHEN** the limit is 2, two issues are `building` without `local`, and `go` is applied to a third issue
+- **THEN** the third issue is `queued`

@@ -40,7 +40,7 @@ The folders of skills and `skills-lock.json` SHALL be protected paths. `doctor` 
 
 #### Scenario: Lock file in the diff
 - **WHEN** the diff touches `skills-lock.json`
-- **THEN** the run ends in `qa-failed` with the reason "protected path in the diff"
+- **THEN** the run ends in `build-failed` with the reason "protected path in the diff"
 
 #### Scenario: Altered skill
 - **WHEN** a skill folder does not match its hash in `skills-lock.json`

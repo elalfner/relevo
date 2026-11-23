@@ -14,7 +14,7 @@ The documentation SHALL have a guide, in English and Spanish, with the life of a
 
 #### Scenario: The quota ran out
 - **WHEN** a cloud run stopped at a usage limit
-- **THEN** the guide says the issue stays recoverable, to apply `ready` again later, or to run `go` locally
+- **THEN** the guide says the issue stays recoverable, that the cloud retries it by itself or the build can be requested again later with the `go` label, or to run `go` locally
 
 ### Requirement: The security model is stated honestly
 The documentation SHALL have a page, in English and Spanish, that states what Relevo protects and how, and what it does not protect, including that prompt injection has no complete defence, that code run by the agent in the runner is only partly contained, and that the human review of the pull request is the last barrier.
@@ -371,3 +371,18 @@ The execution page SHALL explain, in English and in Spanish, the line of the dig
 #### Scenario: The decision is named
 - **WHEN** a reader looks for what to do when the share is above half
 - **THEN** the page names the three options (a cheaper model for the orchestrator, fewer turns, leaving it) and says that none is applied automatically
+
+### Requirement: The guide tells the approval from the build request
+The guide SHALL say that `ready` approves an issue and starts nothing, that the `go` label asks the cloud to build it and the `go` command builds it on a machine, and what the `local` label marks. It SHALL describe the path for three kinds of user: one person who writes and builds, a team that builds in the cloud, and a team with machines only. It SHALL say what a draft is and how one becomes an approved issue with `think` and `issue`.
+
+#### Scenario: One person
+- **WHEN** a person who writes and builds alone reads the guide
+- **THEN** it says to answer "`ready` and `go`" in `issue`, or to run `/relevo:go <n>` after approving, and that one step is enough
+
+#### Scenario: Machines only
+- **WHEN** a team without the `go` workflow reads the guide
+- **THEN** it says that the `go` label has no effect there and that an approved issue is built with `/relevo:go <n>`
+
+#### Scenario: Upgrading
+- **WHEN** a person who used an earlier version reads the guide
+- **THEN** it says that `ready` no longer starts a build, and gives the steps of the migration

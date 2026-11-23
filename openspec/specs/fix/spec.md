@@ -38,10 +38,10 @@ If the reported defect is actually a violation of a project rule, `fix` SHALL sa
 - **THEN** no commit or push is made, the changes are kept in the working tree, the issue's labels do not change, and the person is told the findings
 
 ### Requirement: State is preserved
-After a successful fix the issue SHALL keep its current state (`in-review`, `qa-failed` returns to `built`, or `changes-requested` returns to `pr-open`), and a comment SHALL summarise the change, the QA verdict and the commit.
+After a successful fix the issue SHALL keep its current state (`in-review`, `build-failed` returns to `built`, or `changes-requested` returns to `pr-open`), and a comment SHALL summarise the change, the QA verdict and the commit.
 
 #### Scenario: Fix after qa-failed
-- **WHEN** a fix on a `qa-failed` issue passes QA
+- **WHEN** a fix on a `build-failed` issue passes QA
 - **THEN** the issue becomes `built` and the assignee is notified
 
 #### Scenario: Fix after requested changes
@@ -86,11 +86,11 @@ When QA still rejects after the retries, `fix` SHALL save the working tree in a 
 - **THEN** it is dropped only after their written confirmation
 
 ### Requirement: A branch without implementation is not corrected
-`fix` SHALL tell a branch whose only differences from the base branch are inside the change folder from one that holds implementation, and for the first SHALL stop and say to delete the remote branch and label the issue `ready` again.
+`fix` SHALL tell a branch whose only differences from the base branch are inside the change folder from one that holds implementation, and for the first SHALL stop and say to delete the remote branch and build the issue again: with the `go` label where the cloud can build, or with `/relevo:go <n> --retry` on a machine. It SHALL NOT tell the person to apply `ready` again.
 
 #### Scenario: Branch with only the specification
 - **WHEN** every file that differs from the base branch is under `openspec/changes/<change>/`
-- **THEN** `fix` changes nothing and tells the person to delete the remote branch and apply `relevo:ready` again
+- **THEN** `fix` changes nothing and tells the person to delete the remote branch and then apply `relevo:go` or run `/relevo:go <n> --retry`
 
 #### Scenario: Branch with code
 - **WHEN** a file outside the change folder differs from the base branch

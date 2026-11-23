@@ -40,3 +40,12 @@ Update mode SHALL read the issue and SHALL proceed only when the issue is open a
 #### Scenario: Needs-spec swapped for ready
 - **WHEN** issue 42 is labelled only `needs-spec`, the update is applied and the person answers yes to the question about `ready`
 - **THEN** `needs-spec` is removed and `ready` is applied
+
+#### Scenario: Approval withdrawn to edit
+- **WHEN** issue 42 is `ready` with no `go` label and the person answers yes to withdrawing the approval
+- **THEN** `ready` is removed, the update flow goes on, and the question about `ready` and `go` is asked again at the end
+
+#### Scenario: Build requested and not answered
+- **WHEN** issue 42 is `ready` with a `go` label
+- **THEN** `issue` refuses, because a build was requested for that text, and edits nothing
+
