@@ -51,4 +51,4 @@
 
 - [x] 9.1 Run the whole suite (`node --test`) and `openspec validate --all`; verify both pass
 - [ ] 9.2 Run `go-local.mjs` for a sandbox issue with at least two groups in a terminal: verify the lines for each phase and group, the totals at the end, `go-local.mjs status` during and after the build, and that nothing about progress or usage was posted on the issue; record it in `docs/pilot-findings.md`
-- [ ] 9.3 Build a sandbox issue in the cloud and verify that the progress comment shows the group, and that the usage comment tells the launches of the developer apart
+- [x] 9.3 Build a sandbox issue in the cloud and verify that the progress comment shows the group, and that the usage comment tells the launches of the developer apart
