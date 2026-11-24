@@ -44,7 +44,7 @@ test('Scenario: Gates pass - the output says start and carries the decision, enc
 
 test('Scenario: Issue not ready to build - the output names the outcome and no build is started', () => {
   assert.equal(parse(plan({ body: 'no scenarios here' }).out).action, 'needs-spec');
-  assert.equal(parse(plan({ milestone: null }).out).action, 'no-milestone');
+  assert.equal(parse(plan({ milestone: null }).out).action, 'start', 'a missing milestone does not stop the build');
   assert.equal(parse(plan({ assignees: [] }).out).action, 'no-assignee');
   assert.equal(parse(plan({ body: `${BODY}\nDepends-on: #1\n` }).out).action, 'block');
 });
@@ -142,7 +142,7 @@ test('Scenario: No credential - a start becomes local: nothing claimed, the issu
   assert.equal(run(['--credential', 'true']).out.action, 'start', 'with a credential nothing changes');
   assert.equal(run([]).out.action, 'start');
   // Every other decision is applied as usual.
-  assert.equal(run(['--credential', 'false'], { milestone: null }).out.action, 'no-milestone');
+  assert.equal(run(['--credential', 'false'], { assignees: [] }).out.action, 'no-assignee');
 });
 
 function retryPlan(over, retryBy = 'persona-a') {

@@ -71,7 +71,6 @@ const SAMPLE = {
   approved: { recipient: 'a', issue: 1, reviewer: 'r', ship_label: 'relevo:ship' },
   review_reminder: { reviewer: 'r', issue: 1, pr: '#2', hours: 8 },
   review_escalation: { spec_writer: 'a', issue: 1, pr: '#2', reviewer: 'r', hours: 8 },
-  no_milestone: { actor: 'a', issue: 1 },
   cloud_not_configured: { actor: 'a', issue: 1 },
   no_assignee: { actor: 'a', issue: 1 },
   ready_denied: { issue: 1, actor: 'a' },

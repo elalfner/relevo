@@ -100,7 +100,7 @@ jobs:
           done
 
       # Applies the gates and, when the decision is `start`, claims the issue (relevo:building). Any other decision
-      # (needs-spec, blocked, queued, denied, no milestone, no assignee) is applied here with its comment.
+      # (needs-spec, blocked, queued, denied, no assignee) is applied here with its comment.
       - name: Gates and claim
         id: plan
         env:

@@ -56,12 +56,11 @@ test('an unknown applier is treated as unauthorised', () => {
   assert.equal(d.comment.data.actor, undefined);
 });
 
-test('Scenario: No milestone - no run and a comment asks for one', () => {
+test('Scenario: No milestone - the issue passes this gate and is built like any other', () => {
   const d = one([issue({ milestone: null })]);
-  assert.equal(d.action, 'no-milestone');
-  assert.deepEqual(d.labels.remove, ['relevo:ready', 'relevo:go']);
-  assert.equal(d.comment.kind, 'no_milestone');
-  assert.equal(d.comment.data.actor, 'persona-a');
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:ready', 'relevo:go'] });
+  assert.equal(d.comment, null, 'no comment asks for a milestone');
 });
 
 test('no assignee means nobody to hand the result to: no run', () => {
@@ -319,8 +318,8 @@ test('renamed labels are honoured', () => {
 });
 
 test('the summary counts decisions by action', () => {
-  const issues = [issue({ number: 1, assignees: ['p1'] }), issue({ number: 2, milestone: null })];
-  assert.deepEqual(plan(issues).summary, { start: 1, 'no-milestone': 1 });
+  const issues = [issue({ number: 1, assignees: ['p1'] }), issue({ number: 2, assignees: [] })];
+  assert.deepEqual(plan(issues).summary, { start: 1, 'no-assignee': 1 });
 });
 
 // ---------- The text that was approved, and the dependency files the issue lets the change touch
@@ -506,9 +505,12 @@ test('Scenario: The person may not start work - read access, or a non-maintainer
   assert.equal(one([k], { config: 'trust: public\n', input: { retry: { issue: k.number, by: 'persona-m' }, permissions: { 'persona-m': 'maintain' } } }).action, 'start');
 });
 
-test('Scenario: Gates still apply - no milestone, no assignee, incomplete specification', () => {
+test('Scenario: A retried issue without a milestone - the decision is start', () => {
   const noMilestone = failed({ milestone: null });
-  assert.equal(one([noMilestone], retryOf(noMilestone)).action, 'no-milestone');
+  assert.equal(one([noMilestone], retryOf(noMilestone)).action, 'start');
+});
+
+test('Scenario: Gates still apply - no assignee, incomplete specification', () => {
   const noAssignee = failed({ assignees: [] });
   assert.equal(one([noAssignee], retryOf(noAssignee)).action, 'no-assignee');
   const incomplete = failed({ body: 'just a title' });
@@ -793,10 +795,12 @@ test('a rebuild requested by someone without permission is refused like any requ
   assert.equal(d.comment.kind, 'go_denied');
 });
 
-test('a rebuild still passes the gates: no milestone goes back with go removed', () => {
-  const d = cloud([issue({ number: 67, labels: ['relevo:build-failed', 'relevo:go'], has_branch: false, milestone: null })]).decisions[0];
-  assert.equal(d.action, 'no-milestone');
+test('a rebuild still passes the gates: no assignee goes back with go removed, no milestone does not matter', () => {
+  const d = cloud([issue({ number: 67, labels: ['relevo:build-failed', 'relevo:go'], has_branch: false, assignees: [] })]).decisions[0];
+  assert.equal(d.action, 'no-assignee');
   assert.ok(d.labels.remove.includes('relevo:go'));
+  const m = cloud([issue({ number: 68, labels: ['relevo:build-failed', 'relevo:go'], has_branch: false, milestone: null })]).decisions[0];
+  assert.equal(m.action, 'start');
 });
 
 test('go on build-failed whose branch could not be looked for builds nothing and changes nothing', () => {
@@ -816,14 +820,13 @@ test('Scenario: queued and blocked with go - the label is dropped silently, the 
 test('Scenario: Request consumed - go is removed by every decision of the cloud', () => {
   const full = { config: 'limits:\n  concurrent_agents: 1\n' };
   const cases = [
-    cloud([issue({ milestone: null })]).decisions[0],
     cloud([issue({ assignees: [] })]).decisions[0],
     cloud([issue({ body: '## Edge cases\n- only\n' })]).decisions[0],
     cloud([issue({ body: `${BODY}\nDepends-on: #7\n` })]).decisions[0],
     cloud([issue({ number: 41, labels: ['relevo:building'] }), issue({ number: 43 })], full).decisions.find((x) => x.issue === 43),
     cloud([issue()]).decisions[0],
   ];
-  assert.deepEqual(cases.map((d) => d.action), ['no-milestone', 'no-assignee', 'needs-spec', 'block', 'queue', 'start']);
+  assert.deepEqual(cases.map((d) => d.action), ['no-assignee', 'needs-spec', 'block', 'queue', 'start']);
   cases.forEach((d) => assert.ok(d.labels.remove.includes('relevo:go'), d.action));
 });
 
@@ -1042,8 +1045,8 @@ test('Scenario: Incomplete text - the issue goes to needs-spec as it would in th
   assert.equal(d.comment.kind, 'needs_spec');
 });
 
-test('a missing milestone or assignee is applied as in the cloud', () => {
-  assert.equal(localOne(approvedOnly({ milestone: null })).action, 'no-milestone');
+test('a missing assignee is applied as in the cloud, a missing milestone does not stop the build', () => {
+  assert.equal(localOne(approvedOnly({ milestone: null })).action, 'start');
   assert.equal(localOne(approvedOnly({ assignees: [] })).action, 'no-assignee');
 });
 

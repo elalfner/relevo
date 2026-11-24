@@ -6,10 +6,10 @@ TBD - created by archiving change relevo-v1. Update Purpose after archive.
 ## Requirements
 
 ### Requirement: Trigger
-A cloud build SHALL start only for an issue that belongs to a milestone, has an assignee, carries the `ready` label and receives the `go` label, and only when both labels were applied by users with write permission on the repository. The `ready` label alone SHALL start nothing.
+A cloud build SHALL start only for an issue that has an assignee, carries the `ready` label and receives the `go` label, and only when both labels were applied by users with write permission on the repository. The `ready` label alone SHALL start nothing. A milestone SHALL NOT be required: an issue without one is evaluated like any other.
 
 #### Scenario: Authorised label
-- **WHEN** a collaborator with write access applies `go` to a `ready` issue in a milestone that a collaborator with write access approved
+- **WHEN** a collaborator with write access applies `go` to a `ready` issue that a collaborator with write access approved
 - **THEN** the issue is evaluated by the gates
 
 #### Scenario: Unauthorised label
@@ -17,8 +17,8 @@ A cloud build SHALL start only for an issue that belongs to a milestone, has an 
 - **THEN** no run starts, and the `ready` and `go` labels are removed
 
 #### Scenario: No milestone
-- **WHEN** a build is requested for a `ready` issue with no milestone
-- **THEN** no run starts, the `ready` and `go` labels are removed and a comment asks for a milestone
+- **WHEN** a build is requested for a `ready` issue with an assignee and no milestone
+- **THEN** the issue passes this gate and is evaluated by the others, and no comment asks for a milestone
 
 #### Scenario: No assignee
 - **WHEN** a build is requested for a `ready` issue with no assignee
@@ -122,7 +122,7 @@ The workflow that runs `go` SHALL start only when a person (not an automation ac
 The workflow that runs `go` SHALL run the gates and claim the issue in a light job that installs no platform toolchain and starts no agent, and SHALL start the build job, with the toolchain and the agent, only when the decision is `start`. The decision SHALL travel to the build job so that it does not plan again.
 
 #### Scenario: Issue not ready to build
-- **WHEN** the gates decide `needs-spec`, `blocked`, `queued`, `denied`, no milestone or no assignee
+- **WHEN** the gates decide `needs-spec`, `blocked`, `queued`, `denied` or no assignee
 - **THEN** the light job applies the outcome and its comment, and the build job does not start
 
 #### Scenario: Gates pass
@@ -347,7 +347,7 @@ When a cloud build run ends, whatever its outcome, the `go` workflow SHALL start
 - **THEN** the queue is evaluated right away
 
 #### Scenario: No build ran
-- **WHEN** the decision is `needs-spec`, `blocked`, `queued`, `denied`, no milestone or no assignee, and the light job succeeds
+- **WHEN** the decision is `needs-spec`, `blocked`, `queued`, `denied` or no assignee, and the light job succeeds
 - **THEN** no queue evaluation is started, because no slot was freed
 
 #### Scenario: The queue workflow is missing
@@ -874,8 +874,12 @@ When the planner is asked to retry an issue (`--retry`, together with `--only <n
 - **THEN** the decision is `denied` and nothing is claimed
 
 #### Scenario: Gates still apply
-- **WHEN** the retried issue has no assignee, no milestone or an incomplete specification
+- **WHEN** the retried issue has no assignee or an incomplete specification
 - **THEN** the same decision as for a `ready` issue is returned, and nothing is built
+
+#### Scenario: A retried issue without a milestone
+- **WHEN** the retried issue has no milestone and passes the other gates
+- **THEN** the decision is `start`, as for a `ready` issue without one
 
 #### Scenario: Without the flag
 - **WHEN** the planner runs without `--retry`

@@ -10,7 +10,7 @@ Escribir código ya no es lo lento. Verificarlo sí. Relevo pone al agente donde
  quien escribe      agente (nube)           responsable           par
  las specs          construye + QA          revisa en dispositivo aprueba + mergea
  issues listos  ──► sin esperar a nadie ──► corrige, abre PR  ──► y cierra el ciclo
- en un milestone
+ por milestone
 ```
 
 - **Primero las specs.** La entrada son issues detallados, listos para construir. El agente construye contra ellos y QA compara el diff contra ellos.
