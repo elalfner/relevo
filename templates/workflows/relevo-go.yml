@@ -907,6 +907,33 @@ jobs:
           <!-- relevo:progress -->
           <!-- relevo:progress:closed -->" > /dev/null
 
+      # The build job closes its own progress comment, but a runner that stopped answering GitHub ran none of those steps, so
+      # the comment would say "in progress" for as long as the issue exists. This step runs on another runner: when the build
+      # ended as failed or cancelled and the comment is still open (the closing markers are what the checks of the build read
+      # before they write), it replaces the comment by one line. A comment that the build job already closed is left alone, and
+      # no label or comment changes. It never fails the job.
+      - name: Close the progress comment of a build that ended without closing it
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          case "$BUILD_RESULT" in failure|cancelled) ;; *) exit 0 ;; esac
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments?per_page=100" --jq '.[] | select(.user.type == "Bot" and (.body | contains("<!-- relevo:progress -->")) and ((.body | contains("<!-- relevo:progress:closed -->")) | not)) | .id' | tail -n 1)
+          [ -n "$id" ] || exit 0
+          lang=$(gh api "repos/$GITHUB_REPOSITORY/contents/relevo.yml" --jq .content 2>/dev/null | base64 -d 2>/dev/null | sed -n 's/^language:[[:space:]]*\([a-z][a-z]*\).*/\1/p' | head -n 1)
+          line="The Relevo build ended without an outcome: its runner stopped answering.
+          Run: $RUN_URL"
+          [ "$lang" = "es" ] && line="La construcción de Relevo terminó sin resultado: su runner dejó de responder.
+          Ejecución: $RUN_URL"
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$line
+
+          <!-- relevo:progress -->
+          <!-- relevo:progress:closed -->" > /dev/null
+
       - name: Start the queue
         continue-on-error: true
         env:
