@@ -8,6 +8,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { branchHolder, EXIT } from './lib/branch-worktree.mjs';
+import { readLocal } from './lib/base-ref.mjs';
 
 const args = process.argv.slice(2);
 const at = args.indexOf('--branch');
@@ -16,7 +17,7 @@ const runner = {
 };
 
 const value = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : null);
-const result = branchHolder({ branch: at === -1 ? null : args[at + 1], base: value('--base'), runner });
+const result = branchHolder({ branch: at === -1 ? null : args[at + 1], base: value('--base'), runner, local: readLocal() });
 if (args.includes('--json')) {
   console.log(JSON.stringify({ status: result.status, holder: result.holder, removable: result.removable ?? null, reasons: result.reasons ?? [], holds: result.holds ?? null, messages: result.messages }));
 } else {

@@ -26,6 +26,10 @@ Four findings come from the environment, not the files: a linked repository that
 4. If a `ship.app` check fails, say that the `relevo:ship` label cannot ship in this repository until a GitHub App and its two secrets exist, because the base branch requires checks, and that `/relevo:ship` still works meanwhile.
 5. If the output says branch protection is not available, say plainly that approving and merging are then enforced only by the written confirmation `ship` asks for, not by the platform.
 
+## A local project
+
+When `tracker` in `relevo.yml` is `files`, `doctor.mjs` judges a project of one person with no GitHub: git, the repository and its base branch with a commit, OpenSpec, the toolchain of the platform, the skills that `think` invokes, `relevo.yml` and `.relevo/issues/`. It does not check, and so never reports, GitHub, labels, rulesets, secrets, workflows or a remote. Do not mention them or suggest `gh auth login` for such a project; the first line of the output says that it is a local project. `/relevo:init --local` fixes most of what it finds.
+
 ## Exit status
 
 `doctor.mjs` exits 0 when no check failed (warnings allowed) and 1 when at least one failed. Report the result in one line after the output.

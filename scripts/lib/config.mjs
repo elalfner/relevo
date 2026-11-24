@@ -13,8 +13,10 @@ import { hardRule } from './protected-paths.mjs';
 export const SETTINGS = [
   { path: 'branches.base', type: 'string', default: 'dev' },
   { path: 'branches.release', type: 'string', default: 'main' },
-  { path: 'tracker', type: 'enum', allowed: ['github'], default: 'github' },
-  { path: 'git_provider', type: 'enum', allowed: ['github'], default: 'github' },
+  { path: 'tracker', type: 'enum', allowed: ['github', 'files'], default: 'github' },
+  { path: 'git_provider', type: 'enum', allowed: ['github', 'local'], default: 'github' },
+  // How deep Relevo works: it moves the default effort of the agents and the questions of think, never which QA lenses run.
+  { path: 'depth', type: 'enum', allowed: ['prototype', 'standard'], default: 'standard' },
   { path: 'team.members', type: 'string[]', default: [] },
   { path: 'team.spec_writer', type: 'string', default: null },
   { path: 'team.approvers', type: 'string[]', default: [] },
@@ -94,13 +96,32 @@ export const AGENT_DEFAULTS = {
     bugs: { model: 'sonnet', effort: 'high' },
   },
 };
+/**
+ * The defaults of the agents at a depth. `standard` is `AGENT_DEFAULTS`, which is what Relevo always did. `prototype` lowers the
+ * effort of the developer and of every lens by one step (never below `low`) and lets a lens default to the lowest model of the
+ * lens floor (`QA_MIN_MODEL`), so the two lenses that default to the highest model cost less. It never removes a lens and never
+ * goes under that floor; a value written under `agents` wins over all of it.
+ */
+export function agentDefaults(depth = 'standard') {
+  const defaults = structuredClone(AGENT_DEFAULTS);
+  if (depth !== 'prototype') return defaults;
+  const lower = (effort) => EFFORTS[Math.max(EFFORTS.indexOf(effort) - 1, 0)];
+  const rank = (model) => DEFAULT_LADDER.indexOf(model);
+  defaults.dev.effort = lower(defaults.dev.effort);
+  QA_LENSES.forEach((lens) => {
+    const role = defaults.qa[lens];
+    role.effort = lower(role.effort);
+    if (rank(role.model) > rank(QA_MIN_MODEL)) role.model = QA_MIN_MODEL;
+  });
+  return defaults;
+}
 const isMapValue = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** Validate `agents` and return the settings with the defaults. { value, errors: [{ path, message }], given } where `given` lists the paths the file set. */
-function agentSettings(user) {
+function agentSettings(user, depth = 'standard') {
   const errors = [];
   const given = [];
-  const value = structuredClone(AGENT_DEFAULTS);
+  const value = agentDefaults(depth);
   const raw = user.agents;
   if (raw === undefined || raw === null) return { value, errors, given };
   if (!isMapValue(raw)) return { value, errors: [{ path: 'agents', message: 'agents must be a map with dev, qa and ladder' }], given };
@@ -373,13 +394,31 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
     setPath(config, setting.path, given);
   });
 
+  // The tracker and the provider go together: files issues are delivered by a local merge, never by a pull request.
+  const localPair = { github: 'github', files: 'local' };
+  if (localPair[config.tracker] !== config.git_provider
+    && ['tracker', 'git_provider'].every((k) => ['github', 'files', 'local'].includes(getPath(config, k)))) {
+    errors.push({ path: 'git_provider', message: `tracker "${config.tracker}" goes with git_provider "${localPair[config.tracker]}", not "${config.git_provider}": a files project has no pull requests and a github project has no local delivery` });
+  }
+  // A files project is one person: no reviewer, and the settings of a team are ignored (a warning, so the tracker can change without editing the file).
+  if (config.tracker === 'files') {
+    const reviewMode = getPath(user, 'review.mode');
+    if (reviewMode === undefined || reviewMode === null) config.review.mode = 'none';
+    else if (reviewMode !== 'none') errors.push({ path: 'review.mode', message: `review.mode "${reviewMode}" needs a reviewer, and a files project has one person: use "none"` });
+    const ignored = ['team.members', 'team.spec_writer', 'team.approvers', 'limits.built_unreviewed_per_person', 'runner.labels', 'runner.build_labels']
+      .filter((p) => getPath(user, p) !== undefined && getPath(user, p) !== null);
+    const agentsGiven = getPath(user, 'limits.concurrent_agents');
+    if (agentsGiven !== undefined && agentsGiven !== null && agentsGiven > 1) ignored.push('limits.concurrent_agents');
+    ignored.forEach((p) => warnings.push({ path: p, message: `${p} is ignored with tracker "files": it describes a team, a queue or a runner, and a files project has one person building on this machine` }));
+  }
+
   // Generated files need the command that regenerates them.
   if (config.integration.generated.length > 0 && !config.integration.regenerate) {
     errors.push({ path: 'integration.regenerate', message: 'integration.regenerate is required when integration.generated lists files: it is the command that regenerates them' });
   }
 
   // The model and the effort of each agent, with defaults. With Antigravity they are accepted and not applied: a warning, not an error.
-  const agents = agentSettings(user);
+  const agents = agentSettings(user, ['prototype', 'standard'].includes(config.depth) ? config.depth : 'standard');
   agents.errors.forEach((e) => errors.push(e));
   config.agents = agents.value;
   // Which keys the file set, for doctor and init: kept out of the settings (not enumerable), because it is not one.

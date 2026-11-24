@@ -425,3 +425,19 @@ test('Scenario: A checkpoint or a given subject does not derive tasks - an expli
   assert.match(lastMessage(f), /^Relevo-Tasks: 1\.1$/m);
   assert.doesNotMatch(lastMessage(f), /2\.1/);
 });
+
+test('Scenario: No remote - the checkpoint commit is made and kept, the state is not_pushed and nothing fails', () => {
+  const f = fixture();
+  git(f.work, 'remote', 'remove', 'origin');
+  git(f.work, 'branch', '-f', 'dev', 'HEAD~0'); // the base exists locally, as in a files project
+  put(f.work, 'src/a.js', 'export const a = 1;\n');
+  const out = rescue(f);
+  assert.equal(out.state, 'not_pushed');
+  assert.equal(out.files, 1);
+  assert.match(out.commit, /^[0-9a-f]{7,}$/, 'the commit was made');
+  assert.match(out.detail, /no remote/);
+  assert.equal(git(f.work, 'log', '-1', '--format=%s').trim(), 'wip: stopped by limit (#7)');
+  assert.equal(git(f.work, 'status', '--porcelain').trim(), '', 'nothing is left uncommitted');
+  // A second checkpoint with nothing new changes nothing and still does not fail.
+  assert.equal(rescue(f).state === 'not_pushed' || rescue(f).state === 'nothing', true);
+});

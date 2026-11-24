@@ -211,6 +211,19 @@ Por defecto la persona lo hace todo en `review` y el agente solo observa. Con `r
 - **El issue debe estar en `pr-open`**, y `ship` nombra el comando que falta (`/relevo:review` o `/relevo:fix`) si no. El cambio se valida y no tiene tareas abiertas antes de archivarse.
 - **Quién ejecuta `ship`.** Con `review.merger: approver`, un miembro de `team.members` que no sea el autor ni quien escribe la spec (y, en modo `roles`, uno de `team.approvers`). Quien sea elegible pero no aprobó confirma por escrito que no lo hizo.
 
+## Revisar y fusionar sin pull request
+
+Con `tracker: files` no hay pull request, así que los mismos comandos terminan distinto:
+
+- **`/relevo:review <n>`** revisa la rama local del issue contra la rama base, con los mismos pasos. Cuando pasa, registra el resultado con `scripts/ship-local.mjs record-review`; no abre ningún pull request ni elige revisor.
+- **`/relevo:ship <n>`** archiva la especificación en la rama y la fusiona con squash en la rama base como un solo commit, después de tu sí escrito. Se detiene sin cambiar nada cuando el issue no se revisó, cuando la rama cambió después de la revisión, cuando el gate de validación no pasó en el commit que se fusionaría, o cuando la rama no se fusiona limpiamente. Borra la rama y su worktree y cierra el issue.
+
+```
+node scripts/ship-local.mjs check --issue 3
+```
+
+No se sube nada: la fusión existe solo en este repositorio.
+
 ## Skills que usa `think`
 
 `/relevo:think` no reimplementa nada: ejecuta directamente dos skills que ya existen, así que su comportamiento es exactamente el de ellas.

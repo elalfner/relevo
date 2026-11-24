@@ -6,8 +6,9 @@ branches:
   base: dev            # integration branch: feature pull requests target it
   release: main        # promoted from base in a separate pull request
 
-tracker: github        # github (more later)
-git_provider: github   # github (more later)
+tracker: github        # github | files (files: issues are files, one person, no remote; use it with git_provider: local)
+git_provider: github   # github | local
+depth: standard        # standard | prototype: prototype lowers the default effort and the questions of think; all five QA lenses run at both
 platforms:                         # what is built and where; one entry per stack (see docs/stacks.md)
   app:
     stack: flutter                 # the profile in stacks/<stack>.md of the plugin, or in .relevo/stacks/

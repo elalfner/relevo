@@ -5,6 +5,7 @@
 // Every process goes through an injected runner so the logic is tested without git or a network:
 //   capture(cmd, args, { cwd }) -> stdout (throws when the command fails)
 
+import { baseRef, localRefs } from './base-ref.mjs';
 import { stateDir, worktreePath } from './worktree-path.mjs';
 
 /** Exit codes of `go-worktree.mjs`. `exists` and `linked` are answers, not failures: the skill reads them. */
@@ -32,7 +33,7 @@ function context(issue, runner) {
 }
 
 /**
- * Make the worktree of an issue from `origin/<base>`. `linked` when the session is already in a linked worktree (the
+ * Make the worktree of an issue from `origin/<base>` (the local `<base>` in a files project). `linked` when the session is already in a linked worktree (the
  * build runs where it is), `exists` when the worktree of the issue is already there (the same issue twice).
  * `prepareState(dir) -> boolean` empties and creates the state folder of the build; `state` is its path, or null when it could not be made.
  */
@@ -54,8 +55,9 @@ export function createWorktree({ issue, config, runner, exists = () => false, pr
   try {
     // A folder deleted by hand leaves a registration that makes `worktree add` fail; prune only drops those.
     runner.capture('git', ['worktree', 'prune'], { cwd: ctx.repoRoot });
-    runner.capture('git', ['fetch', 'origin', base], { cwd: ctx.repoRoot });
-    runner.capture('git', ['worktree', 'add', '--detach', worktree, `origin/${base}`], { cwd: ctx.repoRoot });
+    // A files project builds from its own base branch and has no remote to fetch from.
+    if (!localRefs(config)) runner.capture('git', ['fetch', 'origin', base], { cwd: ctx.repoRoot });
+    runner.capture('git', ['worktree', 'add', '--detach', worktree, baseRef(config, base)], { cwd: ctx.repoRoot });
   } catch (err) {
     return fail(EXIT.failed, `could not prepare the worktree: ${firstLine(err)}`);
   }

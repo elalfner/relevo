@@ -222,3 +222,15 @@ test('the state folder is not made when the worktree is refused', () => {
   createWorktree({ issue: '42', config, runner: fakeRunner(), exists: (p) => p === WORKTREE, prepareState: (d) => prepared.push(d) });
   assert.deepEqual(prepared, []);
 });
+
+// ---------- local-tracker: a files project
+
+test('Scenario: Files project - the worktree is made from the local base and nothing is fetched', () => {
+  const filesConfig = loadConfig('limits:\n  run_max_cost: 5\ntracker: files\ngit_provider: local\nbranches:\n  base: main\n').config;
+  const runner = fakeRunner();
+  const r = createWorktree({ issue: '5', config: filesConfig, runner });
+  assert.equal(r.status, EXIT.ok);
+  const git = runner.calls.map((c) => c.args.join(' '));
+  assert.ok(git.some((a) => /^worktree add --detach .+ main$/.test(a)), git.join('\n'));
+  assert.ok(!git.some((a) => /fetch|origin/.test(a)));
+});

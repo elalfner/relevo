@@ -17,6 +17,7 @@
 //       the same for the checkpoint `wip: checkpoint k/n (#issue)`, for a caller that has the numbers.
 //       exit 0; exit 1 when no such checkpoint exists (a checkpoint made before the trailer existed has no tasks to find it by); exit 2 bad arguments.
 
+import { readLocal } from './lib/base-ref.mjs';
 import { progressDir } from './lib/worktree-path.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -83,7 +84,7 @@ if (mode === 'check') {
   const section = arg('section');
   const [k, n] = ['k', 'of'].map((a) => Number(arg(a)));
   if (!issue || !(/^\d{1,3}$/.test(section ?? '') || (k && n))) usage('usage: replica-plan.mjs template --section <K> --issue <n> [--base <branch>]   (or --k <n> --of <n>)');
-  const range = arg('base') ? [`origin/${arg('base')}..HEAD`] : [];
+  const range = arg('base') ? [`${readLocal() ? '' : 'origin/'}${arg('base')}..HEAD`] : [];
   const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   const log = git(['log', ...range, '--format=%H%x1f%s%x1f%b%x1e']).split('\x1e').map((c) => c.replace(/^\n/, '')).filter((c) => c.trim()).map((c) => {
     const [sha, subject, body] = c.split('\x1f');

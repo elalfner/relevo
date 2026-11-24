@@ -4,6 +4,28 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **A project of one person with no GitHub and no remote** (`tracker: files`, `git_provider: local`). An issue is a file, `.relevo/issues/<n>.md`, committed once when it is approved. Its state, comments, the hash of the approved text and the delivery record are kept inside the git directory (`.git/relevo/`), shared by every worktree and never committed, so a change of state makes no commit. `/relevo:think`, `/relevo:issue`, `/relevo:go`, `/relevo:fix`, `/relevo:review`, `/relevo:ship` and `/relevo:status` work on it; `go` plans with the gates that apply to one person (no milestone, assignee, queue or reviewer).
+- **Local delivery.** `/relevo:review` records its result and opens no pull request; `/relevo:ship` archives the specification on the branch and squash-merges it into the base branch after a written yes, refusing when the issue was not reviewed, the branch changed after the review, the validation gate was not green on the commit to merge, or the branch does not merge cleanly (`scripts/ship-local.mjs`).
+- **`/relevo:init --local`** creates the repository on `main`, `relevo.yml`, `.relevo/issues/` and, for a repository with no commit, the first commit, with nothing from GitHub. `/relevo:doctor` judges a local project by what it needs, including that `relevo.yml` is committed on the base branch, and reports nothing about GitHub.
+- **`depth` in `relevo.yml`** (`standard`, the default and what Relevo always did, or `prototype`). `prototype` lowers by one step the default effort of the developer and of each lens, makes the `spec` and `security` lenses default to `sonnet`, and makes `/relevo:think` settle first what the code and the rules already answer. All five lenses run at both, the model floor and `qa.retries` do not change, and a value under `agents` wins.
+- **`scripts/tracker.mjs`**, the one entry point to read and write issues (`issue-get`, `issue-list`, `issue-create`, `issue-edit-body`, `state-set`, `comment-add`, `comments-list`, `issue-close`, `delivery-open`, `delivery-get`), with a `github` backend that makes the calls the skills made and a `files` backend. A test keeps `gh issue` and `gh pr` out of the skills and scripts beyond a list that can only shrink.
+- **`scripts/lib/base-ref.mjs`**: a files project builds from, diffs against and merges its local base branch, never `origin/<base>`. A second test keeps `origin` references from growing.
+
+### Fixed
+
+- A checkpoint in a repository with no `origin` is committed and answers `not_pushed` instead of returning before the commit.
+- Creating, editing or commenting an issue through the REST client of a web session sent `--body-file -` as a file name; the body on stdin is now the body.
+
+### Known limits
+
+- The state of a files project is on this machine: another clone starts with none, and an issue returns to `ready` by approving it again. Approval is the one person's, so the stored hash only stops a text edited after approval.
+- `go` was tested with its scripts, its worktree and a build simulated by commits, not with a model run on a project with no remote. Test it in the sandbox from `dev` before releasing.
+- `/relevo:think` at `prototype` does not shorten the interview of `grill-with-docs`, which is reserved for the person: it settles more before the interview, which then finds fewer open questions.
+- The comment of a failed build still treats `not_pushed` as "no branch to fix" and may suggest building again, although a files project keeps its branch locally.
+- In a session on the web, `issue comment`, `issue close` and the delivery verbs are refused by the REST client, as they were.
+
 ## [0.18.1] - 2026-11-23
 
 ### Fixed

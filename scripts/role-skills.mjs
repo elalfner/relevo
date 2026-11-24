@@ -5,6 +5,7 @@
 // Only skills present on the base branch are used, so a skill added by the branch is never trusted.
 //   exit 0: printed (skills may be left out)   exit 1: the profile cannot be resolved   exit 2: bad usage or invalid relevo.yml
 
+import { baseRef as baseRefOf } from './lib/base-ref.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -44,7 +45,7 @@ const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const resolved = resolveProfile({ platform, pluginRoot, read });
 if (!resolved.ok) fail(resolved.errors.join('\n'), 1);
 
-const baseRef = arg('base') ?? `origin/${loaded.config.branches.base}`;
+const baseRef = arg('base') ?? baseRefOf(loaded.config, loaded.config.branches.base);
 const git = (args) => execFileSync('git', args, { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 try {
   const skills = resolveRoleSkills({ role, profile: resolved.profile, git, baseRef, allowScripts: loaded.config.skills.allow_scripts, dirs: skillDirsFor(platform.path) });

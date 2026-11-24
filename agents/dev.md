@@ -34,7 +34,7 @@ Every turn re-reads the whole context, so keep it small:
 - read bounded ranges (`offset` and `limit`, or a search), not whole large files;
 - for repetitive files or edits, write a short script instead of doing each by hand;
 - run only the tests of what you changed while you work;
-- run the full suite once, at the end, as the `test` check with the `long-run.mjs` path you are given (`start --id test --check test --base origin/<base> --platform <platform>`, then `wait --id test` until it stops saying `running`): never `&` or `sleep`; the gate reuses a green result;
+- run the full suite once, at the end, as the `test` check with the `long-run.mjs` path you are given (`start --id test --check test --base origin/<base> --platform <platform>`, then `wait --id test` until it stops saying `running`): never `&` or `sleep`; the gate reuses a green result; When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin/<base>`.
 - never rerun, before you change anything, a check the gate already ran green; run them after your changes.
 
 ## Before you write code

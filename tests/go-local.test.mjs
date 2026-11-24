@@ -365,3 +365,30 @@ test('the last snapshot is written at the end, before the worktree goes, so that
   assert.equal(t.saved.length, 1);
   assert.deepEqual(t.saved[0].tasks, { done: 3, total: 3 });
 });
+
+// ---------- local-tracker: a files project builds from its own base branch, with no remote and no gh
+
+const FILES = loadConfig('limits:\n  run_max_cost: 5\ntracker: files\ngit_provider: local\nbranches:\n  base: main\n').config;
+
+test('Scenario: Files project - the worktree is made from the local base, nothing is fetched and gh is never called', async () => {
+  const runner = fakeRunner();
+  const originalCapture = runner.capture.bind(runner);
+  runner.capture = (cmd, args, options) => {
+    if (cmd === 'node' && args[1] === 'issue-get') { runner.calls.push({ kind: 'capture', cmd, args }); return JSON.stringify({ title: 'Add the export button' }); }
+    return originalCapture(cmd, args, options);
+  };
+  const r = await runLocal({ issue: '42', config: FILES, runner });
+  assert.equal(r.status, 0);
+  const git = runner.calls.filter((c) => c.cmd === 'git').map((c) => c.args.join(' '));
+  assert.ok(git.includes('worktree add --detach /home/me/code/.relevo-worktrees/shop-42 main'), git.join('\n'));
+  assert.ok(!git.some((a) => /fetch|origin/.test(a)), 'no fetch and no origin');
+  assert.ok(!runner.calls.some((c) => c.cmd === 'gh'), 'gh is never called, not even to check that it is signed in');
+  assert.ok(runner.calls.some((c) => c.cmd === 'node' && c.args[1] === 'issue-get'), 'the title comes from the tracker');
+});
+
+test('Scenario: Files project - the dry run names the local base, and a github project still names origin', async () => {
+  const files = await runLocal({ issue: '42', config: FILES, runner: fakeRunner(), dryRun: true });
+  assert.match(files.messages.join('\n'), /\(from main\)/);
+  const github = await runLocal({ issue: '42', config, runner: fakeRunner(), dryRun: true });
+  assert.match(github.messages.join('\n'), /\(from origin\/dev\)/);
+});

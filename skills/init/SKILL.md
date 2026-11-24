@@ -1,7 +1,7 @@
 ---
 name: init
 description: Sets up a repository for Relevo. It asks for the team, the review mode and the language, shows the full plan of what it will create (relevo.yml, lifecycle labels, the base branch, branch protection, the workflows, the ignore line for evidence/), applies it only after confirmation, offers to install missing dependencies one by one, and finishes by running doctor. Running it again only lists what differs. It never touches the model API key. Use when asked to set up, install or configure Relevo in a repository.
-argument-hint: ""
+argument-hint: "[--local]"
 disable-model-invocation: true
 ---
 
@@ -10,6 +10,19 @@ disable-model-invocation: true
 Set this repository up for Relevo. Show the plan first, change nothing until the person confirms, and make a second run harmless.
 
 Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hold the plan and the changes; use them instead of editing labels, rulesets or workflow files yourself.
+
+## Local project (`--local`)
+
+When `$ARGUMENTS` has `--local`, set up a project of one person on this machine, with **no GitHub**: no `gh`, no remote, no labels, no workflows, no rulesets and no secrets. Do not run the preflight of step 1 or any other step below; this is the whole flow.
+
+1. Ask only what the setup cannot answer, one group at a time: the **platform** (its `stack`, its `path` and its `targets`, as `docs/stacks.md` lists them), the **cost limit** of an unattended run in US dollars (the agent is Claude; suggest 5), and the **language** of the messages (`en` or `es`). The base branch is the current branch of an existing repository, or `main` for a new one: do not ask it. Write the answers to a file outside the working tree as `{ "platforms": { "<name>": { "stack": "...", "path": ".", "targets": [...] } }, "cost": 5, "language": "en" }`.
+2. Show the plan: `node ${CLAUDE_PLUGIN_ROOT}/scripts/init-local.mjs plan --answers <file>`. It lists the repository (when there is none), `relevo.yml`, `.relevo/issues/`, the ignore line for `evidence/`, the installs and, for a repository with no commit, the first commit. It writes nothing. If it exits 1 and says `Needs answers`, ask for them and run it again; if it says that `relevo.yml` is not a local project, stop and show that.
+3. Ask for a yes to the plan. Without it, change nothing.
+4. Apply: `node ${CLAUDE_PLUGIN_ROOT}/scripts/init-local.mjs apply --answers <file>`. It carries out the "will do" changes that are not installs and stops at the first failure. The only commit it makes is the first one of a repository that had none, which the plan you confirmed lists: it is the one exception to "Never commit or push" below. In a repository that already has commits it commits nothing: tell the person to commit `relevo.yml` and `.relevo/` now, because a build runs in a worktree made from the base branch and `doctor` fails until `relevo.yml` is committed there.
+5. Offer each install of the plan, one at a time, with its exact command, as step 4 below does (OpenSpec and its `openspec init`, then the skills that `think` needs). Run none without a yes to that command alone, and commit `openspec/` afterwards if the person agrees.
+6. Check: `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs`, which judges a local project by what it needs. Then say the next step: `/relevo:think` to talk the idea through, then `/relevo:issue`.
+
+Running it again lists only what differs. Never read, write or ask for the model credential.
 
 ## What you must never do
 

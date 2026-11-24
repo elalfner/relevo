@@ -9,6 +9,7 @@ import { loadConfig } from './config.mjs';
 import { platformFolders } from './protected-paths.mjs';
 import { restrictedListFromText } from './restricted-paths.mjs';
 import { rescueWork } from './rescue-work.mjs';
+import { localRefs } from './base-ref.mjs';
 import { readFileSync } from './guarded-fs.mjs';
 import { loadBaseline } from './tree-baseline.mjs';
 
@@ -26,14 +27,16 @@ export function runRescue({ decision, configPath = 'relevo.yml', subject = null,
   let rulesFile = null;
   let platformPaths = [];
   let text = '';
+  let local = false;
   if (existsSync(path)) {
     text = readFileSync(path, 'utf8');
     const loaded = loadConfig(text);
     if (loaded.ok) {
       rulesFile = loaded.config.qa.rules_from;
       platformPaths = platformFolders(loaded.config.platforms);
+      local = localRefs(loaded.config);
     }
   }
   // The list is read from the text, so a relevo.yml that does not validate still restricts what it lists.
-  return rescueWork({ git, decision, rulesFile, platformPaths, restricted: restrictedListFromText(text), subject, tasks, baseline: loadBaseline(progressDir()) });
+  return rescueWork({ git, decision, rulesFile, platformPaths, restricted: restrictedListFromText(text), subject, tasks, baseline: loadBaseline(progressDir()), local });
 }

@@ -308,3 +308,13 @@ test('gh api goes to gh as it is in every session, so a skill that routes it thr
   }
   assert.match(run(['pr', 'merge', '5']).err, /"gh pr merge" is not covered/, 'other subcommands are still refused');
 });
+
+test('a body sent on stdin with --body-file - reaches the REST version of issue create and issue edit', () => {
+  const calls = [];
+  const run = (name, args, opts) => { calls.push({ args, input: opts?.input }); return JSON.stringify({ html_url: 'https://github.com/o/r/issues/9', number: 9 }); };
+  const remote = ghClient({ env: REMOTE, run });
+  remote(['issue', 'create', '--title', 'T', '--body-file', '-', '--repo', 'o/r'], 'the body\n');
+  assert.equal(JSON.parse(calls[0].input).body, 'the body\n');
+  remote(['issue', 'edit', '9', '--body-file', '-', '--repo', 'o/r'], 'edited');
+  assert.equal(JSON.parse(calls.at(-1).input).body, 'edited');
+});

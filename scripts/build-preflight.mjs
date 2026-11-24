@@ -65,7 +65,7 @@ if (stage === 'issue') {
   const exists = (path) => {
     if (base) {
       try {
-        execFileSync('git', ['cat-file', '-e', `origin/${base}:${path}`], { cwd: root, stdio: 'ignore' });
+        execFileSync('git', ['cat-file', '-e', `${loaded.ok && loaded.config.tracker === 'files' ? '' : 'origin/'}${base}:${path}`], { cwd: root, stdio: 'ignore' });
         return true;
       } catch {
         return false;

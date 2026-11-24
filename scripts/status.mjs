@@ -14,6 +14,8 @@ import { gatherStatus } from './lib/status-data.mjs';
 import { realState } from './lib/build-state.mjs';
 import { readLocalBuilds } from './lib/status-local.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { renderStatusFiles, statusFiles } from './lib/status-files.mjs';
+import { loadTracker } from './lib/tracker/load.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -29,6 +31,18 @@ if (!existsSync(configPath)) fail(`relevo.yml not found at ${configPath}. Run /r
 const loaded = loadConfig(readFileSync(configPath, 'utf8'));
 if (!loaded.ok) fail(loaded.errors.map((e) => `error: ${e.message}`).join('\n'));
 const { config } = loaded;
+
+// A files project: the issues come from the files, with no GitHub, no person to identify and no deadlines.
+if (config.tracker === 'files') {
+  const { tracker } = loadTracker({ configPath });
+  let branches = [];
+  try {
+    branches = spawnSync('git', ['branch', '--list', 'feature/*', '--format=%(refname:short)'], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+  } catch { /* no git: no branches to report */ }
+  const report = statusFiles({ config, issues: tracker.issueList({ state: 'open', fields: 'number,title,labels' }), branches });
+  console.log(process.argv.includes('--json') ? JSON.stringify(report, null, 2) : renderStatusFiles(report, config.language).join('\n'));
+  process.exit(0);
+}
 
 const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
 let data;

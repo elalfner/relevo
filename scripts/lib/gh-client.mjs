@@ -19,7 +19,8 @@ export function ghClient({ env = process.env, run = execFileSync } = {}) {
       api: (a, i) => realGh(a, i, run),
       git: (a) => run('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
       passthrough: () => { throw new Error('unreachable in a remote session'); },
-      readFile: (p) => readFileSync(p, 'utf8'),
+      // `--body-file -` is the body on stdin, as `gh` reads it: the tracker sends every body that way.
+      readFile: (p) => (p === '-' ? String(input ?? '') : readFileSync(p, 'utf8')),
       out: (t) => out.push(t),
       err: (t) => err.push(t),
     });

@@ -19,6 +19,19 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 - Never use `git add .` or `-A`, never force-push, and never ship a pull request you did not look up from the issue's own branch.
 - Never create or release anything on the release branch. Releasing is a separate pull request.
 
+## Files project
+
+When `tracker` in `relevo.yml` is `files` there is no pull request, no remote and no reviewer: shipping is a local merge of the branch into the base branch, and these steps replace steps 0 to 6 below. Read and write the issue only through `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs`, never through `gh`.
+
+- Local refs: this project has no remote, so wherever this skill, a reference it points to or a script's usage says `origin/<base>` or `origin/<branch>`, use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`. The scan of step 3 and every check use the local `<base>` and `<branch>`; the `ship-local.mjs` commands already do.
+1. **Where you are.** `git branch --show-current` must equal `branches.base` and `git status --porcelain` must be empty. If not, say which one is wrong and stop: nothing of the person's may be mixed into the merge.
+2. **What would stop it.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs check --issue $ARGUMENTS`. It exits 0 when the issue was built and reviewed, the validation gate passed on the commit that would be merged, and the branch merges cleanly into the base branch. On exit 1 it prints every reason, with its command (`/relevo:review`, the gate, `/relevo:fix`): show them, change nothing and stop.
+3. **Scan what will be merged.** `git diff <base>...<branch> | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs`. If it reports anything, stop and show the file and line.
+4. **Confirm, in writing.** Show the issue, its branch, how many commits it holds and what will happen: the specification is archived on the branch, the branch is squash-merged into `<base>` as one commit, the branch and its worktree are deleted, and the issue is closed. Say that nothing is sent anywhere. Wait for a clear written yes; **without it nothing is archived or merged.**
+5. **Archive the specification on the branch.** Do it where the branch is checked out: if another worktree holds it (`branch-worktree.mjs --branch <branch> --base <base> --json`) work there, otherwise check the branch out and come back to `<base>` afterwards. Run the archive exactly as step 3 below says (`archive-state.mjs`, `openspec validate`, `fix-tasks.mjs --stage after`, `openspec archive -y`, `check-archive.mjs`, `stage.mjs`, and the commit `chore(openspec): archive <change folder name> (#$ARGUMENTS)`), and **do not push**. This commit does not make the review or the gate stale.
+6. **Check again, then merge.** From `<base>`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs check --issue $ARGUMENTS`, and only on exit 0 `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs merge --issue $ARGUMENTS --title "<title> (#$ARGUMENTS)"`. It makes the one squash commit, deletes the branch, removes its worktree when git allows it, and closes the issue and clears its Relevo state. It refuses and changes nothing if the base branch is not checked out or the tree is not clean; if it reports a worktree it could not remove, give its path.
+7. **Report.** The issue, the merge commit, that the issue is closed, and that the work is only in this repository.
+
 ## Steps
 
 ### 0. Preflight

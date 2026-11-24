@@ -477,3 +477,28 @@ test('the Laravel and Supabase steps are unchanged', () => {
   assert.ok(body.includes('A Supabase review asks no confirmation about the database'));
   assert.ok(body.includes('the one entry `FATAL: role "postgres" does not exist` that `supabase db reset` writes'));
 });
+
+// ---------- local-tracker: a files project
+
+test('Scenario: Files project - the review is of the branch, records its result and opens no pull request', () => {
+  const skill = readFileSync(new URL('../skills/review/SKILL.md', import.meta.url), 'utf8');
+  assert.match(skill, /## Files project/);
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /`tracker` in `relevo\.yml` is `files`/);
+  assert.match(section, /never through `gh`/);
+  assert.match(section, /git branch --list "feature\/\$ARGUMENTS-\*"/);
+  assert.match(section, /Run no `git fetch` and no `git pull`/);
+  assert.match(section, /ship-local\.mjs record-review --issue \$ARGUMENTS --result passed/);
+  assert.match(section, /--result failed/);
+  assert.match(section, /Push nothing, pick no reviewer, move no label to `pr-open`/);
+  assert.match(section, /\/relevo:ship \$ARGUMENTS/);
+  assert.match(skill, /tracker\.mjs state-set <issue> --add <names> --remove <names>/);
+  assert.match(skill, /tracker\.mjs issue-get \$ARGUMENTS --fields title,body,comments/);
+});
+
+test('Scenario: Files project - the review skill reads the local base and pushes nothing, with no remote', () => {
+  const skill = readFileSync(new URL('../skills/review/SKILL.md', import.meta.url), 'utf8');
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /Local refs: this project has no remote/);
+  assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
+});

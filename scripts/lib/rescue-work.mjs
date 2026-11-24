@@ -57,12 +57,12 @@ export function readDecision(b64) {
  * when the run cannot say anything more. `[]` for no task, and for anything that cannot be read (no change, no base, no file, a git
  * error): the commit is then made as it always was.
  */
-export function limitTasks({ git, decision }) {
+export function limitTasks({ git, decision, local = false }) {
   try {
     if (!decision.change || !decision.base) return [];
     const done = doneTaskIds(readFileSync(`openspec/changes/${decision.change}/tasks.md`, 'utf8'));
     if (done.length === 0) return [];
-    const named = new Set(git(['log', '--format=%b%x1e', `origin/${decision.base}..HEAD`]).split('\x1e').flatMap((body) => tasksOf(body)));
+    const named = new Set(git(['log', '--format=%b%x1e', `${local ? '' : 'origin/'}${decision.base}..HEAD`]).split('\x1e').flatMap((body) => tasksOf(body)));
     return done.filter((id) => !named.has(id));
   } catch {
     return [];
@@ -85,7 +85,7 @@ export function limitTasks({ git, decision }) {
  *            Without them, and without a `subject`, the commit of a run cut at a limit names the tasks that are checked and that no commit names yet (`limitTasks`).
  *   subject  the subject of the commit (`wip: stopped by limit (#N)` by default); the hash of the issue text goes in as a trailer
  */
-export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null, tasks = null, baseline = {} }) {
+export function rescueWork({ git, decision, rulesFile = null, platformPaths = [], restricted, subject = null, tasks = null, baseline = {}, local = false }) {
   const result = (state, extra = {}) => ({ state, branch: decision.branch, files: 0, commit: null, detail: '', ...extra });
   let current;
   try {
@@ -118,7 +118,17 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     decision = { ...decision, branch: target };
   }
 
+  // A repository with no remote (a files project) cannot push: the commits are made and kept here, and the state says so.
+  // `local` is a files project, which compares with its own branches whether or not a remote exists.
+  let remoteless = local;
+  if (!remoteless) {
+    try {
+      remoteless = git(['remote']).trim() === '';
+    } catch { /* an unreadable remote list is treated as a remote that exists */ }
+  }
+
   try {
+    if (remoteless) throw Object.assign(new Error('no remote'), { skip: true });
     const tip = git(['ls-remote', '--heads', 'origin', decision.branch]).trim().split(/\s+/)[0];
     if (tip) {
       // A remote tip that this branch contains is the work of this run (its checkpoints): pushing is a fast-forward. Any
@@ -131,14 +141,14 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
       if (!contained) return result('existing', { detail: 'the branch is already on the remote with commits this run does not have, so it was not touched' });
     }
   } catch (error) {
-    return result('not_pushed', { detail: `git could not ask the remote: ${firstLine(error)}` });
+    if (!error.skip) return result('not_pushed', { detail: `git could not ask the remote: ${firstLine(error)}` });
   }
 
   let paths;
   let ahead = 0;
   try {
     paths = changedSince(changedPaths(git(['status', '--porcelain=v1', '-z', '--untracked-files=all'])), baseline, git, restricted);
-    if (decision.base) ahead = Number(git(['rev-list', '--count', `origin/${decision.base}..HEAD`]).trim()) || 0;
+    if (decision.base) ahead = Number(git(['rev-list', '--count', `${remoteless ? '' : 'origin/'}${decision.base}..HEAD`]).trim()) || 0;
   } catch (error) {
     return result('not_pushed', { detail: `git could not read the working tree: ${firstLine(error)}` });
   }
@@ -149,7 +159,7 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     let committed;
     try {
       committed = commitChange({
-        git, message: withTasks(withIssueHash(subject ?? wipSubject(decision.issue, 'limit'), decision.issueHash), tasks ?? (subject === null ? limitTasks({ git, decision }) : null)), paths, allow: decision.allow, rulesFile, platformPaths,
+        git, message: withTasks(withIssueHash(subject ?? wipSubject(decision.issue, 'limit'), decision.issueHash), tasks ?? (subject === null ? limitTasks({ git, decision, local: remoteless }) : null)), paths, allow: decision.allow, rulesFile, platformPaths,
         within: decision.within, change: decision.change, restricted,
       });
     } catch (error) {
@@ -159,12 +169,14 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
     commit = committed.commit;
   }
 
+  if (remoteless) return result('not_pushed', { files: paths.length, commit, detail: 'there is no remote: the commits are kept in this repository' });
+
   try {
     git(['push', '-u', 'origin', decision.branch]);
   } catch (error) {
     return result('not_pushed', { files: paths.length, commit, detail: `the push failed: ${firstLine(error)}` });
   }
-  return result('kept', { files: paths.length, commit, detail: commit ? `committed ${paths.length} file(s) as ${commit}` : 'the commits of the branch were pushed', ...checkpointsOf(git, decision) });
+  return result('kept', { files: paths.length, commit, detail: commit ? `committed ${paths.length} file(s) as ${commit}` : 'the commits of the branch were pushed', ...checkpointsOf(git, decision, remoteless) });
 }
 
 /**
@@ -172,10 +184,10 @@ export function rescueWork({ git, decision, rulesFile = null, platformPaths = []
  * that was cut: `{ checkpoints }`, or `{}` when it cannot be counted (no base, a branch of its own, a git error). An unknown is
  * never reported as 0, which the comment reads as "no checkpoint was saved".
  */
-function checkpointsOf(git, decision) {
+function checkpointsOf(git, decision, local = false) {
   if (decision.base === null || decision.branch.startsWith('rescue/')) return {};
   try {
-    const subjects = git(['log', '--format=%s', `origin/${decision.base}..HEAD`]).split('\n');
+    const subjects = git(['log', '--format=%s', `${local ? '' : 'origin/'}${decision.base}..HEAD`]).split('\n');
     return { checkpoints: subjects.filter((subject) => isCheckpoint(subject, decision.issue)).length };
   } catch {
     return {};

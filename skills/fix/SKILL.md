@@ -13,6 +13,16 @@ The order matters and is checked by a script: **the specification is updated fir
 
 Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hold the rules that must not vary (which state an issue returns to, the specification-first check, the tasks file edit, scanning, messages); use them instead of deciding those things yourself.
 
+## Files project
+
+When `tracker` in `relevo.yml` is `files` there is one person, no remote and no pull request, and this skill holds with these changes. Read and write the issue only through `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs` (`issue-get`, `state-set`, `comment-add`), never through `gh`.
+
+- The branch of the issue is local: look for it with `git branch --list "feature/<issue>-*"`, switch to it as in the step that switches, and run no `git fetch` or `git pull`. Run `failure-comment.mjs` without `--repo`.
+- Never push: the branch stays local. Say in the final message that it is local, and that nothing was sent anywhere.
+- Local refs: this project has no remote, so wherever this skill, a reference it points to or a script's usage says `origin/<base>` or `origin/<branch>`, use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`. Give the gate and the agents the local `<base>`, and tell the agents the project has no remote.
+- After the commit of the fix, record the green gate on it: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs record-gate --issue <issue>`. The review is recorded again by `/relevo:review`, because a commit after it makes it stale.
+- No `notify` goes to a reviewer, because there is none: tell the person who runs it, and post the comment with `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs comment-add <issue> --body-file <file>`. Leave `recipient` out.
+
 ## What you must never do
 
 - Never edit application code in this session, and never edit anything outside the change folder before the developer has run.
@@ -119,10 +129,10 @@ The script stages the paths, refuses protected paths and files outside the folde
 
 Use what `fix-state.mjs` printed in step 0.
 
-1. If `labels` is not empty, apply it with `gh issue edit` (it returns a `build-failed` issue to `built`, and a `changes-requested` one to `pr-open`). In every other state the labels do not change.
+1. If `labels` is not empty, apply it with `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs state-set <issue> --add <names> --remove <names>` (it returns a `build-failed` issue to `built`, and a `changes-requested` one to `pr-open`). In every other state the labels do not change.
 2. Decide who is told:
    - `notify` is `assignee`: the issue's assignee, with the ask `Your next step: /relevo:review <issue>`.
-   - `notify` is `reviewer`: find the pull request (`gh pr list --head <branch> --json number,reviews`), take the people who requested changes, re-request each one with `gh pr edit <number> --add-reviewer <login>`, and mention them with the ask `please re-review`.
+   - `notify` is `reviewer`: find the pull request (`node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs delivery-get <branch>`, which prints its `number` and `reviews`), take the people who requested changes, re-request each one with `gh pr edit <number> --add-reviewer <login>`, and mention them with the ask `please re-review`.
    - otherwise: mention nobody.
 3. Post one comment built by `node ${CLAUDE_PLUGIN_ROOT}/scripts/render-message.mjs fix_done` with: `issue`, `title`, `iteration` (the number from step 2), `summary` (one line of what changed), `qa` (`QA PASSED`), `commit` (the short hash), and `recipient` and `ask` when someone is told.
 4. If `evidence/review-state.json` exists (a review is in progress), reconcile it with the new specification: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs sync openspec/changes/<change>`. Lines already confirmed stay confirmed, lines that failed are tested again, new scenarios are added, and the log audit and the agreement are repeated. Tell the person to restart the app and resume with `/relevo:review <issue>`, and that they can write `retest <numbers>` for any confirmed line the fix may have affected, because QA only audited this correction.

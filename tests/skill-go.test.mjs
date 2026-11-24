@@ -798,3 +798,36 @@ test('the push of each checkpoint is still a fast-forward without force', () => 
   assert.match(text, /pushing to it is a fast-forward and is fine/);
   assert.match(text, /never force-push/);
 });
+
+// ---------- local-tracker: a files project
+
+test('Scenario: Files project - the skill says how a build with no GitHub and no remote goes', () => {
+  assert.match(body, /## Files project/);
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /tracker.*is `files`/);
+  assert.match(section, /tracker\.mjs/);
+  assert.match(section, /never through `gh`/);
+  assert.match(section, /no `go` label/);
+  assert.match(section, /Never push/);
+  assert.match(section, /not_pushed/);
+  assert.match(section, /Open no pull request/);
+  assert.match(section, /go-plan\.mjs --only <issue> --place local --apply --claim/, 'no --repo');
+});
+
+test('the labels, the issue read and the comments of the build go through the tracker, which works for both trackers', () => {
+  assert.match(body, /tracker\.mjs state-set <issue> --add <names> --remove <names>/);
+  assert.match(body, /tracker\.mjs issue-get <issue> --fields title,body/);
+  assert.doesNotMatch(body, /gh issue edit(?! <issue> --add-label)/, 'the build applies no label with gh directly');
+  assert.doesNotMatch(body, /`gh issue view <issue> --json title,body`/);
+});
+
+test('Scenario: Files project - the skill and its agents read the local base, with no remote', () => {
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /Local refs: this project has no remote/);
+  assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
+  assert.match(section, /`validation-gate\.mjs --base`/);
+  assert.match(section, /git switch -c <branch> <base>/);
+  for (const file of ['agents/dev.md', 'agents/qa-code.md', 'agents/qa-bugs.md', 'agents/qa-security.md', 'agents/qa-spec.md', 'skills/go/references/qa-run.md']) {
+    assert.match(readFileSync(root(file), 'utf8'), /When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin\/<base>`/, file);
+  }
+});
