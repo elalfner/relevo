@@ -9,7 +9,7 @@ Writing code is no longer the slow part. Verifying it is. Relevo puts the agent 
 ```
  spec writer        agent (cloud)           assignee              peer
  ready issues ───►  build + QA     ───►  review on device ───►  approve + merge
- in a milestone     no human wait         fix, open PR          then close the loop
+ by milestone       no human wait         fix, open PR          then close the loop
 ```
 
 - **Specs first.** Detailed, spec-ready issues are the input. The agent builds against them and QA checks the diff against them.

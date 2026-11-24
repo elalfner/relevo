@@ -26,7 +26,6 @@ const REQUIRED = {
   approved: ['recipient', 'issue', 'reviewer'],
   review_reminder: ['reviewer', 'issue', 'pr', 'hours'],
   review_escalation: ['spec_writer', 'issue', 'pr', 'reviewer', 'hours'],
-  no_milestone: ['actor', 'issue'],
   cloud_not_configured: ['actor', 'issue'],
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
@@ -161,11 +160,6 @@ export const CATALOG = {
       '#{{issue}} is ready, but the cloud cannot build it: this repository has no model credential',
       '',
       '@{{actor}} your next step: run `/relevo:go {{issue}}` on your machine, or add the secret ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN so that the cloud can build it. The issue stays ready.',
-    ],
-    no_milestone: [
-      '#{{issue}} was not started: it has no milestone',
-      '',
-      '@{{actor}} your next step: add the issue to a milestone, approve it with ready again, then apply go or run `/relevo:go {{issue}}` on your machine.',
     ],
     no_assignee: [
       '#{{issue}} was not started: it has no assignee',
@@ -407,11 +401,6 @@ export const CATALOG = {
       '#{{issue}} está listo, pero la nube no puede construirlo: este repositorio no tiene una credencial del modelo',
       '',
       '@{{actor}} tu siguiente paso: ejecuta `/relevo:go {{issue}}` en tu máquina, o agrega el secreto ANTHROPIC_API_KEY o CLAUDE_CODE_OAUTH_TOKEN para que la nube pueda construirlo. El issue sigue en ready.',
-    ],
-    no_milestone: [
-      '#{{issue}} no se inició: no tiene milestone',
-      '',
-      '@{{actor}} tu siguiente paso: agrega el issue a un milestone, apruébalo con ready otra vez y luego pon go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
     ],
     no_assignee: [
       '#{{issue}} no se inició: no tiene responsable',

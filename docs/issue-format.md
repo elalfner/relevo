@@ -210,11 +210,12 @@ The line alone changes nothing about how tasks are built. What makes a build a *
 
 ## What `go` also needs from the issue
 
-- **A milestone.** The milestone is the batch the issue belongs to.
 - **An assignee.** That person receives the built work and reviews it on a device.
 - **The ready label**, applied by someone with write access to the repository, once the spec is finished. It is the approval and starts nothing: the build is requested with the `go` label or started with `/relevo:go <n>`. An edit of the title or the body after `ready` withdraws the approval, and the issue has to be approved again.
 
 If any of these is missing, nothing is built and a comment says which one.
+
+**A milestone is optional, and worth having.** It says which batch or cut the issue belongs to, and `/relevo:status` summarises each milestone and warns when the queued work exceeds what the team can review before its due date. `go` builds an issue that has none, and `/relevo:issue` offers the open milestones and accepts `none`.
 
 ## What `go` never does
 

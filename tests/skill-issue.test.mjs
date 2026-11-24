@@ -369,3 +369,9 @@ test('Scenario: Build requested and not answered - ready with go is refused beca
 test('the new text is applied before any label, in a command of its own, so the approval is later than the edit', () => {
   assert.match(reference, /never in the same command as a label/);
 });
+
+test('Scenario: No milestone - "none" is offered, asked once, and the issue is created without --milestone', () => {
+  assert.match(body, /offer `none` next to the open milestones/);
+  assert.match(body, /The milestone is optional: if the person answers `none`, show the draft with no milestone and do not ask again/);
+  assert.match(body, /add `--milestone "<milestone>"` only when the draft has one/);
+});

@@ -795,7 +795,6 @@ test('ready_denied says that ready approves and that both labels were removed', 
 
 test('no message tells a person that applying ready alone builds an issue', () => {
   const samples = {
-    no_milestone: { issue: 42, actor: 'ana' },
     no_assignee: { issue: 42, actor: 'ana' },
     run_failed_early: { ...RUN, job_status: 'failure' },
     run_no_outcome: { ...RUN, situation: 'usage_limit' },
