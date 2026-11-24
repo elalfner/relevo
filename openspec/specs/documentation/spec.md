@@ -180,10 +180,10 @@ The page on self-hosted runners SHALL say, in English and Spanish, what several 
 - **THEN** the page says that two such builds on one machine can collide and that they should not run at the same time
 
 ### Requirement: The number of runners is explained
-The page on self-hosted runners SHALL say that every Relevo workflow runs on the same runners, that the builds that run at once are at most the smaller of `limits.concurrent_agents` and the free runners, and that the runners should outnumber `limits.concurrent_agents` so the pull request checks and the other workflows still find one.
+The page on self-hosted runners SHALL say which jobs run on which runners: every job of the Relevo workflows on `runner.labels`, except the build job on `runner.build_labels` when it is set. It SHALL say that the builds that run at once are at most the smaller of `limits.concurrent_agents` and the free runners that can take a build job, and that when builds share the runners of the other jobs the runners should outnumber `limits.concurrent_agents` so the pull request checks and the other workflows still find one.
 
 #### Scenario: Limit equal to the number of runners
-- **WHEN** a person has three runners and `limits.concurrent_agents` is 3
+- **WHEN** a person has three runners, the builds share them and `limits.concurrent_agents` is 3
 - **THEN** the page tells them that three builds can occupy every runner and hold up the checks and the other workflows
 
 ### Requirement: The limit on concurrent agents is stated honestly
@@ -386,3 +386,33 @@ The guide SHALL say that `ready` approves an issue and starts nothing, that the 
 #### Scenario: Upgrading
 - **WHEN** a person who used an earlier version reads the guide
 - **THEN** it says that `ready` no longer starts a build, and gives the steps of the migration
+
+### Requirement: The guide says what each way to build shows, costs and limits
+The page on where `go` runs SHALL compare the cloud build, the local build and the interactive build: what a person sees while each runs, which limits each has, and what each spends. It SHALL give the command that prints the progress of a build on a machine, and SHALL say that an interactive build has no hard limit of turns or cost.
+
+#### Scenario: Choosing how to build on a machine
+- **WHEN** a person wants to watch a build and to bound what it spends
+- **THEN** the page points to the local build and to the command that prints its progress
+
+#### Scenario: Interactive build
+- **WHEN** a person reads about the interactive build
+- **THEN** the page says that it shows its subagents, runs on the model and the context of the session, and is not cut by a turn or cost limit
+
+#### Scenario: Permission prompts
+- **WHEN** a person asks why an interactive build stops to ask before each command
+- **THEN** the page says whether the skill allows its own tools and, if it does not, how to allow them by hand
+
+### Requirement: The limit of a shared machine is explained
+The page on self-hosted runners SHALL say that `limits.concurrent_agents` limits the builds of one repository, that nothing limits builds across repositories except the number of runners that can take a build job, and how to give builds their own runners with `runner.build_labels`. It SHALL say that runners on one machine share its memory and processors whatever their labels, and that the build runner of an Antigravity build must be Linux x86-64.
+
+#### Scenario: One server, several repositories
+- **WHEN** a person has four runners on one server that every repository uses
+- **THEN** the page says that four builds can start at once there, and how to label one runner for builds so that only one does
+
+#### Scenario: Light jobs on the runners of GitHub
+- **WHEN** a person wants their server to do nothing but build
+- **THEN** the page says to leave `runner.labels` unset and to name the server only in `runner.build_labels`
+
+#### Scenario: The checks of the project
+- **WHEN** a person asks how to keep their pull request checks from waiting behind a build
+- **THEN** the page says that those workflows are the project's, and to give them labels that the build job does not use

@@ -149,7 +149,7 @@ The workflow SHALL accept a build dispatched by the queue workflow, whose actor 
 - **THEN** the agent runner refuses it
 
 ### Requirement: A run that ends without an outcome is reported
-The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `build-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it.
+The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `build-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it. A build job that never started is not such a failure: the issue returns to `queued` instead.
 
 #### Scenario: The plugin cannot be installed
 - **WHEN** the run fails before `go` starts and the issue is still `ready`
@@ -170,6 +170,10 @@ The workflow that runs `go` SHALL end with a step that always runs. When the iss
 #### Scenario: The run recorded its outcome
 - **WHEN** the issue is `built`, `queued`, `blocked`, `needs-spec` or `build-failed` when the job ends
 - **THEN** the final step changes nothing
+
+#### Scenario: The build job never started
+- **WHEN** the issue is `building`, its progress comment still says that the build waits for a runner, and the build job ended
+- **THEN** the issue is returned to `queued` and is not labelled `build-failed`
 
 ### Requirement: Labels follow the run
 `go` SHALL set `queued` while an issue waits for capacity, `building` when its run starts, and `built` when it finishes successfully, removing the previous lifecycle label each time.
@@ -736,11 +740,11 @@ The `urgent` label SHALL be valid only when the person who last applied it has t
 - **THEN** the label is not valid and is removed, as for a person without permission
 
 ### Requirement: A cloud build shows its progress in one comment
-While a cloud build runs, `go` SHALL keep one progress comment on the issue, found by a hidden marker and edited in place. It SHALL NOT add a comment for each step or each check. The comment SHALL show the state now and SHALL NOT accumulate history: the phase of the build, the tasks done out of the total and how long the run has lasted, in whole minutes.
+From the moment a cloud build is claimed, `go` SHALL keep one progress comment on the issue, found by a hidden marker and edited in place. It SHALL NOT add a comment for each step or each check. The comment SHALL show the state now and SHALL NOT accumulate history: that the build waits for a runner until the build job starts, and then the phase of the build, the tasks done out of the total and how long the run has lasted, in whole minutes.
 
 #### Scenario: First report
-- **WHEN** the build job starts the agent
-- **THEN** one progress comment with the marker is created on the issue
+- **WHEN** the decision job claims the issue
+- **THEN** one progress comment with the marker is created on the issue, and it says that the build waits for a runner
 
 #### Scenario: A step finishes
 - **WHEN** the number of tasks done or the phase changes
@@ -749,6 +753,10 @@ While a cloud build runs, `go` SHALL keep one progress comment on the issue, fou
 #### Scenario: Marker already present
 - **WHEN** a progress comment with the marker already exists for the issue
 - **THEN** it is edited and no second one is created
+
+#### Scenario: The build job starts
+- **WHEN** a runner takes the build job
+- **THEN** the same comment is edited to show the phase, and the minutes count from that start
 
 ### Requirement: The phase of the build is announced and checked
 At the start of each step of a build, `go` SHALL announce the phase it enters: planning, specification, development, QA, the new attempt of development or QA with its number out of the allowed retries, and delivery. The announcement SHALL be kept outside the working tree of the repository so that it never appears in the diff of the change. When no announcement has been made, the phase SHALL be deduced from what exists in the working tree, and the progress comment SHALL still be kept.
@@ -1931,3 +1939,78 @@ The queue SHALL act on issues that are `queued` or `blocked`, and on a `ready` i
 #### Scenario: Cloud builds do
 - **WHEN** the limit is 2, two issues are `building` without `local`, and `go` is applied to a third issue
 - **THEN** the third issue is `queued`
+
+### Requirement: The progress shows the group in progress
+The progress of a build, in the comment of a cloud build and in the lines of a local one, SHALL show the group in progress out of the groups of the run. The numbers SHALL be recorded by the scripts that split the tasks into groups and that commit the checkpoint of each group. `go` SHALL announce nothing for it and no turn SHALL be added.
+
+#### Scenario: Second group of three
+- **WHEN** the first checkpoint of a run with three groups was committed and the developer works on the next group
+- **THEN** the progress shows "group 2 of 3"
+
+#### Scenario: One group
+- **WHEN** the change is built as one group
+- **THEN** the progress shows "group 1 of 1"
+
+#### Scenario: A resumed run
+- **WHEN** a run resumes with two groups still pending
+- **THEN** the progress counts the groups of this run, from 1 of 2
+
+#### Scenario: The numbers cannot be recorded
+- **WHEN** the progress folder cannot be written
+- **THEN** the checkpoint is made as today and the progress shows no group
+
+### Requirement: Every launch of the developer is explicit and named
+`go` SHALL launch the developer agent, in every mode, as one call in the foreground, SHALL NOT start it in the background and SHALL NOT end its turn while it runs. The launch of a group SHALL carry a description that names the group and its tasks (`build 2/3: 2.1, 2.2`), and the launch of a correction a description that names its attempt. The usage comment SHALL show that description with the entry of the launch.
+
+#### Scenario: Launch of a group
+- **WHEN** `go` launches the developer for the second of three groups, with tasks 2.1 and 2.2
+- **THEN** the launch is one foreground call whose description is `build 2/3: 2.1, 2.2`
+
+#### Scenario: Usage of a run with three groups
+- **WHEN** the usage comment of that run lists its agents
+- **THEN** the three launches of the developer are told apart by their descriptions
+
+#### Scenario: A replica
+- **WHEN** `go` launches a replica
+- **THEN** its description stays `replica <task id>`, as today
+
+### Requirement: Unmarked tasks are found at their group
+After each group, the script that commits its checkpoint SHALL also say which tasks of that group are still unmarked in `tasks.md`. A task the developer reported it could not finish SHALL be handled as an open question, at that group. For the others `go` SHALL launch the developer once more, for those tasks alone; if any is still unmarked afterwards, the run SHALL take the failure path with the reason `tasks left unfinished` without building the later groups.
+
+#### Scenario: Every task marked
+- **WHEN** the tasks of the group are all marked
+- **THEN** the checkpoint is made and the next group starts
+
+#### Scenario: Unmarked with no reason given
+- **WHEN** task 2.2 is unmarked and the report of the developer has no open question
+- **THEN** the developer is launched once more with task 2.2 alone
+
+#### Scenario: Still unmarked
+- **WHEN** task 2.2 is still unmarked after that launch
+- **THEN** the run ends with `tasks left unfinished`, the work is kept, and group 3 is not built
+
+#### Scenario: Unmarked with a reason
+- **WHEN** the developer reported that task 2.2 cannot be done as specified
+- **THEN** the developer is not launched again for it, and the report is handled as an open question
+
+### Requirement: The build job runs on the build runner
+The build job of the `go` workflow SHALL run on the labels of `runner.build_labels` when it is set, and every other job of that workflow SHALL run on `runner.labels`. How many runners carry the labels of the build job SHALL be how many cloud builds a machine runs at once, across the repositories that use them; a build job that finds none free SHALL wait in the queue of GitHub. The queue of Relevo SHALL NOT look at which runners are free.
+
+#### Scenario: One build runner, two repositories
+- **WHEN** two repositories use the same single build runner and a build is requested in each at the same time
+- **THEN** one build runs and the other waits for the runner, while the light jobs of both run on the other runners
+
+#### Scenario: A build does not hold the light jobs
+- **WHEN** a build is running and a review event arrives
+- **THEN** the job that syncs the label runs at once, on a runner of `runner.labels`
+
+### Requirement: A build that never found a runner returns to the queue
+When the build job of an issue that was claimed ends without having started, because no runner took it, the workflow SHALL return the issue to `queued` and post one comment that says that no runner took the build. It SHALL NOT label it `build-failed`. A build job that started and was then cancelled or cut SHALL be reported as today.
+
+#### Scenario: GitHub cancels a job that waited too long
+- **WHEN** the build job of issue 42 is cancelled while it waits for a runner
+- **THEN** issue 42 is `queued`, one comment says that no runner took the build, and the queue tries again at its next evaluation
+
+#### Scenario: Cancelled while running
+- **WHEN** the build job of issue 42 started, and is then cancelled
+- **THEN** the issue is handled as a run that was cut, not returned to the queue for this reason
