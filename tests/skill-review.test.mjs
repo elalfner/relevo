@@ -477,3 +477,17 @@ test('the Laravel and Supabase steps are unchanged', () => {
   assert.ok(body.includes('A Supabase review asks no confirmation about the database'));
   assert.ok(body.includes('the one entry `FATAL: role "postgres" does not exist` that `supabase db reset` writes'));
 });
+
+test('Scenario: The specification must still fit the base branch - checked after the synchronisation, before QA and the person', () => {
+  const step1 = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('### 2. Start, or resume'));
+  const check = step1.indexOf('scripts/delta-check.mjs --change <change folder name> --base origin/<base> --issue $ARGUMENTS');
+  assert.ok(check > 0, 'the review never runs the delta check');
+  assert.ok(check > step1.indexOf('git merge --no-edit origin/<base>'), 'it runs before the base is merged');
+  assert.ok(check < step1.indexOf('If the merge brought in changes'), 'it runs after QA starts again');
+  const after = step1.slice(check, step1.indexOf('If the merge brought in changes'));
+  assert.match(after, /exits 1/);
+  assert.match(after, /leave the issue as `built`/);
+  assert.match(after, /\/relevo:fix \$ARGUMENTS/);
+  assert.match(after, /ADDED[^.]*MODIFIED/);
+  assert.match(after, /exits 0[^.]*(say nothing|nothing about the specification)/i);
+});

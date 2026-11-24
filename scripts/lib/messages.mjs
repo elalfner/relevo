@@ -46,6 +46,7 @@ const REQUIRED = {
   queued_shared_files: ['issue', 'title', 'file', 'other', 'hours'],
   fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
   ship_stopped: ['actor', 'issue', 'reasons'],
+  ship_retry: ['actor', 'issue', 'reasons'],
   ship_not_approver: ['actor', 'issue'],
   ship_no_ci: ['actor', 'issue'],
   ship_needs_app: ['actor', 'issue', 'base'],
@@ -259,6 +260,12 @@ export const CATALOG = {
       '',
       'Why: {{reasons}}',
       'Nothing was merged and the issue keeps its state; the relevo:ship label was removed. Apply it again once this is solved, or run `/relevo:ship {{issue}}`.',
+    ],
+    ship_retry: [
+      '@{{actor}} #{{issue}} was not shipped',
+      '',
+      'Why: {{reasons}}',
+      'Nothing was merged and the issue keeps its state; the relevo:ship label was removed. Nothing has to change first: apply the label again to retry.',
     ],
     ship_not_approver: [
       '@{{actor}} #{{issue}} was not shipped: you did not approve this pull request',
@@ -499,6 +506,12 @@ export const CATALOG = {
       '',
       'Por qué: {{reasons}}',
       'No se fusionó nada y el issue conserva su estado; se quitó la etiqueta relevo:ship. Vuelve a ponerla cuando esté resuelto, o ejecuta `/relevo:ship {{issue}}`.',
+    ],
+    ship_retry: [
+      '@{{actor}} #{{issue}} no se fusionó',
+      '',
+      'Por qué: {{reasons}}',
+      'No se fusionó nada y el issue conserva su estado; se quitó la etiqueta relevo:ship. Nada tiene que cambiar antes: vuelve a poner la etiqueta para reintentar.',
     ],
     ship_not_approver: [
       '@{{actor}} #{{issue}} no se fusionó: tú no aprobaste este pull request',

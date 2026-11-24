@@ -90,6 +90,7 @@ const SAMPLE = {
   queued_agents: { issue: 1, title: 't', active: 2, active_issues: '#3, #4', ahead: 1, typical_minutes: 30, typical_samples: 5 },
   fix_done: { issue: 1, title: 't', summary: 's', qa: 'ok', commit: 'c', iteration: 1, recipient: 'a', ask: 'check' },
   ship_stopped: { actor: 'a', issue: 1, reasons: 'r' },
+  ship_retry: { actor: 'a', issue: 1, reasons: 'r' },
   ship_not_approver: { actor: 'a', issue: 1, approvers: 'b' },
   ship_no_ci: { actor: 'a', issue: 1 },
   ship_needs_app: { actor: 'a', issue: 1, base: 'dev' },

@@ -1,0 +1,10 @@
+{
+  "archives": false,
+  "clashes": [
+    {
+      "operation": "REMOVED",
+      "header": "alpha",
+      "reason": "variant-exists"
+    }
+  ]
+}

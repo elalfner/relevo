@@ -1,0 +1,10 @@
+{
+  "archives": false,
+  "clashes": [
+    {
+      "operation": "MODIFIED",
+      "header": "Gamma",
+      "reason": "not-found"
+    }
+  ]
+}

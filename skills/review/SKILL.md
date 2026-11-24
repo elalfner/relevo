@@ -91,6 +91,14 @@ If it exits 1, a conflicted file is outside the folder of the platform and the c
 3. Stage what it changed, its new tests included, so that an abort removes them: `git add <the conflicted files and the files it created>`. Then run the QA step below on this uncommitted merge (the working tree against the base branch), with the retries of `qa.retries`: when QA rejects, run `qa-findings.mjs`; if every finding is non-fixable, do not retry; otherwise launch `relevo:dev` in **fix** mode with the report, stage again and run QA again.
 4. If QA passes, commit the merge: `git commit --no-edit`, and go on. If QA still rejects after the retries, or no finding could be fixed by the agent, run `git merge --abort` (it also removes the files that were staged), leave the issue as `built`, show the person what QA found and the files that conflict, and stop. Nothing is pushed in this step.
 
+Whatever the merge brought, check that the specification of the change still fits what the base branch now holds, because a sibling issue that was merged first may have added the same requirement or changed one this change modifies (the archive of the specification would stop on it when this is shipped):
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/delta-check.mjs --change <change folder name> --base origin/<base> --issue $ARGUMENTS
+```
+
+If it exits 1, leave the issue as `built`, show the person what it printed (the capability, the requirement and what the delta must become: an ADDED requirement that already exists is a MODIFIED one with its full text) and stop before QA and before the person tests; the way out is `/relevo:fix $ARGUMENTS`, which updates the specification first. Nothing is pushed. If it exits 0, say nothing about the specification and go on. If it exits 2, show what it printed and stop.
+
 If the merge brought in changes, find the platform of the issue again and resolve its profile and QA skills:
 
 ```bash

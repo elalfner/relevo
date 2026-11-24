@@ -9,6 +9,7 @@ import { shipDecision } from '../scripts/lib/ship.mjs';
 import { findChange, labelRules, runUnattendedShip } from '../scripts/lib/ship-unattended.mjs';
 
 const PLUGIN_ROOT = new URL('..', import.meta.url).pathname;
+const fixture = (path) => readFileSync(join(PLUGIN_ROOT, 'tests/fixtures/delta-check', path), 'utf8');
 const GOOD = [{ __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' }];
 const RELEVO_YML = 'branches:\n  base: dev\nlimits:\n  run_max_cost: 5\nteam:\n  spec_writer: persona-a\n  members: [persona-a, persona-b, persona-c]\n';
 
@@ -31,6 +32,7 @@ function setup(opts = {}) {
   write(seed, 'relevo.yml', RELEVO_YML);
   write(seed, 'lib/main.dart', 'void main() {}\n');
   write(seed, 'openspec/specs/.gitkeep', '');
+  if (opts.mainSpec) write(seed, 'openspec/specs/summary/spec.md', opts.mainSpec);
   gitIn(seed, 'add', '.');
   gitIn(seed, 'commit', '-m', 'init');
   gitIn(seed, 'push', 'origin', 'HEAD:refs/heads/main');
@@ -41,6 +43,7 @@ function setup(opts = {}) {
   write(seed, 'lib/main.dart', 'void main() { print(1); }\n');
   write(seed, 'openspec/changes/31-summary/proposal.md', '# Proposal\n');
   write(seed, 'openspec/changes/31-summary/tasks.md', '## 1. Work\n\n- [x] 1.1 Do it\n');
+  if (opts.delta) write(seed, 'openspec/changes/31-summary/specs/summary/spec.md', opts.delta);
   if (opts.branchConfig) write(seed, 'relevo.yml', opts.branchConfig);
   gitIn(seed, 'add', '.');
   gitIn(seed, 'commit', '-m', 'feat: summary (#31)');
@@ -51,7 +54,7 @@ function setup(opts = {}) {
   gitIn(work, 'config', 'user.name', 'relevo');
   gitIn(work, 'config', 'user.email', 'relevo@example.com');
 
-  const state = { labels: opts.labels ?? ['relevo:pr-open', 'relevo:ship'], issueState: 'OPEN', merged: null, comments: [], edits: [], dispatched: [], pushCalls: [], polls: 0 };
+  const state = { labels: opts.labels ?? ['relevo:pr-open', 'relevo:ship'], issueState: 'OPEN', merged: null, comments: [], edits: [], dispatched: [], pushCalls: [], polls: 0, clock: 0, mergeAttempts: 0 };
   const branchHead = () => {
     try {
       return gitIn(root, '--git-dir', origin, 'rev-parse', 'refs/heads/feature/31-summary');
@@ -59,7 +62,7 @@ function setup(opts = {}) {
       return null;
     }
   };
-  const rollupOf = (oid) => (oid === approved ? opts.approvedChecks ?? GOOD : opts.archiveChecks?.(state) ?? []);
+  const rollupOf = (oid) => (oid === approved ? (typeof opts.approvedChecks === 'function' ? opts.approvedChecks(state) : opts.approvedChecks ?? GOOD) : opts.archiveChecks?.(state) ?? []);
   const pr = () => ({
     number: 40, state: state.merged ? 'MERGED' : 'OPEN', isDraft: false, mergeable: opts.mergeable?.(state) ?? 'MERGEABLE', title: 'Summary screen (#31)',
     author: { login: 'persona-b' },
@@ -117,6 +120,8 @@ function setup(opts = {}) {
     state.pushCalls.push(args);
     const joined = args.join(' ');
     if (joined.startsWith('pr merge')) {
+      state.mergeAttempts += 1;
+      if (state.mergeAttempts <= (opts.movedBaseTimes ?? 0)) throw Object.assign(new Error('merge refused'), { stderr: 'GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)' });
       if (opts.refuseMerge) throw Object.assign(new Error('merge refused'), { stderr: opts.refuseMerge });
       const pinned = args[args.indexOf('--match-head-commit') + 1];
       if (pinned !== branchHead()) throw Object.assign(new Error('head moved'), { stderr: 'Head branch was modified' });
@@ -146,7 +151,7 @@ function setup(opts = {}) {
   let clock = 0;
   const ctx = (over = {}) => ({
     repo: 'o/r', issue: '31', actor: 'persona-c', actorType: 'User', hasApp: false, workDir: work, pluginRoot: PLUGIN_ROOT,
-    sh, gh, pushGh, sleep: async (ms) => { clock += ms; }, now: () => clock, headPollMs: 1, ...over,
+    sh, gh, pushGh, sleep: async (ms) => { clock += ms; state.clock = clock; }, now: () => clock, headPollMs: 1, ...over,
   });
   return { root, origin, seed, work, state, approved, branchHead, ctx };
 }
@@ -245,7 +250,7 @@ test('Scenario: Mergeability never computed - nothing merged, label removed, the
   assert.equal(s.state.merged, null);
   assert.ok(!s.state.labels.includes('relevo:ship'), 'the label was removed');
   assert.match(s.state.comments.at(-1), /never settled/);
-  assert.match(s.state.comments.at(-1), /Apply the label again/);
+  assert.match(s.state.comments.at(-1), /apply the label again to retry/i);
   assert.equal(s.branchHead(), s.approved, 'nothing was archived');
 });
 
@@ -391,6 +396,147 @@ test('Scenario: Invalid specification - stops before archiving and shows the fai
   assert.equal(out.outcome, 'stopped');
   assert.match(s.state.comments[0], /Change 31-summary has issues/);
   assert.equal(s.branchHead(), s.approved);
+});
+
+// ---------- waiting for the checks of the approved head
+
+const RUNNING = [{ __typename: 'CheckRun', name: 'test', status: 'IN_PROGRESS', conclusion: null }];
+const FAILED = [{ __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'FAILURE' }];
+
+test('Scenario: Checks finish while the run waits - the label stays and the run merges', async () => {
+  const seen = [];
+  const s = setup({
+    approvedChecks: (st) => {
+      if (st.polls < 4) {
+        seen.push([...st.labels]);
+        return RUNNING;
+      }
+      return GOOD;
+    },
+  });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'merged', JSON.stringify(out));
+  assert.ok(seen.length >= 2, 'it read the pull request again while the checks were running');
+  assert.ok(seen.every((labels) => labels.includes('relevo:ship')), 'the label stayed while it waited');
+  assert.equal(s.state.merged, s.branchHead());
+});
+
+test('Scenario: A check fails while the run waits - it stops and names the check', async () => {
+  const s = setup({ approvedChecks: (st) => (st.polls < 3 ? RUNNING : FAILED) });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.match(s.state.comments.at(-1), /checks are failing: test/);
+  assert.equal(s.state.merged, null);
+  assert.ok(!s.state.labels.includes('relevo:ship'), 'the label was removed');
+});
+
+test('Scenario: Another reason to stop besides the running checks - it does not wait and gives every reason', async () => {
+  const s = setup({ approvedChecks: RUNNING, mergeable: () => 'CONFLICTING' });
+  let slept = 0;
+  const out = await runUnattendedShip(s.ctx({ sleep: async () => { slept += 1; } }));
+  assert.equal(out.outcome, 'stopped');
+  assert.equal(slept, 0, 'no wait for checks that cannot help');
+  assert.match(s.state.comments.at(-1), /has conflicts/);
+  assert.match(s.state.comments.at(-1), /checks are still running: test/);
+});
+
+test('Scenario: Checks that never finish - the run stops, names them and says that the label again retries', async () => {
+  const s = setup({ approvedChecks: RUNNING });
+  const out = await runUnattendedShip(s.ctx({ waitLimitMs: 5 * 60 * 1000 }));
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.equal(s.state.merged, null);
+  assert.ok(!s.state.labels.includes('relevo:ship'), 'the label was removed');
+  assert.match(s.state.comments.at(-1), /checks are still running: test/);
+  assert.match(s.state.comments.at(-1), /5 minutes/);
+  assert.match(s.state.comments.at(-1), /apply the label again to retry/i);
+  assert.equal(s.branchHead(), s.approved, 'nothing was archived');
+});
+
+test('Scenario: Long waits add up - the wait after the archive ends with the shared limit', async () => {
+  const s = setup({
+    requiredChecks: true,
+    approvedChecks: (st) => (st.clock < 10 * 60 * 1000 ? RUNNING : GOOD),
+    archiveChecks: () => RUNNING,
+  });
+  const out = await runUnattendedShip(s.ctx({ hasApp: true, waitLimitMs: 15 * 60 * 1000 }));
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.match(s.state.comments.at(-1), /did not finish within 15 minutes/);
+  assert.ok(s.state.clock < 16 * 60 * 1000, `the waits shared one limit, but the clock reached ${s.state.clock / 60000} minutes`);
+});
+
+// ---------- a merge refused because the base branch moved
+
+test('Scenario: Another pull request entered the base a moment before - the second attempt merges', async () => {
+  const s = setup({ movedBaseTimes: 1 });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'merged', JSON.stringify(out));
+  assert.equal(s.state.mergeAttempts, 2);
+  assert.equal(s.state.merged, s.branchHead());
+  assert.equal(s.state.issueState, 'CLOSED');
+});
+
+test('Scenario: The base change conflicts with the pull request - the second reading stops with the conflict', async () => {
+  const s = setup({ movedBaseTimes: 1, mergeable: (st) => (st.mergeAttempts >= 1 ? 'CONFLICTING' : 'MERGEABLE') });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.equal(s.state.mergeAttempts, 1, 'no second attempt on a conflicting pull request');
+  assert.match(s.state.comments.at(-1), /has conflicts/);
+  assert.equal(s.state.merged, null);
+  assert.ok(!s.state.labels.includes('relevo:ship'));
+});
+
+test('Scenario: The second merge is also refused - it stops with GitHub\'s message and never tries a third time', async () => {
+  const s = setup({ movedBaseTimes: 5 });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.equal(s.state.mergeAttempts, 2);
+  assert.match(s.state.comments.at(-1), /GitHub refused the merge again: GraphQL: Base branch was modified/);
+  assert.match(s.state.comments.at(-1), /apply the label again to retry/i);
+  assert.ok(!s.state.labels.includes('relevo:ship'));
+  assert.equal(s.state.issueState, 'OPEN');
+});
+
+test('Scenario: Any other refusal of the merge is not retried', async () => {
+  const s = setup({ refuseMerge: 'Resource not accessible by integration (HTTP 403)' });
+  await runUnattendedShip(s.ctx());
+  assert.equal(s.state.mergeAttempts, 1);
+  assert.doesNotMatch(s.state.comments.at(-1), /apply the label again to retry/i);
+});
+
+// ---------- the delta must fit the base before anything is archived
+
+test('Scenario: Clash found in an unattended ship - stops before archiving and says that the label again does not help', async () => {
+  const s = setup({ mainSpec: fixture('added-exists-other-text/main.md'), delta: fixture('added-exists-other-text/delta.md') });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'stopped', JSON.stringify(out));
+  assert.equal(s.branchHead(), s.approved, 'nothing was archived or pushed');
+  assert.equal(s.state.merged, null);
+  assert.equal(s.state.pushCalls.length, 0);
+  assert.ok(!s.state.labels.includes('relevo:ship'), 'the label was removed');
+  const comment = s.state.comments.at(-1);
+  assert.match(comment, /summary: ADDED "Alpha" already exists/);
+  assert.match(comment, /\/relevo:fix 31/);
+  assert.match(comment, /applying the label again does not help until the specification is corrected/i);
+  assert.doesNotMatch(comment, /apply the label again to retry/i);
+});
+
+test('Scenario: No clash - a delta that fits is archived as before', async () => {
+  const s = setup({ mainSpec: fixture('added-new/main.md'), delta: fixture('added-new/delta.md') });
+  const out = await runUnattendedShip(s.ctx());
+  assert.equal(out.outcome, 'merged', JSON.stringify(out));
+});
+
+test('a change already archived by an earlier run is not checked again', async () => {
+  // The first run archives and stops on the checks of the archive commit; the second finds the change archived, whose
+  // delta now sits in the main specification and would clash with itself.
+  const running = [{ __typename: 'CheckRun', name: 'test', status: 'IN_PROGRESS', conclusion: null }];
+  let done = false;
+  const s = setup({ requiredChecks: true, mainSpec: fixture('added-new/main.md'), delta: fixture('added-new/delta.md'), archiveChecks: () => (done ? GOOD : running) });
+  assert.equal((await runUnattendedShip(s.ctx({ hasApp: true }))).outcome, 'stopped');
+  done = true;
+  s.state.labels.push('relevo:ship');
+  const second = await runUnattendedShip(s.ctx({ hasApp: true }));
+  assert.equal(second.outcome, 'merged', JSON.stringify(second));
 });
 
 test('Scenario: Merge refused - GitHub\'s reason is reported and nothing is retried', async () => {
