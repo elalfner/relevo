@@ -217,12 +217,13 @@ test('Scenario: Restricted files - init shows the exact entries and writes them 
 });
 
 test('the commands of the person who writes issues reach GitHub through the REST-capable script, not through gh issue or gh repo', () => {
-  assert.ok(existsSync(new URL('../scripts/gh-web.mjs', import.meta.url)), 'the script the skills run exists');
+  assert.ok(existsSync(new URL('../scripts/gh-web.mjs', import.meta.url)) && existsSync(new URL('../scripts/tracker.mjs', import.meta.url)), 'the scripts the skills run exist');
   const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
   for (const path of ['skills/issue/SKILL.md', 'skills/issue/references/update.md', 'skills/think/SKILL.md']) {
     const text = read(path);
     assert.doesNotMatch(text, /`gh (issue|repo|label) /, `${path} still calls gh issue/repo/label directly`);
-    assert.match(text, /scripts\/gh-web\.mjs/, `${path} names the script`);
+    // The issue commands go through the tracker, whose GitHub client answers over REST in a web session; a skill may also name gh-web.mjs.
+    assert.match(text, /scripts\/(gh-web|tracker)\.mjs/, `${path} names the script`);
   }
   const status = read('skills/status/SKILL.md');
   assert.doesNotMatch(status, /`gh repo view/);
@@ -248,4 +249,37 @@ test('Scenario: the credential is taken from the secret when unanswered, a contr
   assert.match(init, /leaves this unanswered, `init` takes the credential from the model secret that exists/);
   assert.match(init, /contradicts the only secret that exists is shown in the plan/);
   assert.match(doctor, /`execution\.credential-line`/);
+});
+
+// ---------- local-tracker: a local project
+
+test('Scenario: Empty folder - init --local is a whole flow with no GitHub, asks only what the setup cannot answer and applies after a yes', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  assert.match(init, /argument-hint: "\[--local\]"/);
+  const section = init.split('## Local project (`--local`)')[1].split('\n## ')[0];
+  assert.match(section, /\*\*no GitHub\*\*: no `gh`, no remote, no labels, no workflows, no rulesets and no secrets/);
+  assert.match(section, /Do not run the preflight of step 1/);
+  assert.match(section, /the \*\*platform\*\*.*the \*\*cost limit\*\*.*the \*\*language\*\*/);
+  assert.match(section, /The base branch is the current branch of an existing repository, or `main` for a new one: do not ask it/);
+  assert.match(section, /init-local\.mjs plan --answers <file>/);
+  assert.match(section, /Without it, change nothing/);
+  assert.match(section, /init-local\.mjs apply --answers <file>/);
+  assert.match(section, /Running it again lists only what differs/);
+  assert.ok(section.indexOf('plan --answers') < section.indexOf('apply --answers'));
+});
+
+test('Scenario: No remote - doctor says that a local project is judged by what it needs and mentions no GitHub check', () => {
+  const doctor = readFileSync(new URL('../skills/doctor/SKILL.md', import.meta.url), 'utf8');
+  const section = doctor.split('## A local project')[1].split('\n## ')[0];
+  assert.match(section, /`tracker` in `relevo\.yml` is `files`/);
+  assert.match(section, /never reports, GitHub, labels, rulesets, secrets, workflows or a remote/);
+  assert.match(section, /Do not mention them or suggest `gh auth login`/);
+});
+
+test('init --local makes only the first commit of a new repository, and says why relevo.yml must be committed', () => {
+  const init = readFileSync(new URL('../skills/init/SKILL.md', import.meta.url), 'utf8');
+  const section = init.split('## Local project (`--local`)')[1].split('\n## ')[0];
+  assert.match(section, /The only commit it makes is the first one of a repository that had none/);
+  assert.match(section, /the one exception to "Never commit or push" below/);
+  assert.match(section, /`doctor` fails until `relevo\.yml` is committed there/);
 });

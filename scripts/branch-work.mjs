@@ -5,6 +5,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { hasImplementation } from './lib/branch-work.mjs';
+import { readLocal } from './lib/base-ref.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -17,7 +18,7 @@ if (!base || !change || change.includes('/')) {
   console.error('usage: branch-work.mjs --base <branch> --change <change folder name>');
   process.exit(2);
 }
-const paths = execFileSync('git', ['diff', '--name-only', `origin/${base}...HEAD`], { encoding: 'utf8' }).split('\n').filter(Boolean);
+const paths = execFileSync('git', ['diff', '--name-only', `${readLocal() ? '' : 'origin/'}${base}...HEAD`], { encoding: 'utf8' }).split('\n').filter(Boolean);
 const result = hasImplementation(paths, `openspec/changes/${change}`);
 console.log(JSON.stringify(result));
 if (!result.implementation) {

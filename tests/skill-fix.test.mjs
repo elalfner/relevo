@@ -151,3 +151,26 @@ test('Scenario: Corrections of an iteration - the developer is launched once, in
   assert.match(body, /`description` `fix iteration <k>` \(for example `fix iteration 2`/);
   assert.match(body, /goes back to `relevo:dev` in \*\*fix\*\* mode with the end of its output/);
 });
+
+// ---------- local-tracker: a files project
+
+test('Scenario: Files project - fix works on a local branch with no remote, no pull request and no gh', () => {
+  const text = readFileSync(new URL('../skills/fix/SKILL.md', import.meta.url), 'utf8');
+  assert.match(text, /## Files project/);
+  const section = text.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /tracker.*is `files`/);
+  assert.match(section, /never through `gh`/);
+  assert.match(section, /git branch --list "feature\/<issue>-\*"/);
+  assert.match(section, /Never push/);
+  assert.match(section, /comment-add/);
+  assert.match(text, /tracker\.mjs state-set <issue> --add <names> --remove <names>/);
+  assert.match(text, /tracker\.mjs delivery-get <branch>/);
+  assert.doesNotMatch(text, /gh issue edit/);
+});
+
+test('Scenario: Files project - the fix skill reads the local base and pushes nothing, with no remote', () => {
+  const skill = readFileSync(new URL('../skills/fix/SKILL.md', import.meta.url), 'utf8');
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /Local refs: this project has no remote/);
+  assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
+});

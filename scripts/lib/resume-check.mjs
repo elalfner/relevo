@@ -6,7 +6,7 @@
 // a finding and belongs to `fix`); and the tip carries the hash of the issue text, which has not changed since.
 //
 // `git(args) -> stdout` is injected so the logic can be tested. The refs `origin/<base>` and `origin/<branch>` are read
-// as they are; the command-line wrapper fetches them first.
+// as they are; the command-line wrapper fetches them first. In a files project (`local`) the branches are the local ones.
 
 import { isCheckpoint, isOwnCommit, issueHashOf, wipSubject } from './wip-commit.mjs';
 
@@ -18,16 +18,16 @@ const REF = /^[A-Za-z0-9._/-]+$/;
  *   resume    the run may continue from it
  *   existing  it may not: `reason` says why
  */
-export function resumeState({ git, base, branch, issue, issueHash }) {
+export function resumeState({ git, base, branch, issue, issueHash, local = false }) {
   if (![base, branch].every((r) => typeof r === 'string' && REF.test(r) && !r.includes('..'))) return { state: 'existing', reason: 'the base or the branch is not a plain name' };
   try {
-    git(['rev-parse', '--verify', '-q', `refs/remotes/origin/${branch}`]);
+    git(['rev-parse', '--verify', '-q', local ? `refs/heads/${branch}` : `refs/remotes/origin/${branch}`]);
   } catch {
     return { state: 'absent', reason: null };
   }
   let log;
   try {
-    log = git(['log', '--format=%H%x1f%s%x1f%b%x1e', `origin/${base}..origin/${branch}`]);
+    log = git(['log', '--format=%H%x1f%s%x1f%b%x1e', local ? `${base}..${branch}` : `origin/${base}..origin/${branch}`]);
   } catch (error) {
     return { state: 'existing', reason: `git could not read the branch: ${String(error.message).split('\n')[0].slice(0, 160)}` };
   }

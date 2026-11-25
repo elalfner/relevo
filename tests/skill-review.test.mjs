@@ -478,6 +478,39 @@ test('the Laravel and Supabase steps are unchanged', () => {
   assert.ok(body.includes('the one entry `FATAL: role "postgres" does not exist` that `supabase db reset` writes'));
 });
 
+// ---------- local-tracker: a files project
+
+test('Scenario: Files project - the review is of the branch, records its result and opens no pull request', () => {
+  const skill = readFileSync(new URL('../skills/review/SKILL.md', import.meta.url), 'utf8');
+  assert.match(skill, /## Files project/);
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /`tracker` in `relevo\.yml` is `files`/);
+  assert.match(section, /never through `gh`/);
+  assert.match(section, /git branch --list "feature\/\$ARGUMENTS-\*"/);
+  assert.match(section, /Run no `git fetch` and no `git pull`/);
+  assert.match(section, /ship-local\.mjs record-review --issue \$ARGUMENTS --result passed/);
+  assert.match(section, /--result failed/);
+  assert.match(section, /Push nothing, pick no reviewer, move no label to `pr-open`/);
+  assert.match(section, /\/relevo:ship \$ARGUMENTS/);
+  assert.match(skill, /tracker\.mjs state-set <issue> --add <names> --remove <names>/);
+  assert.match(skill, /tracker\.mjs issue-get \$ARGUMENTS --fields title,body,comments/);
+});
+
+test('Scenario: Files project - the review skill reads the local base and pushes nothing, with no remote', () => {
+  const skill = readFileSync(new URL('../skills/review/SKILL.md', import.meta.url), 'utf8');
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /Local refs: this project has no remote/);
+  assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
+});
+
+test('Scenario: Files project - review records the gate again after synchronising, so ship does not refuse the merge it made', () => {
+  const skill = readFileSync(new URL('../skills/review/SKILL.md', import.meta.url), 'utf8');
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /ship-local\.mjs record-gate --issue \$ARGUMENTS/);
+  assert.match(section, /run only the validation gate/);
+  assert.match(section, /ask the person before installing/);
+});
+
 test('Scenario: The specification must still fit the base branch - checked after the synchronisation, before QA and the person', () => {
   const step1 = body.slice(body.indexOf('### 1. Synchronise with the base branch'), body.indexOf('### 2. Start, or resume'));
   const check = step1.indexOf('scripts/delta-check.mjs --change <change folder name> --base origin/<base> --issue $ARGUMENTS');

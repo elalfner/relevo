@@ -135,6 +135,22 @@ Connect the phone or start the emulator, and start the app (`flutter run`). The 
 - **You should see**: a summary of the pull request and what will happen, then a question for a written yes. After your yes it archives the specification, merges the pull request into the integration branch, closes the issue and removes the labels.
 - **If not**: if it says checks are running or failing, wait or fix them and run it again; if it says the issue is not ready, run the command it names. Promoting the integration branch to the release branch is a separate pull request. See the [Guide](guide.md).
 
+## Without GitHub: a project of one person
+
+For a prototype you do not need a repository on GitHub. With `tracker: files` and `git_provider: local` in `relevo.yml`, one person works on a local git repository with no remote:
+
+- An issue is a file, `.relevo/issues/<n>.md`, with the same sections as any issue. It is committed once, when you approve it.
+- Its state (`ready`, `building`, `built`), its comments and the hash of the approved text stay on this machine, inside the `.git` folder. They are never committed and a change of state creates no commit.
+- Nobody else reviews it: there are no roles, assignees, milestones or queue, and an issue can depend only on another issue of the same project.
+
+```
+tracker: files
+git_provider: local
+depth: prototype
+```
+
+The state is not shared: another clone of the repository starts with none, and an issue returns to `ready` by approving it again. Everything else works as in the steps above.
+
 ## What next
 
 - Work with other people: set `review.mode` to `peer` and list the team in [Configuration](configuration.md); the [Guide](guide.md) says who does what at each state.

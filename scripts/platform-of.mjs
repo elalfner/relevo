@@ -5,11 +5,11 @@
 // Output: { platform, stack, path, targets }. `fix` and `review` use it to find the stack again from the issue text.
 //   exit 0: printed   exit 1: the platform cannot be resolved (the reason is on stderr)   exit 2: bad usage or invalid relevo.yml
 
-import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { resolvePlatform } from './lib/platform-of.mjs';
+import { loadTracker } from './lib/tracker/load.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -34,10 +34,8 @@ if (arg('input')) {
     fail(`cannot read ${arg('input')}: ${err.message}`, 2);
   }
 } else if (arg('issue')) {
-  const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
-  const args = ['issue', 'view', arg('issue'), '--json', 'body', '--jq', '.body', ...(repo ? ['--repo', repo] : [])];
   try {
-    body = execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    body = loadTracker({ configPath, repo: arg('repo') ?? null }).tracker.issueGet(arg('issue'), 'body').body ?? '';
   } catch (err) {
     fail(`cannot read issue ${arg('issue')}: ${String(err.stderr ?? err.message).trim()}`, 2);
   }

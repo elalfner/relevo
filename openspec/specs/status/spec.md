@@ -257,3 +257,33 @@ Where the cloud cannot build (the `go` workflow is not installed, no model crede
 #### Scenario: Request during a pause
 - **WHEN** `RELEVO_CLOUD_GO` is `off` and issue 42 is `ready` with `go`
 - **THEN** `status` says that the cloud is paused and that the request of issue 42 is served when it resumes
+
+### Requirement: Status shows the builds of this machine
+`status` SHALL list the builds of the repository that are running on the machine where it is run, with the issue, the phase, the group, the tasks done, the minutes and when the progress last changed. It SHALL read them from the state kept beside the worktrees and SHALL NOT interrupt them. It SHALL NOT claim to show the builds of other machines.
+
+#### Scenario: A build running here
+- **WHEN** issue 42 is being built on this machine and the person runs `status`
+- **THEN** a section shows issue 42 with its phase, "group 2 of 3", its tasks and its minutes
+
+#### Scenario: Nothing running here
+- **WHEN** no build of the repository runs on this machine
+- **THEN** the section is not shown
+
+#### Scenario: A build on another machine
+- **WHEN** issue 43 is `building` with `local` and its state is not on this machine
+- **THEN** `status` lists it as an issue being built, without progress
+
+### Requirement: Status tells a build that waits for a runner from one that stopped
+When an issue has been `building` longer than `limits.building_alert_hours` and its build job has not started, `status` SHALL report it as waiting for a runner, with the hours, and SHALL NOT report it as a build that stopped reporting. It SHALL say what to do: look at the build runners, or build the issue on a machine. It SHALL NOT tell the person to restart the build.
+
+#### Scenario: Long wait
+- **WHEN** issue 42 was claimed four hours ago, the alert time is 3 hours and its build job has not started
+- **THEN** `status` says that issue 42 has waited four hours for a runner and gives the two ways forward
+
+#### Scenario: Short wait
+- **WHEN** the issue has waited less than the alert time
+- **THEN** there is no alert
+
+#### Scenario: A build that started and went silent
+- **WHEN** the build job started and the issue has had no activity for longer than the alert time
+- **THEN** the alert is the one of a build that stopped reporting

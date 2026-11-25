@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Says what a feature branch on the remote holds. Usage:
+// Says what a feature branch on the remote (the local branch, in a files project) holds. Usage:
 //   node scripts/branch-state.mjs <base> <branch> <change_id>
 // Prints one word: absent (no such branch), empty, spec-only or implementation.
 // spec-only means every changed path is under openspec/changes/<change_id>/.
@@ -11,6 +11,10 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { probeMerge } from './lib/merge-probe.mjs';
 import { classifyBranchChanges } from './lib/branch.mjs';
+import { readLocal } from './lib/base-ref.mjs';
+
+// A files project reads its own branches and fetches nothing.
+const local = readLocal();
 
 const args = process.argv.slice(2);
 if (args[0] === '--merge') {
@@ -19,14 +23,16 @@ if (args[0] === '--merge') {
     console.error('usage: branch-state.mjs --merge <base> <branch>');
     process.exit(2);
   }
-  try {
-    execFileSync('git', ['fetch', '--quiet', 'origin', base, branch], { stdio: 'ignore' });
-  } catch {
-    console.log(JSON.stringify({ result: 'unknown', files: [] }));
-    process.exit(0);
+  if (!local) {
+    try {
+      execFileSync('git', ['fetch', '--quiet', 'origin', base, branch], { stdio: 'ignore' });
+    } catch {
+      console.log(JSON.stringify({ result: 'unknown', files: [] }));
+      process.exit(0);
+    }
   }
   const run = (...a) => spawnSync('git', a, { encoding: 'utf8' });
-  console.log(JSON.stringify(probeMerge(run, `origin/${base}`, `origin/${branch}`)));
+  console.log(JSON.stringify(local ? probeMerge(run, base, branch) : probeMerge(run, `origin/${base}`, `origin/${branch}`)));
   process.exit(0);
 }
 const [base, branch, id] = args;
@@ -38,14 +44,23 @@ const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['
 
 try {
   // The branch may not exist: fetching it then fails, which is the answer.
-  try {
-    git('fetch', '--quiet', 'origin', base, branch);
-  } catch {
-    git('fetch', '--quiet', 'origin', base);
-    console.log('absent');
-    process.exit(0);
+  if (local) {
+    try {
+      git('rev-parse', '--verify', '-q', `refs/heads/${branch}`);
+    } catch {
+      console.log('absent');
+      process.exit(0);
+    }
+  } else {
+    try {
+      git('fetch', '--quiet', 'origin', base, branch);
+    } catch {
+      git('fetch', '--quiet', 'origin', base);
+      console.log('absent');
+      process.exit(0);
+    }
   }
-  const paths = git('diff', '--name-only', `origin/${base}...origin/${branch}`).split('\n');
+  const paths = git('diff', '--name-only', local ? `${base}...${branch}` : `origin/${base}...origin/${branch}`).split('\n');
   console.log(classifyBranchChanges(paths, id));
 } catch (err) {
   console.error(`could not read the branch: ${(err.stderr || err.message).toString().trim()}`);

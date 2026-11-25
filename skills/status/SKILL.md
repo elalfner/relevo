@@ -15,6 +15,10 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 - Never run `gh issue edit`, `gh issue comment`, `gh pr edit`, `gh label` or anything else that writes. Only the script below runs, and it only reads.
 - Never invent a due date, a capacity or an age. Show what the script prints.
 
+## Files project
+
+When `tracker` in `relevo.yml` is `files`, there is one person, no GitHub and no remote. Run the preflight of step 1 without its GitHub check, skip step 2, and run `node ${CLAUDE_PLUGIN_ROOT}/scripts/status.mjs` with no `--repo`. It lists the open issues from `.relevo/issues/` by state with the command that moves each one, and the local branches waiting to be shipped. It reports no reviewers, review deadlines, milestones or capacity, because none exist: do not add them. Show the output as it is.
+
 ## Steps
 
 1. Preflight: `node ${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.mjs relevo.yml` must exit 0. If not, show its output and stop. `node ${CLAUDE_PLUGIN_ROOT}/scripts/gh-web.mjs --access` must succeed (on a terminal it is `gh auth status`; in a session on the web, where GraphQL is blocked, it reads the repository over the REST API); if not, show its message, which names the cause.

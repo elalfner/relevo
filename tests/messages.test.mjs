@@ -873,3 +873,18 @@ test('a partial push after a protected-path refusal does not claim that nothing 
   assert.doesNotMatch(en, /nothing was pushed/);
   assert.match(en, /groups 1-3 of 4 pushed/);
 });
+
+test('Scenario: a project with no GitHub - local true leaves every mention out and needs no assignee or spec writer', () => {
+  const failed = renderMessage('build_failed', { local: true, issue: 1, title: 'Counter', finding: 'f', branch: 'b' });
+  assert.doesNotMatch(failed, /@/);
+  assert.match(failed, /^#1 "Counter" failed QA/);
+  const back = renderMessage('needs_spec', { local: true, issue: 1, title: 'Counter', missing: 'x' }, 'es');
+  assert.doesNotMatch(back, /@/);
+  assert.match(back, /^#1 "Counter" regresa contigo/);
+  assert.match(renderMessage('built', { local: true, issue: 1, title: 'Counter', tasks_done: 1, tasks_total: 1, branch: 'b', scenarios: 2 }), /^#1 "Counter" is built/);
+});
+
+test('without local, a missing assignee is still an error and the mention stays', () => {
+  assert.throws(() => renderMessage('build_failed', { issue: 1, title: 'Counter', finding: 'f', branch: 'b' }), /needs "assignee"/);
+  assert.match(renderMessage('build_failed', { assignee: 'ana', issue: 1, title: 'Counter', finding: 'f', branch: 'b' }), /^@ana #1/);
+});

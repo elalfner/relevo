@@ -34,6 +34,8 @@ import { planGo, withoutCredential } from './lib/plan.mjs';
 import { resolveLabelNames } from './lib/labels.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { readBranchKind, retryRefusal } from './lib/retry-refusal.mjs';
+import { applyFiles, planFiles } from './lib/plan-files.mjs';
+import { loadTracker } from './lib/tracker/load.mjs';
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -53,6 +55,19 @@ const { config } = loaded;
 
 const place = arg('place') ?? 'cloud';
 if (!['cloud', 'local'].includes(place)) fail('--place must be cloud or local');
+
+// A files project has one person and builds on this machine: no repository, no cloud, no team gates.
+if (config.tracker === 'files') {
+  if (place !== 'local') fail('a files project builds only on this machine: use --place local');
+  const only = arg('only') ? Number(arg('only')) : null;
+  if (flag('claim') && !Number.isInteger(only)) fail('--claim needs --only <issue>: it marks one issue as building');
+  const { tracker } = loadTracker({ configPath });
+  const branchOf = (n) => { try { return execFileSync('git', ['branch', '--list', `feature/${n}-*`], { encoding: 'utf8' }).trim() !== ''; } catch { return false; } };
+  const result = planFiles({ config, tracker, only: Number.isInteger(only) ? only : null, retry: flag('retry'), hasBranch: branchOf });
+  if (flag('apply') || flag('claim')) result.applied = applyFiles(result.decisions, { tracker, includeStart: flag('claim') });
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(0);
+}
 
 const retryIssue = flag('retry') ? Number(arg('only')) : null;
 if (flag('retry') && !Number.isInteger(retryIssue)) fail('--retry needs --only <issue>: it retries one issue');

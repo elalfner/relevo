@@ -10,7 +10,7 @@ You are given by the skill that sent you here: the change folder `openspec/chang
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/intent-to-add.mjs <files the developer reported>
-node ${CLAUDE_PLUGIN_ROOT}/scripts/long-run.mjs start --id gate -- node ${CLAUDE_PLUGIN_ROOT}/scripts/validation-gate.mjs --base origin/<base> --platform <platform> --files <the same files, comma separated>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/long-run.mjs start --id gate -- node ${CLAUDE_PLUGIN_ROOT}/scripts/validation-gate.mjs --base origin/<base> --platform <platform> --files <the same files, comma separated> When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin/<base>`.
 node ${CLAUDE_PLUGIN_ROOT}/scripts/long-run.mjs wait --id gate --tail 2
 ```
 
@@ -82,7 +82,7 @@ The `advisory` list of the output holds the findings of the `interface` lens on 
 
 ## The tests of the developer, and what the gate reuses
 
-The developer runs the full suite once, at the end, as the `test` check of the profile: `node <long-run.mjs path> start --id test --check test --base origin/<base> --platform <platform>`, then `wait --id test` until it stops saying `running` (`go` gives it the resolved path). The command comes from the profile, not from the developer. When it passes on a diff that did not change while it ran, the gate that follows does not run it again; the seconds of each check, with `reused`, go to the comment of the run from the receipt. Nothing records a result without a run.
+The developer runs the full suite once, at the end, as the `test` check of the profile: `node <long-run.mjs path> start --id test --check test --base origin/<base> --platform <platform>`, then `wait --id test` until it stops saying `running` (`go` gives it the resolved path). The command comes from the profile, not from the developer. When it passes on a diff that did not change while it ran, the gate that follows does not run it again; the seconds of each check, with `reused`, go to the comment of the run from the receipt. Nothing records a result without a run. When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin/<base>`.
 
 ## What this guards
 

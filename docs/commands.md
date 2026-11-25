@@ -215,6 +215,19 @@ By default the person does everything in `review` and the agent only observes. W
 - **The issue must be `pr-open`**, and `ship` names the missing command (`/relevo:review` or `/relevo:fix`) otherwise. The change is validated and has no open task before it is archived.
 - **Who runs `ship`.** With `review.merger: approver`, a member of `team.members` who is not the author or the spec writer (and, in `roles` mode, one of `team.approvers`). Someone eligible who did not approve confirms in writing that they did not.
 
+## Review and ship without a pull request
+
+With `tracker: files` there is no pull request, so the same commands end differently:
+
+- **`/relevo:review <n>`** reviews the local branch of the issue against the base branch, with the same steps. When it passes it records the result with `scripts/ship-local.mjs record-review`; it opens no pull request and picks no reviewer.
+- **`/relevo:ship <n>`** archives the specification on the branch and squash-merges it into the base branch as one commit, after your written yes. It stops, changing nothing, when the issue was not reviewed, when the branch changed after the review, when the validation gate has not passed on the commit that would be merged, or when the branch does not merge cleanly. It deletes the branch and its worktree and closes the issue.
+
+```
+node scripts/ship-local.mjs check --issue 3
+```
+
+Nothing is pushed: the merge exists only in this repository.
+
 ## Skills that `think` uses
 
 `/relevo:think` does not reimplement anything: it runs two existing skills directly, so their behaviour is exactly theirs.

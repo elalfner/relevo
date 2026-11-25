@@ -5,7 +5,7 @@
 //   prints {"outcome":"unchanged|merged|regenerated|conflict|failed","files":[...],"message":"..."}
 //   exit 0: unchanged, merged or regenerated   exit 1: conflict in a file that is not generated   exit 2: could not complete, or bad arguments
 //
-// It fetches origin/<base>, probes the merge in memory, and merges when that is safe. A conflict in a file that matches
+// It fetches origin/<base> (a files project uses its local <base> and fetches nothing), probes the merge in memory, and merges when that is safe. A conflict in a file that matches
 // `integration.generated` is resolved by running `integration.regenerate` from --within (the folder of the platform).
 // Nothing is pushed. With a conflict or a failure the working tree is left as it was.
 
@@ -14,6 +14,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { integrateBase } from './lib/integrate-base.mjs';
+import { baseRef, localRefs } from './lib/base-ref.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const arg = (name) => {
@@ -34,14 +35,17 @@ if (!loaded.ok) fail(loaded.errors.map((e) => `error: ${e.message}`).join('\n'))
 const { integration } = loaded.config;
 
 const git = (...args) => spawnSync('git', args, { encoding: 'utf8' });
-const fetched = git('fetch', '--quiet', 'origin', base);
-if (fetched.status !== 0) fail(`could not fetch origin/${base}: ${String(fetched.stderr).trim()}`);
+// A files project merges its own base branch and has no remote to fetch from.
+if (!localRefs(loaded.config)) {
+  const fetched = git('fetch', '--quiet', 'origin', base);
+  if (fetched.status !== 0) fail(`could not fetch origin/${base}: ${String(fetched.stderr).trim()}`);
+}
 
 const within = arg('within');
 const result = integrateBase({
   run: git,
   runCommand: (command) => spawnSync('sh', ['-c', command], { encoding: 'utf8', cwd: within && within !== '.' ? resolve(within) : process.cwd() }),
-  base: `origin/${base}`,
+  base: baseRef(loaded.config, base),
   generated: integration.generated,
   regenerate: integration.regenerate,
 });

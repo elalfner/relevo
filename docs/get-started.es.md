@@ -135,6 +135,22 @@ Conecta el teléfono o inicia el emulador, e inicia la app (`flutter run`). El a
 - **Deberías ver**: un resumen del pull request y de lo que va a pasar, y luego una pregunta que espera un sí escrito. Con tu sí archiva la especificación, fusiona el pull request en la rama de integración, cierra el issue y quita las etiquetas.
 - **Si no**: si dice que las comprobaciones están corriendo o fallando, espera o arréglalas y vuelve a ejecutarlo; si dice que el issue no está listo, ejecuta el comando que nombra. Llevar la rama de integración a la de publicación es un pull request aparte. Mira la [Guía](guide.es.md).
 
+## Sin GitHub: un proyecto de una persona
+
+Para un prototipo no necesitas un repositorio en GitHub. Con `tracker: files` y `git_provider: local` en `relevo.yml`, una persona trabaja en un repositorio git local sin remoto:
+
+- Un issue es un archivo, `.relevo/issues/<n>.md`, con las mismas secciones que cualquier issue. Se confirma en un commit una sola vez, cuando lo apruebas.
+- Su estado (`ready`, `building`, `built`), sus comentarios y el hash del texto aprobado se quedan en esta máquina, dentro de la carpeta `.git`. Nunca se versionan y un cambio de estado no crea ningún commit.
+- Nadie más lo revisa: no hay roles, responsables, hitos ni cola, y un issue solo puede depender de otro issue del mismo proyecto.
+
+```
+tracker: files
+git_provider: local
+depth: prototype
+```
+
+El estado no se comparte: otro clon del repositorio empieza sin él, y un issue vuelve a `ready` aprobándolo otra vez. Todo lo demás funciona como en los pasos anteriores.
+
 ## Qué sigue
 
 - Trabajar con otras personas: pon `review.mode` en `peer` y lista al equipo en la [Configuración](configuration.es.md); la [Guía](guide.es.md) dice quién hace qué en cada estado.

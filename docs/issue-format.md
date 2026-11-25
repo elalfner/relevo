@@ -208,6 +208,10 @@ Names an issue of this repository whose change is already merged and that solved
 
 The line alone changes nothing about how tasks are built. What makes a build a *replicated* one is the recipe that the specification writes into `tasks.md` (its format is in [Where `go` runs](execution.md#replicated-builds)) and a script checks. Every replica needs a rename map and the differences of its target, so the issue must list the differences of each target, or it goes back to the spec writer (reason `missing`). The first target is built normally and must pass the gate and the QA lenses before any replica starts; each replica is then one launch of the developer, on a cheaper model when the developer is on `auto` (one name below the planned model of `agents.ladder`, never below the floor of the developer; with a model written in `relevo.yml`, which is the default, every replica uses that model: see [Where `go` runs](execution.md#replicated-builds)), checked by the gate before the next one, and built by the planned model after it fails twice. Replicas go through the same protected paths, scans, QA and `limits.run_max_cost` as any other work.
 
+## What a project without GitHub changes
+
+With `tracker: files` the issue is the file `.relevo/issues/<n>.md`: its first heading is the title and the sections are the ones above. The same checks run on it. There is no milestone, assignee or repository to write, and `Depends-on: #N` can name only another issue of the project, which must be shipped before this one starts. Approving the issue stores the hash of its text, so editing it afterwards withdraws the approval, as on GitHub.
+
 ## What `go` also needs from the issue
 
 - **An assignee.** That person receives the built work and reviews it on a device.

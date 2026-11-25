@@ -3,7 +3,7 @@
 // comment of the issue found. Usage:
 //   node scripts/failure-comment.mjs --repo owner/name --issue 42 --subject "$(git log -1 --format=%s)"
 // A failed read prints { kept, found: false, error } and exits 0: `fix` then asks the person what is wrong.
-import { execFileSync } from 'node:child_process';
+import { loadTracker } from './lib/tracker/load.mjs';
 import { failureContext } from './lib/failure-comment.mjs';
 
 const argv = process.argv.slice(2);
@@ -20,9 +20,7 @@ const subject = opt('subject') ?? '';
 let comments = [];
 let error = null;
 try {
-  const args = ['issue', 'view', issue, '--json', 'comments'];
-  if (opt('repo')) args.push('--repo', opt('repo'));
-  comments = JSON.parse(execFileSync('gh', args, { encoding: 'utf8' })).comments ?? [];
+  comments = loadTracker({ configPath: opt('config') ?? 'relevo.yml', repo: opt('repo') ?? null }).tracker.commentsList(issue);
 } catch (err) {
   error = String(err.stderr ?? err.message ?? err).split('\n')[0];
 }
