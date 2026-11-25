@@ -674,3 +674,12 @@ Date: 2026-11-25. The workflows of the sandbox ran the scripts of a pinned commi
 - **A cancelled run is closed the same way.** A run cancelled by hand while the build waited ended with the `requeue` job in `success` and the same line in the comment, and the issue went to `build-failed` with the usual message that tells how to build it again.
 - **A build with no failure is untouched.** A run of a plain issue on the same pin ended with the comment closed by the build job itself and the issue `built`; the closing step of `requeue` did nothing.
 - **Not tried**: a real runner that stops answering by itself (no network), which GitHub reports after a longer time than the kill used here.
+
+## A cut build resumed from its branch (task 7.2 of `resume-a-cut-build`)
+
+Date: 2026-11-25. The go workflow of the sandbox ran the scripts of a pinned commit of `dev` (a clone plus a pack of the folder). An issue with five tasks in two groups was built; the run was cancelled by hand while the second group was in progress, and the `go` label was applied again to the `build-failed` issue.
+
+- **The cut says `--resume`.** The run ended `cancelled`, the issue went to `build-failed`, and the comment said that the work was kept on the branch, to run `/relevo:go <n> --resume` (in the cloud, apply `relevo:go`), that it would resume from the last checkpoint (1 saved) and build only the pending tasks, and how to start over (`--retry`). It did not mention `/relevo:fix`.
+- **The label resumed it.** The `decide` job, with no checkout, found the branch through the API, the resume check accepted it, and the issue went from `build-failed` to `building` with no `ready`. The progress comment began at `Tasks: 4 of 5`, `Group 1 of 1`, and the usage comment listed one launch of the developer, `build 1/1: 2.1`, so only the open task was built, then the five lenses ran and the issue was `built`. The branch held the specification, `wip: checkpoint 1/2`, `wip: checkpoint 1/1` and the `feat:` commit.
+- **The cut left no commit of its own.** The group in progress had changed nothing yet, so the rescue step had nothing to commit; the tip was the checkpoint of the first group, which the check accepts.
+- **Not tried**: `/relevo:go <n> --resume` on a machine, a cut that stops at a limit of the run (the guard) and not by hand, a resume that finishes no task (the marker and the refusal), and a QA rejection pointing to `/relevo:fix`. The unit tests cover them; no live run did.
