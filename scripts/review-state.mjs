@@ -119,7 +119,7 @@ try {
         if (!owner.ok && !owner.unknown) fail(`${statePath} already holds a review that is not this one: ${owner.reason}. Nothing was changed; remove the file if that review is over`);
       }
       const log = api ? snapshotLog(flag('log') ?? DEFAULT_LOG[stack] ?? 'storage/logs/*.log', { cwd: flag('cwd') ?? '.' }) : null;
-      const state = newState(checklistFromChange(rest[0]), { autopilot: ios || ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared, expectedErrors, expectedFatals, change });
+      const state = newState(checklistFromChange(rest[0]), { autopilot: ai === -1 ? 'off' : rest[ai + 1], kind: api ? 'api' : 'device', log, stack, declared, expectedErrors, expectedFatals, change });
       if (ios) state.source = { source: 'simulator', udid: pickSimulator(listSimulators(), process.env.IOS_SIMULATOR ?? null), process: flag('process'), since: formatLogStart() };
       if (api && flag('cwd')) state.cwd = flag('cwd');
       save(state);

@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { adapterFor, autopilotNotice, hasShippedAdapter, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
+import { adapterFor, hasShippedAdapter, needsAutopilot, targetOf } from '../scripts/lib/review-adapters.mjs';
 
 const CLI = new URL('../scripts/review-adapter.mjs', import.meta.url).pathname;
 
@@ -22,18 +22,15 @@ test('Scenario: Web - Vue and Flutter on web are a browser, and the review needs
   assert.deepEqual([flutterWeb.kind, flutterWeb.driver], ['browser', 'flutter_driver']);
 });
 
-test('Scenario: iOS simulator - Flutter and SwiftUI on ios use xcrun, observe-only, and do not need the autopilot', () => {
+test('Scenario: iOS simulator - Flutter and SwiftUI on ios use xcrun, are driven with control, and do not need the autopilot', () => {
   for (const stack of ['flutter', 'swiftui', 'swift-app']) {
     const ios = adapterFor({ stack, target: 'ios' });
     assert.equal(ios.supported, true);
     assert.equal(ios.kind, 'device');
     assert.deepEqual(ios.needs, ['xcrun']);
-    assert.equal(ios.driver, null);
+    assert.equal(ios.driver, 'control (iOS Simulator)');
     assert.equal(needsAutopilot(ios), false);
   }
-  assert.match(autopilotNotice(adapterFor({ stack: 'swiftui', target: 'ios' }), { autopilot: 'verify' }), /cannot drive an iOS app yet/);
-  assert.equal(autopilotNotice(adapterFor({ stack: 'swiftui', target: 'ios' }), { autopilot: 'off' }), null);
-  assert.equal(autopilotNotice(adapterFor({ stack: 'flutter', target: 'android' }), { autopilot: 'verify' }), null);
 });
 
 test('Scenario: No adapter - unknown combinations say why', () => {
@@ -84,6 +81,8 @@ test('the script resolves the platform from relevo.yml, takes --target, and exit
   const ios = run('--platform', 'app', '--target', 'ios');
   assert.equal(ios.status, 0);
   assert.equal(JSON.parse(ios.stdout).needs[0], 'xcrun');
+  assert.equal(JSON.parse(ios.stdout).driver, 'control (iOS Simulator)');
+  assert.equal('notice' in JSON.parse(ios.stdout), false);
   const site = JSON.parse(run('--platform', 'site').stdout);
   assert.deepEqual([site.platform, site.needs_autopilot], ['site', true]);
   assert.equal(run('--platform', 'nope').status, 2);

@@ -164,7 +164,7 @@ test('capture.mjs --target ios writes evidence/<name>.png, and IOS_SIMULATOR pic
 });
 
 // review-state.mjs with an iOS review: init, reset-log, sync and audit through the CLI and a fake xcrun.
-test('review-state.mjs --target ios: autopilot is forced off, the log source is recorded, audit reads the fake log', () => {
+test('review-state.mjs --target ios: the configured autopilot is recorded, the log source is recorded, audit reads the fake log', () => {
   const dir = mkdtempSync(join(tmpdir(), 'relevo-rs-ios-'));
   mkdirSync(join(dir, 'change', 'specs', 'cap'), { recursive: true });
   writeFileSync(join(dir, 'change', 'specs', 'cap', 'spec.md'), '## ADDED Requirements\n### Requirement: A\n#### Scenario: One\n- **WHEN** a\n- **THEN** b\n');
@@ -177,7 +177,7 @@ test('review-state.mjs --target ios: autopilot is forced off, the log source is 
   const init = cli('init', join(dir, 'change'), '--autopilot', 'verify', '--target', 'ios', '--process', 'OMB');
   assert.equal(init.status, 0, init.stderr);
   const saved = () => JSON.parse(readFileSync(state, 'utf8'));
-  assert.equal(saved().autopilot, 'off');
+  assert.equal(saved().autopilot, 'verify');
   assert.deepEqual([saved().source.source, saved().source.udid, saved().source.process], ['simulator', UDID, 'OMB']);
   const edited = saved();
   edited.source.since = '2000-01-01 00:00:00';
