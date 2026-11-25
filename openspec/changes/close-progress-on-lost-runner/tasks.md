@@ -13,7 +13,7 @@
 
 ## 3. Integration check
 
-- [ ] 3.1 In the sandbox, stop the runner of a build in progress (for example by stopping the runner service) and verify that the progress comment ends closed with the new line once the build job ends as failed, and that the issue keeps its labels; record it in `docs/pilot-findings.md` with neutral names.
+- [x] 3.1 In the sandbox, stop the runner of a build in progress (for example by stopping the runner service) and verify that the progress comment ends closed with the new line once the build job ends as failed, and that the issue keeps its labels; record it in `docs/pilot-findings.md` with neutral names.
 
 ## Workflow follow-up
 

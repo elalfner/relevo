@@ -665,3 +665,12 @@ Date: 2026-11-24. A sandbox issue that asked for four new test files, which the 
 - **The count still moves by group, not by task.** The four tasks of group 1 were marked together at the end of that group, so the count went from 0 to 4. With one group it would stay at 0 until QA; the group in progress is what shows that the build advances. Marking each task as it finishes was not added.
 - **The usage comment tells the launches of the developer apart.** Its line by agent listed `relevo:dev [build 1/2: 1.1, 1.2, 1.3, 1.4]` and `relevo:dev [build 2/2: 2.1]`, each with its model, effort, turns, minutes and cost, next to the four QA lenses and the main agent.
 - **Not tried**: a build with one group, and the lines of a local build (task 9.2).
+
+## The progress comment when a runner is lost (task 3.1 of `close-progress-on-lost-runner`)
+
+Date: 2026-11-25. The workflows of the sandbox ran the scripts of a pinned commit of `dev` (a clone plus a pack of the folder). A runner cannot be stopped on a hosted runner, so a temporary step of the build job, active only for an issue whose title asked for it, killed the runner process 90 seconds after the progress report started, which ends the job without running any later step. That step was removed after the test.
+
+- **The comment ends closed.** The build job ended as `failure`, its own closing step (`Close the progress comment`) was `skipped`, and the `requeue` job replaced the open progress comment by the line that the runner stopped answering, with the link of the run and both markers. The issue kept `relevo:building`, and the number of comments did not grow beyond the one the new run opened.
+- **A cancelled run is closed the same way.** A run cancelled by hand while the build waited ended with the `requeue` job in `success` and the same line in the comment, and the issue went to `build-failed` with the usual message that tells how to build it again.
+- **A build with no failure is untouched.** A run of a plain issue on the same pin ended with the comment closed by the build job itself and the issue `built`; the closing step of `requeue` did nothing.
+- **Not tried**: a real runner that stops answering by itself (no network), which GitHub reports after a longer time than the kill used here.
