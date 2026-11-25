@@ -13,7 +13,7 @@
 ## 3. Checks
 
 - [x] 3.1 Run `npm test` and `openspec validate --all` and verify both pass
-- [ ] 3.2 In the sandbox, from this branch as the memory describes (a pinned sha, `npm pack` of the folder), build an issue of three tasks or fewer and verify that the progress comment shows the tasks rising before QA; write what was seen in `docs/pilot-findings.md`
+- [x] 3.2 In the sandbox, from this branch as the memory describes (a pinned sha, `npm pack` of the folder), build an issue of three tasks or fewer and verify that the progress comment shows the tasks rising before QA; write what was seen in `docs/pilot-findings.md`
 
 ## Workflow follow-up
 
