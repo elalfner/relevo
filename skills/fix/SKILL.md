@@ -21,7 +21,7 @@ When `tracker` in `relevo.yml` is `files` there is one person, no remote and no 
 - Never push: the branch stays local. Say in the final message that it is local, and that nothing was sent anywhere.
 - Local refs: this project has no remote, so wherever this skill, a reference it points to or a script's usage says `origin/<base>` or `origin/<branch>`, use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`. Give the gate and the agents the local `<base>`, and tell the agents the project has no remote.
 - After the commit of the fix, record the green gate on it: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs record-gate --issue <issue>`. The review is recorded again by `/relevo:review`, because a commit after it makes it stale.
-- No `notify` goes to a reviewer, because there is none: tell the person who runs it, and post the comment with `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs comment-add <issue> --body-file <file>`. Leave `recipient` out.
+- No `notify` goes to a reviewer, because there is none: tell the person who runs it, and post the comment with `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs comment-add <issue> --body-file <file>`. Add `"local": true` to the values of every message you render, so that it carries no `@` mention. Leave `recipient` out.
 
 ## What you must never do
 

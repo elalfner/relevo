@@ -502,3 +502,11 @@ test('Scenario: Files project - the review skill reads the local base and pushes
   assert.match(section, /Local refs: this project has no remote/);
   assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
 });
+
+test('Scenario: Files project - review records the gate again after synchronising, so ship does not refuse the merge it made', () => {
+  const skill = readFileSync(new URL('../skills/review/SKILL.md', import.meta.url), 'utf8');
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /ship-local\.mjs record-gate --issue \$ARGUMENTS/);
+  assert.match(section, /run only the validation gate/);
+  assert.match(section, /ask the person before installing/);
+});

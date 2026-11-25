@@ -30,6 +30,14 @@ test('the config of a local project is valid and says files, local and prototype
   assert.deepEqual([config.tracker, config.git_provider, config.depth, config.review.mode, config.branches.base], ['files', 'local', 'prototype', 'none', 'main']);
 });
 
+test('a platform with a web target gets review.autopilot precheck, and one without does not', () => {
+  const web = loadConfig(renderLocalConfig({ base: 'main', cost: 5, language: 'en', platforms: ANSWERS.platforms }));
+  assert.equal(web.config.review.autopilot, 'precheck');
+  const cli = loadConfig(renderLocalConfig({ base: 'main', cost: 5, language: 'en', platforms: { tool: { stack: 'node', path: '.', targets: ['cli'] } } }));
+  assert.equal(cli.ok, true, JSON.stringify(cli.errors));
+  assert.equal(cli.config.review.autopilot, 'off');
+});
+
 test('Scenario: Empty folder - the plan lists the repository, relevo.yml and .relevo/issues/, and nothing about GitHub', () => {
   const plan = planLocalInit({ facts: FACTS, answers: ANSWERS });
   assert.deepEqual(plan.items.filter((i) => i.status === 'todo').map((i) => i.id), ['git.init', 'config.write', 'issues.dir', 'gitignore.evidence', 'git.commit']);

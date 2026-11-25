@@ -13,7 +13,7 @@ const { config } = loadConfig(readFileSync(`${root}templates/relevo.yml`, 'utf8'
 const REPO = '/home/me/code/shop';
 
 /** A fake runner: records every call; `fail` maps "cmd arg0 arg1" prefixes to errors, `streamStatus` is the run's exit status. */
-function fakeRunner({ fail = {}, streamStatus = 0, variable = null, stdout = '', whenRun = null } = {}) {
+function fakeRunner({ fail = {}, streamStatus = 0, variable = null, stdout = '', whenRun = null, porcelain = '' } = {}) {
   const calls = [];
   return {
     calls,
@@ -22,6 +22,7 @@ function fakeRunner({ fail = {}, streamStatus = 0, variable = null, stdout = '',
       const key = `${cmd} ${args.slice(0, 2).join(' ')}`;
       if (key in fail) throw Object.assign(new Error(fail[key].message ?? 'failed'), fail[key]);
       if (cmd === 'git' && args[0] === 'rev-parse') return `${REPO}\n`;
+      if (cmd === 'git' && args[0] === 'status') return porcelain;
       if (cmd === 'gh' && args[0] === 'variable') {
         if (variable === null) throw new Error('HTTP 404');
         return `${variable}\n`;
@@ -52,6 +53,14 @@ test('Scenario: Local build - a worktree from the base branch, claude -p with th
   assert.deepEqual(claude.args, ['-p', '/relevo:go 42', ...runFlags(config, { json: true })]);
   assert.equal(claude.cwd, r.worktree);
   assert.equal(claude.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1');
+});
+
+test('a run that ends with work not committed in its worktree keeps the worktree', async () => {
+  const runner = fakeRunner({ porcelain: '?? package.json\n M src/App.vue\n' });
+  const r = await run(runner);
+  assert.equal(r.status, 0);
+  assert.equal(r.removed, false);
+  assert.ok(!runner.calls.some((c) => c.cmd === 'git' && c.args[0] === 'worktree' && c.args[1] === 'remove'));
 });
 
 test('the worktree lies outside the repository, so uncommitted changes in it do not matter', async () => {

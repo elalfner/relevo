@@ -230,6 +230,13 @@ export async function runLocal({
   }
 
   if (status === 0) {
+    // A build that stopped can leave the developer's work uncommitted in the worktree; removing it would lose that work.
+    let unsaved = false;
+    try { unsaved = String(runner.capture('git', ['status', '--porcelain'], { cwd: plan.worktree })).trim() !== ''; } catch { unsaved = true; }
+    if (unsaved) {
+      say(`done, but the worktree is kept because it has changes that are not committed: ${plan.worktree}`);
+      return { status: 0, worktree: plan.worktree, removed: false, messages };
+    }
     try {
       runner.capture('git', ['worktree', 'remove', '--force', plan.worktree], { cwd: repoRoot });
       say('done; the worktree was removed. Look at the issue for the result.');

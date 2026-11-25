@@ -14,6 +14,8 @@ import { sharedWaitMarker } from './shared-wait.mjs';
 export { pickLanguage, SUPPORTED_LANGUAGES };
 
 const MAX_VALUE_LENGTH = 400;
+const MENTIONS = ['assignee', 'spec_writer', 'author', 'recipient', 'actor'];
+const NOBODY = 'relevolocalnobody';
 
 const REQUIRED = {
   built: ['assignee', 'issue', 'title', 'tasks_done', 'tasks_total', 'branch', 'scenarios'],
@@ -863,6 +865,10 @@ function usageLimitRetry(values, es) {
 export function renderMessage(kind, data = {}, language = 'en') {
   if (!REQUIRED[kind]) throw new Error(`unknown message kind "${kind}"`);
   const values = { ...data };
+  // A files project has one person and no GitHub account to mention: `local: true` makes the mentions optional and leaves them out.
+  const local = values.local === true;
+  delete values.local;
+  if (local) MENTIONS.forEach((field) => { if (!present(values[field])) values[field] = NOBODY; });
   REQUIRED[kind].forEach((field) => {
     if (!present(values[field])) throw new Error(`message "${kind}" needs "${field}"`);
   });
@@ -1044,6 +1050,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
   });
 
   // Collapse repeated blank lines and trim the ends.
+  if (local) out.forEach((l, i) => { out[i] = l.replace(new RegExp(`@${NOBODY}\\s?`, 'g'), '').replace(new RegExp(`${NOBODY}`, 'g'), ''); });
   const collapsed = out.filter((l, i) => !(l === '' && (out[i - 1] === '' || i === 0)));
   while (collapsed.length > 0 && collapsed[collapsed.length - 1] === '') collapsed.pop();
   return collapsed.join('\n');

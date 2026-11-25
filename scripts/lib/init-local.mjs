@@ -24,6 +24,8 @@ export function renderLocalConfig({ base, cost, language, platforms }) {
     'git_provider: local     # a built issue is merged into the base branch locally',
     'depth: prototype        # standard | prototype: prototype lowers the default effort and the questions of think; all five QA lenses run at both',
     platformsBlock(platforms).trimEnd(),
+    // A browser has no manual review: without an autopilot level `/relevo:review` stops at its preflight.
+    ...(Object.values(platforms ?? {}).some((p) => (p.targets ?? []).includes('web')) ? ['review:', '  autopilot: precheck   # a browser has no manual review; precheck drives the checks and you confirm each line'] : []),
     'limits:',
     `  run_max_cost: ${cost}      # US dollars per unattended run`,
     `language: ${language}`,

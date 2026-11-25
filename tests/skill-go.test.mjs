@@ -831,3 +831,9 @@ test('Scenario: Files project - the skill and its agents read the local base, wi
     assert.match(readFileSync(root(file), 'utf8'), /When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin\/<base>`/, file);
   }
 });
+
+test('Scenario: Files project - messages are rendered with local true and a delete-branch recovery names the local branch', () => {
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /"local": true/);
+  assert.match(section, /git branch -D <branch>/);
+});
