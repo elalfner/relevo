@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 // The ship workflow: started by a person's label, no model, nothing run from the pull request, the App token only
 // where it is needed, and a last step that reports a run without an outcome.
@@ -73,6 +73,19 @@ test('Scenario: Private repository on a free plan - the token may read the check
   assert.match(permissions, /^  statuses: read$/m);
 });
 
+test('Scenario: Checks that are still running - the header says the run waits for them within one limit', () => {
+  assert.match(text, /checks of the approved head that are still running, it also keeps the label and waits/);
+  assert.match(text, /all the waiting of a run shares one limit of 30 minutes, inside the time limit of the job/);
+  assert.match(text, /tries once more/);
+});
+
 test('Scenario: Mergeability never computed - the header says the run waits inside the script', () => {
   assert.match(text, /looks again for about 90 seconds, keeping the label/);
+});
+
+test('Scenario: Clash found in an unattended ship - the job requires the delta check from the package before it changes anything', () => {
+  const list = text.match(/for f in ([^;]+); do/)?.[1] ?? '';
+  assert.match(list, /scripts\/delta-check\.mjs/);
+  // Every script the job names exists in the package, and the one the run starts with is checked too.
+  list.split(' ').filter(Boolean).forEach((f) => assert.ok(existsSync(new URL(`../${f}`, import.meta.url)), `${f} is required by the workflow but does not exist`));
 });

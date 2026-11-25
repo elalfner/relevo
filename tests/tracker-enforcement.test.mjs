@@ -30,7 +30,7 @@ const ALLOWED = {
   'skills/fix/SKILL.md': 1, // the re-request of a reviewer on a pull request, which only exists on GitHub
   'skills/go/SKILL.md': 2, // the web-session branch, which only exists on GitHub
   'skills/review/SKILL.md': 4, // review-who, the pull request of a github project and its reviewer
-  'skills/ship/SKILL.md': 5,
+  'skills/ship/SKILL.md': 6,
   'skills/status/SKILL.md': 3,
 };
 

@@ -392,3 +392,9 @@ test('the skill reads and writes issues through the tracker and never with gh is
   assert.doesNotMatch(body, /gh-web\.mjs issue (view|create|edit|list)/);
   assert.doesNotMatch(update, /gh-web\.mjs issue (view|create|edit|list)/);
 });
+
+test('Scenario: No milestone - "none" is offered, asked once, and the issue is created without --milestone', () => {
+  assert.match(body, /offer `none` next to the open milestones/);
+  assert.match(body, /The milestone is optional: if the person answers `none`, show the draft with no milestone and do not ask again/);
+  assert.match(body, /add `--milestone "<milestone>"` only when the draft has one/);
+});

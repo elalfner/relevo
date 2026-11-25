@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **A milestone is optional: `go` no longer stops an issue that has none. Breaking for whoever relied on it:** the gate that removed `ready` and `go` and asked for a milestone is gone, for a cloud build, a rebuild after a failure and a local build alike, and the decision `no-milestone` and its comment no longer exist. Nothing protected by that gate was about safety or cost: `ready` already guards the text, and nothing ordered work by milestone. `/relevo:issue` still asks which milestone an issue belongs to and offers the open ones, now with `none`, which it accepts once and creates the issue without `--milestone`. `/relevo:status` is unchanged: it summarises each milestone that exists. A repository that wants to require one has no setting for it; say so if you need it. The documentation (English and Spanish) calls the milestone optional and worth having.
+
 ### Added
 
 - **A project of one person with no GitHub and no remote** (`tracker: files`, `git_provider: local`). An issue is a file, `.relevo/issues/<n>.md`, committed once when it is approved. Its state, comments, the hash of the approved text and the delivery record are kept inside the git directory (`.git/relevo/`), shared by every worktree and never committed, so a change of state makes no commit. `/relevo:think`, `/relevo:issue`, `/relevo:go`, `/relevo:fix`, `/relevo:review`, `/relevo:ship` and `/relevo:status` work on it; `go` plans with the gates that apply to one person (no milestone, assignee, queue or reviewer).

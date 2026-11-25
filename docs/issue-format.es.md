@@ -214,11 +214,12 @@ Con `tracker: files` el issue es el archivo `.relevo/issues/<n>.md`: su primer e
 
 ## Qué más necesita `go` del issue
 
-- **Un hito.** El hito es el lote al que pertenece el issue.
 - **Una persona asignada.** Esa persona recibe el trabajo construido y lo revisa en un dispositivo.
 - **La etiqueta ready**, aplicada por alguien con permiso de escritura en el repositorio, cuando la spec está terminada. Es la aprobación y no inicia nada: el build se pide con la etiqueta `go` o se inicia con `/relevo:go <n>`. Editar el título o la descripción después de `ready` retira la aprobación, y el issue hay que aprobarlo otra vez.
 
 Si falta alguno de estos, no se construye nada y un comentario dice cuál.
+
+**Un hito es opcional, y conviene tenerlo.** Dice a qué lote o corte pertenece el issue, y `/relevo:status` resume cada hito y avisa cuando el trabajo en cola excede lo que el equipo puede revisar antes de su fecha. `go` construye un issue que no tiene hito, y `/relevo:issue` ofrece los hitos abiertos y acepta `ninguno`.
 
 ## Lo que `go` nunca hace
 

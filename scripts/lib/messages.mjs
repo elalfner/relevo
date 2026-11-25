@@ -28,7 +28,6 @@ const REQUIRED = {
   approved: ['recipient', 'issue', 'reviewer'],
   review_reminder: ['reviewer', 'issue', 'pr', 'hours'],
   review_escalation: ['spec_writer', 'issue', 'pr', 'reviewer', 'hours'],
-  no_milestone: ['actor', 'issue'],
   cloud_not_configured: ['actor', 'issue'],
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
@@ -48,6 +47,7 @@ const REQUIRED = {
   queued_shared_files: ['issue', 'title', 'file', 'other', 'hours'],
   fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
   ship_stopped: ['actor', 'issue', 'reasons'],
+  ship_retry: ['actor', 'issue', 'reasons'],
   ship_not_approver: ['actor', 'issue'],
   ship_no_ci: ['actor', 'issue'],
   ship_needs_app: ['actor', 'issue', 'base'],
@@ -163,11 +163,6 @@ export const CATALOG = {
       '',
       '@{{actor}} your next step: run `/relevo:go {{issue}}` on your machine, or add the secret ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN so that the cloud can build it. The issue stays ready.',
     ],
-    no_milestone: [
-      '#{{issue}} was not started: it has no milestone',
-      '',
-      '@{{actor}} your next step: add the issue to a milestone, approve it with ready again, then apply go or run `/relevo:go {{issue}}` on your machine.',
-    ],
     no_assignee: [
       '#{{issue}} was not started: it has no assignee',
       '',
@@ -261,6 +256,12 @@ export const CATALOG = {
       '',
       'Why: {{reasons}}',
       'Nothing was merged and the issue keeps its state; the relevo:ship label was removed. Apply it again once this is solved, or run `/relevo:ship {{issue}}`.',
+    ],
+    ship_retry: [
+      '@{{actor}} #{{issue}} was not shipped',
+      '',
+      'Why: {{reasons}}',
+      'Nothing was merged and the issue keeps its state; the relevo:ship label was removed. Nothing has to change first: apply the label again to retry.',
     ],
     ship_not_approver: [
       '@{{actor}} #{{issue}} was not shipped: you did not approve this pull request',
@@ -403,11 +404,6 @@ export const CATALOG = {
       '',
       '@{{actor}} tu siguiente paso: ejecuta `/relevo:go {{issue}}` en tu máquina, o agrega el secreto ANTHROPIC_API_KEY o CLAUDE_CODE_OAUTH_TOKEN para que la nube pueda construirlo. El issue sigue en ready.',
     ],
-    no_milestone: [
-      '#{{issue}} no se inició: no tiene milestone',
-      '',
-      '@{{actor}} tu siguiente paso: agrega el issue a un milestone, apruébalo con ready otra vez y luego pon go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
-    ],
     no_assignee: [
       '#{{issue}} no se inició: no tiene responsable',
       '',
@@ -501,6 +497,12 @@ export const CATALOG = {
       '',
       'Por qué: {{reasons}}',
       'No se fusionó nada y el issue conserva su estado; se quitó la etiqueta relevo:ship. Vuelve a ponerla cuando esté resuelto, o ejecuta `/relevo:ship {{issue}}`.',
+    ],
+    ship_retry: [
+      '@{{actor}} #{{issue}} no se fusionó',
+      '',
+      'Por qué: {{reasons}}',
+      'No se fusionó nada y el issue conserva su estado; se quitó la etiqueta relevo:ship. Nada tiene que cambiar antes: vuelve a poner la etiqueta para reintentar.',
     ],
     ship_not_approver: [
       '@{{actor}} #{{issue}} no se fusionó: tú no aprobaste este pull request',

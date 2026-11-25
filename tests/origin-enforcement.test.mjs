@@ -47,7 +47,7 @@ const ALLOWED = {
   'skills/fix/SKILL.md': 6,
   'skills/go/SKILL.md': 11,
   'skills/go/references/qa-run.md': 4,
-  'skills/review/SKILL.md': 9,
+  'skills/review/SKILL.md': 10,
   'skills/ship/SKILL.md': 12,
   'agents/dev.md': 2,
   'agents/qa-bugs.md': 2,

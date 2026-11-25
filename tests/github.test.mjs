@@ -179,8 +179,8 @@ test('commandsFor sends nothing when a decision changes nothing', () => {
 
 test('comments use the language of relevo.yml', () => {
   const es = loadConfig('limits:\n  run_max_cost: 5\nlanguage: es\n').config;
-  const d = { issue: 5, action: 'no-milestone', labels: { add: [], remove: [] }, comment: { kind: 'no_milestone', data: { issue: 5, actor: 'ana' } } };
-  assert.match(commandsFor(d, { repo: REPO, config: es })[0][6], /no se inició: no tiene milestone/);
+  const d = { issue: 5, action: 'no-assignee', labels: { add: [], remove: [] }, comment: { kind: 'no_assignee', data: { issue: 5, actor: 'ana' } } };
+  assert.match(commandsFor(d, { repo: REPO, config: es })[0][6], /no se inició: no tiene responsable/);
 });
 
 test('applyDecisions runs everything except start', () => {

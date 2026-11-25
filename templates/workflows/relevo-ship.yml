@@ -15,7 +15,11 @@
 # then pushes, merges and closes with the App's token, so your CI runs on the archive commit, and waits for it. The App
 # is also worth it when you rely on workflows that run on pushes to the base branch. Never add it to a bypass list.
 # When GitHub has not computed whether the pull request can be merged (it says so right after a push), the run waits and
-# looks again for about 90 seconds, keeping the label; if it never settles, the run stops and removes the label. The
+# looks again for about 90 seconds, keeping the label; if it never settles, the run stops and removes the label. When the
+# only thing in the way is checks of the approved head that are still running, it also keeps the label and waits for them
+# before archiving; all the waiting of a run shares one limit of 30 minutes, inside the time limit of the job. If GitHub
+# refuses the merge because the base branch moved a moment ago, the run reads the pull request again and tries once more.
+# A stop that only needs time says that applying the label again retries. The
 # comment after a merge names the commit whose checks it relied on and says what the checks of the merged commit were.
 #
 # The repository variable RELEVO_CLOUD_SHIP set to `off` pauses it: the label then does nothing.
@@ -93,7 +97,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/relevo"
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo"
-          for f in scripts/ship-unattended.mjs scripts/scan-diff.mjs scripts/check-archive.mjs scripts/stage.mjs scripts/fix-tasks.mjs scripts/conflict-scope.mjs scripts/render-message.mjs; do
+          for f in scripts/ship-unattended.mjs scripts/scan-diff.mjs scripts/check-archive.mjs scripts/stage.mjs scripts/fix-tasks.mjs scripts/conflict-scope.mjs scripts/render-message.mjs scripts/delta-check.mjs; do
             [ -f "$RUNNER_TEMP/relevo/$f" ] || { echo "::error::The Relevo package $RELEVO_VERSION lacks $f"; exit 1; }
           done
 

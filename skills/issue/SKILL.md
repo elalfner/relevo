@@ -117,7 +117,7 @@ Write the agreement's ids to a file first (outside the working tree). The table 
 
 ## 5. Approval
 
-Show every draft in full, in the order they will be created, with for each: the title, the milestone, the assignee and its dependencies. List the open milestones with `gh api repos/{owner}/{repo}/milestones --jq '.[].title'` and offer the members of `team.members` as assignees. The assignee is the person who will review the built work on a device.
+Show every draft in full, in the order they will be created, with for each: the title, the milestone (or "none"), the assignee and its dependencies. List the open milestones with `gh api repos/{owner}/{repo}/milestones --jq '.[].title'` and offer `none` next to the open milestones: a milestone says which group or cut the issue belongs to and is worth recommending, but `go` builds an issue without one. The milestone is optional: if the person answers `none`, show the draft with no milestone and do not ask again. Offer the members of `team.members` as assignees. The assignee is the person who will review the built work on a device.
 
 Show the coverage table with the drafts. Show the `Documentation` section too, whole, like the rest of the draft. Ask for explicit approval. If the person asks for changes, revise, check again and show it again. Create nothing before a clear yes.
 
@@ -126,7 +126,7 @@ Show the coverage table with the drafts. Show the `Documentation` section too, w
 Only after approval, in dependency order (so each `Depends-on` can name a real number):
 
 1. If a milestone does not exist, create it only when the person said so: `gh api repos/{owner}/{repo}/milestones -f title="<name>"`.
-2. For each draft: `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs issue-create --title "<title>" --body-file <file> --milestone "<milestone>" --assignee <login>`. A draft for a linked repository is created with `--repo owner/repo` and the milestone and assignee of that repository, which you ask the person for (the ones of this repository do not exist there). Take the issue number from the URL it prints. Before creating a draft that depends on a draft created in this session, replace its placeholder with the real number and check it again.
+2. For each draft: `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs issue-create --title "<title>" --body-file <file> --assignee <login>` and add `--milestone "<milestone>"` only when the draft has one. A draft for a linked repository is created with `--repo owner/repo` and the milestone (if it has one) and assignee of that repository, which you ask the person for (the ones of this repository do not exist there). Take the issue number from the URL it prints. Before creating a draft that depends on a draft created in this session, replace its placeholder with the real number and check it again.
 3. Do **not** add the `ready` label or any lifecycle label.
 
 Finish with the links of the issues created, then go to step 7.

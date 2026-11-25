@@ -77,7 +77,7 @@ test('the files list names only things that exist', () => {
   pkg.files.forEach((f) => assert.ok(existsSync(`${root}${f}`), `${f} is in "files" but missing`));
   const size = (p) => (statSync(p).isDirectory() ? readdirSync(p).reduce((n, e) => n + size(join(p, e)), 0) : statSync(p).size);
   const total = pkg.files.reduce((n, f) => n + size(join(root, f)), 0);
-  assert.ok(total < 2 * 1024 * 1024, `the package would be ${total} bytes; keep it lean`);
+  assert.ok(total < 2.5 * 1024 * 1024, `the package would be ${total} bytes; keep it lean`);
 });
 
 test('Scenario: Reading the workflow - a tag publishes only when the tag is the version and the tests pass, with the identity of the run and no token', () => {

@@ -18,7 +18,7 @@
 //   only       place `local`: the issue to build. Only it is planned, whatever its state, so that a draft is told it needs `ready`.
 //
 // A local build (place `local`) needs no `go` label: a `ready` or `queued` issue starts when the person and the approver have the
-// permission of `ready` and the gates that protect the build pass (approval, milestone, assignee, text, dependencies). The gates that
+// permission of `ready` and the gates that protect the build pass (approval, assignee, text, dependencies; a milestone is optional). The gates that
 // ration the cloud (capacity of the assignee, limit of agents, the wait for a shared file, the hold of a usage limit) do not apply,
 // and `urgent` changes nothing. A decision to wait becomes a `report`: no label, no comment. The claim adds `building` and `local`.
 //   edits      { [issue]: { ok: true, at: ISO | null } | { ok: false, reason } }: the last edit of the body of the issues about to be
@@ -358,13 +358,6 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       } else if (isRequest(issue) && !allowed(issue.go_by)) {
         // An invalid request is removed and the issue stays `ready`.
         goDenied();
-        return;
-      }
-      if (!issue.milestone) {
-        decision(issue, 'no-milestone', 'the issue has no milestone', {
-          labels: dropReady(issue),
-          comment: { kind: 'no_milestone', data: { issue: issue.number, actor: by } },
-        });
         return;
       }
       if (!assignee) {

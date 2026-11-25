@@ -96,7 +96,7 @@ Show the version of the app under the title of the home screen, so a tester know
 - Any other change to the home screen.
 ```
 
-- **You should see**: the draft above, a question about the milestone (a GitHub group of issues; Relevo builds only issues that belong to one) and the assignee (you), and, after you approve, the issue created in GitHub with its link. Then a separate question with three answers: apply nothing, `ready` (the approval, which starts nothing), or `ready` and `go` (the approval and the request to the cloud). See step 6.
+- **You should see**: the draft above, a question about the milestone (a GitHub group of issues; optional, but it tells you which batch or cut an issue belongs to) and the assignee (you), and, after you approve, the issue created in GitHub with its link. Then a separate question with three answers: apply nothing, `ready` (the approval, which starts nothing), or `ready` and `go` (the approval and the request to the cloud). See step 6.
 - **If not**: if the check says scenarios or edge cases are missing, answer the questions it asks; do not edit around it. What an issue needs is in [Writing an issue Relevo can build](issue-format.md).
 
 ## 6. Let it build
@@ -111,7 +111,7 @@ gh issue edit 1 --add-label relevo:go
 To build it on your machine instead, run `/relevo:go 1` after `ready`: no `go` label is needed.
 
 - **You should see**: within a minute the issue gets `relevo:building`. After a few minutes it has a comment that says the issue is built (in the `language` of your `relevo.yml`), with what happened, the branch, what to test and `Your next step: /relevo:review 1`, and the label is `relevo:built`.
-- **If not**: if nothing starts, check that the workflows are on the default branch, that the secret exists and that the issue has a milestone and an assignee. A comment saying the cloud is not configured means the secret is missing. If the build ends as `relevo:build-failed` (QA is the second agent, which tries to reject the work before you see it), look first at what the build installs: the toolchain of your stack (Flutter, Laravel; Vue needs only Node), but **not the dependencies of your project**. Flutter needs nothing more. For Vue, enable `npm ci --ignore-scripts` and for Laravel `composer install --no-scripts` in the build job of `relevo-go.yml` (the file has a commented example), or QA cannot run your tests. See [Where `go` runs](execution.md) and the [Guide](guide.md).
+- **If not**: if nothing starts, check that the workflows are on the default branch, that the secret exists and that the issue has an assignee. A comment saying the cloud is not configured means the secret is missing. If the build ends as `relevo:build-failed` (QA is the second agent, which tries to reject the work before you see it), look first at what the build installs: the toolchain of your stack (Flutter, Laravel; Vue needs only Node), but **not the dependencies of your project**. Flutter needs nothing more. For Vue, enable `npm ci --ignore-scripts` and for Laravel `composer install --no-scripts` in the build job of `relevo-go.yml` (the file has a commented example), or QA cannot run your tests. See [Where `go` runs](execution.md) and the [Guide](guide.md).
 
 ## 7. Review it
 

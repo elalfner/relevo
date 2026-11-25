@@ -334,13 +334,18 @@ test('Scenario: No credential - the cloud_not_configured message names the local
 
 test('the ship messages render in both languages and mention only the person who applied the label', () => {
   const data = { actor: 'persona-c', issue: 31, reasons: 'checks are failing: test', approvers: '@persona-b', base: 'dev', pr: '#40', commit: 'abcdef1', run: 'https://example.com/run/1', };
-  ['ship_stopped', 'ship_not_approver', 'ship_no_ci', 'ship_needs_app', 'ship_done', 'ship_failed'].forEach((kind) => {
+  ['ship_stopped', 'ship_retry', 'ship_not_approver', 'ship_no_ci', 'ship_needs_app', 'ship_done', 'ship_failed'].forEach((kind) => {
     ['en', 'es'].forEach((language) => {
       const text = renderMessage(kind, data, language);
       assert.match(text, /#31/, `${kind} ${language}`);
       assert.doesNotMatch(text, /\{\{/, `${kind} ${language} left a placeholder`);
     });
   });
+  // A stop that only needs time says that applying the label again retries; one that needs action does not.
+  assert.match(renderMessage('ship_retry', data), /Nothing has to change first: apply the label again to retry/);
+  assert.match(renderMessage('ship_retry', data, 'es'), /Nada tiene que cambiar antes: vuelve a poner la etiqueta para reintentar/);
+  ['en', 'es'].forEach((language) => assert.doesNotMatch(renderMessage('ship_stopped', data, language), /apply the label again to retry|vuelve a poner la etiqueta para reintentar/));
+  assert.match(renderMessage('ship_retry', data), /^@persona-c #31 was not shipped/);
   assert.match(renderMessage('ship_needs_app', data), /RELEVO_SHIP_APP_ID and RELEVO_SHIP_APP_KEY/);
   assert.match(renderMessage('ship_no_ci', data, 'es'), /review.ship_without_ci: true/);
   assert.match(renderMessage('ship_failed', { issue: 31, run: 'https://example.com/run/1' }), /^#31 was not shipped[^]*\nRead the log/);
@@ -790,7 +795,6 @@ test('ready_denied says that ready approves and that both labels were removed', 
 
 test('no message tells a person that applying ready alone builds an issue', () => {
   const samples = {
-    no_milestone: { issue: 42, actor: 'ana' },
     no_assignee: { issue: 42, actor: 'ana' },
     run_failed_early: { ...RUN, job_status: 'failure' },
     run_no_outcome: { ...RUN, situation: 'usage_limit' },

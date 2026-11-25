@@ -96,7 +96,7 @@ Mostrar la versión de la app bajo el título de la pantalla de inicio, para que
 - Cualquier otro cambio en la pantalla de inicio.
 ```
 
-- **Deberías ver**: el borrador de arriba, una pregunta por el hito (un grupo de issues de GitHub; Relevo solo construye issues que pertenecen a uno) y la persona asignada (tú) y, cuando lo apruebas, el issue creado en GitHub con su enlace. Después, una pregunta aparte con tres respuestas: no poner nada, `ready` (la aprobación, que no inicia nada), o `ready` y `go` (la aprobación y la petición a la nube). Mira el paso 6.
+- **Deberías ver**: el borrador de arriba, una pregunta por el hito (un grupo de issues de GitHub; es opcional, pero te dice a qué lote o corte pertenece un issue) y la persona asignada (tú) y, cuando lo apruebas, el issue creado en GitHub con su enlace. Después, una pregunta aparte con tres respuestas: no poner nada, `ready` (la aprobación, que no inicia nada), o `ready` y `go` (la aprobación y la petición a la nube). Mira el paso 6.
 - **Si no**: si la comprobación dice que faltan escenarios o casos borde, responde a lo que pregunta; no la rodees editando. Lo que necesita un issue está en [Cómo escribir un issue que Relevo pueda construir](issue-format.es.md).
 
 ## 6. Deja que se construya
@@ -111,7 +111,7 @@ gh issue edit 1 --add-label relevo:go
 Para construirlo en tu máquina, ejecuta `/relevo:go 1` después de `ready`: no hace falta la etiqueta `go`.
 
 - **Deberías ver**: en menos de un minuto el issue recibe `relevo:building`. Después de unos minutos tiene un comentario que dice que el issue está construida ✅ (en el idioma de `language` de tu `relevo.yml`), con lo que pasó, la rama, qué probar y `Tu siguiente paso: /relevo:review 1`, y la etiqueta es `relevo:built`.
-- **Si no**: si no empieza nada, comprueba que los workflows están en la rama por defecto, que el secreto existe y que el issue tiene hito y persona asignada. Un comentario que dice que la nube no está configurada significa que falta el secreto. Si la construcción termina como `relevo:build-failed` (QA es el segundo agente, que intenta rechazar el trabajo antes de que lo veas), mira primero lo que instala el build: el toolchain de tu stack (Flutter, Laravel; Vue solo necesita Node), pero **no las dependencias de tu proyecto**. Flutter no necesita nada más. Para Vue, activa `npm ci --ignore-scripts` y para Laravel `composer install --no-scripts` en el job de build de `relevo-go.yml` (el archivo trae un ejemplo comentado), o QA no podrá ejecutar tus tests. Mira [Dónde corre `go`](execution.es.md) y la [Guía](guide.es.md).
+- **Si no**: si no empieza nada, comprueba que los workflows están en la rama por defecto, que el secreto existe y que el issue tiene persona asignada. Un comentario que dice que la nube no está configurada significa que falta el secreto. Si la construcción termina como `relevo:build-failed` (QA es el segundo agente, que intenta rechazar el trabajo antes de que lo veas), mira primero lo que instala el build: el toolchain de tu stack (Flutter, Laravel; Vue solo necesita Node), pero **no las dependencias de tu proyecto**. Flutter no necesita nada más. Para Vue, activa `npm ci --ignore-scripts` y para Laravel `composer install --no-scripts` en el job de build de `relevo-go.yml` (el archivo trae un ejemplo comentado), o QA no podrá ejecutar tus tests. Mira [Dónde corre `go`](execution.es.md) y la [Guía](guide.es.md).
 
 ## 7. Revísalo
 
