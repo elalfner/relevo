@@ -287,3 +287,14 @@ When an issue has been `building` longer than `limits.building_alert_hours` and 
 #### Scenario: A build that started and went silent
 - **WHEN** the build job started and the issue has had no activity for longer than the alert time
 - **THEN** the alert is the one of a build that stopped reporting
+
+### Requirement: Status lists the issues of a files project from the files
+With `tracker: files`, `/relevo:status` SHALL list the issues by state from `.relevo/issues/` and the state records, name the next command for each, and say which branches are waiting to be shipped. It SHALL NOT report review deadlines, reviewer alerts, milestones or team capacity.
+
+#### Scenario: Mixed states
+- **WHEN** issue 1 is `built` and issue 2 is `ready`
+- **THEN** status lists `/relevo:review 1` and `/relevo:go 2` as the next commands
+
+#### Scenario: Nothing waiting
+- **WHEN** every issue is shipped
+- **THEN** status says that nothing is waiting

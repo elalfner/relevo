@@ -793,7 +793,7 @@ Every 30 seconds the workflow SHALL read the announced phase and the tasks done,
 - **THEN** no further check is made
 
 ### Requirement: The progress comment is closed when the run ends
-When the run ends, whether it succeeded, failed or was stopped, the progress comment SHALL be replaced by a single line that points to the result, and no progress detail SHALL remain on the issue.
+When the run ends, whether it succeeded, failed or was stopped, the progress comment SHALL be replaced by a single line that points to the result, and no progress detail SHALL remain on the issue. This SHALL hold too when the runner of the build is lost and none of the steps of the build job ran after it was lost: the closing SHALL NOT depend on the machine that ran the build.
 
 #### Scenario: Run ends with a result
 - **WHEN** the build finishes and the result comment is posted
@@ -802,6 +802,31 @@ When the run ends, whether it succeeded, failed or was stopped, the progress com
 #### Scenario: Run ends without an outcome
 - **WHEN** the job ends and the issue is still `building`
 - **THEN** the progress comment is closed with a line that says the run ended without an outcome, next to the existing failure report
+
+#### Scenario: The runner of the build is lost
+- **WHEN** the build job ends as failed or cancelled and the progress comment is still open because no step of that job could close it
+- **THEN** a job that runs on another runner closes it with one line that says the runner stopped answering and the build left no result, and links the run
+- **AND** no progress detail (phase, tasks or minutes) remains on the issue
+
+#### Scenario: The close of the build job already ran
+- **WHEN** the build job ends as failed or cancelled and its own steps already closed the progress comment
+- **THEN** the job that runs afterwards finds it closed and writes nothing
+
+#### Scenario: There is no progress comment
+- **WHEN** the build job ends as failed or cancelled and the issue has no progress comment
+- **THEN** nothing is created and nothing is edited
+
+#### Scenario: A build that ended in success
+- **WHEN** the build job ends in success
+- **THEN** the job that runs afterwards does not touch the progress comment
+
+#### Scenario: The labels are not changed
+- **WHEN** the progress comment is closed because the runner was lost
+- **THEN** the labels of the issue stay as they were and no comment is added
+
+#### Scenario: Closing never fails the run
+- **WHEN** GitHub refuses the edit that closes the comment
+- **THEN** the job continues and the result of the run does not change
 
 ### Requirement: A closed progress comment is not edited again
 Once the progress comment has been closed, no check of the run SHALL edit it, so that a late check cannot replace the closing line with a progress text. The comment SHALL say that it is closed in a way the checks can read before they write.
@@ -2018,3 +2043,28 @@ When the build job of an issue that was claimed ends without having started, bec
 #### Scenario: Cancelled while running
 - **WHEN** the build job of issue 42 started, and is then cancelled
 - **THEN** the issue is handled as a run that was cut, not returned to the queue for this reason
+
+### Requirement: Go reads and moves the issue through the tracker
+`/relevo:go` SHALL read the issue, check its gates, claim it and record its outcome through the tracker of the project, so that with `tracker: files` it reads the file and the state record and with `tracker: github` it does what the other requirements of this capability describe. The gates that belong to a team (milestone, assignee, review capacity) SHALL apply only to `github`.
+
+#### Scenario: Files project
+- **WHEN** `/relevo:go 3` runs in a files project with issue 3 `ready` and its hash unchanged
+- **THEN** it claims the issue as `building`, builds it in a worktree and leaves it `built` or `build-failed`
+
+#### Scenario: GitHub project
+- **WHEN** it runs in a GitHub project
+- **THEN** its behavior is the one it had before this change
+
+### Requirement: A hand-off in a files project is a local branch
+When a build ends in a hand-off in a files project, the result SHALL be the branch of the issue with its commits, the state `built` and a hand-off report recorded in the state of the issue, and no pull request, comment on GitHub or push SHALL be attempted.
+
+#### Scenario: Built
+- **WHEN** QA passes
+- **THEN** the branch exists locally, the issue is `built` and the report names the branch and what the run used
+
+### Requirement: A run of go in a files project can be local only
+`go` in a files project SHALL always build on the machine; the `go` label, the cloud workflows and `RELEVO_CLOUD_GO` SHALL NOT apply, and `/relevo:go` SHALL NOT warn that the cloud may build the same issue.
+
+#### Scenario: No cloud
+- **WHEN** a person runs `/relevo:go 3 --local` in a files project
+- **THEN** the build runs as `go-local.mjs` does and no message mentions the cloud
