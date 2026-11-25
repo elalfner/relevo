@@ -60,7 +60,7 @@ Do not claim the code compiles, analyses clean or passes tests unless you ran th
 
 ## Tasks
 
-Mark a task `[x]` in `tasks.md` only when its code exists and works. That checkbox is the only edit you may make to the change's files. If a task cannot be finished, leave it unchecked and say why.
+Mark a task `[x]` in `tasks.md` only when its code exists and works, and mark it as soon as it does: one edit per task, before you start the next, not at the end of your launch. The progress of the build counts these boxes while you work, so a task you finish and leave unmarked reads as not started. A task that is itself the full test run is marked when that run passes. This applies in every mode (build, fix and replica). Never remove a mark you or an earlier launch made: if you find that a task you marked is wrong, correct its code and leave the box, because QA judges whether the work is right. That checkbox is the only edit you may make to the change's files. If a task cannot be finished, leave it unchecked and say why.
 
 ## Documentation from the issue
 
