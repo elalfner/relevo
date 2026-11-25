@@ -174,3 +174,10 @@ test('Scenario: Files project - the fix skill reads the local base and pushes no
   assert.match(section, /Local refs: this project has no remote/);
   assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
 });
+
+test('Scenario: Fix says that --resume continues an unfinished build, and only for the commits of a build that did not finish (resume-a-cut-build)', () => {
+  assert.match(body, /`\/relevo:go <issue> --resume`/);
+  assert.match(body, /wip: stopped by limit.*checkpoint|checkpoint.*wip: stopped by limit/s);
+  assert.match(body, /goes on with the correction only if the person wants to correct the work instead|only if the person wants to correct/);
+  assert.match(body, /For `wip: rejected by QA`[^.]*(does not|never|not) mention `--resume`|rejected by QA[^.]*no `--resume`/s);
+});

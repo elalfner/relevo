@@ -81,6 +81,7 @@ const SAMPLE = {
   go_building: { issue: 1, actor: 'a' },
   go_already_built: { issue: 1, actor: 'a' },
   go_use_fix: { issue: 1, actor: 'a' },
+  go_resume_stalled: { issue: 1, actor: 'a' },
   approval_withdrawn: { issue: 1, edited: 'body', approver: 'a' },
   urgent_denied: { issue: 1, actor: 'a' },
   urgent_denied_maintainer: { issue: 1, actor: 'a' },

@@ -611,11 +611,11 @@ test('run_no_outcome: what the rescue did with the work goes after the sentence,
   assert.match(long, /Nothing is wrong with the code/);
 });
 
-test('run_no_outcome situation kept: the next step is fix, or the branch of its own when the run was not on the issue branch', () => {
+test('run_no_outcome situation kept: the next step is --resume, or the branch of its own when the run was not on the issue branch', () => {
   const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
   const en = renderMessage('run_no_outcome', kept, 'en');
   assert.match(en, /The run stopped before it finished \(the runner cut it, or the job was cancelled or timed out\)\./);
-  assert.match(en, /kept on the branch `feature\/12-x` as a work-in-progress commit\. Run `\/relevo:fix 12` to verify it and continue/);
+  assert.match(en, /kept on the branch `feature\/12-x` as a work-in-progress commit\. Run `\/relevo:go 12 --resume` to continue it/);
   assert.match(en, / https:\/\/example\.test\/run\/1$/);
   assert.match(renderMessage('run_no_outcome', { ...kept, cut: 'cost' }, 'en'), /\(the runner stopped it at its cost limit \(--max-budget-usd\)\)/);
   assert.match(renderMessage('run_no_outcome', { ...kept, cut: 'turns', usage_limit: true }, 'en'), /\(the usage limit \(or the credit\) of the model account was reached\)/, 'a usage limit wins over a cut');
@@ -623,7 +623,7 @@ test('run_no_outcome situation kept: the next step is fix, or the branch of its 
   assert.match(own, /not on the branch of the issue, so the work is on a branch of its own/);
   assert.doesNotMatch(own, /\/relevo:fix/);
   const es = renderMessage('run_no_outcome', kept, 'es');
-  assert.match(es, /Ejecuta `\/relevo:fix 12` para verificarlo y continuar/);
+  assert.match(es, /Ejecuta `\/relevo:go 12 --resume` para continuarlo/);
   assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/x' }, 'es'), /una rama aparte/);
   assert.throws(() => renderMessage('run_no_outcome', { ...RUN, situation: 'kept' }, 'en'), /needs "rescue_branch"/);
   assert.throws(() => renderMessage('run_no_outcome', { ...RUN, situation: 'nothing' }, 'en'), /unknown situation/);
@@ -643,8 +643,8 @@ test('Scenario: The branch holds a checkpoint / no checkpoint - kept says that r
   const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
   const fromStart = /from the start|desde el principio/;
   const withCheckpoints = renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'en');
-  assert.match(withCheckpoints, /apply `relevo:ready` again and then `relevo:go` \(or run `\/relevo:go 12` on your machine\) to resume from the last checkpoint \(2 saved\) and build only the pending tasks/);
-  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /pon `relevo:ready` otra vez y luego `relevo:go` \(o ejecuta `\/relevo:go 12` en tu máquina\) para reanudar desde el último checkpoint \(2 guardados\) y construir solo las tareas pendientes/);
+  assert.match(withCheckpoints, /Run `\/relevo:go 12 --resume` to continue it \(in the cloud, apply `relevo:go`\): it will resume from the last checkpoint \(2 saved\) and build only the pending tasks/);
+  assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es'), /Ejecuta `\/relevo:go 12 --resume` para continuarlo \(en la nube, pon `relevo:go`\): va a reanudar desde el último checkpoint \(2 guardados\) y construir solo las tareas pendientes/);
   const none = renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'en');
   assert.match(none, /resume from the work kept on the branch \(no checkpoint was saved yet\)/);
   assert.match(renderMessage('run_no_outcome', { ...kept, checkpoints: 0 }, 'es'), /reanudar desde el trabajo guardado en la rama \(todavía no hay ningún checkpoint\)/);
@@ -654,7 +654,8 @@ test('Scenario: The branch holds a checkpoint / no checkpoint - kept says that r
   [withCheckpoints, none, unknown, renderMessage('run_no_outcome', kept, 'es'), renderMessage('run_no_outcome', { ...kept, checkpoints: 2 }, 'es')]
     .forEach((text) => {
       assert.doesNotMatch(text, fromStart);
-      assert.match(text, /branch already exists/);
+      assert.match(text, /--resume/);
+      assert.match(text, /--retry/, 'the way to start over is named');
     });
   // The run that was not on the branch of the issue has nothing to resume from: there "from the start" is true.
   assert.match(renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/feature/12-x' }, 'en'), /build from the start/);
@@ -777,13 +778,20 @@ test('Scenario: Already built - go_already_built says so', () => {
   assert.match(renderMessage('go_already_built', GO, 'es'), /ya está construido/);
 });
 
+test('Scenario: A resume with the same limits after a stall - go_resume_stalled says which limits to raise', () => {
+  const en = renderMessage('go_resume_stalled', GO, 'en');
+  assert.match(en, /without finishing a task/);
+  assert.match(en, /limits\.run_max_turns.*limits\.run_max_minutes.*limits\.run_max_cost/);
+  assert.match(renderMessage('go_resume_stalled', GO, 'es'), /sin terminar ninguna tarea/);
+});
+
 test('Scenario: Failed build with code - go_use_fix says to run /relevo:fix', () => {
   assert.match(renderMessage('go_use_fix', GO, 'en'), /run `\/relevo:fix 42`/);
   assert.match(renderMessage('go_use_fix', GO, 'es'), /ejecuta `\/relevo:fix 42`/);
 });
 
 test('the refusals name nobody when the applier is unknown', () => {
-  ['go_denied', 'go_needs_ready', 'go_building', 'go_already_built', 'go_use_fix'].forEach((kind) => {
+  ['go_denied', 'go_needs_ready', 'go_building', 'go_already_built', 'go_use_fix', 'go_resume_stalled'].forEach((kind) => {
     assert.doesNotMatch(renderMessage(kind, { issue: 42 }, 'en'), /@/, kind);
   });
 });
@@ -887,4 +895,61 @@ test('Scenario: a project with no GitHub - local true leaves every mention out a
 test('without local, a missing assignee is still an error and the mention stays', () => {
   assert.throws(() => renderMessage('build_failed', { issue: 1, title: 'Counter', finding: 'f', branch: 'b' }), /needs "assignee"/);
   assert.match(renderMessage('build_failed', { assignee: 'ana', issue: 1, title: 'Counter', finding: 'f', branch: 'b' }), /^@ana #1/);
+});
+
+// --- resume-a-cut-build: a build that stopped before it finished says how to continue it ---
+const LIMIT_STOP = { issue: 97, title: 'Screen', assignee: 'persona-a', branch: 'feature/97-x', reason: 'run limit reached', branch_state: 'kept', tasks_done: 4, tasks_total: 9,
+  finding: 'the minutes limit (50) was reached after 51.2 minutes; qa-code did not run' };
+
+test('Scenario: A run stopped at a limit - the next step is --resume with the tasks done, the cloud way, and no word of QA rejecting', () => {
+  const en = renderMessage('build_failed', LIMIT_STOP, 'en');
+  assert.match(en, /\(4 of 9 tasks done\)/);
+  assert.match(en, /Your next step: \/relevo:go 97 --resume \(it continues the build from where it stopped/);
+  assert.match(en, /apply relevo:go/);
+  assert.doesNotMatch(en, /Your next step: \/relevo:fix/);
+  assert.doesNotMatch(en, /QA still rejected|did not approve/);
+  const es = renderMessage('build_failed', LIMIT_STOP, 'es');
+  assert.match(es, /\(4 de 9 tareas hechas\)/);
+  assert.match(es, /Tu siguiente paso: \/relevo:go 97 --resume/);
+});
+
+test('Scenario: QA rejected the work - the next step is fix, as before', () => {
+  assert.match(renderMessage('build_failed', { ...LIMIT_STOP, reason: 'QA rejected after the retries' }, 'en'), /Your next step: \/relevo:fix 97/);
+  assert.match(renderMessage('build_failed', { ...LIMIT_STOP, reason: 'QA rejected after the retries' }, 'es'), /Tu siguiente paso: \/relevo:fix 97/);
+  assert.match(renderMessage('build_failed', { ...LIMIT_STOP, reason: 'tasks left unfinished' }, 'en'), /Your next step: \/relevo:fix 97/);
+});
+
+test('a limit stop whose tasks are not known names the next step without a figure', () => {
+  const { tasks_done, tasks_total, ...unknown } = LIMIT_STOP;
+  const en = renderMessage('build_failed', unknown, 'en');
+  assert.match(en, /Your next step: \/relevo:go 97 --resume/);
+  assert.doesNotMatch(en, /tasks done/);
+});
+
+test('Scenario: A resume that made no progress - the comment says that resuming again will not help, names the limits and carries the marker', () => {
+  const data = { ...LIMIT_STOP, stalled: true, limit_turns: 100, limit_minutes: 50, limit_cost: 5 };
+  const en = renderMessage('build_failed', data, 'en');
+  assert.match(en, /resumed run finished no task, so resuming again will not help/);
+  assert.match(en, /limits\.run_max_turns \(100\).*limits\.run_max_minutes \(50\).*limits\.run_max_cost \(5\)/);
+  assert.match(en, /split the issue/);
+  assert.doesNotMatch(en, /--resume/);
+  assert.match(en, /<!-- relevo:stalled \{"turns":100,"minutes":50,"cost":5\} -->$/);
+  assert.match(renderMessage('build_failed', data, 'es'), /no terminó ninguna tarea, así que reanudar de nuevo no ayudará/);
+  assert.throws(() => renderMessage('build_failed', { ...LIMIT_STOP, stalled: true }, 'en'), /needs "limit_turns"/);
+  assert.doesNotMatch(renderMessage('build_failed', LIMIT_STOP, 'en'), /relevo:stalled/, 'a resume that did progress writes no marker');
+});
+
+test('Scenario: A run cut by the runner on the branch of the issue - the next step is --resume, and a branch of its own keeps the old text', () => {
+  const kept = { ...RUN, situation: 'kept', rescue_branch: 'feature/12-x' };
+  const en = renderMessage('run_no_outcome', kept, 'en');
+  assert.match(en, /Run `\/relevo:go 12 --resume` to continue it/);
+  assert.doesNotMatch(en, /\/relevo:fix/);
+  assert.match(renderMessage('run_no_outcome', kept, 'es'), /Ejecuta `\/relevo:go 12 --resume` para continuarlo/);
+  const own = renderMessage('run_no_outcome', { ...kept, rescue_branch: 'rescue/feature/12-x' }, 'en');
+  assert.doesNotMatch(own, /--resume/);
+});
+
+test('the stop after the retries of a usage limit says --resume continues from the branch that kept the work', () => {
+  const data = { ...RUN, situation: 'usage_limit_stopped', rescue_state: 'kept', rescue_branch: 'feature/12-x', max: 3 };
+  assert.match(renderMessage('run_no_outcome', data, 'en'), /`\/relevo:go 12 --resume` continues from it/);
 });

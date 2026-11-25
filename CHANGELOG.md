@@ -4,6 +4,18 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **`/relevo:go <n> --resume` continues a build that stopped before it finished.** A build cut at a limit (turns, minutes, cost, the runner or the job timeout) keeps its work as `wip: stopped by limit` and the issue is `build-failed`; the comment used to send you to `/relevo:fix`, which only worked as a continuation because its skill reads that commit. Now the comment says `/relevo:go <n> --resume` (in the cloud, apply `relevo:go`), with how many tasks are done, and says that nothing was rejected. `--resume` keeps the branch, writes no specification and builds only the open tasks; it uses the check that `go` already used when an issue was made `ready` again (`resume-check.mjs`), asked before the issue is claimed, so a branch that cannot be continued is refused with the reason and the step that fits (the text changed: `/relevo:issue`; QA rejected the work: `/relevo:fix`; a commit that is not Relevo's, or only the specification: delete the branch and `--retry`). The `go` label on a `build-failed` issue resumes when the branch can be continued and keeps its old answer otherwise. `--retry` keeps its meaning, a build from the beginning with no branch, and a refused `--retry` on a branch that can be continued names `--resume`. `/relevo:fix` says so when the last commit is an unfinished build, and goes on only if you want to correct the work instead.
+- **A resume that finishes no task stops the loop.** A resumed run records how many tasks were done when it started. If it stops at a limit again with the same tasks done, the comment says that resuming again will not help and names the limits to raise (`limits.run_max_turns`, `limits.run_max_minutes`, `limits.run_max_cost`) or the option to split the issue, and carries a hidden marker with the limits in force. `--resume` and the `go` label are refused until a limit in `relevo.yml` is higher than the recorded one. A comment of a person with the marker counts for nothing.
+- **Three words, kept apart in `GLOSSARY.md`, the guide, the commands page and the execution page (English and Spanish):** resume (continue a stopped build), retry (build again from the beginning) and fix (correct what QA rejected). Repositories get the label behaviour by raising `RELEVO_VERSION` in their `relevo-go.yml`; until then the label answers as before.
+
+### Known limits
+
+- A build whose runner stopped answering stays `building` and is not covered by `--resume`.
+- There is no `--restart`: to start over with a branch, delete the remote branch (`git push origin --delete <branch>`) and run `--retry`; the refusals print that command.
+- A files project (`tracker: files`) takes `--resume` on its local branch and reads the marker from its local comments.
+
 ### Fixed
 
 - **The progress comment is no longer left as "in progress" when the runner of a build is lost.** The build job closed its own comment, so a self-hosted runner that stopped answering GitHub in the middle of a build left the comment saying the build was running for as long as the issue existed. The `requeue` job, which runs on another runner, now closes a comment that is still open when the build ended as failed or cancelled, with one line that says the build ended without an outcome because its runner stopped answering, and the link to the run. No label changes and no comment is added; a comment that the build job already closed is left alone.

@@ -19,7 +19,7 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 test('frontmatter uses only documented fields', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
   assert.equal(meta.name, 'go');
-  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry|--resume] [--decision <base64>]');
 });
 
 test('go pushes code and spends money, so Claude can never start it on its own', () => {
@@ -249,7 +249,7 @@ test('Scenario: Review stays in the main working tree - the go skill does not to
 test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does not build in the session', () => {
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--local`\*\*, do not build in this session: run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`/);
   assert.match(body, /print `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs status <issue>`[^.]*progress[^]*end your turn/);
-  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry|--resume] [--decision <base64>]');
 });
 
 // ---------- issue format v2
@@ -342,7 +342,7 @@ test('a restricted file versioned on the base branch is reported as that, not as
 });
 
 test('Scenario: Local flag with retry - the skill passes --retry to go-local.mjs and to the planner', () => {
-  assert.match(body, /go-local\.mjs <issue>` \(with `--retry` when `\$ARGUMENTS` has it\)/);
+  assert.match(body, /go-local\.mjs <issue>` \(with `--retry` or `--resume` when `\$ARGUMENTS` has it\)/);
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--retry`\*\*/);
   assert.match(body, /--only <issue> --place local --retry --apply --claim/);
   assert.match(body, /a branch means `\/relevo:fix <issue>`/);
@@ -836,4 +836,14 @@ test('Scenario: Files project - messages are rendered with local true and a dele
   const section = body.split('## Files project')[1].split('\n## ')[0];
   assert.match(section, /"local": true/);
   assert.match(section, /git branch -D <branch>/);
+});
+
+test('Scenario: Resume - the skill plans --resume like a retry, keeps the branch, and records and checks the progress of a resumed run (resume-a-cut-build)', () => {
+  assert.match(body, /\*\*When `\$ARGUMENTS` has `--resume`\*\*/);
+  assert.match(body, /--only <issue> --place local --resume --apply --claim/);
+  assert.match(body, /does not run `--retry`|never with `--retry`|not `--retry`/);
+  assert.match(body, /resume-progress\.mjs start --done/);
+  assert.match(body, /resume-progress\.mjs check --reason "<reason>" --done/);
+  assert.match(body, /`stalled`.*`limit_turns`.*`limit_minutes`.*`limit_cost`/);
+  assert.ok(existsSync(root('scripts/resume-progress.mjs')));
 });

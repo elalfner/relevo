@@ -220,3 +220,41 @@ test('Scenario: No credential - with --credential false the issue stays ready, l
   assert.equal(d.comment.kind, 'cloud_not_configured');
   assert.equal(d.comment.data.actor, 'persona-a');
 });
+
+// --- resume-a-cut-build: --resume reads the answer of the check from the state file, as --retry reads its person ---
+function resumePlan(over, extra = {}) {
+  const input = join(dir, `state-r-${Math.random().toString(36).slice(2)}.json`);
+  const out = join(dir, `out-r-${Math.random().toString(36).slice(2)}.txt`);
+  const st = state({ labels: ['relevo:build-failed'], ready_by: null, ready_at: null, go_by: null, has_branch: true, ...over });
+  writeFileSync(input, JSON.stringify({ ...st, retry_by: 'persona-a', person: 'persona-a', ...extra }));
+  const r = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', input, '--config', config, '--only', '7', '--resume', '--place', 'local', '--github-output', out], { encoding: 'utf8' });
+  let text = '';
+  try { text = readFileSync(out, 'utf8'); } catch { /* not written */ }
+  return { status: r.status, out: text, stderr: r.stderr, stdout: r.stdout };
+}
+
+test('Scenario: --resume on a branch the check accepts - the output says start and claims building', () => {
+  const r = resumePlan({ resume_check: { state: 'resume', reason: null } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(parse(r.out).action, 'start');
+  const decision = JSON.parse(Buffer.from(parse(r.out).decision_b64, 'base64').toString('utf8'));
+  assert.deepEqual(decision.labels, { add: ['relevo:building', 'relevo:local'], remove: ['relevo:build-failed'] });
+});
+
+test('--resume on a branch the check refuses, or after a stall with the same limits, builds nothing', () => {
+  const refused = resumePlan({ resume_check: { state: 'existing', reason: 'the text of the issue changed since the last checkpoint' } });
+  assert.equal(parse(refused.out).action, 'report');
+  assert.match(refused.stdout, /resume_refused/);
+  const stalled = resumePlan({ resume_check: { state: 'resume', reason: null }, stalled: { turns: 100, minutes: 50, cost: 5 } });
+  assert.equal(parse(stalled.out).action, 'report');
+  assert.match(stalled.stdout, /resume_stalled/);
+});
+
+test('--resume needs --only, and cannot be given with --retry', () => {
+  const noOnly = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', join(dir, 'state-all.json'), '--config', config, '--resume'], { encoding: 'utf8' });
+  assert.equal(noOnly.status, 2);
+  assert.match(noOnly.stderr, /--resume needs --only/);
+  const both = spawnSync('node', [`${root}scripts/go-plan.mjs`, '--input', join(dir, 'state-all.json'), '--config', config, '--only', '7', '--resume', '--retry'], { encoding: 'utf8' });
+  assert.equal(both.status, 2);
+  assert.match(both.stderr, /cannot be given together/);
+});

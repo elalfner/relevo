@@ -59,7 +59,7 @@ Qué construir, la ruta de un acuerdo guardado, o el número de un issue que ree
 /relevo:issue 42
 ```
 
-### `/relevo:go [issue-number] [--local] [--retry] [--decision <base64>]`
+### `/relevo:go [issue-number] [--local] [--retry|--resume] [--decision <base64>]`
 
 El número de un issue `ready`. En la nube corre cuando alguien pone la etiqueta `go` a un issue aprobado (`ready` sola no inicia nada); a mano, `/relevo:go` en una sesión de Claude Code lo construye en tu máquina sin etiqueta, reclamándolo con `building` y `local`, en un worktree propio (así pueden correr dos a la vez), y `--local` construye en un proceso aparte con las listas cerradas de herramientas y los límites del workflow (el worktree es el mismo; el resto difiere, ver abajo). `--decision` lo pasa el workflow, no se escribe. En una sesión de Claude Code en la web no construye nada: ofrece poner la etiqueta `go` en su lugar. Si QA rechaza la construcción tras los reintentos (o quedan tareas sin terminar), el trabajo no se pierde: se guarda en la rama como `wip: rejected by QA`, el issue queda en `build-failed` y el comentario dice que es código que QA no aprobó ([La construcción falló](guide.es.md#la-construcción-falló)).
 
@@ -67,7 +67,9 @@ El número de un issue `ready`. En la nube corre cuando alguien pone la etiqueta
 /relevo:go 42 --local
 ```
 
-`--retry` vuelve a construir un issue que está en `build-failed` y no tiene rama en el remoto (una construcción que no subió nada, por ejemplo porque el commit seguro rechazó el trabajo), sin aprobarlo otra vez. Ejecútalo cuando hayas resuelto la causa que indica el comentario: `/relevo:go 42 --local --retry`. La etiqueta `go` hace lo mismo en la nube. Aplica los mismos gates que un inicio normal, contigo en el lugar de quien pidió el build (permiso de escritura, o maintainer si `trust` es `public`). Si el issue tiene rama, lo rechaza y te manda a `/relevo:fix 42`.
+`--retry` vuelve a construir un issue que está en `build-failed` y no tiene rama en el remoto (una construcción que no subió nada, por ejemplo porque el commit seguro rechazó el trabajo), sin aprobarlo otra vez. Ejecútalo cuando hayas resuelto la causa que indica el comentario: `/relevo:go 42 --local --retry`. La etiqueta `go` hace lo mismo en la nube. Aplica los mismos gates que un inicio normal, contigo en el lugar de quien pidió el build (permiso de escritura, o maintainer si `trust` es `public`). Si el issue tiene rama, lo rechaza y dice qué comando corresponde: `--resume` cuando la rama tiene un build que se detuvo antes de terminar, `/relevo:fix 42` en otro caso.
+
+`--resume` continúa un build que se detuvo antes de terminar (un límite o un corte), desde su rama: `/relevo:go 42 --local --resume`. El issue está en `build-failed` y su rama termina en un checkpoint o en `wip: stopped by limit`; la ejecución conserva la rama, no escribe especificación y construye solo las tareas que siguen abiertas. La etiqueta `go` hace lo mismo en la nube cuando la rama se puede continuar (cuando no, la etiqueta responde con `/relevo:fix`). Aplica los gates de un retry y, antes de reclamar nada, revisa la rama: si el texto del issue cambió, QA rechazó el trabajo, un commit de la rama no es de Relevo o solo está la especificación, no cambia nada y dice por qué y qué hacer. Una ejecución reanudada que se detiene en un límite sin terminar ninguna tarea lo dice y no se reanuda otra vez hasta que un límite de `relevo.yml` (`limits.run_max_turns`, `limits.run_max_minutes`, `limits.run_max_cost`) sea mayor que antes; para empezar de cero con una rama, borra la rama remota (`git push origin --delete <rama>`) y ejecuta `--retry`. Resume continúa, retry construye de nuevo desde el principio, y `/relevo:fix` corrige lo que QA rechazó.
 
 #### En la sesión o por separado
 

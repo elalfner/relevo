@@ -1,6 +1,8 @@
 # relevo-template: 0.18.1
 # Relevo: builds an issue in the cloud. It starts when someone with write access applies `relevo:go` to an issue that is `relevo:ready`
 # (`ready` approves the text and starts nothing; `go` requests the build). A build on a machine (/relevo:go <n>) never starts it.
+# `go` on a `relevo:build-failed` issue starts it too: a rebuild when no branch was left, and a resume (from the branch, building only the
+# pending tasks) when the branch holds a build that stopped before it finished. The `decide` job asks which with the API (contents: read).
 # Copy to .github/workflows/relevo-go.yml. If you renamed the ready or go label in relevo.yml, change them below too.
 #
 # Two jobs. `decide` is light (Node and the plugin's scripts, about half a minute): it runs the gates, claims the

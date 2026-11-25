@@ -209,3 +209,32 @@ test('Scenario: Partial variant - a refused checkpoint after pushed ones goes to
   assert.equal(es.command, '/relevo:fix 20');
   assert.doesNotMatch(es.line, /--retry/);
 });
+
+test('Scenario: A build that stopped before it finished - build-failed has a variant that continues it, and fix stays for rejected work (resume-a-cut-build)', () => {
+  assert.ok(NEXT_STEP_REASONS['build-failed'].includes('resume'));
+  assert.ok(NEXT_STEP_REASONS['build-failed'].includes('stalled'));
+  const step = nextStep({ state: 'build-failed', reason: 'resume', issue: 42 });
+  assert.deepEqual([step.command, step.who, step.reason], ['/relevo:go 42 --resume', 'assignee', 'resume']);
+  assert.match(step.hint, /continues the build from where it stopped/);
+  assert.match(step.hint, /apply relevo:go/);
+  assert.match(step.hint, /\/relevo:fix 42 is for work that QA rejected/);
+  const es = nextStep({ state: 'build-failed', reason: 'resume', issue: 42, language: 'es' });
+  assert.equal(es.command, '/relevo:go 42 --resume');
+  assert.match(es.hint, /continúa el build desde donde se detuvo/);
+  assert.match(es.hint, /relevo:go/);
+  // The variant for work that QA rejected keeps fix.
+  assert.equal(nextStep({ state: 'build-failed', reason: 'kept', issue: 42 }).command, '/relevo:fix 42');
+  assert.equal(nextStep({ state: 'build-failed', reason: 'partial', issue: 42 }).command, '/relevo:fix 42');
+});
+
+test('the stalled variant has no command: resuming again would not help, and the hint says what to change', () => {
+  const step = nextStep({ state: 'build-failed', reason: 'stalled', issue: 42 });
+  assert.equal(step.command, null);
+  assert.match(step.hint, /resuming again will not help/);
+  assert.match(step.hint, /limits\.run_max_turns/);
+  assert.match(step.hint, /split the issue/);
+  assert.doesNotMatch(step.line, /--resume/);
+  const es = nextStep({ state: 'build-failed', reason: 'stalled', issue: 42, language: 'es' });
+  assert.match(es.hint, /reanudar de nuevo no ayudará/);
+  assert.match(es.hint, /parte el issue/);
+});

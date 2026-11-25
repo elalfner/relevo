@@ -118,3 +118,37 @@ test('go-plan.mjs on a files project plans and claims with no repo, no gh and no
   assert.throws(() => execFileSync(process.execPath, [new URL('../scripts/go-plan.mjs', import.meta.url).pathname, '--only', String(n)], { cwd: p.dir, stdio: 'pipe' }), /only on this machine/);
   rmSync(p.dir, { recursive: true });
 });
+
+test('--resume continues a failed build whose branch the check accepts, and refuses the rest with the reason (resume-a-cut-build)', () => {
+  const p = project();
+  const n = issue(p);
+  p.tracker.stateSet(n, { add: ['relevo:build-failed'], remove: ['relevo:ready'] });
+  const resumable = () => ({ state: 'resume', reason: null });
+  const started = planFiles({ config: p.config, tracker: p.tracker, only: n, resume: true, hasBranch: () => true, resumeCheck: resumable }).decisions[0];
+  assert.equal(started.action, 'start');
+  assert.deepEqual(started.labels.add, ['relevo:building', 'relevo:local']);
+  assert.ok(started.labels.remove.includes('relevo:build-failed'));
+  const none = planFiles({ config: p.config, tracker: p.tracker, only: n, resume: true, hasBranch: () => false, resumeCheck: resumable }).decisions[0];
+  assert.equal(none.action, 'skip');
+  assert.match(none.reason, /nothing to continue.*--retry/);
+  const refused = planFiles({ config: p.config, tracker: p.tracker, only: n, resume: true, hasBranch: () => true, resumeCheck: () => ({ state: 'existing', reason: 'the text of the issue changed since the last checkpoint' }) }).decisions[0];
+  assert.equal(refused.action, 'skip');
+  assert.match(refused.reason, /cannot be resumed.*text of the issue changed/);
+  const withoutFlag = planFiles({ config: p.config, tracker: p.tracker, only: n, hasBranch: () => true, resumeCheck: resumable }).decisions[0];
+  assert.match(withoutFlag.reason, /--retry|fix/, 'without the flag a failed build is as before');
+  rmSync(p.dir, { recursive: true });
+});
+
+test('--resume after a stall needs a limit higher than the recorded one', () => {
+  const p = project();
+  const n = issue(p);
+  p.tracker.stateSet(n, { add: ['relevo:build-failed'], remove: ['relevo:ready'] });
+  const input = { config: p.config, tracker: p.tracker, only: n, resume: true, hasBranch: () => true, resumeCheck: () => ({ state: 'resume', reason: null }) };
+  const limits = p.config.limits;
+  const same = planFiles({ ...input, stalled: () => ({ turns: limits.run_max_turns, minutes: limits.run_max_minutes, cost: limits.run_max_cost }) }).decisions[0];
+  assert.equal(same.action, 'skip');
+  assert.match(same.reason, /finished no task.*limits\.run_max_turns/);
+  const raised = planFiles({ ...input, stalled: () => ({ turns: limits.run_max_turns, minutes: limits.run_max_minutes - 5, cost: limits.run_max_cost }) }).decisions[0];
+  assert.equal(raised.action, 'start');
+  rmSync(p.dir, { recursive: true });
+});

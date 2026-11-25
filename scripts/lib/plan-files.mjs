@@ -10,13 +10,16 @@ import { issueHash } from './issue-hash.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
 import { resolveLabelNames } from './labels.mjs';
 import { resolvePlatform } from './platform-of.mjs';
+import { stallBlock } from './resume-gate.mjs';
 
 /**
- * @param {{ config: object, tracker: object, only?: number|null, retry?: boolean, hasBranch?: (n: number) => boolean }} input
- *   `tracker` is the files backend; `hasBranch` says whether a build already left a branch for the issue (for `--retry`).
+ * @param {{ config: object, tracker: object, only?: number|null, retry?: boolean, resume?: boolean, hasBranch?: (n: number) => boolean, resumeCheck?: (n: number) => ({ state: string, reason: string|null }|null), stalled?: (n: number) => ({ turns: number, minutes: number, cost: number }|null) }} input
+ *   `tracker` is the files backend; `hasBranch` says whether a build already left a branch for the issue (for `--retry` and `--resume`).
+ *   `--resume` continues a failed build from its branch when `resumeCheck` (the answer of resume-check.mjs) says `resume`, unless the last resume finished
+ *   no task and no limit of the configuration is higher than the one `stalled` recorded.
  * @returns {{ decisions: object[], summary: Record<string, number> }}
  */
-export function planFiles({ config, tracker, only = null, retry = false, hasBranch = () => false }) {
+export function planFiles({ config, tracker, only = null, retry = false, resume = false, hasBranch = () => false, resumeCheck = () => null, stalled = () => null }) {
   const names = resolveLabelNames(config.labels);
   const issues = tracker.issueList({ state: 'all', fields: 'number,title,body,state,labels' })
     .filter((i) => only === null || i.number === only);
@@ -34,8 +37,14 @@ export function planFiles({ config, tracker, only = null, retry = false, hasBran
     if (['built', 'in-review'].some((k) => has(issue, k))) { out(issue, 'skip', 'it was already built: use /relevo:fix to correct it (go_already_built)'); continue; }
 
     const failed = has(issue, 'build-failed');
-    if (failed && !retry) { out(issue, 'skip', 'the last build failed: run it again with --retry when nothing was pushed, or /relevo:fix when there is a branch (go_use_fix)'); continue; }
-    if (failed && hasBranch(issue.number)) { out(issue, 'skip', 'the issue has a branch: correct it with /relevo:fix (go_use_fix)'); continue; }
+    if (failed && resume) {
+      if (!hasBranch(issue.number)) { out(issue, 'skip', 'there is nothing to continue: the issue has no branch, so --retry builds it from the beginning'); continue; }
+      const answer = resumeCheck(issue.number);
+      if (answer?.state !== 'resume') { out(issue, 'skip', `the branch of the issue cannot be resumed${answer?.reason ? `: ${answer.reason}` : ''}`); continue; }
+      const block = stallBlock(stalled(issue.number), config.limits);
+      if (block) { out(issue, 'skip', `the last resume finished no task: raise one of ${block.raise.map((k) => `limits.${k}`).join(', ')} in relevo.yml, or split the issue`); continue; }
+    } else if (failed && !retry) { out(issue, 'skip', 'the last build failed: run it again with --retry when nothing was pushed, or /relevo:fix when there is a branch (go_use_fix)'); continue; }
+    if (failed && !resume && hasBranch(issue.number)) { out(issue, 'skip', 'the issue has a branch: correct it with /relevo:fix (go_use_fix)'); continue; }
     if (!failed && !has(issue, 'ready') && !has(issue, 'queued')) { out(issue, 'skip', 'the issue is not approved: apply ready first (go_needs_ready)'); continue; }
 
     // An issue that was ready and failed is approved again by the person who retries it, so the hash is taken now.

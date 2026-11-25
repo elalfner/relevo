@@ -401,3 +401,22 @@ test('Scenario: Files project - the dry run names the local base, and a github p
   const github = await runLocal({ issue: '42', config, runner: fakeRunner(), dryRun: true });
   assert.match(github.messages.join('\n'), /\(from origin\/dev\)/);
 });
+
+test('Scenario: Local resume - the agent runs /relevo:go <n> --resume with the same limits, and the cloud is not asked about (resume-a-cut-build)', async () => {
+  const runner = fakeRunner();
+  const r = await run(runner, { resume: true });
+  assert.equal(r.status, 0);
+  const claude = runner.calls.find((c) => c.kind === 'stream');
+  assert.deepEqual(claude.args, ['-p', '/relevo:go 42 --resume', ...runFlags(config, { json: true })]);
+  assert.ok(!r.messages.some((m) => /cloud/.test(m)), 'no cloud warning for a resume');
+  const dry = await run(fakeRunner(), { resume: true, dryRun: true });
+  assert.match(dry.messages.join('\n'), /\/relevo:go 42 --resume/);
+  const agy = planLocalRun({ issue: '42', repoRoot: REPO, config: { ...config, agent: { ...config.agent, build: 'antigravity' } }, resume: true });
+  assert.ok(agy.claude[1].includes('/relevo:go 42 --resume'));
+});
+
+test('--resume and --retry together are refused: one continues, the other builds from the beginning', async () => {
+  const r = await run(fakeRunner(), { resume: true, retry: true });
+  assert.equal(r.status, 2);
+  assert.match(r.messages.join('\n'), /--resume.*--retry/);
+});

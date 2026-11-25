@@ -104,6 +104,24 @@ const TABLE = {
         es: 'verifica y corrige el trabajo que se guardó; para repensar el issue, usa /relevo:think y luego /relevo:issue {n}',
       },
     },
+    // The build stopped before it finished (a limit, a cut) and its work was kept: nothing was rejected, so the build is continued, not corrected.
+    resume: {
+      command: '/relevo:go {n} --resume',
+      who: 'assignee',
+      hint: {
+        en: 'it continues the build from where it stopped and builds only the pending tasks (in the cloud, apply relevo:go); /relevo:fix {n} is for work that QA rejected',
+        es: 'continúa el build desde donde se detuvo y construye solo las tareas pendientes (en la nube, ponle relevo:go); /relevo:fix {n} es para el trabajo que QA rechazó',
+      },
+    },
+    // A resume finished no task and stopped at a limit again: resuming once more meets the same wall, so a limit or the issue changes first.
+    stalled: {
+      command: null,
+      who: 'assignee',
+      hint: {
+        en: 'the last resume finished no task, so resuming again will not help: raise limits.run_max_turns, limits.run_max_minutes or limits.run_max_cost in relevo.yml, or split the issue, and then resume it',
+        es: 'la última reanudación no terminó ninguna tarea, así que reanudar de nuevo no ayudará: sube limits.run_max_turns, limits.run_max_minutes o limits.run_max_cost en relevo.yml, o parte el issue, y luego reanúdalo',
+      },
+    },
     // Nothing was built: the runner lacks a tool of the profile, and the fix is in the workflow, not a command.
     toolchain: {
       command: null,
@@ -245,7 +263,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
-  'build-failed': ['fix', 'kept', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild', 'partial'],
+  'build-failed': ['fix', 'kept', 'resume', 'stalled', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild', 'partial'],
 };
 
 // `{delete}` is the command that deletes the branch when the branch is known, and nothing otherwise.

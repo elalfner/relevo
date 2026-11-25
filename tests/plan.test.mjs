@@ -1094,3 +1094,90 @@ test('an edit in the same second as the approval is not an edit after it (one gh
   assert.equal(d.action, 'start');
   assert.equal(checked(approved({ ready_at: '2026-11-17T16:01:26Z' }), { ok: true, at: '2026-11-17T16:01:27Z' }).action, 'unapproved');
 });
+
+// --- Resume of a build that stopped before it finished (resume-a-cut-build) ---
+const RESUMABLE = { state: 'resume', reason: null };
+const resumeOf = (i, by = 'persona-a') => ({ input: { resume: { issue: i.number, by } } });
+const STALLED = { turns: 100, minutes: 50, cost: 5 };
+
+test('Scenario: A build cut at a limit is resumed - --resume plans it with the gates of a retry, claims building and never adds ready', () => {
+  const i = failed({ number: 42, title: 'Summary screen', has_branch: true, resume_check: RESUMABLE });
+  const d = one([i], resumeOf(i));
+  assert.equal(d.action, 'start');
+  assert.equal(d.branch, 'feature/42-summary-screen');
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:build-failed'] });
+  assert.equal(d.comment, null, 'the claim posts no comment');
+});
+
+test('--resume by a person without write access is denied and the issue stays build-failed', () => {
+  const i = failed({ number: 42, has_branch: true, resume_check: RESUMABLE });
+  const d = one([i], resumeOf(i, 'stranger'));
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+});
+
+test('--resume on an issue that is not build-failed builds nothing and changes nothing', () => {
+  const i = issue({ number: 42, labels: ['relevo:built'], has_branch: true, resume_check: RESUMABLE });
+  const r = plan([i], { input: { place: 'local', person: 'persona-a', only: 42, resume: { issue: 42, by: 'persona-a' } } }).decisions[0];
+  assert.equal(r.action, 'report');
+  assert.deepEqual(r.labels, { add: [], remove: [] });
+});
+
+test('--resume with an answer of the check that is not resume builds nothing and changes nothing', () => {
+  ['existing', 'absent', null].forEach((state) => {
+    const i = failed({ number: 42, has_branch: true, resume_check: state ? { state, reason: 'x' } : null });
+    const d = one([i], resumeOf(i));
+    assert.equal(d.action, 'report', String(state));
+    assert.deepEqual(d.labels, { add: [], remove: [] }, String(state));
+  });
+});
+
+test('--resume whose text changed since the approval is refused the same way as a retry', () => {
+  const i = approved({ labels: ['relevo:build-failed'], has_branch: true, resume_check: RESUMABLE });
+  const d = checked(i, { ok: true, at: '2026-10-14T09:00:00Z' }, { input: { resume: { issue: 42, by: 'persona-a' } } });
+  assert.equal(d.action, 'unapproved');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:build-failed'] });
+});
+
+test('Scenario: Resume in the cloud - go on build-failed with a branch the check accepts is planned as a resume', () => {
+  const d = cloud([issue({ number: 42, labels: ['relevo:build-failed', 'relevo:go'], has_branch: true, resume_check: RESUMABLE })]).decisions[0];
+  assert.equal(d.action, 'start');
+  assert.deepEqual(d.labels, { add: ['relevo:building'], remove: ['relevo:build-failed', 'relevo:go'] });
+});
+
+test('a resume requested with go by someone without permission is refused like any request', () => {
+  const d = cloud([issue({ number: 42, labels: ['relevo:build-failed', 'relevo:go'], has_branch: true, resume_check: RESUMABLE, go_by: 'stranger' })]).decisions[0];
+  assert.equal(d.action, 'denied');
+  assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] });
+});
+
+test('Scenario: The branch cannot be resumed - go keeps the answer it had, to run fix', () => {
+  ['existing', 'absent'].forEach((state) => {
+    const d = cloud([issue({ number: 42, labels: ['relevo:build-failed', 'relevo:go'], has_branch: true, resume_check: { state, reason: 'x' } })]).decisions[0];
+    assert.equal(d.action, 'refuse', state);
+    assert.equal(d.comment.kind, 'go_use_fix', state);
+  });
+  const old = cloud([issue({ number: 42, labels: ['relevo:build-failed', 'relevo:go'], has_branch: true })]).decisions[0];
+  assert.equal(old.comment.kind, 'go_use_fix', 'a caller that does not give the check changes nothing');
+});
+
+test('Scenario: A resume with the same limits after a stall is refused, and one with a limit raised is accepted', () => {
+  const stalled = (over) => issue({ number: 42, labels: ['relevo:build-failed', 'relevo:go'], has_branch: true, resume_check: RESUMABLE, stalled: STALLED, ...over });
+  const same = cloud([stalled()]).decisions[0];
+  assert.equal(same.action, 'refuse');
+  assert.equal(same.comment.kind, 'go_resume_stalled');
+  assert.deepEqual(same.labels, { add: [], remove: ['relevo:go'] });
+  const raised = cloud([stalled()], { config: 'limits:\n  run_max_minutes: 90\n' }).decisions[0];
+  assert.equal(raised.action, 'start');
+  const lower = cloud([stalled()], { config: 'limits:\n  run_max_minutes: 30\n' }).decisions[0];
+  assert.equal(lower.action, 'refuse', 'a limit that is lower does not lift it');
+});
+
+test('--resume after a stall with the same limits reports which limits to raise, and builds nothing', () => {
+  const i = failed({ number: 42, has_branch: true, resume_check: RESUMABLE, stalled: STALLED });
+  const d = one([i], resumeOf(i));
+  assert.equal(d.action, 'report');
+  assert.equal(d.report, 'resume_stalled');
+  assert.match(d.reason, /run_max_turns/);
+  assert.deepEqual(d.labels, { add: [], remove: [] });
+});

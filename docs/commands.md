@@ -59,7 +59,7 @@ What to build, the path of a saved agreement, or the number of an issue to rewri
 /relevo:issue 42
 ```
 
-### `/relevo:go [issue-number] [--local] [--retry] [--decision <base64>]`
+### `/relevo:go [issue-number] [--local] [--retry|--resume] [--decision <base64>]`
 
 The number of a `ready` issue. In the cloud it runs when someone applies the `go` label to an approved issue (`ready` alone starts nothing); by hand, `/relevo:go` in a Claude Code session builds it on your machine with no label, claiming it with `building` and `local`, in a worktree of its own (so two can run at once), and `--local` builds in a separate process with the closed tool lists and the limits of the workflow (the worktree is the same; the rest differs, see below). `--decision` is passed by the workflow, not typed. In a session of Claude Code on the web it builds nothing: it offers to apply the `go` label instead. If QA rejects the build after the retries (or tasks are left unfinished) the work is not lost: it is committed to the branch as `wip: rejected by QA`, the issue is `build-failed`, and the comment says it is code QA did not approve ([Failed build](guide.md#failed-build)).
 
@@ -67,7 +67,9 @@ The number of a `ready` issue. In the cloud it runs when someone applies the `go
 /relevo:go 42 --local
 ```
 
-`--retry` builds again an issue that is `build-failed` and has no branch on the remote (a build that pushed nothing, for example because the safe commit refused the work), without approving it again. Run it after you resolve the cause the comment names: `/relevo:go 42 --local --retry`. The `go` label does the same in the cloud. It applies the same gates as a normal start, with you in the place of whoever requested the build (write access, or maintainer when `trust` is `public`). If the issue has a branch it refuses and sends you to `/relevo:fix 42`.
+`--retry` builds again an issue that is `build-failed` and has no branch on the remote (a build that pushed nothing, for example because the safe commit refused the work), without approving it again. Run it after you resolve the cause the comment names: `/relevo:go 42 --local --retry`. The `go` label does the same in the cloud. It applies the same gates as a normal start, with you in the place of whoever requested the build (write access, or maintainer when `trust` is `public`). If the issue has a branch it refuses and says which command fits: `--resume` when the branch holds a build that stopped before it finished, `/relevo:fix 42` otherwise.
+
+`--resume` continues a build that stopped before it finished (a limit or a cut), from its branch: `/relevo:go 42 --local --resume`. The issue is `build-failed` and its branch ends at a checkpoint or at `wip: stopped by limit`; the run keeps the branch, writes no specification and builds only the tasks that are still open. The `go` label does the same in the cloud when the branch can be continued (when it cannot, the label answers with `/relevo:fix`). It applies the gates of a retry, and before it claims anything it checks the branch: if the text of the issue changed, QA rejected the work, a commit on the branch is not Relevo's or only the specification is there, it changes nothing and says why and what to do. A resumed run that stops at a limit without finishing a task says so and is not resumed again until a limit in `relevo.yml` (`limits.run_max_turns`, `limits.run_max_minutes`, `limits.run_max_cost`) is higher than it was; to start over with a branch, delete the remote branch (`git push origin --delete <branch>`) and run `--retry`. Resume continues, retry builds again from the beginning, and `/relevo:fix` corrects what QA rejected.
 
 #### In the session or on its own
 
