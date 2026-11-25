@@ -4,6 +4,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- **The progress comment is no longer left as "in progress" when the runner of a build is lost.** The build job closed its own comment, so a self-hosted runner that stopped answering GitHub in the middle of a build left the comment saying the build was running for as long as the issue existed. The `requeue` job, which runs on another runner, now closes a comment that is still open when the build ended as failed or cancelled, with one line that says the build ended without an outcome because its runner stopped answering, and the link to the run. No label changes and no comment is added; a comment that the build job already closed is left alone.
+
 ### Changed
 
 - **A milestone is optional: `go` no longer stops an issue that has none. Breaking for whoever relied on it:** the gate that removed `ready` and `go` and asked for a milestone is gone, for a cloud build, a rebuild after a failure and a local build alike, and the decision `no-milestone` and its comment no longer exist. Nothing protected by that gate was about safety or cost: `ready` already guards the text, and nothing ordered work by milestone. `/relevo:issue` still asks which milestone an issue belongs to and offers the open ones, now with `none`, which it accepts once and creates the issue without `--milestone`. `/relevo:status` is unchanged: it summarises each milestone that exists. A repository that wants to require one has no setting for it; say so if you need it. The documentation (English and Spanish) calls the milestone optional and worth having.

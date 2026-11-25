@@ -569,7 +569,7 @@ else if (a[0] === 'issue' && a[1] === 'edit') {
   st.comments.find((c) => a.some((x) => x.endsWith('/' + c.id))).body = body; save();
 } else if (a[0] === 'api' && a.some((x) => x.includes('/comments'))) {
   save();
-  const ok = (c) => c.user.type === 'Bot' && c.body.includes('<!-- relevo:progress -->') && c.body.includes('<!-- relevo:progress:waiting -->') && !c.body.includes('<!-- relevo:progress:closed -->');
+  const ok = (c) => c.user.type === 'Bot' && c.body.includes('<!-- relevo:progress -->') && (!jq.includes('progress:waiting') || c.body.includes('<!-- relevo:progress:waiting -->')) && !c.body.includes('<!-- relevo:progress:closed -->');
   console.log(st.comments.filter(ok).map((c) => c.id).join('\\n'));
 } else if (a[0] === 'api' && a.some((x) => x.includes('contents/relevo.yml'))) { save(); console.log(st.language ? Buffer.from('language: ' + st.language + '\\n').toString('base64') : ''); }
 else { save(); }
@@ -646,4 +646,77 @@ test('a build that ended in success or failure is left alone, as is an issue in 
   assert.deepEqual(person.state().labels, ['relevo:building'], 'a comment typed by a person is not read as the marker');
   const closed = runUnstarted({ comments: [{ id: 5, user: { type: 'Bot' }, body: '<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->\n<!-- relevo:progress:closed -->' }] }, 'cancelled');
   assert.deepEqual(closed.state().labels, ['relevo:building']);
+});
+
+// ---------- a build whose runner was lost
+
+const CLOSE_STEP = 'Close the progress comment of a build that ended without closing it';
+const open = (body = 'QA (attempt 1 of 2)\nTasks: 6 of 6\nIt has run for 38 min\n<!-- relevo:progress -->') => ({ id: 7, user: { type: 'Bot' }, body });
+const runClose = (state, result, extra = {}) => {
+  const step = stepOf(CLOSE_STEP, jobText('requeue'));
+  const script = /run: \|\n([\s\S]*)$/.exec(step)[1].split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const gh = stubGh({ labels: ['relevo:building'], language: null, comments: [open()], calls: [], ...state });
+  const r = spawnSync('bash', ['-e', '-c', script], { encoding: 'utf8', env: { ...process.env, PATH: `${join(gh.dir, 'bin')}:${process.env.PATH}`, BUILD_RESULT: result, ISSUE: '42', GITHUB_REPOSITORY: 'o/r', RUN_URL: 'https://example.test/run/9', ...extra } });
+  return { ...gh, r };
+};
+
+test('Scenario: The runner of the build is lost - a failed or cancelled build leaves the open progress comment closed with one line and the run link', () => {
+  ['failure', 'cancelled'].forEach((result) => {
+    const t = runClose({}, result);
+    assert.equal(t.r.status, 0, t.r.stderr);
+    const body = t.state().comments[0].body;
+    assert.match(body, /^The Relevo build ended without an outcome: its runner stopped answering\.\nRun: https:\/\/example\.test\/run\/9/);
+    assert.match(body, /<!-- relevo:progress -->/);
+    assert.match(body, /<!-- relevo:progress:closed -->/);
+    assert.doesNotMatch(body, /Tasks: 6|QA \(attempt/, 'no progress detail remains');
+  });
+});
+
+test('the line of a lost runner is in the language of relevo.yml', () => {
+  const t = runClose({ language: 'es' }, 'failure');
+  assert.match(t.state().comments[0].body, /^La construcción de Relevo terminó sin resultado: su runner dejó de responder\.\nEjecución: https:\/\/example\.test\/run\/9/);
+});
+
+test('Scenario: The labels are not changed - closing for a lost runner edits one comment and changes nothing else', () => {
+  const t = runClose({}, 'failure');
+  assert.deepEqual(t.state().labels, ['relevo:building']);
+  assert.equal(t.state().comments.length, 1, 'no comment is added');
+  assert.ok(!t.state().calls.some((c) => c[0] === 'issue' && c[1] === 'edit'), 'no label is edited');
+});
+
+test('a progress comment that still says the build waits is closed too when the build failed', () => {
+  const t = runClose({ comments: [open('waits\n<!-- relevo:progress -->\n<!-- relevo:progress:waiting -->')] }, 'failure');
+  assert.match(t.state().comments[0].body, /its runner stopped answering/);
+  assert.doesNotMatch(t.state().comments[0].body, /waits/);
+});
+
+test('Scenario: The close of the build job already ran, there is no comment, or the build succeeded - nothing is written', () => {
+  const closed = runClose({ comments: [open('The Relevo build ended after 5 min.\n<!-- relevo:progress -->\n<!-- relevo:progress:closed -->')] }, 'failure');
+  assert.match(closed.state().comments[0].body, /^The Relevo build ended after 5 min\./, 'a closed comment is not edited again');
+  const none = runClose({ comments: [] }, 'failure');
+  assert.equal(none.r.status, 0, none.r.stderr);
+  assert.deepEqual(none.state().comments, []);
+  assert.ok(!none.state().calls.some((c) => c.includes('-X')), 'nothing is created or edited');
+  ['success', 'skipped'].forEach((result) => {
+    const t = runClose({}, result);
+    assert.match(t.state().comments[0].body, /^QA \(attempt 1 of 2\)/, result);
+  });
+  const person = runClose({ comments: [{ id: 7, user: { type: 'User' }, body: '<!-- relevo:progress -->' }] }, 'failure');
+  assert.equal(person.state().comments[0].body, '<!-- relevo:progress -->', 'a comment typed by a person is not read as the marker');
+});
+
+test('Scenario: GitHub cancels a job that waited too long - the step for a lost runner comes after it and leaves its comment alone', () => {
+  const t = runClose({ comments: [{ id: 5, user: { type: 'Bot' }, body: 'No runner took the build\n<!-- relevo:progress -->\n<!-- relevo:progress:closed -->' }] }, 'cancelled');
+  assert.match(t.state().comments[0].body, /^No runner took the build/);
+  const requeue = jobText('requeue');
+  const at = (name) => requeue.indexOf(`- name: ${name}`);
+  assert.ok(at('Return a build that no runner took to the queue') < at(CLOSE_STEP), 'after the step that closes the waiting comment');
+  assert.ok(at(CLOSE_STEP) < at('Start the queue'), 'before the queue starts');
+});
+
+test('Scenario: Closing never fails the run - the step for a lost runner cannot fail the job', () => {
+  const step = stepOf(CLOSE_STEP, jobText('requeue'));
+  assert.match(step, /continue-on-error: true/);
+  assert.match(step, /BUILD_RESULT: \$\{\{ needs\.build\.result \}\}/);
+  assert.doesNotMatch(step, /issues\/\$ISSUE\/labels|issue edit/, 'it does not touch labels');
 });
