@@ -3131,3 +3131,40 @@ test('Scenario: Fatals ignored on a shipped stack - doctor warns that the key is
   assert.equal(w.status, 'warn');
   assert.match(w.message, /ignored/);
 });
+
+// Spec: init-doctor, "Doctor checks the schema of the OpenSpec project".
+const schemaOf = (config) => gatherFacts(probes({ localFiles: {}, remote: {}, files: config === null ? {} : { 'openspec/config.yaml': config } })).openspecSchema;
+
+test('Scenario: The supported schema - spec-driven passes, with block scalars in the file, and a missing line is the OpenSpec default', () => {
+  const fact = schemaOf('schema: spec-driven\ncontext: |\n  Tech stack: x\n  schema: not-this-one\nrules:\n  tasks:\n    - Keep short\n');
+  assert.deepEqual(fact, { state: 'named', schema: 'spec-driven' });
+  assert.equal(byId(runChecks(healthy({ openspecSchema: fact })), 'openspec.schema').status, 'pass');
+  const none = schemaOf('context: |\n  hello\n');
+  assert.deepEqual(none, { state: 'default', schema: 'spec-driven' });
+  assert.equal(byId(runChecks(healthy({ openspecSchema: none })), 'openspec.schema').status, 'pass');
+  assert.equal(byId(runChecks(healthy({ openspecSchema: schemaOf('schema: "spec-driven" # the default\n') })), 'openspec.schema').status, 'pass');
+});
+
+test('Scenario: Another schema - a failure that names it, with the fix', () => {
+  const r = byId(runChecks(healthy({ openspecSchema: schemaOf('schema: custom-flow\n') })), 'openspec.schema');
+  assert.equal(r.status, 'fail');
+  assert.match(r.message, /"custom-flow"/);
+  assert.match(r.fix, /schema: spec-driven/);
+  assert.ok(failing(runChecks(healthy({ openspecSchema: schemaOf('schema: custom-flow\n') }))).includes('openspec.schema'));
+});
+
+test('Scenario: Unreadable configuration - the report says so and does not show a pass', () => {
+  const unusable = schemaOf('schema:\ncontext: x\n');
+  assert.deepEqual(unusable, { state: 'unreadable' });
+  const r = byId(runChecks(healthy({ openspecSchema: unusable })), 'openspec.schema');
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /could not be read/);
+  assert.match(r.fix, /schema: spec-driven/);
+  const throwing = gatherFacts({ ...probes({ localFiles: {}, remote: {} }), exists: (p) => p === 'openspec/config.yaml' || p === 'relevo.yml', read: (p) => { if (p === 'openspec/config.yaml') throw new Error('EACCES'); return CONFIG_TEXT; } }).openspecSchema;
+  assert.deepEqual(throwing, { state: 'unreadable' });
+});
+
+test('without an OpenSpec root there is no schema check: openspec.root already fails', () => {
+  assert.equal(schemaOf(null), null);
+  assert.equal(byId(runChecks(healthy({ openspecRoot: false, openspecSchema: null })), 'openspec.schema'), undefined);
+});

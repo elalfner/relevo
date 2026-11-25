@@ -23,6 +23,7 @@ import { restrictedFacts } from './restricted-settings.mjs';
 import { SKILL_DIRS, SIZE_BUDGET_BYTES, folderHash, lockDifferences, resolveRoleSkills, skillBudget, skillDirsFor } from './role-skills.mjs';
 import { adapterFor, targetOf } from './review-adapters.mjs';
 import { onPath } from './on-path.mjs';
+import { SUPPORTED_SCHEMA, schemaFromConfigText } from './schema-guard.mjs';
 import { testDatabase } from './api-preflight.mjs';
 import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
 
@@ -95,6 +96,19 @@ const fail = (id, message, fix) => ({ id, status: 'fail', message, fix });
 const warn = (id, message, fix) => ({ id, status: 'warn', message, fix });
 // Information that asks for nothing: neither a failure nor a warning, and it never changes the exit status.
 const note = (id, message) => ({ id, status: 'note', message });
+
+// The build reads `tasks.md` as the spec-driven schema of OpenSpec defines it, so another default schema is a failure now, not at the first build.
+function openspecSchemaChecks(f) {
+  const found = f.openspecSchema;
+  if (!found) return []; // no OpenSpec root: openspec.root already says so
+  if (found.state === 'unreadable') {
+    return [warn('openspec.schema', 'the schema of openspec/config.yaml could not be read: its `schema:` line has no usable name', `write \`schema: ${SUPPORTED_SCHEMA}\` in openspec/config.yaml, the schema Relevo builds with`)];
+  }
+  if (found.schema !== SUPPORTED_SCHEMA) {
+    return [fail('openspec.schema', `the OpenSpec schema of this repository is "${found.schema}", and Relevo builds only with "${SUPPORTED_SCHEMA}"`, `set \`schema: ${SUPPORTED_SCHEMA}\` in openspec/config.yaml`)];
+  }
+  return [pass('openspec.schema', `the OpenSpec schema is ${SUPPORTED_SCHEMA}`)];
+}
 
 /** True when `version` (like "22.1.0") is at least `min` (like "20.19"). */
 export function versionAtLeast(version, min) {
@@ -315,6 +329,7 @@ export function gatherFacts(p) {
   gatherPlatforms(f, p, tryRun);
 
   f.openspecRoot = p.exists('openspec/config.yaml') || p.exists('openspec/config.yml');
+  f.openspecSchema = f.openspecRoot ? tryRun(() => schemaFromConfigText(p.read(p.exists('openspec/config.yaml') ? 'openspec/config.yaml' : 'openspec/config.yml')), { state: 'unreadable' }) : null;
   f.openspecRootTracked = tryRun(() => String(p.tool('git', ['ls-files', 'openspec'])).trim().length > 0, false);
   f.evidenceIgnored = p.exists('.gitignore') && /^\/?evidence\/?\s*$/m.test(p.read('.gitignore'));
   f.pluginDeclared = pluginDeclaration(p);
@@ -1128,6 +1143,7 @@ export function runChecks(f) {
   // OpenSpec in the repository
   if (f.openspecRoot && f.openspecRootTracked) r.push(pass('openspec.root', 'the OpenSpec root is tracked by git'));
   else r.push(fail('openspec.root', 'the OpenSpec root is missing or not tracked by git, so a clean checkout (and the runner) has no `openspec/`', 'run /relevo:init, then commit openspec/config.yaml and the .gitkeep files'));
+  r.push(...openspecSchemaChecks(f));
   r.push(f.evidenceIgnored ? pass('evidence.ignored', 'evidence/ is ignored by git') : fail('evidence.ignored', 'evidence/ is not in .gitignore; `review` would put screenshots in git', 'add the line `evidence/` to .gitignore (or run /relevo:init)'));
   r.push(...pluginDeclaredChecks(f));
   r.push(...webHookChecks(f));

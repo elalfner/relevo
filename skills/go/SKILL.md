@@ -126,7 +126,7 @@ Never run `openspec init`, `archive`, `update` or `sync`, and never create files
 
 ## Failure path
 
-Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `QA rejected: the lenses contradict each other`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid`, `branch already exists`, `specification invalid`, `specification incomplete`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `restricted file in the diff`, `outside the platform`, `possible credential or temporary marker in the diff`, `conflict with the base branch`, `automated validation failed after merging the base branch`).
+Anything you cannot recover from ends here. Use it whenever a step below says "take the failure path". It always has a reason (for example `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `QA rejected: the lenses contradict each other`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid`, `branch already exists`, `specification invalid`, `specification incomplete`, `unsupported schema: <name>`, `tasks left unfinished`, `invalid decision`, `profile not resolved`, `issue changed after ready`, `protected path in the diff`, `restricted file in the diff`, `outside the platform`, `possible credential or temporary marker in the diff`, `conflict with the base branch`, `automated validation failed after merging the base branch`).
 
 1. **Keep the work.** When the reason is `QA rejected after the retries`, `QA rejected: nothing the developer agent can fix`, `QA rejected: the lenses contradict each other`, `run limit reached`, `automated validation could not run`, `automated validation failed after the retries`, `lens report invalid` or `tasks left unfinished`, the developer's work exists only in the working tree of this run, so commit it before anything else, through the same script as step 6 and with the files its last report lists (created and modified) plus `tasks.md`:
 
@@ -317,7 +317,13 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/interface-rules.mjs --role qa --platform <pla
 
 Each prints nothing for a stack with no interface. Give the output of `--role dev` to the developer agent (the "build it like this" lines and the examples of the stack) and keep the output of `--role qa` for the `interface` lens, which the procedure of step 5 launches (the "check this" lines), each with the count of rules left out that the output states. Do not paste rules you were not given and do not select them by hand.
 
-Then:
+Then check, before any agent starts, that the schema of the change is one Relevo reads:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/schema-guard.mjs --change "<change_id>"
+```
+
+Relevo builds only with the `spec-driven` schema of OpenSpec, which tracks `tasks.md`. It prints `{ "ok": true }` and exits 0 for it. When it exits 1 the schema is another one, or OpenSpec does not track the tasks: take the failure path with the reason it prints in `reason` (`unsupported schema: <name>`), the `recovery` `schema` and no work to keep, and launch no agent. When it exits 2, OpenSpec did not answer: go on to the next command, whose failure is handled as it is today.
 
 ```bash
 openspec instructions apply --change "<change_id>" --json
@@ -434,4 +440,4 @@ End with the next step, from the same table the comments use:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state <built|needs-spec|build-failed|blocked|queued> --issue <issue>
 ```
 
-Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch|restricted|rebuild|partial` for `build-failed` (`rebuild` when the branch was not pushed: `unsafe` or `not_pushed`, there is no branch to fix; `partial` when a checkpoint was refused after earlier ones were pushed). For the other gate decisions (`denied`, `no-assignee`) the comment already says what to do.
+Add `--reason missing|ambiguous` for `needs-spec` and `--reason fix|delete-branch|restricted|rebuild|partial|schema` for `build-failed` (`rebuild` when the branch was not pushed: `unsafe` or `not_pushed`, there is no branch to fix; `partial` when a checkpoint was refused after earlier ones were pushed). For the other gate decisions (`denied`, `no-assignee`) the comment already says what to do.

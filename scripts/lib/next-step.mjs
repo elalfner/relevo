@@ -210,6 +210,15 @@ const TABLE = {
         es: 'un archivo restringido está versionado en la rama base: rota cualquier secreto que tenga, quítalo del repositorio (git rm --cached) y mantenlo ignorado, fusiona eso en la rama base, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
       },
     },
+    // Nothing was built: the OpenSpec schema of the change is not one Relevo reads, which no command of Relevo can change.
+    schema: {
+      command: null,
+      who: 'assignee',
+      hint: {
+        en: 'the OpenSpec schema is not spec-driven, which is the one Relevo builds with: set `schema: spec-driven` in openspec/config.yaml (and in the .openspec.yaml of the change if it names another), merge that into the base branch, then apply relevo:go so that the cloud builds it again, or run /relevo:go {n} --retry on your machine',
+        es: 'el esquema de OpenSpec no es spec-driven, que es el que usa Relevo para construir: pon `schema: spec-driven` en openspec/config.yaml (y en el .openspec.yaml del cambio si nombra otro), fusiona eso en la rama base, luego ponle relevo:go para que la nube la construya de nuevo, o ejecuta /relevo:go {n} --retry en tu máquina',
+      },
+    },
   },
   'changes-requested': {
     command: '/relevo:fix {n}',
@@ -263,7 +272,7 @@ export const NEXT_STEP_STATES = Object.keys(TABLE);
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
   'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
-  'build-failed': ['fix', 'kept', 'resume', 'stalled', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild', 'partial'],
+  'build-failed': ['fix', 'kept', 'resume', 'stalled', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild', 'partial', 'schema'],
 };
 
 // `{delete}` is the command that deletes the branch when the branch is known, and nothing otherwise.
@@ -273,7 +282,7 @@ const fill = (text, issue, branch = null) => String(text).replaceAll('{n}', Stri
  * The next step for an issue in `state`.
  * `branch` (optional) names the branch, so that `delete-branch` gives the command that deletes it.
  * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `build-failed`
- * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, `rebuild` when nothing was pushed, or `partial` when a checkpoint was refused after earlier ones were pushed).
+ * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, `rebuild` when nothing was pushed, `partial` when a checkpoint was refused after earlier ones were pushed, or `schema` when the OpenSpec schema of the change is not one Relevo reads).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
 export function nextStep({ state, reason = null, issue = null, language = 'en', branch = null } = {}) {

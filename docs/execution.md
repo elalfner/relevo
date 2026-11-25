@@ -197,6 +197,12 @@ A resumed run records how many tasks were done when it started. If it stops at a
 
 The checkpoints stay in the history of the branch, because squashing them would need a force push; the squash of `/relevo:ship` removes them from the base branch.
 
+## The schema and how the tasks are counted
+
+Relevo builds with the `spec-driven` schema of OpenSpec, the one `openspec init` sets: the tasks are in `tasks.md`, in numbered sections, each task a box (`- [ ] 1.1 ...`). Another schema may track other files in another shape, and the groups and the progress would be wrong without a message, so the schema is checked twice, before any model is spent. `go` runs `scripts/schema-guard.mjs` before it launches the developer, and a schema that is not `spec-driven`, or one whose tasks OpenSpec does not track, ends the run as `build-failed` with the reason `unsupported schema: <name>`; the comment says to set `schema: spec-driven` in `openspec/config.yaml` (and in the `.openspec.yaml` of the change if it names another), merge that into the base branch and build again. `/relevo:doctor` reports the same problem earlier, as a failure of `openspec.schema` when the default schema of `openspec/config.yaml` is another one (and a warning when its `schema:` line has no usable name).
+
+The tasks are counted as OpenSpec counts them, by one rule for every script of Relevo (`scripts/lib/tasks-file.mjs`): a list item (`-`, `*`, `+`, `1.` or `1)`, indented or not) with a box that holds at most one marker is a task, and only `x` (either case, with or without spaces) means done. A box with any other marker (`[~]`, `[-]`, `[]`) is unfinished and still part of the total, a bullet that is a link, or a bullet with no box, is not a task, and a task in a code fence counts like any other. A test compares the count with the one that `openspec instructions apply` reports, on a set of files, so the two cannot drift apart unnoticed.
+
 ## Replicated builds
 
 The specification writes the recipe into `tasks.md`, and a script checks it (see also `Pattern:` in [Writing an issue](issue-format.md)):

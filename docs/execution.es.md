@@ -197,6 +197,12 @@ Una ejecución reanudada registra cuántas tareas estaban hechas al empezar. Si 
 
 Los checkpoints quedan en el historial de la rama, porque aplastarlos exigiría un force push; el squash de `/relevo:ship` los quita de la rama base.
 
+## El esquema y cómo se cuentan las tareas
+
+Relevo construye con el esquema `spec-driven` de OpenSpec, el que deja `openspec init`: las tareas están en `tasks.md`, en secciones numeradas, cada tarea con una casilla (`- [ ] 1.1 ...`). Otro esquema puede seguir otros archivos con otra forma, y los grupos y el progreso saldrían mal sin avisar, así que el esquema se comprueba dos veces, antes de gastar un modelo. `go` ejecuta `scripts/schema-guard.mjs` antes de lanzar al desarrollador, y un esquema que no es `spec-driven`, o uno cuyas tareas OpenSpec no sigue, termina la ejecución como `build-failed` con la razón `unsupported schema: <nombre>`; el comentario dice que pongas `schema: spec-driven` en `openspec/config.yaml` (y en el `.openspec.yaml` del cambio si nombra otro), lo fusiones en la rama base y construyas de nuevo. `/relevo:doctor` avisa del mismo problema antes, como una falla de `openspec.schema` cuando el esquema por defecto de `openspec/config.yaml` es otro (y como advertencia cuando su línea `schema:` no tiene un nombre usable).
+
+Las tareas se cuentan como las cuenta OpenSpec, con una sola regla para todos los scripts de Relevo (`scripts/lib/tasks-file.mjs`): un elemento de lista (`-`, `*`, `+`, `1.` o `1)`, con sangría o sin ella) con una casilla que tiene como máximo un marcador es una tarea, y solo `x` (en mayúscula o minúscula, con espacios o sin ellos) significa hecha. Una casilla con otro marcador (`[~]`, `[-]`, `[]`) está sin terminar y sigue contando en el total, una viñeta que es un enlace, o una viñeta sin casilla, no es una tarea, y una tarea dentro de un bloque de código cuenta como cualquier otra. Una prueba compara la cuenta con la que da `openspec instructions apply`, sobre un conjunto de archivos, así que las dos no pueden separarse sin que se note.
+
 ## Construcciones replicadas
 
 La especificación escribe la receta en `tasks.md` y un script la verifica (ver también `Pattern:` en [Cómo escribir un issue](issue-format.es.md)):

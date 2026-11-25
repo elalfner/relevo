@@ -22,15 +22,15 @@ Every script of Relevo that reads the boxes of `tasks.md` SHALL decide which lin
 - **THEN** both give the same total and the same number of tasks done
 
 ### Requirement: A build stops on a schema it does not understand
-Before the developer agent starts, `go` SHALL read the schema of the change and whether task tracking is configured from the apply instructions of OpenSpec. When the schema is not `spec-driven`, or the tasks are not tracked, the run SHALL end in `build-failed` with the reason `schema`, which names the schema found and says to use `spec-driven`, and no developer agent SHALL start. The message SHALL exist in English and Spanish.
+Before the developer agent starts, `go` SHALL read the schema of the change and whether task tracking is configured from the apply instructions of OpenSpec. When the schema is not `spec-driven`, or the tasks are not tracked, the run SHALL end in `build-failed` with the reason `unsupported schema: <name>`, which names the schema found, and with the recovery `schema`, whose next step says to use `spec-driven`, and no developer agent SHALL start. The next step SHALL exist in English and Spanish.
 
 #### Scenario: Another schema
 - **WHEN** the apply instructions report a schema other than `spec-driven`
-- **THEN** the run ends in `build-failed` with the reason `schema` naming that schema, and no agent starts
+- **THEN** the run ends in `build-failed` with the reason `unsupported schema: <name>` naming that schema and the recovery `schema`, and no agent starts
 
 #### Scenario: Tasks not tracked
 - **WHEN** the apply instructions report that task tracking is not configured
-- **THEN** the run ends in `build-failed` with the reason `schema`, and no agent starts
+- **THEN** the run ends in `build-failed` with the reason `unsupported schema: task tracking is not configured`, and no agent starts
 
 #### Scenario: The supported schema
 - **WHEN** the apply instructions report `spec-driven` with its tasks tracked
