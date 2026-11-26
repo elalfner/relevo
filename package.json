@@ -1,6 +1,6 @@
 {
   "name": "@elalfner/relevo",
-  "version": "0.18.1",
+  "version": "0.19.0",
   "description": "Relevo: AI agent orchestrator, from issue to merge: agents build and review, people decide.",
   "type": "module",
   "license": "MIT",

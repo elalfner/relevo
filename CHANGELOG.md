@@ -4,6 +4,8 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-26
+
 ### Added
 
 - **The cover says what Relevo catches.** A new section of `README.md` and `README.es.md` shows, in a diagram of the flow, the team of agents that examines the work and what each one hunts, that the project's checks run first and that what blocks is fixed and reviewed again. "No agent grades its own work" left the list of reasons.
