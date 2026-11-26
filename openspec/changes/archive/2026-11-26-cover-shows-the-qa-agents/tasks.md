@@ -10,4 +10,4 @@
 ## 2. Integration
 
 - [x] 2.1 Run `npm test` and `openspec validate --all`; verify both pass
-- [ ] 2.2 Push a branch and have the person approve the rendered section on GitHub; verify their approval is given
+- [x] 2.2 Push a branch and have the person approve the rendered section on GitHub; verify their approval is given
