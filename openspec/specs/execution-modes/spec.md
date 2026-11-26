@@ -1,7 +1,7 @@
 # execution-modes Specification
 
 ## Purpose
-TBD - created by archiving change execution-modes. Update Purpose after archive.
+Decides where `go` and `ship` run and what each way shows. The cloud runs when a credential is installed and falls back to the local machine when it is not, a variable pauses it at once, and a local run uses the same limits, tools and budget guard in its own worktree. Every run reports its consumption by agent and by model, and says when it stopped at a limit.
 
 ## Requirements
 

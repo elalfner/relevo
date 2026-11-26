@@ -1,7 +1,7 @@
 # review Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Lets a person verify what an agent built before it is merged. The review claims the issue, opens a short brief from the specification, runs the app on a device, a browser, an API or a simulator, captures what each line shows, audits the log, and opens the pull request only after every line is verified. It can be resumed, never reads the environment files of the app, and drives the app only within fixed limits.
 
 ## Requirements
 

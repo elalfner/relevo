@@ -1,7 +1,7 @@
 # configuration Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Defines `relevo.yml`, the per-repository configuration: the repository and team settings, the review and limit settings, the platforms, the runner, the agents and their models, the language, the autopilot and the local-project settings. Defaults apply when a key is missing, an invalid value is reported, secrets never live in the file, and the shipped template documents every key.
 
 ## Requirements
 

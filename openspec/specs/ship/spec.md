@@ -1,7 +1,7 @@
 # ship Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Merges an approved pull request: it requires the pull request, the approval of a person, the checks and a written confirmation, archives the specification just before the merge, squash-merges and closes out. A label can start an unattended ship that waits for running checks, retries a moved base branch and says why it stopped; it never bypasses branch protection and never releases.
 
 ## Requirements
 

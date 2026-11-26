@@ -1,7 +1,7 @@
 # fix Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Corrects the work that QA rejected or a person flagged, one iteration at a time: the specification is changed first and checked, not trusted, then the developer corrects the code and QA reviews the diff of that iteration, with one retry. Unfinished work is saved instead of left in the tree, a branch held elsewhere or with nothing built is refused before anything changes, and a build cut at a limit is pointed to `--resume`.
 
 ## Requirements
 

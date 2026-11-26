@@ -1,7 +1,7 @@
 # issue-lifecycle Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Defines the states an issue passes through and who owns each: a single lifecycle label at a time, side exits, review events, dependencies, reminders and escalation. Requests such as `go`, `ship` and `urgent` are labels that ask for an action and are not states, the next step comes from one source, and every hand-off says who must act and why.
 
 ## Requirements
 

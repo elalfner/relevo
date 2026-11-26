@@ -1,7 +1,7 @@
 # links Specification
 
 ## Purpose
-TBD - created by archiving change cross-repo-dependencies. Update Purpose after archive.
+Lets an issue depend on an issue of another repository (`Depends-on: owner/repo#N`), so a build waits until that issue is closed as completed. Linked repositories are a closed list, they are read with a read-only credential, and nothing is ever written to another repository unless the person asks.
 
 ## Requirements
 

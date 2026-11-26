@@ -1,7 +1,7 @@
 # init-doctor Specification
 
 ## Purpose
-TBD - created by archiving change check-plugin-token-secret. Update Purpose after archive.
+Sets up a repository for Relevo and checks that the setup works. `init` writes the configuration, the workflows, the stack profile and the optional local files without touching secrets; `doctor` is read-only and reports, with the fix next to each problem, what is missing or wrong in the tools, the configuration, the secrets, the workflows, the skills, the branch protection and the project of one person, failures first.
 
 ## Requirements
 

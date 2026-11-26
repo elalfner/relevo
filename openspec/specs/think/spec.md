@@ -1,7 +1,7 @@
 # think Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+A thinking partner that helps a person settle an idea before it becomes an issue. `think` reads the repository and the specifications, runs the exploration and grilling skills, settles an interface step when the idea has a visible part, hands terms and decisions over instead of writing them, and never writes code, commits or creates issues. It follows the depth of the project and ends by handing off to `issue`.
 
 ## Requirements
 

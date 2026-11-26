@@ -1,7 +1,7 @@
 # go Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Builds an approved issue into a branch: a build request starts the run, a script plans the models, the limits and the checks before the agent starts, the developer works group by group with a checkpoint after each, and the validation gate and the QA lenses review the result with one retry. A run reports its progress in one comment, keeps its work when it stops at a limit, can be resumed, and ends in a hand-off or in a single `build-failed` state with its reason.
 
 ## Requirements
 

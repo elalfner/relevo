@@ -1,7 +1,7 @@
 # status Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Shows who is waiting on what, read-only. Each person sees the issues waiting on them and the pull requests to review or ship, the spec writer sees returned and blocked issues first, and the milestone summary compares queued work with review capacity. Alerts, the daily digest and the stage times come from what GitHub or the project files hold, and `status` says what it could not read.
 
 ## Requirements
 

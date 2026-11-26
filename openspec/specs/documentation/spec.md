@@ -1,7 +1,7 @@
 # documentation Specification
 
 ## Purpose
-TBD - created by archiving change documentation-guide. Update Purpose after archive.
+Keeps the written guidance of Relevo true and complete, in English and in Spanish with the same structure. The guide says what to do next, the commands, configuration, stacks, execution, install and upgrade pages cover every command and setting, each rule is stated once, and the security model is stated honestly, naming nothing that does not exist.
 
 ## Requirements
 
