@@ -696,3 +696,25 @@ Date: 2026-11-25. A sandbox issue that asked for three new test files, which the
 - **The developer was cheap.** Its single launch, `build 1/1: 1.1, 1.2, 1.3, 1.4`, used 6 turns and about 1 minute. The edits for the marks did not show as a cost at this size.
 - **The first attempt did not build, and that was my error.** The issue said the version label reads `v1.0.0`, which is what `main` of the sandbox shows; the base branch `dev` shows `v1.0.1`. The build stopped at planning, in about 3 minutes and 11 turns, with `relevo:needs-spec` and a comment that named the mismatch and what to decide. After the text was corrected and approved again, the same issue built.
 - **Not tried**: a baseline build of the same issue with the old rule, to compare the counts under the same conditions; a build with several groups; the fix and replica modes marking each task; and the effect on a build with many tasks, where the extra edits could weigh more.
+
+---
+
+# Use on real projects (measured 2026-11-25)
+
+Four private repositories, with Vue and Flutter projects (one of them a Flutter plugin). The work measured goes from 2026-10-23 to 2026-11-25. The figures come from the pull requests and comments on GitHub and from a line count of the working copies. The repositories are private, so a reader cannot check them.
+
+## Figures
+
+- **Merged pull requests: 102.** Counted: merged pull requests from a `feature/` or `fix/` branch whose description names Relevo or one of its review results. Not counted: promotions, chores and other branches. 88 of them are in one repository.
+- **Largest repository: about 120,000 hand-written lines**, generated files excluded, of which about 75,000 are tests and stories. It narrowed the `test` check to the folders that a change touches, raised the turn limit to 200 and builds on its own runner.
+
+## Working with more than one person
+
+- In the largest repository, 75 of its 88 pull requests were approved by someone other than the author, and 9 review reminders were posted. The review mode was set to `none` on 2026-11-12 and approvals went on.
+- Two or three people per repository at most. Larger teams were not observed.
+- No escalation was seen. Reviewer selection was not verified.
+
+## Where it hurt
+
+- **Cloud builds without a result:** of 70 closed progress comments in three of the repositories, 15 ended without a result. Their causes were not all classified.
+- **Refused merges:** 30 "not merged" notices in the largest repository, among them conflicts, a base branch that moved, checks that GitHub had not finished and a specification that could not be archived.

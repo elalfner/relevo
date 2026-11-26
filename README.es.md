@@ -5,46 +5,136 @@
   <img alt="Relevo" src="docs/brand/svg/relevo-lockup-horizontal-black.svg" width="420">
 </picture>
 
-**Un flujo automático de issue a merge donde agentes de IA construyen y las personas verifican.**
+# Deja de cuidar al agente. Empieza a entregar.
+
+**Orquestador de agentes de IA, del issue al merge**
+
+Mientras revisas uno, ya se construye el siguiente.
 
 [English](README.md) · Español · [Documentación](docs/README.es.md)
 
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/animation/relevo-logo-animated-white.svg"><img alt="Relevo" src="docs/brand/animation/relevo-logo-animated-black.svg" width="220"></picture>
+
 </div>
-
-> *Relevo* viene del relevo de las carreras. El issue entra, los agentes de IA construyen y revisan el trabajo en la nube, y tú solo intervienes para pensar, probar en un dispositivo real y decidir. Cada paso es un traspaso: el agente le pasa el testigo a una persona, y esa persona se lo pasa a un par.
-
-> **Estado: desarrollo temprano.** Todos los comandos de abajo existen. El ciclo en solitario (`go`, `review`, `ship`) se ejecutó una vez en un repositorio real y un dispositivo Android real; las funciones de equipo (revisión entre pares, recordatorios y escalada de revisiones, selección de revisor) están cubiertas solo por pruebas y todavía no se han usado con un equipo real. Consulta los [hallazgos de los pilotos](docs/pilot-findings.md), escritos en inglés.
-
-## Instalación
-
-Relevo es un plugin de Claude Code. En una terminal:
 
 ```bash
 claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
 claude plugin install relevo@relevo
 ```
 
-Eso lo instala para todos los proyectos de la máquina. Para instalarlo solo en un repositorio, añade `--scope project` al segundo comando (compartido con el equipo en `.claude/settings.json`) o `--scope local` (solo para ti). Solo se instala el plugin (scripts, skills, agents, perfiles de stack y plantillas); la documentación está en línea.
+Reinicia Claude Code en tu proyecto y ejecuta `/relevo:doctor` para ver qué falta todavía. Qué necesitas y los primeros pasos están en [Instalación](docs/install.es.md).
 
-Un atajo, si prefieres un solo comando: `npm install -g @elalfner/relevo` te da `relevo install`, que pregunta dónde instalarlo (el proyecto viene preseleccionado; `relevo install --scope project` se salta la pregunta), `relevo update` y `relevo doctor`.
+Necesitas: Claude Code, git, GitHub y su CLI, Node 20.19 o superior y OpenSpec.
+
+<details>
+<summary>¿Prefieres un solo comando? Usa npm</summary>
+
+`npm install -g @elalfner/relevo` te da `relevo install`, que pregunta dónde instalarlo (el proyecto viene preseleccionado; `relevo install --scope project` se salta la pregunta), `relevo update` y `relevo doctor`.
 
 ```bash
 npm install -g @elalfner/relevo
 relevo install
 ```
 
-Para usar Relevo desde Antigravity (el IDE, la App o la CLI), ejecuta `relevo init`: pregunta qué herramientas usa tu equipo e instala un plugin generado para cada una. Los detalles están en [Instalación](docs/install.es.md#otras-herramientas-antigravity).
-
-Reinicia Claude Code en tu proyecto y ejecuta `/relevo:doctor` para ver qué falta todavía. Qué necesitas y los primeros pasos están en [Instalación](docs/install.es.md).
-
-## Cómo funciona
+</details>
 
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/animation/relevo-logo-animated-white.svg">
-  <img alt="Relevo" src="docs/brand/animation/relevo-logo-animated-black.svg" width="220">
-</picture>
+`Claude Code` · `Spec-driven` · `Multi-agent` · `MIT`
+
+| 100+ | 5 | 100 mil+ |
+|:---:|:---:|:---:|
+| pull requests mergeados en proyectos reales | revisores de IA especializados | líneas en el proyecto más grande donde se usa |
+
+[Cómo se contaron](docs/pilot-findings.md#use-on-real-projects-measured-2026-11-25) (en inglés)
+
+</div>
+
+## Una cola que no te deja esperando
+
+Pide el build de varios issues y la cola se encarga. Tú pruebas lo que ya está listo mientras los agentes avanzan en la nube.
+
+<div align="center">
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/queue-es-white.svg"><img alt="Los agentes construyen los issues 1, 2 y 3; tú revisas cada uno mientras se construye el siguiente" src="docs/cover/queue-es-black.svg" width="640"></picture>
+
+</div>
+
+- Espera las dependencias antes de empezar.
+- Retiene issues que nombran el mismo archivo, para evitar conflictos.
+- Frena si ya tienes demasiado sin revisar.
+- Si se agota el límite de uso del modelo, reintenta más tarde.
+- Lo urgente se adelanta.
+
+## Un relevo entre tú y tus agentes
+
+<table>
+<tr>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-think-white.svg"><img alt="think" src="docs/brand/states/relevo-state-think-black.svg" width="96"></picture><br><b>Tú piensas</b><br>Decides qué construir y apruebas el issue.<br><code>/relevo:think</code></td>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-go-white.svg"><img alt="go" src="docs/brand/states/relevo-state-go-black.svg" width="96"></picture><br><b>Los agentes entregan</b><br>Un agente construye. Hasta cinco agentes revisores lo auditan: spec, seguridad, código, bugs e interfaz.<br><code>/relevo:go</code></td>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-review-white.svg"><img alt="review" src="docs/brand/states/relevo-state-review-black.svg" width="96"></picture><br><b>Tú decides</b><br>Pruebas, pides correcciones o apruebas el merge.<br><code>/relevo:review</code></td>
+</tr>
+</table>
+
+## ¿Por qué usar Relevo?
+
+- **Nadie se califica solo.** Quien construye no es quien revisa. Revisores aparte auditan contra tu spec.
+- **Tú tienes la última palabra.** Aprobar y mergear son decisiones de una persona.
+- **Siempre sabes qué sigue.** Cada traspaso dice qué pasó, qué se espera de ti y qué comando correr.
+- **Se adapta a tu proyecto.** Tus reglas, tus checks, tus límites. En la nube o en tu máquina.
+
+## Tu código, bajo control
+
+- El agente no aprueba ni mergea: eso lo hace una persona.
+- Construye sin acceso a la web y con una lista cerrada de herramientas.
+- Rutas protegidas, archivos de secretos restringidos y escaneo de credenciales antes de cada commit.
+- Límites por ejecución que tú configuras.
+
+Y tú revisas antes del merge. Conoce a fondo las protecciones en el [modelo de seguridad](docs/security.es.md).
+
+## Preguntas frecuentes
+
+<details open>
+<summary><b>¿Sirve para proyectos grandes?</b></summary>
+
+Sí. Se usa en un código de más de 100 mil líneas. En proyectos así conviene ajustar los checks y los límites de cada ejecución.
+
+</details>
+
+<details>
+<summary><b>¿Puede mergear sin mí?</b></summary>
+
+No. El merge lo pide una persona. Para exigir además la aprobación de otra, activa la revisión y la protección de ramas de GitHub (en repos privados depende de tu plan).
+
+</details>
+
+<details>
+<summary><b>¿Cuánto cuesta?</b></summary>
+
+Relevo es MIT y gratuito. Pagas el modelo, con una API key o tu suscripción, y el runner si usas la nube de GitHub. Con API key, el límite de costo por ejecución es un tope real.
+
+</details>
+
+<details>
+<summary><b>¿Mi código sale de mi infraestructura?</b></summary>
+
+El código que lee el agente se envía al proveedor del modelo, también si el build corre en tu propio runner. Relevo no agrega un servidor propio.
+
+</details>
+
+<details>
+<summary><b>¿Y si un build falla a la mitad?</b></summary>
+
+El issue dice qué pasó y qué hacer. Cuando se detiene por un límite o por QA, el trabajo hecho se guarda en su rama.
+
+</details>
+
+<br>
+
+<details>
+<summary><b>¿Qué significa el logo de Relevo? (y todos sus comandos)</b></summary>
+
+<div align="center">
 
 *El logo es el flujo: el issue entra por la izquierda, los agentes de IA trabajan dentro del círculo y la feature sale por la derecha. El círculo se llena de negro solo cuando una persona tiene el testigo: pensar y revisar.*
 
@@ -63,12 +153,9 @@ Reinicia Claude Code en tu proyecto y ejecuta `/relevo:doctor` para ver qué fal
 
 Además, `/relevo:status` (quién espera a quién) y `/relevo:doctor` (comprueba tu configuración). Todos los comandos, en detalle: [Comandos](docs/commands.es.md). Una corrida real, de la idea al pull request mergeado: [Cómo funciona](docs/how-it-works.es.md).
 
-## Por qué Relevo
+</details>
 
-- **Primero las specs.** El agente construye contra issues detallados, y QA compara el diff contra ellos.
-- **Se jala, no se empuja.** Un límite de trabajo en curso por persona evita que el agente entierre al equipo en ramas sin revisar.
-- **Deciden las personas.** Aprobar y mergear son actos humanos explícitos, impuestos por la protección de ramas y nunca solo por un prompt.
-- **Cada traspaso es un solo mensaje** que dice qué pasó, qué se espera de ti y qué comando ejecutar después.
+> **Estado: en uso en proyectos reales.** Antes de la 1.0, la configuración y los comandos pueden cambiar entre versiones; el [changelog](CHANGELOG.md) marca los cambios que rompen.
 
 ## Documentación
 

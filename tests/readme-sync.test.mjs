@@ -64,7 +64,8 @@ test('the cover shows the seven commands of the flow, in order, with the same pi
     assert.match(text, /`\/relevo:status`/);
     assert.match(text, /`\/relevo:doctor`/);
   }
-  const pictures = (s) => [...s.matchAll(/relevo-state-([a-z]+)-black\.svg/g)].map((m) => m[1]);
+  // Only the rows of the command table: the cover also shows state pictures in its handoff cards.
+  const pictures = (s) => [...s.matchAll(/^\|.*relevo-state-([a-z]+)-black\.svg/gm)].map((m) => m[1]);
   assert.deepEqual(pictures(read('README.md')), ['init', 'feature', 'think', 'issue', 'go', 'review', 'fix', 'ship']);
   assert.deepEqual(pictures(read('README.es.md')), pictures(read('README.md')));
 });
