@@ -1,0 +1,10 @@
+{
+  "archives": false,
+  "clashes": [
+    {
+      "operation": "MODIFIED",
+      "header": "Alpha",
+      "reason": "scenario-dropped"
+    }
+  ]
+}

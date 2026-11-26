@@ -83,7 +83,11 @@ export function planModels({ config, issue = {}, tasksText = null, lenses = QA_L
   };
 
   function decide(path, role, defaults, askedName, isSecurity) {
-    if (role.model !== AUTO) return { model: role.model, effort: role.effort, source: 'config', why: 'set in relevo.yml' };
+    if (role.model !== AUTO) {
+      // At the prototype depth a role the file does not mention takes the default of that depth, and the plan says so.
+      const written = (config.agents_given ?? []).some((g) => g.startsWith(`${path}.`));
+      return { model: role.model, effort: role.effort, source: 'config', why: config.depth === 'prototype' && !written ? 'the default of the prototype depth' : 'set in relevo.yml' };
+    }
     const { floor, ceiling } = role;
     if (askedName && !publicTrust) {
       const idx = ladder.indexOf(askedName);

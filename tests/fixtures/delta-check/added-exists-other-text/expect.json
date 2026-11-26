@@ -1,0 +1,10 @@
+{
+  "archives": false,
+  "clashes": [
+    {
+      "operation": "ADDED",
+      "header": "Alpha",
+      "reason": "already-exists"
+    }
+  ]
+}

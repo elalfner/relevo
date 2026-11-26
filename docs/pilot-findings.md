@@ -656,3 +656,65 @@ Date: 2026-11-19. A Mac with Xcode 27.2 and an iPhone 17e simulator on iOS 27.0,
 - **3.3 Crash reports as findings**: `findCrashReports` lists the reports of the executable whose `captureTime` is after the start time and whose `procPath` holds the UDID, and the audit is `REVIEW REJECTED` with a `crash` finding even with an empty log. A report from before the start is not read.
 - **7.1 The review by hand**, with the scripts in the order of the skill: `device.mjs --target ios` printed the UDID; `review-state.mjs init ... --target ios --process ProbeExec` recorded the simulator; `capture.mjs 01_initial --target ios` saved a PNG; `audit` after a clean launch was `REVIEW PASSED`; after `--runtime-issue` it was `REVIEW REJECTED` with the `fault` and `2 Apple system error(s) ignored`; after `reset-log` and `--crash` it was `REVIEW REJECTED` with the `crash` finding.
 - **Not tried**: a model following the skill, a Flutter app (`flutter run -d <udid>`), a physical iPhone (out of scope), and the crash of an app that is killed by the system without a report.
+
+## The group in the progress comment of a cloud build (task 9.3 of `go-visibility`)
+
+Date: 2026-11-24. A sandbox issue that asked for four new test files, which the specification split into 5 tasks in 2 groups. The workflows of the sandbox ran the scripts of a pinned commit of `dev` (a clone plus a pack of the folder) instead of a published version. The build ended in 4 minutes, `relevo:built`, 5 of 5 tasks, QA passed, 53 turns and about $1.35 notional.
+
+- **The progress comment shows the group.** One comment, edited in place, read in turn: `planning`; `development`, `Tasks: 0 of 5`, `Group 1 of 2`; `Tasks: 4 of 5`, `Group 1 of 2`; `Tasks: 4 of 5`, `Group 2 of 2`; `QA (attempt 1 of 2)`, `Tasks: 5 of 5`. It was closed with the usual line and the link to the run once the build ended; the closing came a few seconds after the label, as before.
+- **The count still moves by group, not by task.** The four tasks of group 1 were marked together at the end of that group, so the count went from 0 to 4. With one group it would stay at 0 until QA; the group in progress is what shows that the build advances. Marking each task as it finishes was not added.
+- **The usage comment tells the launches of the developer apart.** Its line by agent listed `relevo:dev [build 1/2: 1.1, 1.2, 1.3, 1.4]` and `relevo:dev [build 2/2: 2.1]`, each with its model, effort, turns, minutes and cost, next to the four QA lenses and the main agent.
+- **Not tried**: a build with one group, and the lines of a local build (task 9.2).
+
+## The progress comment when a runner is lost (task 3.1 of `close-progress-on-lost-runner`)
+
+Date: 2026-11-25. The workflows of the sandbox ran the scripts of a pinned commit of `dev` (a clone plus a pack of the folder). A runner cannot be stopped on a hosted runner, so a temporary step of the build job, active only for an issue whose title asked for it, killed the runner process 90 seconds after the progress report started, which ends the job without running any later step. That step was removed after the test.
+
+- **The comment ends closed.** The build job ended as `failure`, its own closing step (`Close the progress comment`) was `skipped`, and the `requeue` job replaced the open progress comment by the line that the runner stopped answering, with the link of the run and both markers. The issue kept `relevo:building`, and the number of comments did not grow beyond the one the new run opened.
+- **A cancelled run is closed the same way.** A run cancelled by hand while the build waited ended with the `requeue` job in `success` and the same line in the comment, and the issue went to `build-failed` with the usual message that tells how to build it again.
+- **A build with no failure is untouched.** A run of a plain issue on the same pin ended with the comment closed by the build job itself and the issue `built`; the closing step of `requeue` did nothing.
+- **Not tried**: a real runner that stops answering by itself (no network), which GitHub reports after a longer time than the kill used here.
+
+## A cut build resumed from its branch (task 7.2 of `resume-a-cut-build`)
+
+Date: 2026-11-25. The go workflow of the sandbox ran the scripts of a pinned commit of `dev` (a clone plus a pack of the folder). An issue with five tasks in two groups was built; the run was cancelled by hand while the second group was in progress, and the `go` label was applied again to the `build-failed` issue.
+
+- **The cut says `--resume`.** The run ended `cancelled`, the issue went to `build-failed`, and the comment said that the work was kept on the branch, to run `/relevo:go <n> --resume` (in the cloud, apply `relevo:go`), that it would resume from the last checkpoint (1 saved) and build only the pending tasks, and how to start over (`--retry`). It did not mention `/relevo:fix`.
+- **The label resumed it.** The `decide` job, with no checkout, found the branch through the API, the resume check accepted it, and the issue went from `build-failed` to `building` with no `ready`. The progress comment began at `Tasks: 4 of 5`, `Group 1 of 1`, and the usage comment listed one launch of the developer, `build 1/1: 2.1`, so only the open task was built, then the five lenses ran and the issue was `built`. The branch held the specification, `wip: checkpoint 1/2`, `wip: checkpoint 1/1` and the `feat:` commit.
+- **The cut left no commit of its own.** The group in progress had changed nothing yet, so the rescue step had nothing to commit; the tip was the checkpoint of the first group, which the check accepts.
+- **The plan on a machine accepts the same branch.** A second issue was cut the same way (two groups of five saved), and `go-plan.mjs --resume --place local` run from the clone, with no `--apply` or `--claim`, asked the API about the branch and answered `start` with the claim `building` and `local` replacing `build-failed`.
+- **A changed text is refused with the step.** After the text of that issue was edited, the same command exited without a plan and said that the text of the issue changed since the build stopped, to run `/relevo:issue <n>`, and, if the work no longer fits, the command that deletes the branch followed by `--retry`. The branch was untouched.
+- **An edit counts even when it is undone.** With the text restored word for word, the planner answered `unapproved` ("the body was edited after ready was applied"): the approval gate compares the time of the last edit with the time of `ready`, as it does for a retry, so the issue needs `ready` again before it is resumed.
+- **A closed issue frees the limit of built issues.** The second issue waited in the queue because two issues of the same person were `built`; closing the first test issue and starting the queue let it run.
+- **Not tried**: `/relevo:go <n> --resume` building on a machine (only its plan was run), a cut that stops at a limit of the run (the guard) and not by hand, a resume that finishes no task (the marker and the refusal), and a QA rejection pointing to `/relevo:fix`. The unit tests cover them; no live run did. The first two need a lower limit in the `relevo.yml` of the sandbox, and the last a build that QA rejects.
+
+## The developer marks each task as it finishes it (task 3.2 of `dev-marks-each-task`)
+
+Date: 2026-11-25. A sandbox issue that asked for three new test files, which the specification turned into 4 tasks in one section, so one group. The workflows of the sandbox ran the scripts and the skills of a pinned commit of `dev` (`46c99ba`, a clone plus a pack of the folder), the one with the new rule in `agents/dev.md`. The build ended in about 4 minutes, `relevo:built`, 4 of 4 tasks, QA passed, 55 turns (23 by subagents) and about $1.28 notional.
+
+- **The count rose inside one group.** One comment, edited in place, read every 10 seconds: `planning`; `specification`; `development`, `Tasks: 0 of 4`, `Group 1 of 1`; `Tasks: 3 of 4`, `Group 1 of 1`; `Tasks: 4 of 4`, `Group 1 of 1`, still in development; then `QA (attempt 1 of 2)`, `Tasks: 4 of 4`. Before the change the same shape of build showed `0 of N` for the whole development and the full count only at QA (the two builds recorded above).
+- **The developer was cheap.** Its single launch, `build 1/1: 1.1, 1.2, 1.3, 1.4`, used 6 turns and about 1 minute. The edits for the marks did not show as a cost at this size.
+- **The first attempt did not build, and that was my error.** The issue said the version label reads `v1.0.0`, which is what `main` of the sandbox shows; the base branch `dev` shows `v1.0.1`. The build stopped at planning, in about 3 minutes and 11 turns, with `relevo:needs-spec` and a comment that named the mismatch and what to decide. After the text was corrected and approved again, the same issue built.
+- **Not tried**: a baseline build of the same issue with the old rule, to compare the counts under the same conditions; a build with several groups; the fix and replica modes marking each task; and the effect on a build with many tasks, where the extra edits could weigh more.
+
+---
+
+# Use on real projects (measured 2026-11-25)
+
+Four private repositories, with Vue and Flutter projects (one of them a Flutter plugin). The work measured goes from 2026-10-23 to 2026-11-25. The figures come from the pull requests and comments on GitHub and from a line count of the working copies. The repositories are private, so a reader cannot check them.
+
+## Figures
+
+- **Merged pull requests: 102.** Counted: merged pull requests from a `feature/` or `fix/` branch whose description names Relevo or one of its review results. Not counted: promotions, chores and other branches. 88 of them are in one repository.
+- **Largest repository: about 120,000 hand-written lines**, generated files excluded, of which about 75,000 are tests and stories. It narrowed the `test` check to the folders that a change touches, raised the turn limit to 200 and builds on its own runner.
+
+## Working with more than one person
+
+- In the largest repository, 75 of its 88 pull requests were approved by someone other than the author, and 9 review reminders were posted. The review mode was set to `none` on 2026-11-12 and approvals went on.
+- Two or three people per repository at most. Larger teams were not observed.
+- No escalation was seen. Reviewer selection was not verified.
+
+## Where it hurt
+
+- **Cloud builds without a result:** of 70 closed progress comments in three of the repositories, 15 ended without a result. Their causes were not all classified.
+- **Refused merges:** 30 "not merged" notices in the largest repository, among them conflicts, a base branch that moved, checks that GitHub had not finished and a specification that could not be archived.

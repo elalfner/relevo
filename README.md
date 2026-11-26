@@ -5,46 +5,147 @@
   <img alt="Relevo" src="docs/brand/svg/relevo-lockup-horizontal-black.svg" width="420">
 </picture>
 
-**An automatic issue-to-merge workflow where AI agents build and people verify.**
+# Stop babysitting your agent. Start shipping.
+
+**AI agent orchestrator, from issue to merge**
+
+Review one while the next one builds.
 
 English · [Español](README.es.md) · [Documentation](docs/README.md)
 
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/animation/relevo-logo-animated-white.svg"><img alt="Relevo" src="docs/brand/animation/relevo-logo-animated-black.svg" width="220"></picture>
+
 </div>
-
-> *Relevo* is Spanish for "relay". The issue goes in, AI agents build and check the work in the cloud, and you step in only to think, to test on a real device and to decide. Every step is a handoff: the agent passes the baton to a person, and that person passes it to a peer.
-
-> **Status: early development.** All the commands below exist. The solo cycle (`go`, `review`, `ship`) has run once on a real repository and a real Android device; the team features (peer review, review reminders and escalation, reviewer selection) are covered by tests only and have not run against a live team yet. See [pilot findings](docs/pilot-findings.md).
-
-## Install
-
-Relevo is a Claude Code plugin. In a terminal:
 
 ```bash
 claude plugin marketplace add elalfner/relevo --sparse .claude-plugin
 claude plugin install relevo@relevo
 ```
 
-That installs it for every project of the machine. To install it for one repository only, add `--scope project` to the second command (shared with the team through `.claude/settings.json`) or `--scope local` (only you). Only the plugin is installed (scripts, skills, agents, stack profiles and templates); the documentation is online.
+Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing. What you need and the first steps are in [Install](docs/install.md).
 
-A shortcut, if you prefer one command: `npm install -g @elalfner/relevo` gives you `relevo install`, which asks where to install it (the project is preselected; `relevo install --scope project` skips the question), `relevo update` and `relevo doctor`.
+You need: Claude Code, git, GitHub and its CLI, Node 20.19 or later and OpenSpec.
+
+<details>
+<summary>Prefer one command? Use npm</summary>
+
+`npm install -g @elalfner/relevo` gives you `relevo install`, which asks where to install it (the project is preselected; `relevo install --scope project` skips the question), `relevo update` and `relevo doctor`.
 
 ```bash
 npm install -g @elalfner/relevo
 relevo install
 ```
 
-To use Relevo from Antigravity (the IDE, the App or the CLI), run `relevo init`: it asks which tools your team uses and installs a plugin rendered for each. Details in [Install](docs/install.md#other-tools-antigravity).
-
-Restart Claude Code in your project and run `/relevo:doctor` to see what is still missing. What you need and the first steps are in [Install](docs/install.md).
-
-## How it works
+</details>
 
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/animation/relevo-logo-animated-white.svg">
-  <img alt="Relevo" src="docs/brand/animation/relevo-logo-animated-black.svg" width="220">
-</picture>
+`Claude Code` · `Spec-driven` · `Multi-agent` · `MIT`
+
+| 100+ | 5 | 100k+ |
+|:---:|:---:|:---:|
+| merged pull requests on real projects | AI agents that review your code | lines in the largest project using it |
+
+[How these were counted](docs/pilot-findings.md#use-on-real-projects-measured-2026-11-25)
+
+</div>
+
+## Relevo catches mistakes before you start testing
+
+<div align="center">
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/qa-en-white.svg"><img alt="An agent builds, your checks run, and a team of agents that did not write the code examines the work: Spec, Security, Code, Bugs and Interface. What blocks is fixed and reviewed again; then you receive it." src="docs/cover/qa-en-black.svg" width="480"></picture>
+
+<sub>Interface runs when there are screens. Bugs advises, or blocks if you turn it on.</sub>
+
+</div>
+
+Your project's checks run first. What blocks goes back to be fixed and is reviewed again, without you stepping in.
+
+## A queue that keeps you moving
+
+Ask for several builds and the queue takes it from there. You test what is ready while the agents keep going in the cloud.
+
+<div align="center">
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/queue-en-white.svg"><img alt="Agents build issues 1, 2 and 3; you review each one while the next is being built" src="docs/cover/queue-en-black.svg" width="640"></picture>
+
+</div>
+
+- Waits for dependencies before starting.
+- Holds issues that name the same file, to avoid conflicts.
+- Pauses when you have too much waiting for review.
+- Retries later when the model usage limit runs out.
+- Urgent work jumps ahead.
+
+## A relay between you and your agents
+
+<table>
+<tr>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-think-white.svg"><img alt="think" src="docs/brand/states/relevo-state-think-black.svg" width="96"></picture><br><b>You think</b><br>Decide what to build and approve the issue.<br><code>/relevo:think</code></td>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-go-white.svg"><img alt="go" src="docs/brand/states/relevo-state-go-black.svg" width="96"></picture><br><b>Agents deliver</b><br>One agent builds and a team of agents reviews it.<br><code>/relevo:go</code></td>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-review-white.svg"><img alt="review" src="docs/brand/states/relevo-state-review-black.svg" width="96"></picture><br><b>You decide</b><br>Test, ask for fixes or approve the merge.<br><code>/relevo:review</code></td>
+</tr>
+</table>
+
+## Why Relevo?
+
+- **You have the last word.** Approving and merging are a person's decisions.
+- **You always know what is next.** Every handoff says what happened, what is expected of you and which command to run.
+- **It fits your project.** Your rules, your checks, your limits. In the cloud or on your machine.
+
+## Your code, under control
+
+- The agent never approves or merges: a person does.
+- It builds with no web access and a closed list of tools.
+- Protected paths, restricted secret files and a credential scan before every commit.
+- Per-run limits that you set.
+
+And you review before the merge. See every safeguard in the [security model](docs/security.md).
+
+## FAQ
+
+<details open>
+<summary><b>Does it work on large projects?</b></summary>
+
+Yes. It is used on a codebase of over 100,000 lines. On projects like that, tune the checks and the per-run limits.
+
+</details>
+
+<details>
+<summary><b>Can it merge without me?</b></summary>
+
+No. A person asks for the merge. To also require someone else's approval, turn on review and GitHub branch protection (on private repositories it depends on your plan).
+
+</details>
+
+<details>
+<summary><b>What does it cost?</b></summary>
+
+Relevo is free and MIT. You pay for the model, with an API key or your subscription, and for GitHub runners if you use them. With an API key, the per-run cost limit is a real cap.
+
+</details>
+
+<details>
+<summary><b>Does my code leave my infrastructure?</b></summary>
+
+The code the agent reads is sent to the model provider, even when the build runs on your own runner. Relevo adds no server of its own.
+
+</details>
+
+<details>
+<summary><b>What if a build fails halfway?</b></summary>
+
+The issue says what happened and what to do. When it stops at a limit or at QA, the work done is kept on its branch.
+
+</details>
+
+<br>
+
+<details>
+<summary><b>What does the Relevo logo mean? (and all its commands)</b></summary>
+
+<div align="center">
 
 *The logo is the flow: the issue comes in on the left, AI agents work inside the circle, and the feature goes out on the right. The circle turns black only when a person holds the baton: thinking and reviewing.*
 
@@ -63,12 +164,9 @@ Restart Claude Code in your project and run `/relevo:doctor` to see what is stil
 
 Plus `/relevo:status` (who is waiting on what) and `/relevo:doctor` (checks your setup). Every command in detail: [Commands](docs/commands.md). A real run, from idea to merged pull request: [How it works](docs/how-it-works.md).
 
-## Why Relevo
+</details>
 
-- **Specs first.** The agent builds against detailed issues, and QA checks the diff against them.
-- **Pull, not push.** A work-in-progress limit per person keeps the agent from burying the team in unreviewed branches.
-- **Humans decide.** Approving and merging are explicit human acts, enforced by branch protection, never by a prompt alone.
-- **Every handoff is one message** that says what happened, what is expected of you, and which command to run next.
+> **Status: in use on real projects.** Before 1.0, configuration and commands may change between versions; the [changelog](CHANGELOG.md) marks breaking changes.
 
 ## Documentation
 

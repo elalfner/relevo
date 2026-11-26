@@ -163,3 +163,64 @@ test('Scenario: The tidy fails - it is a note, and the merge, the closed issue a
   const tidy = body.slice(body.indexOf('3. Tidy the local copy'), body.indexOf('## Report'));
   assert.match(tidy, /say so as a note: the pull request is already merged, so it never changes the outcome/);
 });
+
+// ---------- local-tracker: a files project
+
+test('Scenario: Files project - ship is a confirmed local merge with no pull request, no push and no gh', () => {
+  const skill = readFileSync(new URL('../skills/ship/SKILL.md', import.meta.url), 'utf8');
+  assert.match(skill, /## Files project/);
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /`tracker` in `relevo\.yml` is `files`/);
+  assert.match(section, /never through `gh`/);
+  assert.match(section, /`git branch --show-current` must equal `branches\.base`/);
+  assert.match(section, /ship-local\.mjs check --issue \$ARGUMENTS/);
+  assert.match(section, /without it nothing is archived or merged/);
+  assert.match(section, /\*\*do not push\*\*/);
+  assert.match(section, /ship-local\.mjs merge --issue \$ARGUMENTS --title/);
+  const at = (needle) => section.indexOf(needle);
+  assert.ok(at('Confirm, in writing') < at('Archive the specification on the branch'), 'the yes comes before the archive');
+  assert.ok(at('Archive the specification on the branch') < at('merge --issue'), 'the archive comes before the merge');
+});
+
+test('go and fix record the green gate so that ship can check it', () => {
+  for (const path of ['skills/go/SKILL.md', 'skills/fix/SKILL.md']) {
+    assert.match(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'), /ship-local\.mjs record-gate --issue <issue>/, path);
+  }
+});
+
+test('Scenario: Files project - the ship skill reads the local base and pushes nothing, with no remote', () => {
+  const skill = readFileSync(new URL('../skills/ship/SKILL.md', import.meta.url), 'utf8');
+  const section = skill.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /Local refs: this project has no remote/);
+  assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
+});
+
+test('Scenario: Checks still running in a session - it waits for them, with a limit, before it stops', () => {
+  const step1 = body.slice(body.indexOf('### 1. Check that it qualifies'), body.indexOf('### 2. Confirm, in writing'));
+  assert.match(step1, /only reason is[^.]*checks are still running/i);
+  assert.match(step1, /gh pr checks <number> --repo <owner\/name> --watch --fail-fast/);
+  assert.match(step1, /(up to|at most) 20 minutes/);
+  assert.match(step1, /still running after that[^.]*stop[^.]*run (it|ship) again/i);
+});
+
+test('the wait for the checks is not a confirmation: it happens before the written yes', () => {
+  assert.ok(body.indexOf('--watch --fail-fast') < body.indexOf('### 2. Confirm, in writing'));
+});
+
+test('Scenario: The merge is refused because the base moved - it checks again and tries once more', () => {
+  const step5 = body.slice(body.indexOf('### 5. Merge'), body.indexOf('### 6. Close out'));
+  assert.match(step5, /base branch was modified/i);
+  assert.match(step5, /run `ship-check\.mjs` again[^.]*merge (it )?(a second time|once more)/i);
+  assert.match(step5, /never a third/i);
+});
+
+test('Scenario: Clash found in a session - the delta is checked in step 1, before the confirmation, and a clash stops it', () => {
+  const step1 = body.slice(body.indexOf('### 1. Check that it qualifies'), body.indexOf('### 2. Confirm, in writing'));
+  const at = step1.indexOf('scripts/delta-check.mjs --change "<change folder name>" --issue $ARGUMENTS');
+  assert.ok(at > 0, 'step 1 never runs the delta check');
+  assert.ok(at > step1.indexOf('scan-diff.mjs'), 'it runs after the scan of the diff');
+  const after = step1.slice(at);
+  assert.match(after, /exits 1[^.]*stop[^.]*changing nothing/i);
+  assert.match(after, /\/relevo:fix \$ARGUMENTS/);
+  assert.match(after, /ADDED[^.]*MODIFIED/);
+});

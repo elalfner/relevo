@@ -8,15 +8,17 @@
 // A task marked `[replica]` (see replica-plan.mjs) is a group of its own, flagged `replica`, so that each replica is one launch
 // and one checkpoint. Replica groups are never joined by the small-change rule, and they come after the groups they copy.
 
+import { parseTaskLine } from './tasks-file.mjs';
+
 export const SMALL_CHANGE = 3;
-export const REPLICA_MARK = /^\s*(?:[-*+]\s+)?\[[ xX]\]\s+\d+\.\d+\s+\[replica\]/i;
+export const REPLICA_MARK = /^\[replica\]\s*/i;
 
 /** The numbers of the tasks that are checked (`- [x] 2.1 ...`), in order and once each: the work that the boxes say is done. */
 export function doneTaskIds(tasksText) {
   const ids = [];
   String(tasksText ?? '').split('\n').forEach((line) => {
-    const task = /^\s*- \[[xX]\]\s+(\d{1,3}\.\d{1,3})\b/.exec(line);
-    if (task && !ids.includes(task[1])) ids.push(task[1]);
+    const task = parseTaskLine(line);
+    if (task?.done && task.id && /^\d{1,3}\.\d{1,3}$/.test(task.id) && !ids.includes(task.id)) ids.push(task.id);
   });
   return ids;
 }
@@ -42,14 +44,15 @@ export function taskGroups(tasksText) {
       current = null; // a heading with no number ("Workflow follow-up") ends the numbered sections
       return;
     }
-    const task = /^\s*- \[ \] (\d+\.\d+)\b/.exec(line);
-    if (!task) return;
-    if (REPLICA_MARK.test(line)) {
-      replicas.push({ section: current ? current.section : null, title: line.replace(/^\s*- \[ \] \d+\.\d+\s+\[replica\]\s*/i, '').trim(), tasks: [task[1]], replica: true });
+    const task = parseTaskLine(line);
+    if (!task || task.done || !task.id) return;
+    const rest = task.text.slice(task.id.length).trim();
+    if (REPLICA_MARK.test(rest)) {
+      replicas.push({ section: current ? current.section : null, title: rest.replace(REPLICA_MARK, '').trim(), tasks: [task.id], replica: true });
       return;
     }
-    if (current) current.tasks.push(task[1]);
-    else (loose ??= { section: null, title: '', tasks: [] }).tasks.push(task[1]);
+    if (current) current.tasks.push(task.id);
+    else (loose ??= { section: null, title: '', tasks: [] }).tasks.push(task.id);
   });
   const normal = [...sections, ...(loose ? [loose] : [])].filter((g) => g.tasks.length > 0);
   const pendingNormal = normal.reduce((total, g) => total + g.tasks.length, 0);

@@ -1,7 +1,7 @@
 # role-skills Specification
 
 ## Purpose
-TBD - created by archiving change platform-registry. Update Purpose after archive.
+Lets a stack profile list extra skills for the roles `dev`, `qa`, `issue` and `review`, which `go` resolves to paths and hands to the agent of each role. Only trustworthy skills are used, an unattended run never changes their files, their size is budgeted, and a skill that is not installed leaves no trace. Relevo's own rules and the project rules always win over a skill.
 
 ## Requirements
 

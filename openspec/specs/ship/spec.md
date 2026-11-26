@@ -1,7 +1,7 @@
 # ship Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Merges an approved pull request: it requires the pull request, the approval of a person, the checks and a written confirmation, archives the specification just before the merge, squash-merges and closes out. A label can start an unattended ship that waits for running checks, retries a moved base branch and says why it stopped; it never bypasses branch protection and never releases.
 
 ## Requirements
 
@@ -372,3 +372,114 @@ When another worktree holds the branch of the issue, `ship` SHALL say whether th
 #### Scenario: The worktree has unsaved work
 - **WHEN** the worktree has an uncommitted change or a commit that is not on the remote
 - **THEN** `ship` names it, removes nothing, and archives, pushes and merges nothing
+
+### Requirement: Checks that are still running are waited for
+When the only reason an unattended ship would stop is that the checks of the approved head have not finished, the run SHALL keep the `ship` label, look again at a regular interval and go on once they have finished and pass. It SHALL NOT wait for a pull request that has any other reason to stop, and SHALL stop at once when a check has failed.
+
+#### Scenario: Checks finish while the run waits
+- **WHEN** the label is applied while the checks of an approved pull request are running and they pass within the limit
+- **THEN** the run keeps the label while it waits and then archives and merges as for any other ship
+
+#### Scenario: A check fails while the run waits
+- **WHEN** a check of the approved head fails while the run waits
+- **THEN** the run stops, removes the label, merges nothing and names the failing check
+
+#### Scenario: Another reason to stop besides the running checks
+- **WHEN** checks are running and the pull request also has a conflict or lacks an approval on the current code
+- **THEN** the run does not wait and stops with every reason
+
+#### Scenario: Checks that never finish
+- **WHEN** the checks are still running when the time the run may wait is used up
+- **THEN** the run stops, removes the label, merges nothing, and the comment names the checks that were running and says that applying the label again retries
+
+### Requirement: One time limit covers all the waiting of a run
+The wait for the checks of the approved head, the wait for GitHub to compute mergeability and the wait for the checks of the archive commit SHALL share one limit, which SHALL end before the time limit of the workflow.
+
+#### Scenario: Long waits add up
+- **WHEN** the run has already waited for the checks of the approved head and then waits for the checks of the archive commit
+- **THEN** the second wait ends when the shared limit is used up, not a full limit later
+
+### Requirement: A merge refused because the base branch moved is retried once
+When GitHub refuses the merge because the base branch was modified since the pull request was read, the unattended ship SHALL read the pull request again, decide again with the same rules and, if it still qualifies, try the merge a second time. It SHALL NOT try a third time.
+
+#### Scenario: Another pull request entered the base a moment before
+- **WHEN** GitHub refuses the merge with a message that the base branch was modified and the pull request still qualifies on the second reading
+- **THEN** the run merges it and finishes as for any other ship
+
+#### Scenario: The base change conflicts with the pull request
+- **WHEN** the second reading shows that the pull request now has conflicts
+- **THEN** the run stops with the conflict reason and merges nothing
+
+#### Scenario: The second merge is also refused
+- **WHEN** GitHub refuses the second attempt
+- **THEN** the run stops, removes the label, and the comment gives GitHub's message and says that applying the label again retries
+
+### Requirement: A stop says whether applying the label again helps
+The comment of an unattended ship that stops SHALL say, for each reason, whether applying the label again can succeed without anything changing (a wait that ran out, a state that never settled, a merge refused twice) or whether something must be done first (a conflict, an approval on older code, a failed archive, a failing check).
+
+#### Scenario: A reason that only needs time
+- **WHEN** the run stops because the checks were still running after the limit
+- **THEN** the comment says that applying the label again retries, and does not ask the person to change anything
+
+#### Scenario: A reason that needs action
+- **WHEN** the run stops because the pull request has conflicts
+- **THEN** the comment says that the author must synchronise the branch first and does not suggest applying the label again before that
+
+### Requirement: The local ship waits and retries on the same terms
+`/relevo:ship` SHALL wait, for a bounded time, for the checks of the pull request when they are the only reason to stop, and SHALL try the merge a second time when GitHub refuses it because the base branch moved, before it tells the person to run it again.
+
+#### Scenario: Checks still running in a session
+- **WHEN** the checks of the approved pull request are running and are the only reason to stop
+- **THEN** `/relevo:ship` waits for them up to the limit and goes on to ask for the confirmation once they pass
+
+#### Scenario: The limit is used up in a session
+- **WHEN** the checks are still running after the limit
+- **THEN** `/relevo:ship` stops, names the checks and says that it can be run again
+
+### Requirement: The delta is checked against the base before the archive
+Before it archives, `ship` SHALL check that the delta of the change agrees with the main specifications on the base branch, by their requirement headers, in the local and in the unattended run. A clash SHALL stop it before anything is archived or pushed, with the capability, the header and the operation.
+
+#### Scenario: Clash found in an unattended ship
+- **WHEN** the label is applied and the delta ADDS a requirement that the base branch's main specification already has
+- **THEN** the run stops before archiving, removes the label, and the comment names the capability and the header and says that applying the label again does not help until the specification is corrected with `/relevo:fix <issue>`
+
+#### Scenario: Clash found in a session
+- **WHEN** `/relevo:ship` finds the same clash
+- **THEN** it stops before the confirmation and says the same, changing nothing
+
+#### Scenario: No clash
+- **WHEN** the delta agrees with the base branch
+- **THEN** `ship` archives as before
+
+### Requirement: The check follows the rules of the archive and does not rewrite the delta
+The check SHALL apply to the delta the rules `openspec archive` applies, in its order (rename, remove, modify, add), against the main specification. It SHALL compare names ignoring case and spacing where the archive does, SHALL only read, and SHALL exit non-zero when it finds a clash.
+
+#### Scenario: Renamed requirement
+- **WHEN** the delta renames a requirement whose old name exists and whose new name does not
+- **THEN** the check passes for it
+
+#### Scenario: Nothing is changed
+- **WHEN** the check finds a clash
+- **THEN** no file of the repository is modified
+
+### Requirement: What counts as a clash is what makes the archive stop
+A clash SHALL be: an ADDED requirement whose name exists with different text or differs from an existing name only in case or spacing; a MODIFIED requirement, or the old name of a rename, that does not exist; a MODIFIED block that lacks a scenario the current requirement has; a rename to a name that exists; and a REMOVED name that is only a variant of an existing one.
+
+#### Scenario: Header differing only in spacing
+- **WHEN** an ADDED header differs from an existing one only in spacing
+- **THEN** the check reports the clash, as the archive would
+
+#### Scenario: A sibling issue added a scenario to a requirement this change modifies
+- **WHEN** the main specification's requirement has a scenario that the MODIFIED block does not
+- **THEN** the check reports that the block would drop that scenario
+
+### Requirement: What the archive accepts is not a clash
+The check SHALL NOT report a REMOVED name that is absent, an ADDED requirement with the same text as the existing one, or a rename that was already applied. In a capability with no main specification it SHALL accept ADDED requirements and report MODIFIED or renamed ones.
+
+#### Scenario: Removed requirement already gone
+- **WHEN** the delta REMOVES a requirement that the main specification no longer has
+- **THEN** the check passes for it, as the archive treats it as already removed
+
+#### Scenario: Added requirement already synced with the same text
+- **WHEN** an ADDED requirement has exactly the text of the existing one
+- **THEN** the check passes for it

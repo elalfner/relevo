@@ -699,3 +699,47 @@ test('Scenario: Settings for the bugs lens - a model and an effort are valid and
   assert.deepEqual(config.agents.qa.code, AGENT_DEFAULTS.qa.code);
   assert.deepEqual(config.agents_given, ['agents.qa.bugs.model', 'agents.qa.bugs.effort']);
 });
+
+// local-tracker: the files tracker, the local provider and the depth.
+const FILES = `${MINIMAL}tracker: files\ngit_provider: local\n`;
+
+test('Scenario: Local pair - tracker files with git_provider local passes and has no reviewer', () => {
+  const { ok, config, warnings } = loadConfig(FILES);
+  assert.equal(ok, true);
+  assert.equal(config.review.mode, 'none');
+  assert.deepEqual(warnings, []);
+});
+
+test('Scenario: Mixed pair - the error names both keys', () => {
+  const { ok, errors } = loadConfig(`${MINIMAL}tracker: files\n`);
+  assert.equal(ok, false);
+  assert.match(errors.map((e) => e.message).join('\n'), /tracker "files" goes with git_provider "local", not "github"/);
+  assert.equal(loadConfig(`${MINIMAL}git_provider: local\n`).ok, false);
+});
+
+test('Scenario: Review mode peer - a files project has no reviewer', () => {
+  const { ok, errors } = loadConfig(`${FILES}review:\n  mode: peer\n`);
+  assert.equal(ok, false);
+  assert.match(errors[0].message, /one person/);
+});
+
+test('Scenario: Team set - the settings of a team are ignored with a warning, one per setting', () => {
+  const { ok, warnings } = loadConfig(`tracker: files\ngit_provider: local\nteam:\n  members: [a]\nlimits:\n  run_max_cost: 5\n  concurrent_agents: 2\nrunner:\n  labels: [x]\n`);
+  assert.equal(ok, true);
+  assert.deepEqual(warnings.map((w) => w.path).sort(), ['limits.concurrent_agents', 'runner.labels', 'team.members']);
+});
+
+test('Scenario: Depth - valid value, default standard, unknown value lists the allowed ones', () => {
+  assert.equal(loadConfig(MINIMAL).config.depth, 'standard');
+  assert.equal(loadConfig(`${MINIMAL}depth: prototype\n`).config.depth, 'prototype');
+  const { ok, errors } = loadConfig(`${MINIMAL}depth: deep\n`);
+  assert.equal(ok, false);
+  assert.match(errors[0].message, /"prototype", "standard"/);
+});
+
+test('Scenario: No new keys - a github file keeps the previous result', () => {
+  const { config } = loadConfig(MINIMAL);
+  assert.equal(config.tracker, 'github');
+  assert.equal(config.git_provider, 'github');
+  assert.equal(config.review.mode, 'peer');
+});

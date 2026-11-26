@@ -1,7 +1,7 @@
 # platforms Specification
 
 ## Purpose
-TBD - created by archiving change platform-registry. Update Purpose after archive.
+Declares the platforms of a repository and the stack profile of each: a registry names them, a script resolves the profile of an issue, and a profile carries the commands, rules, questions for the issue writer, skills, security notes and review adapter of its stack. The plugin ships profiles for Flutter, Vue, Laravel, Supabase and Nhost; a repository can extend a profile or declare its own, but cannot weaken a fixed rule.
 
 ## Requirements
 

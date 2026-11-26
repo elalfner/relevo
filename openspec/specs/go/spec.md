@@ -1,15 +1,15 @@
 # go Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Builds an approved issue into a branch: a build request starts the run, a script plans the models, the limits and the checks before the agent starts, the developer works group by group with a checkpoint after each, and the validation gate and the QA lenses review the result with one retry. A run reports its progress in one comment, keeps its work when it stops at a limit, can be resumed, and ends in a hand-off or in a single `build-failed` state with its reason.
 
 ## Requirements
 
 ### Requirement: Trigger
-A cloud build SHALL start only for an issue that belongs to a milestone, has an assignee, carries the `ready` label and receives the `go` label, and only when both labels were applied by users with write permission on the repository. The `ready` label alone SHALL start nothing.
+A cloud build SHALL start only for an issue that has an assignee, carries the `ready` label and receives the `go` label, and only when both labels were applied by users with write permission on the repository. The `ready` label alone SHALL start nothing. A milestone SHALL NOT be required: an issue without one is evaluated like any other.
 
 #### Scenario: Authorised label
-- **WHEN** a collaborator with write access applies `go` to a `ready` issue in a milestone that a collaborator with write access approved
+- **WHEN** a collaborator with write access applies `go` to a `ready` issue that a collaborator with write access approved
 - **THEN** the issue is evaluated by the gates
 
 #### Scenario: Unauthorised label
@@ -17,8 +17,8 @@ A cloud build SHALL start only for an issue that belongs to a milestone, has an 
 - **THEN** no run starts, and the `ready` and `go` labels are removed
 
 #### Scenario: No milestone
-- **WHEN** a build is requested for a `ready` issue with no milestone
-- **THEN** no run starts, the `ready` and `go` labels are removed and a comment asks for a milestone
+- **WHEN** a build is requested for a `ready` issue with an assignee and no milestone
+- **THEN** the issue passes this gate and is evaluated by the others, and no comment asks for a milestone
 
 #### Scenario: No assignee
 - **WHEN** a build is requested for a `ready` issue with no assignee
@@ -122,7 +122,7 @@ The workflow that runs `go` SHALL start only when a person (not an automation ac
 The workflow that runs `go` SHALL run the gates and claim the issue in a light job that installs no platform toolchain and starts no agent, and SHALL start the build job, with the toolchain and the agent, only when the decision is `start`. The decision SHALL travel to the build job so that it does not plan again.
 
 #### Scenario: Issue not ready to build
-- **WHEN** the gates decide `needs-spec`, `blocked`, `queued`, `denied`, no milestone or no assignee
+- **WHEN** the gates decide `needs-spec`, `blocked`, `queued`, `denied` or no assignee
 - **THEN** the light job applies the outcome and its comment, and the build job does not start
 
 #### Scenario: Gates pass
@@ -149,7 +149,7 @@ The workflow SHALL accept a build dispatched by the queue workflow, whose actor 
 - **THEN** the agent runner refuses it
 
 ### Requirement: A run that ends without an outcome is reported
-The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `build-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it.
+The workflow that runs `go` SHALL end with a step that always runs. When the issue is still `ready` or `building` after the agent step, that step SHALL replace the label with `build-failed` and SHALL comment, mentioning the assignee, with the job status and a link to the run, so no failure before or during the agent is silent. When the issue carries any other state, the step SHALL NOT change it. A build job that never started is not such a failure: the issue returns to `queued` instead.
 
 #### Scenario: The plugin cannot be installed
 - **WHEN** the run fails before `go` starts and the issue is still `ready`
@@ -170,6 +170,10 @@ The workflow that runs `go` SHALL end with a step that always runs. When the iss
 #### Scenario: The run recorded its outcome
 - **WHEN** the issue is `built`, `queued`, `blocked`, `needs-spec` or `build-failed` when the job ends
 - **THEN** the final step changes nothing
+
+#### Scenario: The build job never started
+- **WHEN** the issue is `building`, its progress comment still says that the build waits for a runner, and the build job ended
+- **THEN** the issue is returned to `queued` and is not labelled `build-failed`
 
 ### Requirement: Labels follow the run
 `go` SHALL set `queued` while an issue waits for capacity, `building` when its run starts, and `built` when it finishes successfully, removing the previous lifecycle label each time.
@@ -347,7 +351,7 @@ When a cloud build run ends, whatever its outcome, the `go` workflow SHALL start
 - **THEN** the queue is evaluated right away
 
 #### Scenario: No build ran
-- **WHEN** the decision is `needs-spec`, `blocked`, `queued`, `denied`, no milestone or no assignee, and the light job succeeds
+- **WHEN** the decision is `needs-spec`, `blocked`, `queued`, `denied` or no assignee, and the light job succeeds
 - **THEN** no queue evaluation is started, because no slot was freed
 
 #### Scenario: The queue workflow is missing
@@ -736,11 +740,11 @@ The `urgent` label SHALL be valid only when the person who last applied it has t
 - **THEN** the label is not valid and is removed, as for a person without permission
 
 ### Requirement: A cloud build shows its progress in one comment
-While a cloud build runs, `go` SHALL keep one progress comment on the issue, found by a hidden marker and edited in place. It SHALL NOT add a comment for each step or each check. The comment SHALL show the state now and SHALL NOT accumulate history: the phase of the build, the tasks done out of the total and how long the run has lasted, in whole minutes.
+From the moment a cloud build is claimed, `go` SHALL keep one progress comment on the issue, found by a hidden marker and edited in place. It SHALL NOT add a comment for each step or each check. The comment SHALL show the state now and SHALL NOT accumulate history: that the build waits for a runner until the build job starts, and then the phase of the build, the tasks done out of the total and how long the run has lasted, in whole minutes.
 
 #### Scenario: First report
-- **WHEN** the build job starts the agent
-- **THEN** one progress comment with the marker is created on the issue
+- **WHEN** the decision job claims the issue
+- **THEN** one progress comment with the marker is created on the issue, and it says that the build waits for a runner
 
 #### Scenario: A step finishes
 - **WHEN** the number of tasks done or the phase changes
@@ -749,6 +753,10 @@ While a cloud build runs, `go` SHALL keep one progress comment on the issue, fou
 #### Scenario: Marker already present
 - **WHEN** a progress comment with the marker already exists for the issue
 - **THEN** it is edited and no second one is created
+
+#### Scenario: The build job starts
+- **WHEN** a runner takes the build job
+- **THEN** the same comment is edited to show the phase, and the minutes count from that start
 
 ### Requirement: The phase of the build is announced and checked
 At the start of each step of a build, `go` SHALL announce the phase it enters: planning, specification, development, QA, the new attempt of development or QA with its number out of the allowed retries, and delivery. The announcement SHALL be kept outside the working tree of the repository so that it never appears in the diff of the change. When no announcement has been made, the phase SHALL be deduced from what exists in the working tree, and the progress comment SHALL still be kept.
@@ -785,7 +793,7 @@ Every 30 seconds the workflow SHALL read the announced phase and the tasks done,
 - **THEN** no further check is made
 
 ### Requirement: The progress comment is closed when the run ends
-When the run ends, whether it succeeded, failed or was stopped, the progress comment SHALL be replaced by a single line that points to the result, and no progress detail SHALL remain on the issue.
+When the run ends, whether it succeeded, failed or was stopped, the progress comment SHALL be replaced by a single line that points to the result, and no progress detail SHALL remain on the issue. This SHALL hold too when the runner of the build is lost and none of the steps of the build job ran after it was lost: the closing SHALL NOT depend on the machine that ran the build.
 
 #### Scenario: Run ends with a result
 - **WHEN** the build finishes and the result comment is posted
@@ -794,6 +802,31 @@ When the run ends, whether it succeeded, failed or was stopped, the progress com
 #### Scenario: Run ends without an outcome
 - **WHEN** the job ends and the issue is still `building`
 - **THEN** the progress comment is closed with a line that says the run ended without an outcome, next to the existing failure report
+
+#### Scenario: The runner of the build is lost
+- **WHEN** the build job ends as failed or cancelled and the progress comment is still open because no step of that job could close it
+- **THEN** a job that runs on another runner closes it with one line that says the runner stopped answering and the build left no result, and links the run
+- **AND** no progress detail (phase, tasks or minutes) remains on the issue
+
+#### Scenario: The close of the build job already ran
+- **WHEN** the build job ends as failed or cancelled and its own steps already closed the progress comment
+- **THEN** the job that runs afterwards finds it closed and writes nothing
+
+#### Scenario: There is no progress comment
+- **WHEN** the build job ends as failed or cancelled and the issue has no progress comment
+- **THEN** nothing is created and nothing is edited
+
+#### Scenario: A build that ended in success
+- **WHEN** the build job ends in success
+- **THEN** the job that runs afterwards does not touch the progress comment
+
+#### Scenario: The labels are not changed
+- **WHEN** the progress comment is closed because the runner was lost
+- **THEN** the labels of the issue stay as they were and no comment is added
+
+#### Scenario: Closing never fails the run
+- **WHEN** GitHub refuses the edit that closes the comment
+- **THEN** the job continues and the result of the run does not change
 
 ### Requirement: A closed progress comment is not edited again
 Once the progress comment has been closed, no check of the run SHALL edit it, so that a late check cannot replace the closing line with a progress text. The comment SHALL say that it is closed in a way the checks can read before they write.
@@ -874,19 +907,23 @@ When the planner is asked to retry an issue (`--retry`, together with `--only <n
 - **THEN** the decision is `denied` and nothing is claimed
 
 #### Scenario: Gates still apply
-- **WHEN** the retried issue has no assignee, no milestone or an incomplete specification
+- **WHEN** the retried issue has no assignee or an incomplete specification
 - **THEN** the same decision as for a `ready` issue is returned, and nothing is built
+
+#### Scenario: A retried issue without a milestone
+- **WHEN** the retried issue has no milestone and passes the other gates
+- **THEN** the decision is `start`, as for a `ready` issue without one
 
 #### Scenario: Without the flag
 - **WHEN** the planner runs without `--retry`
 - **THEN** a `build-failed` issue is still ignored
 
 ### Requirement: A retry is refused when there is something to fix instead
-The planner SHALL refuse a retry, changing nothing, when the issue is not `build-failed` or when a branch `feature/<n>-*` exists on the remote. The message SHALL send the person to `/relevo:fix <n>` or to delete the branch.
+The planner SHALL refuse a retry, changing nothing, when the issue is not `build-failed` or when a branch `feature/<n>-*` exists on the remote. The message SHALL send the person to `/relevo:go <n> --resume` when the branch can be resumed, to `/relevo:fix <n>` when it holds work that QA rejected, or to delete the branch.
 
 #### Scenario: A branch exists
 - **WHEN** `origin/feature/67-...` exists and the retry is requested
-- **THEN** nothing changes and the message says to run `/relevo:fix 67` or to delete the branch
+- **THEN** nothing changes and the message says to run `/relevo:go 67 --resume`, `/relevo:fix 67` or to delete the branch, according to what the branch holds
 
 #### Scenario: The issue is not qa-failed
 - **WHEN** the retry is requested for an issue that is `built`
@@ -1836,10 +1873,14 @@ When a checkpoint is refused by the commit guard (a path outside the platform, a
 - **THEN** the comment names the path and the reason, gives no `Allow-paths:` line and still recommends `/relevo:fix <issue>` for the pushed groups
 
 ### Requirement: A refused retry on a branch with checkpoints says to use fix
-When the planner refuses a retry because a branch `feature/<n>-*` exists on the remote and that branch holds code (checkpoints or the finished work), the message SHALL say that the branch holds code, SHALL send the person to `/relevo:fix <n>` and SHALL say that `fix` does not need a description of the defect when the branch ends at a commit that `go` made for a build that did not finish. The message for a branch that holds only the specification, and the one for a branch that cannot be read, SHALL NOT change.
+When the planner refuses a retry because a branch `feature/<n>-*` exists on the remote and that branch holds code (checkpoints or the finished work), the message SHALL say that the branch holds code. When the resume check accepts the branch, the message SHALL send the person to `/relevo:go <n> --resume`; otherwise it SHALL send the person to `/relevo:fix <n>` and say that `fix` does not need a description of the defect when the branch ends at a commit that `go` made for a build that did not finish. The message for a branch that holds only the specification, and the one for a branch that cannot be read, SHALL NOT change.
 
 #### Scenario: The branch holds checkpoints
-- **WHEN** a retry is requested for `build-failed` issue 20 and `origin/feature/20-...` differs from the base outside the change folder
+- **WHEN** a retry is requested for `build-failed` issue 20 and `origin/feature/20-...` ends at a checkpoint with the hash of the current text
+- **THEN** the message says the branch holds code, sends the person to `/relevo:go 20 --resume`, and the branch is untouched
+
+#### Scenario: The branch holds code that cannot be resumed
+- **WHEN** a retry is requested for `build-failed` issue 20 and the branch differs from the base outside the change folder but the resume check refuses it
 - **THEN** the message says the branch holds code, sends the person to `/relevo:fix 20` and says no defect description is needed after an interrupted build, and the branch is untouched
 
 #### Scenario: The branch cannot be read
@@ -1862,7 +1903,7 @@ A `go` label SHALL be valid only when the person who last applied it has the per
 - **THEN** no run starts and the label is removed
 
 ### Requirement: A build request is refused on an issue that cannot take it
-A `go` label on an issue that is not `ready` SHALL start nothing and SHALL be removed, with one comment that says why and what applies instead, except on a failed build that left no code, which is rebuilt. `go` SHALL NOT stand in for the approval.
+A `go` label on an issue that is not `ready` SHALL start nothing and SHALL be removed, with one comment that says why and what applies instead, except on a failed build that left no code, which is rebuilt, and on a failed build whose branch can be resumed, which is continued. `go` SHALL NOT stand in for the approval.
 
 #### Scenario: Draft
 - **WHEN** a person applies `go` to an issue with no lifecycle label
@@ -1873,7 +1914,7 @@ A `go` label on an issue that is not `ready` SHALL start nothing and SHALL be re
 - **THEN** `go` is removed, the comment says that the issue is being built, and the build in progress is not touched
 
 #### Scenario: Failed build with code
-- **WHEN** a person applies `go` to a `build-failed` issue whose branch holds implementation
+- **WHEN** a person applies `go` to a `build-failed` issue whose branch holds implementation that the resume check refuses
 - **THEN** `go` is removed and the comment says to run `/relevo:fix <n>`
 
 #### Scenario: Already built
@@ -1931,3 +1972,235 @@ The queue SHALL act on issues that are `queued` or `blocked`, and on a `ready` i
 #### Scenario: Cloud builds do
 - **WHEN** the limit is 2, two issues are `building` without `local`, and `go` is applied to a third issue
 - **THEN** the third issue is `queued`
+
+### Requirement: The progress shows the group in progress
+The progress of a build, in the comment of a cloud build and in the lines of a local one, SHALL show the group in progress out of the groups of the run. The numbers SHALL be recorded by the scripts that split the tasks into groups and that commit the checkpoint of each group. `go` SHALL announce nothing for it and no turn SHALL be added.
+
+#### Scenario: Second group of three
+- **WHEN** the first checkpoint of a run with three groups was committed and the developer works on the next group
+- **THEN** the progress shows "group 2 of 3"
+
+#### Scenario: One group
+- **WHEN** the change is built as one group
+- **THEN** the progress shows "group 1 of 1"
+
+#### Scenario: A resumed run
+- **WHEN** a run resumes with two groups still pending
+- **THEN** the progress counts the groups of this run, from 1 of 2
+
+#### Scenario: The numbers cannot be recorded
+- **WHEN** the progress folder cannot be written
+- **THEN** the checkpoint is made as today and the progress shows no group
+
+### Requirement: Every launch of the developer is explicit and named
+`go` SHALL launch the developer agent, in every mode, as one call in the foreground, SHALL NOT start it in the background and SHALL NOT end its turn while it runs. The launch of a group SHALL carry a description that names the group and its tasks (`build 2/3: 2.1, 2.2`), and the launch of a correction a description that names its attempt. The usage comment SHALL show that description with the entry of the launch.
+
+#### Scenario: Launch of a group
+- **WHEN** `go` launches the developer for the second of three groups, with tasks 2.1 and 2.2
+- **THEN** the launch is one foreground call whose description is `build 2/3: 2.1, 2.2`
+
+#### Scenario: Usage of a run with three groups
+- **WHEN** the usage comment of that run lists its agents
+- **THEN** the three launches of the developer are told apart by their descriptions
+
+#### Scenario: A replica
+- **WHEN** `go` launches a replica
+- **THEN** its description stays `replica <task id>`, as today
+
+### Requirement: Unmarked tasks are found at their group
+After each group, the script that commits its checkpoint SHALL also say which tasks of that group are still unmarked in `tasks.md`. A task the developer reported it could not finish SHALL be handled as an open question, at that group. For the others `go` SHALL launch the developer once more, for those tasks alone; if any is still unmarked afterwards, the run SHALL take the failure path with the reason `tasks left unfinished` without building the later groups.
+
+#### Scenario: Every task marked
+- **WHEN** the tasks of the group are all marked
+- **THEN** the checkpoint is made and the next group starts
+
+#### Scenario: Unmarked with no reason given
+- **WHEN** task 2.2 is unmarked and the report of the developer has no open question
+- **THEN** the developer is launched once more with task 2.2 alone
+
+#### Scenario: Still unmarked
+- **WHEN** task 2.2 is still unmarked after that launch
+- **THEN** the run ends with `tasks left unfinished`, the work is kept, and group 3 is not built
+
+#### Scenario: Unmarked with a reason
+- **WHEN** the developer reported that task 2.2 cannot be done as specified
+- **THEN** the developer is not launched again for it, and the report is handled as an open question
+
+### Requirement: The build job runs on the build runner
+The build job of the `go` workflow SHALL run on the labels of `runner.build_labels` when it is set, and every other job of that workflow SHALL run on `runner.labels`. How many runners carry the labels of the build job SHALL be how many cloud builds a machine runs at once, across the repositories that use them; a build job that finds none free SHALL wait in the queue of GitHub. The queue of Relevo SHALL NOT look at which runners are free.
+
+#### Scenario: One build runner, two repositories
+- **WHEN** two repositories use the same single build runner and a build is requested in each at the same time
+- **THEN** one build runs and the other waits for the runner, while the light jobs of both run on the other runners
+
+#### Scenario: A build does not hold the light jobs
+- **WHEN** a build is running and a review event arrives
+- **THEN** the job that syncs the label runs at once, on a runner of `runner.labels`
+
+### Requirement: A build that never found a runner returns to the queue
+When the build job of an issue that was claimed ends without having started, because no runner took it, the workflow SHALL return the issue to `queued` and post one comment that says that no runner took the build. It SHALL NOT label it `build-failed`. A build job that started and was then cancelled or cut SHALL be reported as today.
+
+#### Scenario: GitHub cancels a job that waited too long
+- **WHEN** the build job of issue 42 is cancelled while it waits for a runner
+- **THEN** issue 42 is `queued`, one comment says that no runner took the build, and the queue tries again at its next evaluation
+
+#### Scenario: Cancelled while running
+- **WHEN** the build job of issue 42 started, and is then cancelled
+- **THEN** the issue is handled as a run that was cut, not returned to the queue for this reason
+
+### Requirement: Go reads and moves the issue through the tracker
+`/relevo:go` SHALL read the issue, check its gates, claim it and record its outcome through the tracker of the project, so that with `tracker: files` it reads the file and the state record and with `tracker: github` it does what the other requirements of this capability describe. The gates that belong to a team (milestone, assignee, review capacity) SHALL apply only to `github`.
+
+#### Scenario: Files project
+- **WHEN** `/relevo:go 3` runs in a files project with issue 3 `ready` and its hash unchanged
+- **THEN** it claims the issue as `building`, builds it in a worktree and leaves it `built` or `build-failed`
+
+#### Scenario: GitHub project
+- **WHEN** it runs in a GitHub project
+- **THEN** its behavior is the one it had before this change
+
+### Requirement: A hand-off in a files project is a local branch
+When a build ends in a hand-off in a files project, the result SHALL be the branch of the issue with its commits, the state `built` and a hand-off report recorded in the state of the issue, and no pull request, comment on GitHub or push SHALL be attempted.
+
+#### Scenario: Built
+- **WHEN** QA passes
+- **THEN** the branch exists locally, the issue is `built` and the report names the branch and what the run used
+
+### Requirement: A run of go in a files project can be local only
+`go` in a files project SHALL always build on the machine; the `go` label, the cloud workflows and `RELEVO_CLOUD_GO` SHALL NOT apply, and `/relevo:go` SHALL NOT warn that the cloud may build the same issue.
+
+#### Scenario: No cloud
+- **WHEN** a person runs `/relevo:go 3 --local` in a files project
+- **THEN** the build runs as `go-local.mjs` does and no message mentions the cloud
+
+### Requirement: A build that stopped before it finished is continued with resume
+`go` SHALL accept `--resume` with the number of a `build-failed` issue whose branch `feature/<n>-*` exists, and SHALL continue from that branch, building only the pending tasks and writing no specification. The planner SHALL apply the gates of a retry and move the issue from `build-failed` to `building`. `--retry` SHALL keep building from the beginning, and only when no branch exists.
+
+#### Scenario: A build cut at a limit is resumed
+- **WHEN** issue 42 is `build-failed`, its branch ends at `wip: stopped by limit (#42)` with the hash of the current text, and a person with write access runs `/relevo:go 42 --resume`
+- **THEN** the issue becomes `building`, the run continues from the branch and builds only the tasks that are still open
+
+#### Scenario: Resume on an issue that is not build-failed
+- **WHEN** `--resume` is requested for an issue that is `built`
+- **THEN** nothing changes and the message says that only a `build-failed` issue can be resumed
+
+#### Scenario: Resume on an issue with no branch
+- **WHEN** `--resume` is requested for a `build-failed` issue that has no branch on the remote
+- **THEN** nothing changes and the message says that there is nothing to continue and that `--retry` builds it from the beginning
+
+### Requirement: A resume is refused before the issue is claimed when the branch cannot be resumed
+Before it claims the issue, the planner SHALL ask the resume check whether the branch can be continued, and SHALL refuse the resume, changing nothing, when it cannot. The message SHALL name the reason and the step that fits it. The planner SHALL NOT delete, reset or overwrite the branch.
+
+#### Scenario: The text changed after the stop
+- **WHEN** `--resume` is requested and the hash on the tip of the branch differs from the hash of the issue text
+- **THEN** nothing changes, the issue stays `build-failed` and the message says that the text changed and to run `/relevo:issue <n>`
+
+#### Scenario: Only the specification is on the branch
+- **WHEN** `--resume` is requested and the branch holds only the specification
+- **THEN** nothing changes and the message names the command that deletes the remote branch and the `--retry` to run afterwards
+
+#### Scenario: QA rejected the work
+- **WHEN** `--resume` is requested and the tip is `wip: rejected by QA`
+- **THEN** nothing changes and the message sends the person to `/relevo:fix <n>`
+
+#### Scenario: A person committed on the branch
+- **WHEN** one commit over the base is not one of Relevo's
+- **THEN** nothing changes and the message names the commit that deletes the remote branch and the `--retry` to run afterwards
+
+#### Scenario: The branch cannot be read
+- **WHEN** the content of the branch cannot be read
+- **THEN** nothing is claimed, nothing is deleted and the message says that the branch could not be read
+
+### Requirement: A build request resumes a failed build whose branch can be continued
+A valid `go` label on a `build-failed` issue whose branch the resume check accepts SHALL be planned as a resume in the cloud, with the gates of a retry and without passing through `ready` again. When the branch cannot be resumed, the label SHALL be removed with the comment it gets today for a failed build with code. When the branch cannot be looked for, nothing SHALL be built and nothing SHALL change.
+
+#### Scenario: Resume in the cloud
+- **WHEN** issue 42 is `build-failed`, its branch ends at a checkpoint with the hash of the current text and a person with write access applies `go`
+- **THEN** the gates run, the issue becomes `building` and the cloud continues from the branch
+
+#### Scenario: The branch cannot be resumed
+- **WHEN** a person applies `go` to a `build-failed` issue whose branch ends at `wip: rejected by QA`
+- **THEN** `go` is removed and the comment says to run `/relevo:fix <n>`
+
+#### Scenario: Local and cloud follow one rule
+- **WHEN** the same branch is offered to `--resume` on a machine and to the `go` label in the cloud
+- **THEN** both resume it, or both refuse it for the same reason
+
+### Requirement: A resume that finishes no task stops the loop
+When a resumed run stops again at a limit with no task finished, the `build-failed` comment SHALL say that resuming again will not help and what to change, SHALL NOT name `--resume`, and SHALL record the limits in force. A later `--resume` or `go` label SHALL be refused until a limit of `relevo.yml` is higher than the recorded one.
+
+#### Scenario: A resume makes no progress
+- **WHEN** a resumed run ends at the minutes limit with the same tasks done as when it started
+- **THEN** the comment says that resuming again will not help, names the limits to raise and the option to split the issue, and does not name `--resume`
+
+#### Scenario: Resume after the limit was raised
+- **WHEN** the previous resume made no progress, `limits.run_max_minutes` is now higher than the recorded value and `--resume` is requested
+- **THEN** the planner accepts it
+
+#### Scenario: Resume with the same limits
+- **WHEN** the previous resume made no progress, no limit is higher than the recorded one and `--resume` is requested
+- **THEN** nothing changes and the message says which limits to raise
+
+#### Scenario: A resume that finished tasks
+- **WHEN** a resumed run finishes two tasks and then stops at a limit
+- **THEN** the comment names `--resume` as the next step with the tasks done
+
+### Requirement: The developer marks each task when it finishes it
+The developer agent SHALL mark a task `[x]` in `tasks.md` as soon as the code of that task exists and its own checks pass, with one edit per task and before it starts the next, and SHALL NOT leave the marks for the end of its launch. A task whose content is the full test run SHALL be marked when that run passes. The checkbox SHALL remain the only edit the developer makes to the files of the change, in every mode. A task that cannot be finished SHALL stay unchecked, and the report SHALL say why.
+
+#### Scenario: A task finishes in the middle of a launch
+- **WHEN** the developer finishes task 1.1 of a group of three
+- **THEN** task 1.1 is `[x]` in the working tree before the developer starts task 1.2
+
+#### Scenario: The progress rises inside one group
+- **WHEN** a build of three tasks, which is one group, is in development and the developer finishes the first task
+- **THEN** the progress shows one task done out of three while the launch is still running, and not `0 of 3` until the launch ends
+
+#### Scenario: A task that cannot be finished
+- **WHEN** the developer cannot finish a task
+- **THEN** its box stays unchecked and the report says why, as before
+
+#### Scenario: A correction in fix mode
+- **WHEN** the developer corrects the findings of QA, which are tasks added to `tasks.md`
+- **THEN** each correction is marked when it is corrected, by the same rule
+
+### Requirement: A mark is never taken back
+The developer agent SHALL NOT remove a `[x]` mark it or an earlier launch made. When it finds that a task it marked earlier is wrong, it SHALL correct the code and leave the box checked, and the QA lenses remain who judge whether the work is right.
+
+#### Scenario: An earlier task turns out wrong
+- **WHEN** the developer, building task 1.3, finds that task 1.2 was wrong
+- **THEN** it corrects the code of task 1.2 and task 1.2 stays `[x]`
+
+### Requirement: The tasks are counted as OpenSpec counts them
+Every script of Relevo that reads the boxes of `tasks.md` SHALL decide which lines are tracked tasks and which are done with one shared rule, the one OpenSpec states: a box holding only `x`, in either case and with any spacing, is done; any other marker (`~`, `-`, an empty box) is unfinished and counts in the total; a line with no box is not a task. The total and the done count of Relevo SHALL equal the ones OpenSpec reports for the same file.
+
+#### Scenario: A box with spacing
+- **WHEN** a task line is `- [ x] 1.1 ...`
+- **THEN** it counts as done and as part of the total
+
+#### Scenario: An unfinished marker
+- **WHEN** a task line is `- [~] 1.2 ...` or `- [] 1.3 ...`
+- **THEN** it counts in the total, is not done and is listed among the tasks still open
+
+#### Scenario: A line with no box
+- **WHEN** a line of `tasks.md` has no box, such as a plain bullet of a follow-up section
+- **THEN** it is not a task and counts nowhere
+
+#### Scenario: Relevo and OpenSpec agree
+- **WHEN** the same `tasks.md` is read by Relevo and by `openspec instructions apply`
+- **THEN** both give the same total and the same number of tasks done
+
+### Requirement: A build stops on a schema it does not understand
+Before the developer agent starts, `go` SHALL read the schema of the change and whether task tracking is configured from the apply instructions of OpenSpec. When the schema is not `spec-driven`, or the tasks are not tracked, the run SHALL end in `build-failed` with the reason `unsupported schema: <name>`, which names the schema found, and with the recovery `schema`, whose next step says to use `spec-driven`, and no developer agent SHALL start. The next step SHALL exist in English and Spanish.
+
+#### Scenario: Another schema
+- **WHEN** the apply instructions report a schema other than `spec-driven`
+- **THEN** the run ends in `build-failed` with the reason `unsupported schema: <name>` naming that schema and the recovery `schema`, and no agent starts
+
+#### Scenario: Tasks not tracked
+- **WHEN** the apply instructions report that task tracking is not configured
+- **THEN** the run ends in `build-failed` with the reason `unsupported schema: task tracking is not configured`, and no agent starts
+
+#### Scenario: The supported schema
+- **WHEN** the apply instructions report `spec-driven` with its tasks tracked
+- **THEN** the build goes on as before

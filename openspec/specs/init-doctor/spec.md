@@ -1,7 +1,7 @@
 # init-doctor Specification
 
 ## Purpose
-TBD - created by archiving change check-plugin-token-secret. Update Purpose after archive.
+Sets up a repository for Relevo and checks that the setup works. `init` writes the configuration, the workflows, the stack profile and the optional local files without touching secrets; `doctor` is read-only and reports, with the fix next to each problem, what is missing or wrong in the tools, the configuration, the secrets, the workflows, the skills, the branch protection and the project of one person, failures first.
 
 ## Requirements
 
@@ -482,7 +482,7 @@ When `doctor` runs inside a remote session and the repository's `.claude/setting
 - **THEN** it reports no check about the hook, whether or not the hook exists
 
 ### Requirement: Init writes the runner into the workflows
-`init` SHALL generate every Relevo workflow with `runs-on` set from `runner.labels` (`ubuntu-latest` when absent), SHALL ask for the labels only when the person says the repository uses a self-hosted runner, and SHALL keep the `runs-on` of a workflow it rewrites equal to `runner.labels`.
+`init` SHALL generate every Relevo workflow with `runs-on` set from `runner.labels` (`ubuntu-latest` when absent), except the build job of the `go` workflow, which takes `runner.build_labels` when it is set. It SHALL ask for the labels only when the person says the repository uses a self-hosted runner, and SHALL keep the `runs-on` of a workflow it rewrites equal to the setting of each job.
 
 #### Scenario: Default
 - **WHEN** the person gives no runner
@@ -497,7 +497,7 @@ When `doctor` runs inside a remote session and the repository's `.claude/setting
 - **THEN** the workflow runs on those labels and not on `ubuntu-latest`
 
 ### Requirement: Doctor checks the runner of the workflows
-`doctor` SHALL compare the `runs-on` of each Relevo workflow on the default branch with `runner.labels` and SHALL fail on a difference, with one result that names every file that differs and the fix. When the runner is not `ubuntu-latest`, it SHALL warn once that Relevo assumes the runner persists between jobs, that the code the agent writes runs with the permissions of the runner's user, and that an ephemeral runner or a container is the real barrier. It SHALL NOT claim to know whether the runner is ephemeral.
+`doctor` SHALL compare the `runs-on` of each job of each Relevo workflow on the default branch with its setting, `runner.build_labels` for the build job of the `go` workflow when it is set and `runner.labels` for every other job, and SHALL fail on a difference, with one result that names every file that differs and the fix. It SHALL report the runner of the build job apart when it differs from the other. When a runner is not `ubuntu-latest`, it SHALL warn once that Relevo assumes the runner persists between jobs, that the code the agent writes runs with the permissions of the runner's user, and that an ephemeral runner or a container is the real barrier. It SHALL NOT claim to know whether the runner is ephemeral.
 
 #### Scenario: A workflow edited by hand
 - **WHEN** `relevo.yml` has no `runner` key and `relevo-go.yml` on the default branch runs on `[self-hosted, linux-build]`
@@ -514,6 +514,14 @@ When `doctor` runs inside a remote session and the repository's `.claude/setting
 #### Scenario: Hosted runner
 - **WHEN** `runner.labels` is absent and every workflow runs on `ubuntu-latest`
 - **THEN** the runner check passes and no persistence warning appears
+
+#### Scenario: Build job on its own runner
+- **WHEN** `runner.build_labels` is `[self-hosted, relevo-build]`, the build job runs on it and every other job on `runner.labels`
+- **THEN** the runner check passes and the report gives both runners
+
+#### Scenario: Build job edited by hand
+- **WHEN** the build job runs on `[self-hosted, relevo-build]` and `relevo.yml` has no `runner.build_labels`
+- **THEN** `doctor` fails, names `relevo-go.yml` and says to set `runner.build_labels`
 
 ### Requirement: The urgent label is created and checked
 `init` SHALL create the `urgent` label together with the other lifecycle labels, with the name given in `labels` when there is one, and `doctor` SHALL report it as missing when it does not exist in the repository. A repository set up before this label existed SHALL be told by `doctor` how to create it, and no other check SHALL change.
@@ -1441,3 +1449,81 @@ When a repository has a label with the former name of the failed-build label (`q
 #### Scenario: Nothing left
 - **WHEN** neither the repository nor its workflows name the former label
 - **THEN** `doctor` reports nothing about it
+
+### Requirement: Init asks for the build runner
+When the person says the repository uses a self-hosted runner, `init` SHALL also ask whether the builds have runners of their own. On a yes it SHALL write `runner.build_labels` into `relevo.yml` and into the `runs-on` of the build job of the `go` workflow, and of no other job. It SHALL keep that `runs-on` when it rewrites the workflow.
+
+#### Scenario: Builds with their own runner
+- **WHEN** the person gives `[self-hosted, linux]` for the workflows and `[self-hosted, relevo-build]` for the builds
+- **THEN** `relevo.yml` has both settings, the build job of `relevo-go.yml` runs on `[self-hosted, relevo-build]`, and every other job of every Relevo workflow runs on `[self-hosted, linux]`
+
+#### Scenario: No separate runner
+- **WHEN** the person says the builds share the runners
+- **THEN** `relevo.yml` has no `runner.build_labels` and every job runs on `runner.labels`
+
+#### Scenario: Regenerating the go workflow
+- **WHEN** `init` rewrites `relevo-go.yml` in a repository that sets `runner.build_labels`
+- **THEN** the build job runs on those labels and the other jobs on `runner.labels`
+
+### Requirement: Doctor advises when builds share runners
+`doctor` SHALL say, as advice that never fails the check, when the builds run on self-hosted runners that other work also uses: once when `runner.build_labels` is absent and `runner.labels` is self-hosted, naming the setting, and once listing the workflows of the project that are not Relevo's and run on the labels of the build job. It SHALL say that `limits.concurrent_agents` limits one repository and that a machine is limited by its build runners.
+
+#### Scenario: Builds share the runners of the light jobs
+- **WHEN** `runner.labels` is `[self-hosted, linux]` and `runner.build_labels` is absent
+- **THEN** `doctor` advises that a build can hold a runner that the other jobs need, and names `runner.build_labels`
+
+#### Scenario: The checks of the project share the build runner
+- **WHEN** `ci.yml` of the project runs on the labels of the build job
+- **THEN** `doctor` advises, names `ci.yml`, and changes nothing in it
+
+#### Scenario: Builds apart
+- **WHEN** `runner.build_labels` names labels that no other workflow of the repository uses
+- **THEN** `doctor` gives no such advice
+
+#### Scenario: Runners of GitHub
+- **WHEN** every job runs on `ubuntu-latest`
+- **THEN** `doctor` gives no such advice
+
+### Requirement: Init can set up a local project
+`/relevo:init --local` SHALL, after the person confirms the plan, create the git repository when there is none, write a `relevo.yml` with `tracker: files`, `git_provider: local`, `review.mode: none`, `depth: prototype` and the cost limit of an unattended run, and create `.relevo/issues/`. It SHALL ask for nothing from GitHub, install no workflow and create no label. Running it again SHALL list only what differs.
+
+#### Scenario: Empty folder
+- **WHEN** the person runs `/relevo:init --local` in a folder with no repository
+- **THEN** the plan lists the repository, `relevo.yml` and `.relevo/issues/`, and nothing else
+
+#### Scenario: Second run
+- **WHEN** it runs again with nothing changed
+- **THEN** it reports that nothing needs to change
+
+### Requirement: Init asks no question the setup can answer
+`--local` SHALL take the base branch from the repository (or `main` for a new one), and SHALL ask only for the cost limit when the agent is `claude` and for the language of the messages.
+
+#### Scenario: New repository
+- **WHEN** the repository is created by init
+- **THEN** its branch is `main` and `branches.base` says so
+
+### Requirement: Doctor checks a local project by what it needs
+For `tracker: files`, `doctor` SHALL check git, OpenSpec, the toolchain of the platform, the skills that `think` invokes, `relevo.yml`, and that the base branch exists and has a commit. It SHALL NOT check GitHub, labels, rulesets, secrets, workflows or a remote, and SHALL NOT report their absence as a failure or a warning.
+
+#### Scenario: No remote
+- **WHEN** `doctor` runs in a files project with no remote
+- **THEN** it reports no failure and no warning about the remote
+
+#### Scenario: Missing tool
+- **WHEN** OpenSpec is not installed
+- **THEN** `doctor` fails with the fix next to it, as it does for a GitHub project
+
+### Requirement: Doctor checks the schema of the OpenSpec project
+`doctor` SHALL read the default schema of `openspec/config.yaml` and SHALL report a failure, with its fix, when it is not `spec-driven`, because the build reads `tasks.md` as that schema defines it. A project with no `schema` line SHALL be judged by OpenSpec's own default. A configuration that cannot be read, or whose `schema:` line has no usable name, SHALL be reported as unreadable, never as a pass.
+
+#### Scenario: The supported schema
+- **WHEN** `openspec/config.yaml` declares `schema: spec-driven`
+- **THEN** the check passes
+
+#### Scenario: Another schema
+- **WHEN** `openspec/config.yaml` declares a schema other than `spec-driven`
+- **THEN** the report shows a failure naming the schema, with the fix of setting `schema: spec-driven`
+
+#### Scenario: Unreadable configuration
+- **WHEN** `openspec/config.yaml` cannot be read, or its `schema:` line has no usable name
+- **THEN** the report says the schema could not be read, and does not show a pass

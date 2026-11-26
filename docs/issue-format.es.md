@@ -208,13 +208,18 @@ Nombra un issue de este repositorio cuyo cambio ya está fusionado y que resolvi
 
 La línea sola no cambia cómo se construyen las tareas. Lo que vuelve *replicada* a una construcción es la receta que la especificación escribe en `tasks.md` (su formato está en [Dónde corre `go`](execution.es.md#construcciones-replicadas)) y que un script verifica. Cada réplica necesita un mapa de renombres y las diferencias de su objetivo, así que el issue debe listar las diferencias de cada objetivo, o vuelve a quien escribe la spec (razón `missing`). El primer objetivo se construye normal y debe pasar el gate y los lentes de QA antes de que empiece cualquier réplica; cada réplica es luego un lanzamiento del desarrollador, con un modelo más barato cuando el desarrollador está en `auto` (un nombre por debajo del modelo planeado de `agents.ladder`, nunca bajo el piso del desarrollador; con un modelo escrito en `relevo.yml`, que es lo que hay por defecto, cada réplica usa ese modelo: ver [Dónde corre `go`](execution.es.md#construcciones-replicadas)), comprobada por el gate antes de la siguiente, y construida por el modelo planeado si falla dos veces. Las réplicas pasan por las mismas rutas protegidas, escaneos, QA y `limits.run_max_cost` que cualquier otro trabajo.
 
+## Qué cambia en un proyecto sin GitHub
+
+Con `tracker: files` el issue es el archivo `.relevo/issues/<n>.md`: su primer encabezado es el título y las secciones son las de arriba. Se le aplican las mismas comprobaciones. No hay hito, responsable ni repositorio que escribir, y `Depends-on: #N` solo puede nombrar otro issue del proyecto, que debe estar fusionado antes de que este empiece. Aprobar el issue guarda el hash de su texto, así que editarlo después retira la aprobación, igual que en GitHub.
+
 ## Qué más necesita `go` del issue
 
-- **Un hito.** El hito es el lote al que pertenece el issue.
 - **Una persona asignada.** Esa persona recibe el trabajo construido y lo revisa en un dispositivo.
 - **La etiqueta ready**, aplicada por alguien con permiso de escritura en el repositorio, cuando la spec está terminada. Es la aprobación y no inicia nada: el build se pide con la etiqueta `go` o se inicia con `/relevo:go <n>`. Editar el título o la descripción después de `ready` retira la aprobación, y el issue hay que aprobarlo otra vez.
 
 Si falta alguno de estos, no se construye nada y un comentario dice cuál.
+
+**Un hito es opcional, y conviene tenerlo.** Dice a qué lote o corte pertenece el issue, y `/relevo:status` resume cada hito y avisa cuando el trabajo en cola excede lo que el equipo puede revisar antes de su fecha. `go` construye un issue que no tiene hito, y `/relevo:issue` ofrece los hitos abiertos y acepta `ninguno`.
 
 ## Lo que `go` nunca hace
 

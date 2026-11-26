@@ -17,6 +17,7 @@ import { conflictText, findConflicts } from './rule-conflicts.mjs';
 import { patternFinding } from './pattern.mjs';
 import { checkRecipe } from './replica-plan.mjs';
 import { assumedLine, externalAssumptions, settleAssumptions } from './assumptions.mjs';
+import { parseTaskLine } from './tasks-file.mjs';
 
 export const REASONS = { references: 'missing', inputs: 'inputs', policy: 'policy', conflict: 'conflict' };
 
@@ -85,7 +86,6 @@ export function checkIssueStage({ body, manifest = null, exists = () => true, en
 
 // ---------------------------------------------------------------- stage: spec
 
-const TASK_LINE = /^\s*[-*+]\s+\[[ xX]\]\s+(.*)$/;
 // Backticked text, or a path with a slash, or a file name with an extension that a repository file can have.
 const TOKEN = /`([^`\n]+)`|((?:\.{0,2}\/)?[\w@.\-]+(?:\/[\w@.\-]+)+\/?)|((?:^|(?<=[\s(]))\.env[\w.\-]*|\b[\w.\-]+\.(?:md|json|ya?ml|lock|toml|xml|mjs|cjs|js|ts|dart|php|gradle|txt|pem|key|p12|pfx|crt|cer)\b)/g;
 const VERBS = /\b(?:add(?:s|ed|ing)?|edit(?:s|ed|ing)?|chang(?:e|es|ed|ing)|updat(?:e|es|ed|ing)|creat(?:e|es|ed|ing)|writ(?:e|es|ing)|wrote|replac(?:e|es|ed|ing)|modif(?:y|ies|ied|ying)|delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|renam(?:e|es|ed|ing)|append(?:s|ed|ing)?|fix(?:es|ed|ing)?|configur(?:e|es|ed|ing)|rewrit(?:e|es|ing)|rewrote|touch(?:es|ed|ing)?|bump(?:s|ed|ing)?)\b|\b(?:edit|cambi|actualiz|a[ñn]ad|agreg|cre[aoó]|escrib|reemplaz|modific|borr|elimin|renombr|corrig|configur|reescrib)\w*/iu;
@@ -128,9 +128,9 @@ export const pathTokens = (line) => [...String(line).matchAll(TOKEN)].map((m) =>
 export function checkSpecStage({ tasksText, allow = [], rulesFile = null, platformPaths = [], restricted = restrictedList(), designText = '', search = null, exists = () => false, hasPattern = false }) {
   const findings = [];
   String(tasksText ?? '').split('\n').forEach((raw) => {
-    const m = TASK_LINE.exec(raw);
-    if (!m) return;
-    const task = m[1].trim();
+    const line = parseTaskLine(raw);
+    if (!line) return;
+    const task = line.text;
     const paths = changedPaths(task);
     const protectedViolations = checkProtected(paths, { allow, rulesFile, platformPaths }).violations;
     protectedViolations.forEach((v) => findings.push({ kind: 'path', task, path: v.path, tier: v.tier, rule: v.rule }));

@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resumeState } from '../scripts/lib/resume-check.mjs';
+import { restGit } from '../scripts/lib/resume-rest.mjs';
+
 const CLI = fileURLToPath(new URL('../scripts/resume-check.mjs', import.meta.url));
 const HASH = 'a'.repeat(64);
 const OTHER = 'b'.repeat(64);
@@ -105,4 +108,61 @@ test('bad arguments exit 2', () => {
   const runner = remoteWith(null);
   assert.equal(spawnSync(process.execPath, [CLI, 'dev', 'feature/7-x'], { cwd: runner, encoding: 'utf8' }).status, 2);
   assert.equal(spawnSync(process.execPath, [CLI, 'dev', 'feature/7-x', 'seven', HASH], { cwd: runner, encoding: 'utf8' }).status, 2);
+});
+
+// The adapter answers the two `git` calls of `resumeState` from the REST API, so the `decide` job (no checkout) can ask the same check.
+// Parity: the same commits give the same answer through a fake `git` and through the adapter.
+const NO_HASH = null;
+const fakeGit = (commits) => (args) => {
+  if (args[0] === 'rev-parse') return '';
+  // newest first, as `git log` prints them
+  return commits.map(([subject, hash], i) => `sha${i}\x1f${subject}\x1f${hash ? `Issue-hash: ${hash}` : ''}\x1e`).reverse().join('');
+};
+const restOf = (commits, { missing = false, fail = false, total = null } = {}) => (args) => {
+  const path = args[1];
+  if (fail) throw new Error('HTTP 500');
+  if (path.includes('/git/ref/heads/')) {
+    if (missing) throw new Error('HTTP 404: Not Found');
+    return JSON.stringify({ ref: 'refs/heads/feature/7-x' });
+  }
+  if (path.includes('/compare/')) {
+    const list = commits.map(([subject, hash], i) => ({ sha: `sha${i}`, commit: { message: hash ? `${subject}\n\nIssue-hash: ${hash}` : subject } }));
+    return JSON.stringify({ total_commits: total ?? list.length, commits: list });
+  }
+  throw new Error(`unexpected call ${args.join(' ')}`);
+};
+const through = (commits, opts, hash = HASH) => resumeState({ git: restGit({ gh: restOf(commits, opts), repo: 'o/r' }), base: 'dev', branch: 'feature/7-x', issue: 7, issueHash: hash });
+const direct = (commits, hash = HASH) => resumeState({ git: fakeGit(commits), base: 'dev', branch: 'feature/7-x', issue: 7, issueHash: hash });
+
+test('the adapter gives the same state and reason as git for a limit tip, a checkpoint tip, a rejection, a foreign commit and a changed hash', () => {
+  const LIMIT = ['wip: stopped by limit (#7)', HASH];
+  const cases = [
+    [[SPEC, CP1, LIMIT], HASH],
+    [[SPEC, CP1, CP2], HASH],
+    [[SPEC, CP1, ['wip: rejected by QA (#7)', HASH]], HASH],
+    [[SPEC, CP1, ['fix typo by hand', NO_HASH], CP2], HASH],
+    [[SPEC, CP1, CP2], OTHER],
+    [[SPEC, ['wip: stopped by limit (#7)', NO_HASH]], HASH],
+    [[SPEC], HASH],
+  ];
+  for (const [commits, hash] of cases) assert.deepEqual(through(commits, {}, hash), direct(commits, hash), JSON.stringify(commits));
+  assert.equal(through([SPEC, CP1, LIMIT]).state, 'resume');
+});
+
+test('the adapter: no branch is absent, and a branch that cannot be read is existing with the reason, never resume', () => {
+  assert.deepEqual(through([SPEC, CP1], { missing: true }), { state: 'absent', reason: null });
+  const failed = through([SPEC, CP1], { fail: true });
+  assert.equal(failed.state, 'existing');
+  assert.match(failed.reason, /could not read the branch|HTTP 500/);
+});
+
+test('the adapter refuses a branch with more commits than the comparison returned, instead of judging a part of it', () => {
+  const r = through([SPEC, CP1, CP2], { total: 400 });
+  assert.equal(r.state, 'existing');
+  assert.match(r.reason, /could not read the branch/);
+});
+
+test('the adapter only accepts plain branch and base names, as the check does', () => {
+  const git = restGit({ gh: restOf([SPEC]), repo: 'o/r' });
+  assert.throws(() => git(['log', '--format=%H', 'origin/dev..origin/feature/7-x; rm']));
 });

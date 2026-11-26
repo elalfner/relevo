@@ -18,7 +18,7 @@
 //   only       place `local`: the issue to build. Only it is planned, whatever its state, so that a draft is told it needs `ready`.
 //
 // A local build (place `local`) needs no `go` label: a `ready` or `queued` issue starts when the person and the approver have the
-// permission of `ready` and the gates that protect the build pass (approval, milestone, assignee, text, dependencies). The gates that
+// permission of `ready` and the gates that protect the build pass (approval, assignee, text, dependencies; a milestone is optional). The gates that
 // ration the cloud (capacity of the assignee, limit of agents, the wait for a shared file, the hold of a usage limit) do not apply,
 // and `urgent` changes nothing. A decision to wait becomes a `report`: no label, no comment. The claim adds `building` and `local`.
 //   edits      { [issue]: { ok: true, at: ISO | null } | { ok: false, reason } }: the last edit of the body of the issues about to be
@@ -31,6 +31,9 @@
 //   now        ms since the epoch (the clock of the plan; the tests give it)
 //   (an issue may carry `limit_retry: { at, attempt, reason }`: the retry time that the comment of a usage limit gave, `at` in ms; see limit-retry.mjs)
 //   retry      { issue, by } | null  the person `by` retries the `build-failed` issue `issue`: it is planned as if `by` had made it `ready`
+//   resume     { issue, by } | null  the person `by` resumes the `build-failed` issue `issue`, which has a branch: the same stand-in for `ready`. An issue
+//              carries `resume_check: { state, reason } | null` (the answer of resume-check.mjs for its branch) and `stalled: { turns, minutes, cost } | null`
+//              (the limits that a resume that finished no task recorded). Only a branch the check accepts, with a limit raised since a stall, is built.
 //
 // Output: { decisions: [...], summary }, in the order the issues were processed.
 
@@ -40,6 +43,7 @@ import { branchName, changeId } from './branch.mjs';
 import { issueHash } from './issue-hash.mjs';
 import { resolvePlatform } from './platform-of.mjs';
 import { EPISODE_MS } from './limit-retry.mjs';
+import { stallBlock } from './resume-gate.mjs';
 
 const MAY_TRIGGER = new Set(['admin', 'maintain', 'write']);
 // In a public repository only maintainers may start work: anyone with write access could otherwise start a
@@ -74,7 +78,7 @@ export function withoutCredential(decisions, issues = [], labelOverrides = {}) {
   });
 }
 
-export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, recentBuilds = null, now = Date.now(), place = 'cloud', person = null, edits = null, only = null }) {
+export function planGo({ config, issues, completed = [], completedExternal = [], unreadable = [], repo = null, running = [], permissions = {}, retry = null, resume = null, recentBuilds = null, now = Date.now(), place = 'cloud', person = null, edits = null, only = null }) {
   if (place !== 'cloud' && place !== 'local') throw new Error(`unknown place "${place}": expected cloud or local`);
   const cloud = place === 'cloud';
   const names = resolveLabelNames(config.labels);
@@ -136,9 +140,15 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   // A retry stands in for `ready`: the issue is `build-failed`, the person who runs it takes the place of who applied the label.
   // In the cloud the `go` label on a `build-failed` issue that left no branch is that retry, with `go_by` in place of the person.
   const isGoRetry = (issue) => cloud && has(issue, 'go') && has(issue, 'build-failed') && issue.has_branch === false;
-  const isRetry = (issue) => (Boolean(retry) && retry.issue === issue.number && has(issue, 'build-failed')) || isGoRetry(issue);
+  // A resume continues a build that stopped: the issue is `build-failed` and its branch is one the check accepts. With the `go` label it is the
+  // same request as a rebuild, and the label is refused when a resume that finished no task has not been given a higher limit since.
+  const stallOf = (issue) => stallBlock(issue.stalled, config.limits);
+  const isResumeMode = (issue) => Boolean(resume) && resume.issue === issue.number && has(issue, 'build-failed');
+  const isGoResume = (issue) => cloud && has(issue, 'go') && has(issue, 'build-failed') && issue.has_branch === true && issue.resume_check?.state === 'resume' && stallOf(issue) === null;
+  const isRetry = (issue) => (Boolean(retry) && retry.issue === issue.number && has(issue, 'build-failed')) || isGoRetry(issue) || isResumeMode(issue) || isGoResume(issue);
   const startedBy = (issue) => {
-    if (isGoRetry(issue)) return issue.go_by;
+    if (isGoRetry(issue) || isGoResume(issue)) return issue.go_by;
+    if (isResumeMode(issue)) return resume.by;
     return isRetry(issue) ? retry.by : issue.ready_by;
   };
   // A request of the cloud: an approved issue with the `go` label.
@@ -208,7 +218,10 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
   const refusal = (issue) => {
     if (has(issue, 'building')) return 'go_building';
     if (['built', 'in-review', 'pr-open', 'changes-requested'].some((k) => has(issue, k))) return 'go_already_built';
-    if (has(issue, 'build-failed')) return issue.has_branch === true ? 'go_use_fix' : null;
+    if (has(issue, 'build-failed')) {
+      if (issue.has_branch !== true) return null;
+      return issue.resume_check?.state === 'resume' && stallOf(issue) !== null ? 'go_resume_stalled' : 'go_use_fix';
+    }
     return 'go_needs_ready';
   };
 
@@ -245,6 +258,19 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       const state = localState(issue);
       if (state) {
         report(issue, LOCAL_REPORTS[state], { report: state });
+        return;
+      }
+    }
+
+    if (isResumeMode(issue)) {
+      // `--resume` builds only a branch the check accepts, and not again against the limits of a resume that finished no task.
+      if (issue.resume_check?.state !== 'resume') {
+        report(issue, `the branch of the issue cannot be resumed${issue.resume_check?.reason ? `: ${issue.resume_check.reason}` : ''}`, { report: 'resume_refused' });
+        return;
+      }
+      const block = stallOf(issue);
+      if (block) {
+        report(issue, `the last resume finished no task: raise one of ${block.raise.map((k) => `limits.${k}`).join(', ')} in relevo.yml, or split the issue`, { report: 'resume_stalled' });
         return;
       }
     }
@@ -344,7 +370,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       const goDenied = () => decision(issue, 'denied', isPublic ? 'the go label was not applied by a maintainer (trust is public)' : 'the go label was not applied by someone with write access', {
         comment: { kind: isPublic ? 'go_denied_maintainer' : 'go_denied', data: { issue: issue.number, actor: issue.go_by ?? undefined } },
       });
-      if (isGoRetry(issue)) {
+      if (isGoRetry(issue) || isGoResume(issue)) {
         if (!allowed(issue.go_by)) {
           goDenied();
           return;
@@ -358,13 +384,6 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       } else if (isRequest(issue) && !allowed(issue.go_by)) {
         // An invalid request is removed and the issue stays `ready`.
         goDenied();
-        return;
-      }
-      if (!issue.milestone) {
-        decision(issue, 'no-milestone', 'the issue has no milestone', {
-          labels: dropReady(issue),
-          comment: { kind: 'no_milestone', data: { issue: issue.number, actor: by } },
-        });
         return;
       }
       if (!assignee) {
@@ -526,6 +545,11 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
       },
     });
   });
+
+  // A resume of an issue that is not `build-failed` (or is not open) changes nothing.
+  if (resume && !decisions.some((d) => d.issue === resume.issue)) {
+    decisions.push({ issue: resume.issue, action: 'skip', reason: 'only an open issue labelled build-failed can be resumed', labels: { add: [], remove: [] }, comment: null, assign: null });
+  }
 
   // A retry of an issue that is not `build-failed` (or is not open) changes nothing.
   if (retry && !decisions.some((d) => d.issue === retry.issue)) {

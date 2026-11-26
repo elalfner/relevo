@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 706" width="480" height="706" role="img" aria-label="An agent builds, your checks run, and a team of agents that did not write the code examines the work: Spec, Security, Code, Bugs and Interface. What blocks is fixed and reviewed again; then you receive it." font-family="Nunito, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" fill="#FFFFFF">
+<rect x="4" y="4" width="214" height="50" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"></rect>
+<text x="111" y="35" font-size="17" font-weight="700" fill="#FFFFFF" text-anchor="middle">An agent builds</text>
+<rect x="262" y="4" width="214" height="50" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"></rect>
+<text x="369" y="35" font-size="17" font-weight="700" fill="#FFFFFF" text-anchor="middle">Your project's checks</text>
+<path d="M226 29h26 M244 22l9 7-9 7" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"></path>
+<path d="M369 58v42 M362 92l7 9 7-9" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"></path>
+<path d="M70 102V60 M63 68l7-9 7 9" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="7 5"><animate attributeName="stroke-dashoffset" from="24" to="0" dur="1.2s" repeatCount="indefinite"/></path>
+<text x="82" y="85" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">what blocks is fixed</text>
+<rect x="2" y="104" width="476" height="512" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"></rect>
+<text x="240" y="134" font-size="17" font-weight="800" fill="#FFFFFF" text-anchor="middle">A team of agents that did not write the code</text>
+<rect x="12" y="148" width="224" height="148" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="0s" repeatCount="indefinite"/></rect>
+<g data-lens="spec" transform="translate(108,158)" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h13l6 6v20H7z M20 3v6h6"/><path d="M11 19l4 4 7-8"/></g>
+<text x="124" y="216" font-size="20" font-weight="800" fill="#FFFFFF" text-anchor="middle">Spec</text>
+<text x="124" y="241" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">scenarios with no</text>
+<text x="124" y="260" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">code or test, tasks</text>
+<text x="124" y="279" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">taken for done</text>
+<rect x="244" y="148" width="224" height="148" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="1s" repeatCount="indefinite"/></rect>
+<g data-lens="security" transform="translate(340,158)" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z"/><path d="M11 16l4 4 7-8"/></g>
+<text x="356" y="216" font-size="20" font-weight="800" fill="#FFFFFF" text-anchor="middle">Security</text>
+<text x="356" y="241" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">injection, permission</text>
+<text x="356" y="260" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">flaws, exposed</text>
+<text x="356" y="279" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">secrets</text>
+<rect x="12" y="302" width="224" height="148" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="2s" repeatCount="indefinite"/></rect>
+<g data-lens="code" transform="translate(108,312)" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 8l-8 8 8 8 M21 8l8 8-8 8 M19 5l-6 22"/></g>
+<text x="124" y="370" font-size="20" font-weight="800" fill="#FFFFFF" text-anchor="middle">Code</text>
+<text x="124" y="395" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">weak tests, leftovers,</text>
+<text x="124" y="414" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">bad practices of</text>
+<text x="124" y="433" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">your stack</text>
+<rect x="244" y="302" width="224" height="148" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="3s" repeatCount="indefinite"/></rect>
+<g data-lens="bugs" transform="translate(340,312)" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="16" cy="19" rx="7" ry="9"/><path d="M12 11a4 4 0 018 0 M9 15L3 12 M9 20H2 M10 25l-6 4 M23 15l6-3 M23 20h7 M22 25l6 4 M16 14v14"/></g>
+<text x="356" y="370" font-size="20" font-weight="800" fill="#FFFFFF" text-anchor="middle">Bugs</text>
+<text x="356" y="395" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">wrong conditions,</text>
+<text x="356" y="414" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">functions that break</text>
+<text x="356" y="433" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">their callers</text>
+<rect x="128" y="456" width="224" height="148" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="4s" repeatCount="indefinite"/></rect>
+<g data-lens="interface" transform="translate(224,466)" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="20" rx="2"/><path d="M3 11h26 M11 29h10 M16 25v4"/></g>
+<text x="240" y="524" font-size="20" font-weight="800" fill="#FFFFFF" text-anchor="middle">Interface</text>
+<text x="240" y="549" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">what breaks your</text>
+<text x="240" y="568" font-size="16" font-weight="500" fill="#FFFFFF" text-anchor="middle">design rules</text>
+<path d="M240 620v28 M233 640l7 9 7-9" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"></path>
+<rect x="60" y="654" width="360" height="48" rx="10" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="2"></rect>
+<text x="240" y="684" font-size="17" font-weight="800" fill="#000000" text-anchor="middle">You receive reviewed work</text>
+</svg>

@@ -40,15 +40,17 @@ function isLocked(porcelain, path) {
  * What is in the worktree at `path`, which holds `branch`: { removable, reasons, holds }. Read-only. `holds` is what the branch
  * changes against `origin/<base>` (`empty`, `spec-only`, `implementation`), or null without a base or when it cannot be read.
  */
-function inspectHolder({ path, branch, base, runner, here, mainPath, porcelain }) {
+function inspectHolder({ path, branch, base, runner, here, mainPath, porcelain, local = false }) {
   const run = (...args) => runner.capture('git', args, { cwd: here });
   const reasons = [];
   if (path === mainPath) reasons.push('it is the main working tree');
   if (isLocked(porcelain, path)) reasons.push('it is locked');
-  try {
-    run('fetch', '--quiet', 'origin', branch);
-  } catch {
-    // The remote branch we already know is used; a branch that is not there fails below.
+  if (!local) {
+    try {
+      run('fetch', '--quiet', 'origin', branch);
+    } catch {
+      // The remote branch we already know is used; a branch that is not there fails below.
+    }
   }
   try {
     const changed = lines(run('-C', path, 'status', '--porcelain')).length;
@@ -56,16 +58,20 @@ function inspectHolder({ path, branch, base, runner, here, mainPath, porcelain }
   } catch {
     reasons.push('could not read its tree');
   }
-  try {
-    const ahead = lines(run('-C', path, 'rev-list', `origin/${branch}..HEAD`)).length;
-    if (ahead > 0) reasons.push(`${plural(ahead, 'commit', 'commits')} that ${ahead === 1 ? 'is' : 'are'} not on origin/${branch}`);
-  } catch {
-    reasons.push(`could not read origin/${branch}`);
+  // In a files project the commits of the branch live in the branch itself, so removing the worktree loses none of them: only an
+  // uncommitted change, a lock or the main tree stand in the way. With a remote, a commit that is not on it would be lost.
+  if (!local) {
+    try {
+      const ahead = lines(run('-C', path, 'rev-list', `origin/${branch}..HEAD`)).length;
+      if (ahead > 0) reasons.push(`${plural(ahead, 'commit', 'commits')} that ${ahead === 1 ? 'is' : 'are'} not on origin/${branch}`);
+    } catch {
+      reasons.push(`could not read origin/${branch}`);
+    }
   }
   let holds = null;
   if (base) {
     try {
-      holds = classifyBranchChanges(run('diff', '--name-only', `origin/${base}...origin/${branch}`).split('\n'), branch.replace(/^feature\//, ''));
+      holds = classifyBranchChanges(run('diff', '--name-only', local ? `${base}...${branch}` : `origin/${base}...origin/${branch}`).split('\n'), branch.replace(/^feature\//, ''));
     } catch {
       holds = null;
     }
@@ -77,7 +83,7 @@ function inspectHolder({ path, branch, base, runner, here, mainPath, porcelain }
  * Is `branch` held by a worktree other than the one this runs in? `held` with the path of that worktree, or `free`
  * when no worktree has it or only this one does. A detached worktree holds no branch.
  */
-export function branchHolder({ branch, runner, base = null }) {
+export function branchHolder({ branch, runner, base = null, local = false }) {
   if (!branch) return { status: EXIT.usage, holder: null, messages: ['give the branch: branch-worktree.mjs --branch <name>'] };
   let here;
   let worktrees;
@@ -91,7 +97,7 @@ export function branchHolder({ branch, runner, base = null }) {
   }
   const other = worktrees.find((w) => w.branch === branch && w.path !== here);
   if (!other) return { status: EXIT.free, holder: null, messages: [] };
-  const found = inspectHolder({ path: other.path, branch, base, runner, here, mainPath: worktrees[0]?.path, porcelain });
+  const found = inspectHolder({ path: other.path, branch, base, runner, here, mainPath: worktrees[0]?.path, porcelain, local });
   const messages = [`the branch ${branch} is checked out in another worktree: ${other.path}. Work there, or remove that worktree (git worktree remove "${other.path}") and run this again`];
   if (found.removable) messages.push(`that worktree holds nothing that is not on the remote: it can be removed with git worktree remove "${other.path}"`);
   else messages.push(`that worktree cannot be removed yet: ${found.reasons.join('; ')}`);

@@ -6,6 +6,7 @@
 // Long values are shortened: long logs are linked, never embedded.
 
 import { shortHash } from './issue-hash.mjs';
+import { stalledMarker } from './stalled-marker.mjs';
 import { pickLanguage, SUPPORTED_LANGUAGES } from './language.mjs';
 import { nextStep, nextStepPrefix } from './next-step.mjs';
 import { sharedWaitMarker } from './shared-wait.mjs';
@@ -14,6 +15,8 @@ import { sharedWaitMarker } from './shared-wait.mjs';
 export { pickLanguage, SUPPORTED_LANGUAGES };
 
 const MAX_VALUE_LENGTH = 400;
+const MENTIONS = ['assignee', 'spec_writer', 'author', 'recipient', 'actor'];
+const NOBODY = 'relevolocalnobody';
 
 const REQUIRED = {
   built: ['assignee', 'issue', 'title', 'tasks_done', 'tasks_total', 'branch', 'scenarios'],
@@ -26,7 +29,6 @@ const REQUIRED = {
   approved: ['recipient', 'issue', 'reviewer'],
   review_reminder: ['reviewer', 'issue', 'pr', 'hours'],
   review_escalation: ['spec_writer', 'issue', 'pr', 'reviewer', 'hours'],
-  no_milestone: ['actor', 'issue'],
   cloud_not_configured: ['actor', 'issue'],
   no_assignee: ['actor', 'issue'],
   ready_denied: ['issue'],
@@ -39,6 +41,7 @@ const REQUIRED = {
   go_building: ['issue'],
   go_already_built: ['issue'],
   go_use_fix: ['issue'],
+  go_resume_stalled: ['issue'],
   approval_withdrawn: ['issue', 'edited'],
   blocked_notice: ['issue', 'title', 'blockers'],
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
@@ -46,6 +49,7 @@ const REQUIRED = {
   queued_shared_files: ['issue', 'title', 'file', 'other', 'hours'],
   fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
   ship_stopped: ['actor', 'issue', 'reasons'],
+  ship_retry: ['actor', 'issue', 'reasons'],
   ship_not_approver: ['actor', 'issue'],
   ship_no_ci: ['actor', 'issue'],
   ship_needs_app: ['actor', 'issue', 'base'],
@@ -103,9 +107,11 @@ export const CATALOG = {
       'Finding: {{finding}}{{location_suffix}}',
       '{{class_line}}',
       '{{contradiction_line}}',
+      '{{stall_line}}',
       '{{branch_line}}',
       'Full QA report: {{log_url}}',
       '{{next_line}}',
+      '{{stalled_marker}}',
     ],
     toolchain_missing: [
       '@{{assignee}} #{{issue}} "{{title}}" was not built: the runner has no {{tools}} ❌',
@@ -161,11 +167,6 @@ export const CATALOG = {
       '',
       '@{{actor}} your next step: run `/relevo:go {{issue}}` on your machine, or add the secret ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN so that the cloud can build it. The issue stays ready.',
     ],
-    no_milestone: [
-      '#{{issue}} was not started: it has no milestone',
-      '',
-      '@{{actor}} your next step: add the issue to a milestone, approve it with ready again, then apply go or run `/relevo:go {{issue}}` on your machine.',
-    ],
     no_assignee: [
       '#{{issue}} was not started: it has no assignee',
       '',
@@ -211,6 +212,11 @@ export const CATALOG = {
     go_use_fix: [
       '#{{issue}} failed with work on its branch, so the go label was removed: the work is corrected, not built again.',
       'Your next step: run `/relevo:fix {{issue}}`; to build from the start instead, delete the remote branch and apply go again.',
+      'Applied by: @{{actor}}',
+    ],
+    go_resume_stalled: [
+      '#{{issue}} was not resumed, so the go label was removed: the last resume stopped at a limit without finishing a task, and no limit is higher than it was.',
+      'Your next step: raise `limits.run_max_turns`, `limits.run_max_minutes` or `limits.run_max_cost` in relevo.yml, or split the issue, and then apply go again.',
       'Applied by: @{{actor}}',
     ],
     approval_withdrawn: [
@@ -259,6 +265,12 @@ export const CATALOG = {
       '',
       'Why: {{reasons}}',
       'Nothing was merged and the issue keeps its state; the relevo:ship label was removed. Apply it again once this is solved, or run `/relevo:ship {{issue}}`.',
+    ],
+    ship_retry: [
+      '@{{actor}} #{{issue}} was not shipped',
+      '',
+      'Why: {{reasons}}',
+      'Nothing was merged and the issue keeps its state; the relevo:ship label was removed. Nothing has to change first: apply the label again to retry.',
     ],
     ship_not_approver: [
       '@{{actor}} #{{issue}} was not shipped: you did not approve this pull request',
@@ -343,9 +355,11 @@ export const CATALOG = {
       'Hallazgo: {{finding}}{{location_suffix}}',
       '{{class_line}}',
       '{{contradiction_line}}',
+      '{{stall_line}}',
       '{{branch_line}}',
       'Reporte completo de QA: {{log_url}}',
       '{{next_line}}',
+      '{{stalled_marker}}',
     ],
     toolchain_missing: [
       '@{{assignee}} #{{issue}} "{{title}}" no se construyó: el runner no tiene {{tools}} ❌',
@@ -401,11 +415,6 @@ export const CATALOG = {
       '',
       '@{{actor}} tu siguiente paso: ejecuta `/relevo:go {{issue}}` en tu máquina, o agrega el secreto ANTHROPIC_API_KEY o CLAUDE_CODE_OAUTH_TOKEN para que la nube pueda construirlo. El issue sigue en ready.',
     ],
-    no_milestone: [
-      '#{{issue}} no se inició: no tiene milestone',
-      '',
-      '@{{actor}} tu siguiente paso: agrega el issue a un milestone, apruébalo con ready otra vez y luego pon go o ejecuta `/relevo:go {{issue}}` en tu máquina.',
-    ],
     no_assignee: [
       '#{{issue}} no se inició: no tiene responsable',
       '',
@@ -451,6 +460,11 @@ export const CATALOG = {
     go_use_fix: [
       '#{{issue}} falló con trabajo en su rama, así que se quitó la etiqueta go: ese trabajo se corrige, no se construye de nuevo.',
       'Tu siguiente paso: ejecuta `/relevo:fix {{issue}}`; para construir desde el principio, borra la rama remota y vuelve a poner go.',
+      'Aplicada por: @{{actor}}',
+    ],
+    go_resume_stalled: [
+      '#{{issue}} no se reanudó, así que se quitó la etiqueta go: la última reanudación se detuvo en un límite sin terminar ninguna tarea, y ningún límite es mayor que antes.',
+      'Tu siguiente paso: sube `limits.run_max_turns`, `limits.run_max_minutes` o `limits.run_max_cost` en relevo.yml, o parte el issue, y luego vuelve a poner go.',
       'Aplicada por: @{{actor}}',
     ],
     approval_withdrawn: [
@@ -499,6 +513,12 @@ export const CATALOG = {
       '',
       'Por qué: {{reasons}}',
       'No se fusionó nada y el issue conserva su estado; se quitó la etiqueta relevo:ship. Vuelve a ponerla cuando esté resuelto, o ejecuta `/relevo:ship {{issue}}`.',
+    ],
+    ship_retry: [
+      '@{{actor}} #{{issue}} no se fusionó',
+      '',
+      'Por qué: {{reasons}}',
+      'No se fusionó nada y el issue conserva su estado; se quitó la etiqueta relevo:ship. Nada tiene que cambiar antes: vuelve a poner la etiqueta para reintentar.',
     ],
     ship_not_approver: [
       '@{{actor}} #{{issue}} no se fusionó: tú no aprobaste este pull request',
@@ -666,6 +686,8 @@ function tasksInfo(values, es) {
 // The next step of a build_failed message when no recovery is given: what the branch holds decides it. When nothing was pushed
 // (`unsafe`, `not_pushed` or the older `pushed: false`) there is no branch to fix, so the issue is built again.
 function buildFailedReason(values) {
+  // A build that stopped at a limit with its work kept was not rejected by anyone: it is continued. A resume that finished no task is not.
+  if (values.branch_state === 'kept' && values.reason === 'run limit reached') return isTrue(values.stalled) ? 'stalled' : 'resume';
   if (values.branch_state === 'kept') return 'kept';
   const state = values.branch_state ?? (values.pushed === false ? 'unsafe' : 'pushed');
   return state === 'unsafe' || state === 'not_pushed' ? 'rebuild' : 'fix';
@@ -715,6 +737,24 @@ const FINDING_CLASSES = ['fixable', 'input', 'spec', 'policy'];
 
 // The finding classes that the developer agent cannot correct are also the reasons of the next step of `build-failed`.
 // Only work that was kept on the branch has a next step of its own for them.
+const isTrue = (v) => v === true || v === 'true';
+
+// A resume that stopped at a limit with no task finished: what to say, and the hidden marker that the planner reads (stalled-marker.mjs).
+function stallParts(values, es) {
+  if (!isTrue(values.stalled) || values.reason !== 'run limit reached') return { stall_line: '', stalled_marker: '' };
+  for (const name of ['limit_turns', 'limit_minutes', 'limit_cost']) {
+    if (!present(values[name])) throw new Error(`message "build_failed" needs "${name}" when the resume finished no task`);
+  }
+  const marker = stalledMarker({ turns: Number(values.limit_turns), minutes: Number(values.limit_minutes), cost: Number(values.limit_cost) });
+  const limits = `limits.run_max_turns (${values.limit_turns}), limits.run_max_minutes (${values.limit_minutes}) ${es ? 'o' : 'or'} limits.run_max_cost (${values.limit_cost})`;
+  return {
+    stall_line: es
+      ? `La ejecución reanudada no terminó ninguna tarea, así que reanudar de nuevo no ayudará: sube ${limits} en relevo.yml, o parte el issue.`
+      : `The resumed run finished no task, so resuming again will not help: raise ${limits} in relevo.yml, or split the issue.`,
+    stalled_marker: marker,
+  };
+}
+
 function classReason(values) {
   return values.branch_state === 'kept' && ['input', 'spec', 'policy'].includes(values.finding_class) ? values.finding_class : null;
 }
@@ -807,7 +847,7 @@ function runNoOutcome(values, es) {
         : { en: 'resume from the last point saved on the branch', es: 'reanudar desde el último punto guardado en la rama' };
     const next = own
       ? (es ? ` La ejecución no estaba en la rama del issue, así que el trabajo está en una rama aparte: cámbiate a ella y revísalo, o constrúyelo desde el principio (${REBUILD.es(values.issue)}):` : ` The run was not on the branch of the issue, so the work is on a branch of its own: check it out and review it, or build from the start (${REBUILD.en(values.issue)}):`)
-      : (es ? ` Ejecuta \`/relevo:fix ${values.issue}\` para verificarlo y continuar, o ${READY_AGAIN.es(values.issue)} para ${resume.es}. Si el texto del issue cambió o una persona hizo un commit en la rama, la ejecución se detiene con \`branch already exists\`; borra la rama remota para empezar de cero:` : ` Run \`/relevo:fix ${values.issue}\` to verify it and continue, or ${READY_AGAIN.en(values.issue)} to ${resume.en}. If the text of the issue changed or a person committed to the branch, the run stops with \`branch already exists\`; delete the remote branch to start over:`);
+      : (es ? ` Ejecuta \`/relevo:go ${values.issue} --resume\` para continuarlo (en la nube, pon \`relevo:go\`): va a ${resume.es}. Si el texto del issue cambió o una persona hizo un commit en la rama, se rechaza y dice por qué; para empezar de cero, borra la rama remota y usa \`--retry\`:` : ` Run \`/relevo:go ${values.issue} --resume\` to continue it (in the cloud, apply \`relevo:go\`): it will ${resume.en}. If the text of the issue changed or a person committed to the branch, it is refused and says why; to start over, delete the remote branch and use \`--retry\`:`);
     return es
       ? `${mention(values)}La ejecución se detuvo antes de terminar (${why}). El trabajo hecho antes de detenerse se guardó en la rama \`${values.rescue_branch}\` como un commit de trabajo en curso.${next} ${values.run}`
       : `${mention(values)}The run stopped before it finished (${why}). The work done before the stop was kept on the branch \`${values.rescue_branch}\` as a work-in-progress commit.${next} ${values.run}`;
@@ -817,7 +857,7 @@ function runNoOutcome(values, es) {
   if (values.situation === 'usage_limit_stopped') {
     const max = present(values.max) ? values.max : 3;
     const keptBranch = values.rescue_state === 'kept' && present(values.rescue_branch)
-      ? (es ? ` El trabajo hecho está en la rama \`${values.rescue_branch}\`: \`/relevo:fix ${values.issue}\` continúa desde ahí.` : ` The work done is on the branch \`${values.rescue_branch}\`: \`/relevo:fix ${values.issue}\` continues from it.`)
+      ? (es ? ` El trabajo hecho está en la rama \`${values.rescue_branch}\`: \`/relevo:go ${values.issue} --resume\` continúa desde ahí.` : ` The work done is on the branch \`${values.rescue_branch}\`: \`/relevo:go ${values.issue} --resume\` continues from it.`)
       : kept;
     return es
       ? `${mention(values)}La ejecución volvió a detenerse por el límite de uso (o el crédito) de la cuenta del modelo, tras ${max} reintentos automáticos. Los reintentos se detuvieron aquí para no gastar la cuota que esperan. El código no tiene ningún problema: cuando la cuota esté disponible, ${REBUILD.es(values.issue)}. ${values.run}${keptBranch}`
@@ -863,6 +903,10 @@ function usageLimitRetry(values, es) {
 export function renderMessage(kind, data = {}, language = 'en') {
   if (!REQUIRED[kind]) throw new Error(`unknown message kind "${kind}"`);
   const values = { ...data };
+  // A files project has one person and no GitHub account to mention: `local: true` makes the mentions optional and leaves them out.
+  const local = values.local === true;
+  delete values.local;
+  if (local) MENTIONS.forEach((field) => { if (!present(values[field])) values[field] = NOBODY; });
   REQUIRED[kind].forEach((field) => {
     if (!present(values[field])) throw new Error(`message "${kind}" needs "${field}"`);
   });
@@ -971,13 +1015,14 @@ export function renderMessage(kind, data = {}, language = 'en') {
     if (kind === 'needs_spec') values.next_line = `${nextStepPrefix(language_)}: ${step.command}: ${step.hint}.`;
     if (kind === 'build_failed') {
       // For kept work the next step says what the command does and the other way forward; the others are the bare command.
-      const kept = ['kept', 'input', 'spec', 'policy', 'protected', 'partial'].includes(step.reason);
+      const kept = ['kept', 'resume', 'input', 'spec', 'policy', 'protected', 'partial'].includes(step.reason);
       values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}${kept ? ` (${step.hint})` : ''}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
     }
   }
   if (kind === 'build_failed') {
     values.class_line = classLine(values, es);
     values.contradiction_line = contradictionLine(values, es);
+    Object.assign(values, stallParts(values, es));
     const location = present(values.file) ? `${values.file}${present(values.line) ? `:${values.line}` : ''}` : '';
     values.location_suffix = location ? ` (${location})` : '';
     // `pushed: false` is the older way to say that the branch was not pushed because of a credential or a marker.
@@ -1040,10 +1085,11 @@ export function renderMessage(kind, data = {}, language = 'en') {
     const names = [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
     const optionalEmpty = names.some((n) => !present(values[n]) && !n.endsWith('_suffix'));
     if (names.length > 0 && optionalEmpty) return;
-    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' || n === 'body' || n === 'wait_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
+    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' || n === 'body' || n === 'wait_marker' || n === 'stalled_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
   });
 
   // Collapse repeated blank lines and trim the ends.
+  if (local) out.forEach((l, i) => { out[i] = l.replace(new RegExp(`@${NOBODY}\\s?`, 'g'), '').replace(new RegExp(`${NOBODY}`, 'g'), ''); });
   const collapsed = out.filter((l, i) => !(l === '' && (out[i - 1] === '' || i === 0)));
   while (collapsed.length > 0 && collapsed[collapsed.length - 1] === '') collapsed.pop();
   return collapsed.join('\n');

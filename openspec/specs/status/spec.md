@@ -1,7 +1,7 @@
 # status Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Shows who is waiting on what, read-only. Each person sees the issues waiting on them and the pull requests to review or ship, the spec writer sees returned and blocked issues first, and the milestone summary compares queued work with review capacity. Alerts, the daily digest and the stage times come from what GitHub or the project files hold, and `status` says what it could not read.
 
 ## Requirements
 
@@ -257,3 +257,70 @@ Where the cloud cannot build (the `go` workflow is not installed, no model crede
 #### Scenario: Request during a pause
 - **WHEN** `RELEVO_CLOUD_GO` is `off` and issue 42 is `ready` with `go`
 - **THEN** `status` says that the cloud is paused and that the request of issue 42 is served when it resumes
+
+### Requirement: Status shows the builds of this machine
+`status` SHALL list the builds of the repository that are running on the machine where it is run, with the issue, the phase, the group, the tasks done, the minutes and when the progress last changed. It SHALL read them from the state kept beside the worktrees and SHALL NOT interrupt them. It SHALL NOT claim to show the builds of other machines.
+
+#### Scenario: A build running here
+- **WHEN** issue 42 is being built on this machine and the person runs `status`
+- **THEN** a section shows issue 42 with its phase, "group 2 of 3", its tasks and its minutes
+
+#### Scenario: Nothing running here
+- **WHEN** no build of the repository runs on this machine
+- **THEN** the section is not shown
+
+#### Scenario: A build on another machine
+- **WHEN** issue 43 is `building` with `local` and its state is not on this machine
+- **THEN** `status` lists it as an issue being built, without progress
+
+### Requirement: Status tells a build that waits for a runner from one that stopped
+When an issue has been `building` longer than `limits.building_alert_hours` and its build job has not started, `status` SHALL report it as waiting for a runner, with the hours, and SHALL NOT report it as a build that stopped reporting. It SHALL say what to do: look at the build runners, or build the issue on a machine. It SHALL NOT tell the person to restart the build.
+
+#### Scenario: Long wait
+- **WHEN** issue 42 was claimed four hours ago, the alert time is 3 hours and its build job has not started
+- **THEN** `status` says that issue 42 has waited four hours for a runner and gives the two ways forward
+
+#### Scenario: Short wait
+- **WHEN** the issue has waited less than the alert time
+- **THEN** there is no alert
+
+#### Scenario: A build that started and went silent
+- **WHEN** the build job started and the issue has had no activity for longer than the alert time
+- **THEN** the alert is the one of a build that stopped reporting
+
+### Requirement: Status lists the issues of a files project from the files
+With `tracker: files`, `/relevo:status` SHALL list the issues by state from `.relevo/issues/` and the state records, name the next command for each, and say which branches are waiting to be shipped. It SHALL NOT report review deadlines, reviewer alerts, milestones or team capacity.
+
+#### Scenario: Mixed states
+- **WHEN** issue 1 is `built` and issue 2 is `ready`
+- **THEN** status lists `/relevo:review 1` and `/relevo:go 2` as the next commands
+
+#### Scenario: Nothing waiting
+- **WHEN** every issue is shipped
+- **THEN** status says that nothing is waiting
+
+### Requirement: The digest is posted as a comment on the issue named by digest.issue
+The daily digest SHALL be posted as one comment on the issue whose number is `digest.issue` in `relevo.yml`. When there is a digest to post and `digest.issue` is not set, the run SHALL end with an error that names the key, and SHALL NOT post anywhere else. A dry run, and a run that reads its state from an input file, SHALL print the text and post nothing.
+
+#### Scenario: The digest goes to the configured issue
+- **WHEN** a digest is posted and `digest.issue` is `42`
+- **THEN** it is one comment on issue 42 of the repository
+
+#### Scenario: No issue is configured
+- **WHEN** there is a digest to post and `digest.issue` is not set
+- **THEN** the run ends with an error that names `digest.issue` and nothing is posted
+
+#### Scenario: A dry run posts nothing
+- **WHEN** the digest is run with `--dry-run` or from an input file
+- **THEN** its text is printed and no comment is written
+
+### Requirement: No digest is posted on a weekend
+A digest SHALL NOT be posted on a Saturday or a Sunday, counted in UTC, whatever is waiting or alerted. Reading an input file SHALL happen on every day, so that its validity does not depend on the calendar.
+
+#### Scenario: A Saturday
+- **WHEN** the digest runs on a Saturday and issues are waiting
+- **THEN** nothing is posted and nothing is printed
+
+#### Scenario: A weekday
+- **WHEN** the digest runs on a Monday to Friday and something is waiting
+- **THEN** the digest is posted as usual

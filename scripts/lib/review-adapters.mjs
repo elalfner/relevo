@@ -17,9 +17,10 @@ const ADAPTERS = {
   'supabase/-': { kind: 'api', log: 'docker:supabase_db_{project_id}', capture: null, driver: 'supabase test db', needs: ['supabase', 'docker'] },
 };
 
-// iOS: a simulator driven with xcrun, observe-only (the person drives, there is no driver for the agent yet). The adapter belongs
+// iOS: a simulator read with xcrun and driven by the agent through the `control` tool of the simulator (Claude Desktop) when review.autopilot is
+// precheck or verify; with off the agent only observes. The adapter belongs
 // to the target, not to the stack, so Flutter, SwiftUI and any other stack that declares the target `ios` get it.
-const IOS_ADAPTER = { kind: 'device', log: 'xcrun simctl log show', capture: 'xcrun simctl io screenshot', driver: null, needs: ['xcrun'] };
+const IOS_ADAPTER = { kind: 'device', log: 'xcrun simctl log show', capture: 'xcrun simctl io screenshot', driver: 'control (iOS Simulator)', needs: ['xcrun'] };
 
 const EXISTING = 'flutter on android, any stack on ios, flutter on web, vue on web, laravel (api), supabase (api) and nhost (api)';
 const NEXT_STEP = `The adapters that exist are ${EXISTING}. The issue stays built. Open the pull request by hand after reading the diff, or ask for an adapter for this stack. A stack that has an adapter can tune its review in the "review" block of .relevo/stacks/<stack>.md, and a stack of the repository with no targets can declare an api adapter in the "review" block of its own profile (adapter: api, with log, test and needs).`;
@@ -77,10 +78,4 @@ const ADVICE = {
 export function autopilotAdvice(adapter, { autopilot = 'off', language = 'en' } = {}) {
   if (!needsAutopilot(adapter) || autopilot !== 'off') return null;
   return ADVICE[pickLanguage(language)];
-}
-
-/** What to tell the person when the autopilot is on for an iOS platform: the agent has no iOS driver yet, so the review proceeds as with `off`. */
-export function autopilotNotice(adapter, { autopilot = 'off' } = {}) {
-  if (!adapter.supported || adapter.target !== 'ios' || autopilot === 'off') return null;
-  return `review.autopilot is "${autopilot}", but the agent cannot drive an iOS app yet: the review proceeds as with "off". You drive the app in the simulator and confirm every line.`;
 }

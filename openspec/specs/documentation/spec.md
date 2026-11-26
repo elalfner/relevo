@@ -1,7 +1,7 @@
 # documentation Specification
 
 ## Purpose
-TBD - created by archiving change documentation-guide. Update Purpose after archive.
+Keeps the written guidance of Relevo true and complete, in English and in Spanish with the same structure. The guide says what to do next, the commands, configuration, stacks, execution, install and upgrade pages cover every command and setting, each rule is stated once, and the security model is stated honestly, naming nothing that does not exist.
 
 ## Requirements
 
@@ -29,6 +29,14 @@ Every page of the documentation SHALL exist in English and Spanish with the same
 #### Scenario: A page without its translation
 - **WHEN** a page exists in one language only
 - **THEN** the test fails and names it
+
+#### Scenario: A page missing from the checked list
+- **WHEN** a page exists in `docs/` and is neither in the list that the parity test checks nor in the short list of pages that are English only by decision
+- **THEN** the test fails and names it
+
+#### Scenario: A section translated in one language only
+- **WHEN** a page has a section in one language that the other language does not have
+- **THEN** the parity test fails and names the page
 
 ### Requirement: The commands page gives the arguments and an example
 For each command the page SHALL give the argument hint of its skill and an example of use.
@@ -180,10 +188,10 @@ The page on self-hosted runners SHALL say, in English and Spanish, what several 
 - **THEN** the page says that two such builds on one machine can collide and that they should not run at the same time
 
 ### Requirement: The number of runners is explained
-The page on self-hosted runners SHALL say that every Relevo workflow runs on the same runners, that the builds that run at once are at most the smaller of `limits.concurrent_agents` and the free runners, and that the runners should outnumber `limits.concurrent_agents` so the pull request checks and the other workflows still find one.
+The page on self-hosted runners SHALL say which jobs run on which runners: every job of the Relevo workflows on `runner.labels`, except the build job on `runner.build_labels` when it is set. It SHALL say that the builds that run at once are at most the smaller of `limits.concurrent_agents` and the free runners that can take a build job, and that when builds share the runners of the other jobs the runners should outnumber `limits.concurrent_agents` so the pull request checks and the other workflows still find one.
 
 #### Scenario: Limit equal to the number of runners
-- **WHEN** a person has three runners and `limits.concurrent_agents` is 3
+- **WHEN** a person has three runners, the builds share them and `limits.concurrent_agents` is 3
 - **THEN** the page tells them that three builds can occupy every runner and hold up the checks and the other workflows
 
 ### Requirement: The limit on concurrent agents is stated honestly
@@ -386,3 +394,127 @@ The guide SHALL say that `ready` approves an issue and starts nothing, that the 
 #### Scenario: Upgrading
 - **WHEN** a person who used an earlier version reads the guide
 - **THEN** it says that `ready` no longer starts a build, and gives the steps of the migration
+
+### Requirement: The guide says what each way to build shows, costs and limits
+The page on where `go` runs SHALL compare the cloud build, the local build and the interactive build: what a person sees while each runs, which limits each has, and what each spends. It SHALL give the command that prints the progress of a build on a machine, and SHALL say that an interactive build has no hard limit of turns or cost.
+
+#### Scenario: Choosing how to build on a machine
+- **WHEN** a person wants to watch a build and to bound what it spends
+- **THEN** the page points to the local build and to the command that prints its progress
+
+#### Scenario: Interactive build
+- **WHEN** a person reads about the interactive build
+- **THEN** the page says that it shows its subagents, runs on the model and the context of the session, and is not cut by a turn or cost limit
+
+#### Scenario: Permission prompts
+- **WHEN** a person asks why an interactive build stops to ask before each command
+- **THEN** the page says whether the skill allows its own tools and, if it does not, how to allow them by hand
+
+### Requirement: The limit of a shared machine is explained
+The page on self-hosted runners SHALL say that `limits.concurrent_agents` limits the builds of one repository, that nothing limits builds across repositories except the number of runners that can take a build job, and how to give builds their own runners with `runner.build_labels`. It SHALL say that runners on one machine share its memory and processors whatever their labels, and that the build runner of an Antigravity build must be Linux x86-64.
+
+#### Scenario: One server, several repositories
+- **WHEN** a person has four runners on one server that every repository uses
+- **THEN** the page says that four builds can start at once there, and how to label one runner for builds so that only one does
+
+#### Scenario: Light jobs on the runners of GitHub
+- **WHEN** a person wants their server to do nothing but build
+- **THEN** the page says to leave `runner.labels` unset and to name the server only in `runner.build_labels`
+
+#### Scenario: The checks of the project
+- **WHEN** a person asks how to keep their pull request checks from waiting behind a build
+- **THEN** the page says that those workflows are the project's, and to give them labels that the build job does not use
+
+### Requirement: The documentation tells resume, retry and fix apart
+The pages that describe `go`, the commands and the failure comments, in English and in Spanish, SHALL present `--resume`, `--retry` and `fix` as three different things, say what each does with the branch, and say how a person starts over when a branch exists. `GLOSSARY.md` SHALL define the three terms and the words to avoid.
+
+#### Scenario: A person reads the commands page
+- **WHEN** a person looks for what to run after a build stopped at a limit
+- **THEN** the page names `--resume`, says that it keeps the branch, and says that `--retry` is for a build with no branch
+
+#### Scenario: Both languages
+- **WHEN** one language has the section on resume
+- **THEN** the other has it too, and the structure test fails when one lacks it
+
+#### Scenario: The glossary
+- **WHEN** `GLOSSARY.md` is read
+- **THEN** it defines resume, retry and fix, each with the words to avoid, and holds no implementation detail
+
+### Requirement: The cover says what Relevo is before explaining it
+The cover, in both languages, SHALL open with the logo, a headline about what the person gains, a line that calls Relevo an AI agent orchestrator from issue to merge, and the animated logo. The install commands SHALL come before the first section heading, followed by the instruction to restart Claude Code and run `/relevo:doctor`.
+
+#### Scenario: A visitor wants to install
+- **WHEN** a person opens the README
+- **THEN** the two `claude plugin` commands appear before any `##` heading
+
+#### Scenario: A visitor asks what it is
+- **WHEN** a person reads the lines above the install commands
+- **THEN** they name an AI agent orchestrator that goes from issue to merge
+
+### Requirement: The cover claims only what the repository records
+The cover SHALL NOT call Relevo early development, and SHALL say that it is in use on real projects and that configuration and commands can change before 1.0. Each usage figure on the cover SHALL be recorded in the pilot findings with its date and how it was counted, and the cover SHALL link that record.
+
+#### Scenario: A figure
+- **WHEN** the cover gives a number of merged pull requests or lines of code
+- **THEN** the pilot findings hold the number, the date and the counting rule
+
+#### Scenario: Status
+- **WHEN** a person reads the status line
+- **THEN** it says in use on real projects, links the changelog for breaking changes and does not say early development
+
+#### Scenario: Where code goes
+- **WHEN** a person reads the FAQ entry on whether their code leaves their infrastructure
+- **THEN** it says that the code the agent reads is sent to the model provider, also with an own runner
+
+### Requirement: Published usage evidence names no private project
+The cover and the pilot findings entry about usage SHALL NOT name a private project, client, organisation, repository, person or runner label.
+
+#### Scenario: The usage record
+- **WHEN** the entry describes the projects that were measured
+- **THEN** it gives their number, stacks and size only
+
+### Requirement: The cover does not advertise what was not tried end to end
+The cover SHALL NOT present Antigravity as a supported way to build. The install page and the security page SHALL keep describing it with what was and was not tried.
+
+#### Scenario: Antigravity
+- **WHEN** a person reads the README
+- **THEN** Antigravity is not named, and the install page still describes `relevo init`
+
+### Requirement: The cover shows the handoffs and keeps the command table
+The cover SHALL show the three handoffs (`think`, `go`, `review`), each with its state picture, and SHALL keep the table of the seven commands of the flow, with the explanation of the logo, in a collapsed section near the end whose title says that it holds the commands.
+
+#### Scenario: Looking for a command
+- **WHEN** a person opens the section titled with the meaning of the logo and its commands
+- **THEN** the table lists the seven commands in order and the page names `status` and `doctor`
+
+### Requirement: The cover follows the brand
+Every logo and picture of the cover SHALL be black on light or white on dark, with a variant for each theme, and the logo files SHALL be those of the brand folder, unchanged.
+
+#### Scenario: Dark theme
+- **WHEN** the README is read with a dark theme
+- **THEN** each picture has a source for it
+
+### Requirement: The package describes itself as the cover does
+The descriptions of `package.json`, of the plugin manifest and of the marketplace entry SHALL call Relevo an AI agent orchestrator from issue to merge.
+
+#### Scenario: The three descriptions
+- **WHEN** the three files are read
+- **THEN** each description holds the same words about what Relevo is
+
+### Requirement: The cover shows what each QA agent looks for
+Before the section about the queue, the cover SHALL have a section whose title says that Relevo catches mistakes before the person tests, with a picture of the flow that has one card for each QA agent the plugin ships and what it looks for, and an alternative text that names them. It SHALL say that these agents did not write the code, that the project's checks run first and that what blocks is fixed and reviewed again.
+
+#### Scenario: A visitor asks what Relevo catches
+- **WHEN** a person reads the section
+- **THEN** the picture shows spec, security, code, bugs and interface with what each hunts
+
+#### Scenario: A new agent
+- **WHEN** a QA agent is added to the plugin
+- **THEN** a test fails until the pictures of both covers show it
+
+### Requirement: The cover does not overstate what a QA agent does
+The section SHALL say that the interface agent runs when there are screens and that the bugs agent advises unless the project turns its blocking on. It SHALL NOT say that every finding is fixed, nor that Relevo prevents all mistakes.
+
+#### Scenario: The bugs agent
+- **WHEN** a person reads the note under the picture
+- **THEN** it says that bugs advises, or blocks if turned on

@@ -75,11 +75,19 @@ Before creating anything, `issue` SHALL check each draft with the same rules `go
 - **THEN** `issue` revises the drafts and shows them again, and nothing is created
 
 ### Requirement: Milestone and assignee
-`issue` SHALL ask which milestone each issue belongs to and who will develop it, offering the open milestones and the members from `relevo.yml`, and SHALL create a milestone only when the person asks.
+`issue` SHALL ask which milestone each issue belongs to and who will develop it, offering the open milestones and the members from `relevo.yml`, and SHALL create a milestone only when the person asks. The milestone is optional: "none" SHALL be a valid answer, the question SHALL NOT be repeated, and the issue SHALL then be created without one. The assignee is still asked for.
 
 #### Scenario: Milestone does not exist
 - **WHEN** the person names a milestone that does not exist
 - **THEN** `issue` asks whether to create it and does so only on a yes
+
+#### Scenario: Open milestones are offered
+- **WHEN** the repository has open milestones
+- **THEN** `issue` lists them with the question and offers "none" next to them
+
+#### Scenario: No milestone
+- **WHEN** the person answers that the issue belongs to no milestone
+- **THEN** `issue` shows the draft with no milestone, creates the issue without one and does not ask again
 
 ### Requirement: Issue never starts a build
 `issue` SHALL NOT apply the `ready` or the `go` label on its own. Applying `ready` is the writer's explicit decision that the specification is finished, and it starts nothing; applying `go` asks the cloud to build. `issue` SHALL apply either only after the separate question about them is answered with a clear choice.
@@ -640,3 +648,25 @@ When the issue has a pattern, the build preflight SHALL look for the merged chan
 #### Scenario: The lookup fails
 - **WHEN** GitHub cannot be read
 - **THEN** the build goes on and the hand-off lists the pattern as not verified
+
+### Requirement: The issue skill writes a file when the tracker is files
+With `tracker: files`, `/relevo:issue` SHALL draft, check and show the issue as it does today, and after approval SHALL write `.relevo/issues/<n>.md` and commit it, instead of creating a GitHub issue. It SHALL NOT ask for a milestone, an assignee or a repository. Its separate question about `ready` SHALL remain, and applying `ready` SHALL record the hash of the text.
+
+#### Scenario: Approved draft
+- **WHEN** the person approves a draft and answers `ready`
+- **THEN** the file exists and is committed, the issue is `ready` and its text hash is stored
+
+#### Scenario: No milestone question
+- **WHEN** the project is a files project
+- **THEN** the skill does not ask for a milestone or an assignee
+
+### Requirement: Updating an issue file is allowed until it is built
+`/relevo:issue <n>` SHALL update the text of an issue file that is not `building`, `built`, `in-review` or shipped, and SHALL withdraw `ready` when it changes the text, after telling the person.
+
+#### Scenario: Edit a ready issue
+- **WHEN** the person updates the text of a `ready` issue
+- **THEN** `ready` is withdrawn and the person is asked whether to approve it again
+
+#### Scenario: Issue being built
+- **WHEN** the issue is `building`
+- **THEN** the skill refuses to edit it

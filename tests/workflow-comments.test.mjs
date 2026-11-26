@@ -124,11 +124,11 @@ test('Scenario: A usage limit - says that nothing is wrong with the code, in the
 
 test('Scenario: The work was kept - the comment names the branch and the next step, in both languages, and a rescue branch is not the one fix reads', () => {
   const kept = { RESCUE_STATE: 'kept', RESCUE_BRANCH: 'feature/12-x' };
-  assert.match(run(1, { language: 'es', env: kept }).body, /guardó en la rama `feature\/12-x`.*Ejecuta `\/relevo:fix 12`/);
-  assert.match(run(1, { language: 'en', env: kept }).body, /kept on the branch `feature\/12-x`.*Run `\/relevo:fix 12`/);
+  assert.match(run(1, { language: 'es', env: kept }).body, /guardó en la rama `feature\/12-x`.*Ejecuta `\/relevo:go 12 --resume`/);
+  assert.match(run(1, { language: 'en', env: kept }).body, /kept on the branch `feature\/12-x`.*Run `\/relevo:go 12 --resume`/);
   const own = run(1, { language: 'es', env: { RESCUE_STATE: 'kept', RESCUE_BRANCH: 'rescue/feature/12-x' } });
   assert.match(own.body, /una rama aparte/);
-  assert.doesNotMatch(own.body, /relevo:fix/);
+  assert.doesNotMatch(own.body, /relevo:fix|--resume/);
 });
 
 test('what the rescue did with work that was not kept is added after the sentence, in the language of the repository', () => {

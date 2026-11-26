@@ -19,7 +19,7 @@ const KNOWN = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'a
 test('frontmatter uses only documented fields', () => {
   Object.keys(meta).forEach((k) => assert.ok(KNOWN.has(k), `unknown skill field "${k}"`));
   assert.equal(meta.name, 'go');
-  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry|--resume] [--decision <base64>]');
 });
 
 test('go pushes code and spends money, so Claude can never start it on its own', () => {
@@ -249,7 +249,7 @@ test('Scenario: Review stays in the main working tree - the go skill does not to
 test('Scenario: Local flag - /relevo:go <n> --local runs go-local.mjs and does not build in the session', () => {
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--local`\*\*, do not build in this session: run `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs <issue>`/);
   assert.match(body, /print `node \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/go-local\.mjs status <issue>`[^.]*progress[^]*end your turn/);
-  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry] [--decision <base64>]');
+  assert.equal(meta['argument-hint'], '[issue-number] [--local] [--retry|--resume] [--decision <base64>]');
 });
 
 // ---------- issue format v2
@@ -342,7 +342,7 @@ test('a restricted file versioned on the base branch is reported as that, not as
 });
 
 test('Scenario: Local flag with retry - the skill passes --retry to go-local.mjs and to the planner', () => {
-  assert.match(body, /go-local\.mjs <issue>` \(with `--retry` when `\$ARGUMENTS` has it\)/);
+  assert.match(body, /go-local\.mjs <issue>` \(with `--retry` or `--resume` when `\$ARGUMENTS` has it\)/);
   assert.match(body, /\*\*When `\$ARGUMENTS` has `--retry`\*\*/);
   assert.match(body, /--only <issue> --place local --retry --apply --claim/);
   assert.match(body, /a branch means `\/relevo:fix <issue>`/);
@@ -797,4 +797,53 @@ test('Scenario: a refused checkpoint after pushed ones - the failure path passes
 test('the push of each checkpoint is still a fast-forward without force', () => {
   assert.match(text, /pushing to it is a fast-forward and is fine/);
   assert.match(text, /never force-push/);
+});
+
+// ---------- local-tracker: a files project
+
+test('Scenario: Files project - the skill says how a build with no GitHub and no remote goes', () => {
+  assert.match(body, /## Files project/);
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /tracker.*is `files`/);
+  assert.match(section, /tracker\.mjs/);
+  assert.match(section, /never through `gh`/);
+  assert.match(section, /no `go` label/);
+  assert.match(section, /Never push/);
+  assert.match(section, /not_pushed/);
+  assert.match(section, /Open no pull request/);
+  assert.match(section, /go-plan\.mjs --only <issue> --place local --apply --claim/, 'no --repo');
+});
+
+test('the labels, the issue read and the comments of the build go through the tracker, which works for both trackers', () => {
+  assert.match(body, /tracker\.mjs state-set <issue> --add <names> --remove <names>/);
+  assert.match(body, /tracker\.mjs issue-get <issue> --fields title,body/);
+  assert.doesNotMatch(body, /gh issue edit(?! <issue> --add-label)/, 'the build applies no label with gh directly');
+  assert.doesNotMatch(body, /`gh issue view <issue> --json title,body`/);
+});
+
+test('Scenario: Files project - the skill and its agents read the local base, with no remote', () => {
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /Local refs: this project has no remote/);
+  assert.match(section, /use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`/);
+  assert.match(section, /`validation-gate\.mjs --base`/);
+  assert.match(section, /git switch -c <branch> <base>/);
+  for (const file of ['agents/dev.md', 'agents/qa-code.md', 'agents/qa-bugs.md', 'agents/qa-security.md', 'agents/qa-spec.md', 'skills/go/references/qa-run.md']) {
+    assert.match(readFileSync(root(file), 'utf8'), /When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin\/<base>`/, file);
+  }
+});
+
+test('Scenario: Files project - messages are rendered with local true and a delete-branch recovery names the local branch', () => {
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /"local": true/);
+  assert.match(section, /git branch -D <branch>/);
+});
+
+test('Scenario: Resume - the skill plans --resume like a retry, keeps the branch, and records and checks the progress of a resumed run (resume-a-cut-build)', () => {
+  assert.match(body, /\*\*When `\$ARGUMENTS` has `--resume`\*\*/);
+  assert.match(body, /--only <issue> --place local --resume --apply --claim/);
+  assert.match(body, /does not run `--retry`|never with `--retry`|not `--retry`/);
+  assert.match(body, /resume-progress\.mjs start --done/);
+  assert.match(body, /resume-progress\.mjs check --reason "<reason>" --done/);
+  assert.match(body, /`stalled`.*`limit_turns`.*`limit_minutes`.*`limit_cost`/);
+  assert.ok(existsSync(root('scripts/resume-progress.mjs')));
 });

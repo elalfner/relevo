@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Builds an issue on this machine, with your own Claude session, as the cloud would. Usage:
-//   node scripts/go-local.mjs <issue> [--config relevo.yml] [--dry-run] [--retry]
+//   node scripts/go-local.mjs <issue> [--config relevo.yml] [--dry-run] [--retry|--resume]
 //   node scripts/go-local.mjs status <issue> [--config relevo.yml]
 // --retry builds an issue that is `build-failed` and has no branch, without making it `ready` (so the cloud does not start it).
+// --resume continues a `build-failed` issue from its branch (a build that stopped at a limit), building only the pending tasks; the planner
+//          refuses a branch that cannot be continued and says why.
 // It runs `claude -p "/relevo:go <issue>"` in a separate git worktree (so your uncommitted changes do not matter),
 // with the turn and cost limits of relevo.yml and the closed tool lists of the workflow. The worktree is removed when
 // the run ends cleanly and kept otherwise. While it runs it prints a line when the phase, the group, the tasks or an
@@ -63,6 +65,7 @@ const result = await runLocal({
   runner,
   dryRun: flag('dry-run'),
   retry: flag('retry'),
+  resume: flag('resume'),
   exists: existsSync,
   state: realState,
   print: (m) => { printed += 1; console.log(m); },

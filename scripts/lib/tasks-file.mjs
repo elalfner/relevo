@@ -29,15 +29,44 @@ export function addCorrections(tasksText, titles) {
   return { text: `${base}\n${block}`, section, iteration: next, ids };
 }
 
-/** How many tasks are checked out of all of them: { done, total }. Every checkbox counts, the sections added by corrections too. */
-export function countTasks(tasksText) {
-  const boxes = [...String(tasksText ?? '').matchAll(/^\s*- \[([ xX])\]/gm)];
-  return { done: boxes.filter((m) => m[1] !== ' ').length, total: boxes.length };
+// The one rule for what a task line is and when it is done. It is the rule of OpenSpec (TASK_LINE_PATTERN in its
+// `utils/task-progress.js`, the code behind `openspec instructions apply` and `openspec archive`), copied, so that the total and
+// the done count of Relevo equal the ones OpenSpec reports; tests/tasks-contract.test.mjs compares them with the installed CLI.
+//   - a list item (`-`, `*`, `+`, or `1.` / `1)`), indented or not, with a box that holds at most one marker: `[ ]`, `[x]`, `[]`, `[~]`, `[ x ]`;
+//   - only `x` or `X` means done, any other marker is unfinished and still counts in the total;
+//   - a box followed by `(` or `[` is a link, not a task;
+//   - a line with no box is not a task, and a line inside a code fence or a comment counts like any other.
+const TASK_LINE = /^\s*(?:[-*+]|\d{1,9}[.)])\s*\[(?:\s*([^\]\s]?)\s*\](?![([])|\s+\])\s*(.*)/;
+const TASK_ID = /^(\d+\.\d+)\b/;
+
+/** One line as a task: { marker, done, text, id } or null when it is not a task. `id` is the `N.M` that starts the text, or null. */
+export function parseTaskLine(line) {
+  const match = TASK_LINE.exec(String(line ?? ''));
+  if (!match) return null;
+  const marker = match[1] ?? '';
+  const text = match[2].trim();
+  return { marker, done: marker.toLowerCase() === 'x', text, id: TASK_ID.exec(text)?.[1] ?? null };
 }
 
-/** Ids of the tasks that are still unchecked. */
+/** Every task of the file in order: [{ line, marker, done, text, id }], `line` being the 1-based number of the line. */
+export function parseTaskLines(tasksText) {
+  const tasks = [];
+  String(tasksText ?? '').split('\n').forEach((raw, i) => {
+    const task = parseTaskLine(raw);
+    if (task) tasks.push({ line: i + 1, ...task });
+  });
+  return tasks;
+}
+
+/** How many tasks are done out of all of them: { done, total }, as OpenSpec counts them. The sections added by corrections count too. */
+export function countTasks(tasksText) {
+  const tasks = parseTaskLines(tasksText);
+  return { done: tasks.filter((t) => t.done).length, total: tasks.length };
+}
+
+/** Ids of the tasks that are still unfinished (any marker but `x`). */
 export function uncheckedTasks(tasksText) {
-  return [...String(tasksText).matchAll(/^\s*- \[ \] (\d+\.\d+)\b/gm)].map((m) => m[1]);
+  return parseTaskLines(tasksText).filter((t) => !t.done && t.id).map((t) => t.id);
 }
 
 /** Tasks of the last "Review corrections" section: { found, ids, tasks } with each task's id and text. */
@@ -51,8 +80,8 @@ export function correctionSection(tasksText) {
   const tasks = [];
   for (let i = start + 1; i < lines.length; i += 1) {
     if (SECTION_RE.test(lines[i])) break;
-    const m = lines[i].match(/^\s*- \[[ x]\] (\d+\.\d+)\s+(.*)$/);
-    if (m) tasks.push({ id: m[1], text: m[2].trim() });
+    const task = parseTaskLine(lines[i]);
+    if (task?.id) tasks.push({ id: task.id, text: task.text.slice(task.id.length).trim() });
   }
   return { found: true, ids: tasks.map((t) => t.id), tasks };
 }

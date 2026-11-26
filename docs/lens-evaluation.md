@@ -1,5 +1,7 @@
 # Evaluation of the QA lenses on seeded defects
 
+English · [Español](lens-evaluation.es.md)
+
 This page records one evaluation of the four QA lenses (`spec`, `security`, `code`, `interface`) on defects that were put into small changes on purpose. It was run on 2026-11-02 with `scripts/eval-lenses.mjs`, and a second run on 2026-11-04 covered every case and timed each lens. Read the limits below before you rely on the numbers: the sample is small, and most of the runs were spent finding faults of the evaluation itself.
 
 ## What was measured

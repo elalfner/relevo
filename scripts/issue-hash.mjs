@@ -5,7 +5,7 @@
 //   node scripts/issue-hash.mjs --repo owner/name --issue 42                   prints the hash
 // exit 2: bad arguments or the issue could not be read.
 
-import { realGh } from './lib/github.mjs';
+import { loadTracker } from './lib/tracker/load.mjs';
 import { checkIssueHash, issueHash, shortHash } from './lib/issue-hash.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
@@ -23,10 +23,10 @@ try {
   if (arg('input')) {
     issue = JSON.parse(readFileSync(arg('input'), 'utf8'));
   } else {
-    const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
     const number = arg('issue');
-    if (!repo || !/^\d+$/.test(number ?? '')) fail('usage: issue-hash.mjs --repo owner/name --issue <number> [--expect <hash>]  (or --input issue.json)');
-    issue = JSON.parse(realGh(['issue', 'view', number, '--repo', repo, '--json', 'title,body']));
+    const { tracker, kind } = loadTracker({ configPath: arg('config') ?? 'relevo.yml', repo: arg('repo') ?? null });
+    if ((kind === 'github' && !(arg('repo') ?? process.env.GITHUB_REPOSITORY)) || !/^\d+$/.test(number ?? '')) fail('usage: issue-hash.mjs --repo owner/name --issue <number> [--expect <hash>]  (or --input issue.json); a files project needs no --repo');
+    issue = tracker.issueGet(number, 'title,body');
   }
 } catch (err) {
   fail(`could not read the issue: ${err.message}`);

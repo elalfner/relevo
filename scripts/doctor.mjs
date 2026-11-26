@@ -13,17 +13,28 @@ import { findRepo, isRemote } from './lib/gh-web.mjs';
 import { findRestrictedFiles } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { onPath } from './lib/on-path.mjs';
+import { localChecks, localHeader } from './lib/doctor-local.mjs';
+import { loadConfig } from './lib/config.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
   return i === -1 ? undefined : process.argv[i + 1];
 };
 
-let repo = arg('repo') ?? process.env.GITHUB_REPOSITORY ?? null;
+// A files project has no GitHub: it is judged by what one person on this machine needs, and `gh` is never asked.
+const localConfig = (() => {
+  try {
+    const loaded = existsSync('relevo.yml') ? loadConfig(readFileSync('relevo.yml', 'utf8')) : null;
+    return loaded?.ok && loaded.config.tracker === 'files' ? loaded.config : null;
+  } catch {
+    return null;
+  }
+})();
+let repo = localConfig ? null : (arg('repo') ?? process.env.GITHUB_REPOSITORY ?? null);
 const tool = (name, args) => execFileSync(name, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-const gh = (args) => tool('gh', args);
-if (!repo && isRemote(process.env)) repo = findRepo({ env: process.env, git: (args) => tool('git', args) }); // no GraphQL in a web session
-if (!repo) {
+const gh = localConfig ? () => { throw new Error('a files project has no GitHub'); } : (args) => tool('gh', args);
+if (!localConfig && !repo && isRemote(process.env)) repo = findRepo({ env: process.env, git: (args) => tool('git', args) }); // no GraphQL in a web session
+if (!localConfig && !repo) {
   try {
     repo = tool('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner']).trim() || null;
   } catch {
@@ -64,6 +75,10 @@ const facts = gatherFacts({
   readFolder,
   repo,
 });
-const results = runChecks(facts);
-console.log(process.argv.includes('--json') ? JSON.stringify(results, null, 2) : renderReport(results, { header: reportHeader(facts), all: process.argv.includes('--all') }));
+const base = localConfig?.branches.base ?? null;
+const isRepo = (() => { try { tool('git', ['rev-parse', '--git-dir']); return true; } catch { return false; } })();
+const baseHasCommit = isRepo && base !== null && (() => { try { tool('git', ['rev-parse', '--verify', '-q', `refs/heads/${base}`]); return true; } catch { return false; } })();
+const configCommitted = baseHasCommit && (() => { try { tool('git', ['cat-file', '-e', `${base}:relevo.yml`]); return true; } catch { return false; } })();
+const results = localConfig ? localChecks(runChecks(facts), { isRepo, base, baseHasCommit, issuesDir: existsSync('.relevo/issues'), configCommitted }) : runChecks(facts);
+console.log(process.argv.includes('--json') ? JSON.stringify(results, null, 2) : renderReport(results, { header: localConfig ? localHeader : reportHeader(facts), all: process.argv.includes('--all') }));
 process.exit(exitCode(results));

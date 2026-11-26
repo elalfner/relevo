@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { fetchReferences } from './lib/design-fetch.mjs';
+import { loadTracker } from './lib/tracker/load.mjs';
 import { restrictedList } from './lib/restricted-paths.mjs';
 import { parseCodePointers, parseDesign, parseExternalInputs } from './lib/issue-parse.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
@@ -45,10 +46,8 @@ let body;
 if (bodyFile) {
   body = readFileSync(bodyFile, 'utf8');
 } else {
-  const repo = arg('repo') ?? process.env.GITHUB_REPOSITORY;
-  const args = ['issue', 'view', String(issue), '--json', 'body', '-q', '.body', ...(repo ? ['--repo', repo] : [])];
   try {
-    body = execFileSync('gh', args, { encoding: 'utf8' });
+    body = loadTracker({ configPath, repo: arg('repo') ?? null }).tracker.issueGet(issue, 'body').body ?? '';
   } catch (error) {
     fail(`the issue could not be read: ${String(error.message).split('\n')[0]}`, 2);
   }

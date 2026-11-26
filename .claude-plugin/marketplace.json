@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "relevo",
-      "description": "An automatic issue-to-merge workflow where an agent builds and people verify.",
+      "description": "AI agent orchestrator, from issue to merge: agents build and review, people decide.",
       "category": "development",
       "tags": [
         "workflow",

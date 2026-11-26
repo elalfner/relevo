@@ -18,8 +18,15 @@
 // the issue's `Pattern:` line (pattern-check.mjs); anything else is a list of paths.
 
 import { AUTO } from './config.mjs';
+import { parseTaskLine } from './tasks-file.mjs';
 
-const REPLICA_TASK = /^\s*(?:[-*+]\s+)?\[([ xX])\]\s+(\d+\.\d+)\s+\[replica\]\s*(.*)$/i;
+// A task line (read as OpenSpec reads it) whose text is `N.M [replica] title`: { id, title, done } or null.
+const REPLICA_TEXT = /^(\d+\.\d+)\s+\[replica\]\s*(.*)$/i;
+function replicaTask(line) {
+  const task = parseTaskLine(line);
+  const m = task ? REPLICA_TEXT.exec(task.text) : null;
+  return m ? { id: m[1], title: m[2], done: task.done } : null;
+}
 const RECIPE_HEADING = /^##\s+Replication recipe\s*$/i;
 const FIELD = /^\s+[-*+]\s+(Rename|Differences):\s*(.*)$/i;
 
@@ -76,15 +83,15 @@ export function parseRecipe(tasksText) {
       }
       return;
     }
-    const task = line.match(REPLICA_TASK);
+    const task = replicaTask(line);
     if (task) {
-      current = { id: task[2], title: task[3].trim(), section, done: task[1] !== ' ', rename: [], renameBad: [], differences: null, problems: [] };
+      current = { id: task.id, title: task.title.trim(), section, done: task.done, rename: [], renameBad: [], differences: null, problems: [] };
       replicas.push(current);
       const s = sections.find((x) => x.section === section);
       if (s) s.replica = true;
       return;
     }
-    if (/^\s*(?:[-*+]\s+)?\[[ xX]\]\s+\d/.test(line)) { current = null; return; }
+    if (/^\d/.test(parseTaskLine(line)?.text ?? '')) { current = null; return; }
     const field = current ? line.match(FIELD) : null;
     if (!field) return;
     if (field[1].toLowerCase() === 'rename') {

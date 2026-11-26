@@ -47,3 +47,15 @@ _Avoid_: batch, chunk, stage
 **Checkpoint**:
 The commit that keeps the work of a group, so that a run that is cut loses at most the group in progress.
 _Avoid_: save point, partial commit, snapshot
+
+**Resume**:
+To continue a build that stopped before it finished, from its branch, building only the tasks that are still open.
+_Avoid_: retry, fix, restart
+
+**Retry**:
+To build again from the beginning an issue whose failed build left no branch.
+_Avoid_: resume, continue, fix
+
+**Fix**:
+To correct the work that QA rejected, starting from its finding.
+_Avoid_: resume, finish the build, retry

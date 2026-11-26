@@ -18,6 +18,8 @@ import { baselineChecks, loadPr, requiredChecks } from './ship-github.mjs';
 
 const ARCHIVE_SUBJECT = 'chore(openspec): archive ';
 const CONFLICT_REASON = /has conflicts/;
+// GitHub's refusal when another pull request entered the base branch after this one was read.
+const MOVED_BASE = /base branch was modified/i;
 
 const short = (sha) => String(sha ?? '').slice(0, 7);
 // What the comment of a merge records: which commit's checks were relied on, and the checks of the merged commit when it was merged.
@@ -61,6 +63,8 @@ const stopWith = (kind, data) => {
   throw new Stop(kind, data);
 };
 const stopReasons = (...reasons) => stopWith('ship_stopped', { reasons: reasons.join('; ') });
+// A stop that only needs time: nothing has to change before the label is applied again.
+const stopRetry = (...reasons) => stopWith('ship_retry', { reasons: reasons.join('; ') });
 const firstLines = (text, n = 6) => String(text ?? '').trim().split('\n').slice(0, n).join(' / ');
 
 /** The change folder of the issue on the branch, and whether it is still to be archived. */
@@ -89,6 +93,10 @@ export async function runUnattendedShip(ctx) {
   const mergeableTries = ctx.mergeableTries ?? 9;
   const mergeablePollMs = ctx.mergeablePollMs ?? 10 * 1000;
   const n = String(issue);
+  // One limit for all the waiting of the run (pending checks, mergeability, the checks of the archive commit), so the
+  // run ends inside the time limit of the workflow.
+  const deadline = now() + waitLimitMs;
+  const minutes = Math.round(waitLimitMs / 60000);
 
   const run = (cmd, args, opts = {}) => sh(cmd, args, { cwd: workDir, ...opts });
   const git = (args, opts = {}) => {
@@ -162,28 +170,37 @@ export async function runUnattendedShip(ctx) {
       baselineChecks: withBaseline ? baselineChecks(gh, repo, withBaseline, pr?.headRefOid) : undefined,
     });
     // GitHub takes a moment to see a push on the pull request; a head that never matches means someone else pushed.
+    // When the only reason to stop is that checks are still running, it waits for them (up to the shared deadline) and
+    // decides again: any other reason, with or without them, is decided at once.
     const check = async (withBaseline) => {
       const local = head();
-      let pr = loadPr(gh, repo, branch);
-      for (let tries = 0; pr && pr.headRefOid !== local && tries < 6; tries += 1) {
-        await sleep(headPollMs);
-        pr = loadPr(gh, repo, branch);
-      }
-      if (pr && pr.headRefOid !== local) stopReasons('the branch moved while shipping: apply the label again');
-      // The label stays while it waits: only a stop removes it. A conflict is settled, so it is not waited for.
-      const unsettled = (p) => p && p.state === 'OPEN' && p.mergeable !== 'MERGEABLE' && p.mergeable !== 'CONFLICTING';
-      for (let tries = 0; unsettled(pr) && tries < mergeableTries; tries += 1) {
-        await sleep(mergeablePollMs);
-        pr = loadPr(gh, repo, branch);
+      for (;;) {
+        let pr = loadPr(gh, repo, branch);
+        for (let tries = 0; pr && pr.headRefOid !== local && tries < 6; tries += 1) {
+          await sleep(headPollMs);
+          pr = loadPr(gh, repo, branch);
+        }
         if (pr && pr.headRefOid !== local) stopReasons('the branch moved while shipping: apply the label again');
+        // The label stays while it waits: only a stop removes it. A conflict is settled, so it is not waited for.
+        const unsettled = (p) => p && p.state === 'OPEN' && p.mergeable !== 'MERGEABLE' && p.mergeable !== 'CONFLICTING';
+        for (let tries = 0; unsettled(pr) && tries < mergeableTries; tries += 1) {
+          await sleep(mergeablePollMs);
+          pr = loadPr(gh, repo, branch);
+          if (pr && pr.headRefOid !== local) stopReasons('the branch moved while shipping: apply the label again');
+        }
+        if (unsettled(pr)) {
+          stopRetry(`GitHub did not finish checking whether the pull request can be merged after ${mergeableTries} tries over about ${Math.round((mergeableTries * mergeablePollMs) / 1000)} seconds: the state never settled`);
+        }
+        const decision = decide(pr, withBaseline);
+        const onlyRunning = decision.summary?.checks === 'pending' && decision.reasons.length === 1;
+        if (!onlyRunning) return { pr, decision };
+        if (now() >= deadline) stopRetry(`${decision.reasons[0]}, still running after ${minutes} minutes`);
+        await sleep(pollMs);
       }
-      if (unsettled(pr)) {
-        stopReasons(`GitHub did not finish checking whether the pull request can be merged after ${mergeableTries} tries over about ${Math.round((mergeableTries * mergeablePollMs) / 1000)} seconds: the state never settled. Apply the label again to retry`);
-      }
-      return { pr, decision: decide(pr, withBaseline) };
     };
 
     let { pr, decision } = await check(baseline);
+    let baselineNow = baseline;
     const rule = labelRules({ decision, config });
     if (rule) stopWith(rule.kind, rule.data);
 
@@ -212,6 +229,13 @@ export async function runUnattendedShip(ctx) {
 
     let pushed = false;
     if (change.state === 'active') {
+      // A delta that no longer fits the main specifications cannot be archived, and applying the label again does not
+      // change that: find it before anything is pushed, with what the delta must become.
+      const fit = script('delta-check.mjs', ['--change', change.name, '--issue', n]);
+      if (fit.status === 1) {
+        stopReasons(`the specification of the change does not fit what ${base} holds, so it cannot be archived, and applying the label again does not help until the specification is corrected. ${firstLines(fit.stdout, 12).replaceAll(' / ', ' ')}`);
+      }
+      if (fit.status !== 0) stopReasons(`the specification could not be checked against ${base}: ${firstLines(fit.stderr || fit.stdout)}`);
       archive();
       pushed = true;
     }
@@ -225,8 +249,8 @@ export async function runUnattendedShip(ctx) {
         const running = rollup.some((c) => (c.__typename === 'StatusContext' ? !['SUCCESS', 'FAILURE', 'ERROR'].includes(c.state) : c.status !== 'COMPLETED'));
         if (rollup.length > 0 && !running) break;
         if (rollup.length === 0 && now() - started >= settleMs) break;
-        if (now() - started >= waitLimitMs) {
-          stopReasons(`the checks of the archive commit did not finish within ${Math.round(waitLimitMs / 60000)} minutes; apply the label again: the specification is already archived, so it resumes from the merge`);
+        if (now() >= deadline) {
+          stopRetry(`the checks of the archive commit did not finish within ${minutes} minutes (the specification is already archived, so the next run resumes from the merge)`);
         }
         await sleep(pollMs);
       }
@@ -245,16 +269,29 @@ export async function runUnattendedShip(ctx) {
       }
       archive();
       // The head now holds more than the archive, so the approval must be on it.
+      baselineNow = undefined;
       ({ pr, decision } = await check(undefined));
     }
     const again = labelRules({ decision, config });
     if (again) stopWith(again.kind, again.data);
 
     const merged = head();
+    const merge = () => pushGh(['pr', 'merge', String(pr.number), '--repo', repo, '--squash', '--delete-branch', '--subject', pr.title, '--body', `Issue #${n}`, '--match-head-commit', merged]);
     try {
-      pushGh(['pr', 'merge', String(pr.number), '--repo', repo, '--squash', '--delete-branch', '--subject', pr.title, '--body', `Issue #${n}`, '--match-head-commit', merged]);
+      merge();
     } catch (err) {
-      stopReasons(`GitHub refused the merge: ${firstLines(err.stderr || err.message)}`);
+      const message = firstLines(err.stderr || err.message);
+      if (!MOVED_BASE.test(message)) stopReasons(`GitHub refused the merge: ${message}`);
+      // Another pull request entered the base a moment ago: read this one again, decide again with the same rules and
+      // try once more. A conflict or any new reason stops here; a second refusal stops with GitHub's message.
+      ({ pr, decision } = await check(baselineNow));
+      const retried = labelRules({ decision, config });
+      if (retried) stopWith(retried.kind, retried.data);
+      try {
+        merge();
+      } catch (second) {
+        stopRetry(`GitHub refused the merge again: ${firstLines(second.stderr || second.message)}`);
+      }
     }
 
     const after = JSON.parse(gh(['issue', 'view', n, '--repo', repo, '--json', 'state,labels']));

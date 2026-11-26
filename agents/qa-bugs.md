@@ -57,7 +57,7 @@ Read `.relevo-receipt/receipt.json` only to know which checks ran and what they 
 
 ### 2. The diff, with four angles
 
-Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of generated files that the orchestrator gives you, and one for each path of `not_the_change`). Read each changed file in full where its function is touched: a defect in an untouched line of a touched function is in scope. Go through four angles, in your own context and without launching other agents:
+Review the diff against the base branch (`git diff origin/<base> -- . ':(exclude)<generated>'`, one exclude for each pattern of generated files that the orchestrator gives you, and one for each path of `not_the_change`). Read each changed file in full where its function is touched: a defect in an untouched line of a touched function is in scope. Go through four angles, in your own context and without launching other agents: When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin/<base>`.
 
 - **Line by line.** For every line ask what input, state, timing or actor makes it wrong: an inverted or wrong condition, an off-by-one, a null, empty or zero case (above all a falsy check that treats a valid zero or an empty value as missing), a missing await, a copied name that points at the wrong variable, an error swallowed, a combination of types that does not do what it looks like.
 - **Removed behaviour.** For every line the diff deletes or replaces, name the invariant or behaviour it enforced and find where the new code re-establishes it. If you cannot find it, that is a candidate.

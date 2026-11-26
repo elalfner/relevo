@@ -19,6 +19,19 @@ Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. Run them with `node`. They hol
 - Never use `git add .` or `-A`, never force-push, and never ship a pull request you did not look up from the issue's own branch.
 - Never create or release anything on the release branch. Releasing is a separate pull request.
 
+## Files project
+
+When `tracker` in `relevo.yml` is `files` there is no pull request, no remote and no reviewer: shipping is a local merge of the branch into the base branch, and these steps replace steps 0 to 6 below. Read and write the issue only through `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs`, never through `gh`.
+
+- Local refs: this project has no remote, so wherever this skill, a reference it points to or a script's usage says `origin/<base>` or `origin/<branch>`, use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`. The scan of step 3 and every check use the local `<base>` and `<branch>`; the `ship-local.mjs` commands already do.
+1. **Where you are.** `git branch --show-current` must equal `branches.base` and `git status --porcelain` must be empty. If not, say which one is wrong and stop: nothing of the person's may be mixed into the merge.
+2. **What would stop it.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs check --issue $ARGUMENTS`. It exits 0 when the issue was built and reviewed, the validation gate passed on the commit that would be merged, and the branch merges cleanly into the base branch. On exit 1 it prints every reason, with its command (`/relevo:review`, the gate, `/relevo:fix`): show them, change nothing and stop.
+3. **Scan what will be merged.** `git diff <base>...<branch> | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs`. If it reports anything, stop and show the file and line.
+4. **Confirm, in writing.** Show the issue, its branch, how many commits it holds and what will happen: the specification is archived on the branch, the branch is squash-merged into `<base>` as one commit, the branch and its worktree are deleted, and the issue is closed. Say that nothing is sent anywhere. Wait for a clear written yes; **without it nothing is archived or merged.**
+5. **Archive the specification on the branch.** Do it where the branch is checked out: if another worktree holds it (`branch-worktree.mjs --branch <branch> --base <base> --json`) work there, otherwise check the branch out and come back to `<base>` afterwards. Run the archive exactly as step 3 below says (`archive-state.mjs`, `openspec validate`, `fix-tasks.mjs --stage after`, `openspec archive -y`, `check-archive.mjs`, `stage.mjs`, and the commit `chore(openspec): archive <change folder name> (#$ARGUMENTS)`), and **do not push**. This commit does not make the review or the gate stale.
+6. **Check again, then merge.** From `<base>`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs check --issue $ARGUMENTS`, and only on exit 0 `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs merge --issue $ARGUMENTS --title "<title> (#$ARGUMENTS)"`. It makes the one squash commit, deletes the branch, removes its worktree when git allows it, and closes the issue and clears its Relevo state. It refuses and changes nothing if the base branch is not checked out or the tree is not clean; if it reports a worktree it could not remove, give its path.
+7. **Report.** The issue, the merge commit, that the issue is closed, and that the work is only in this repository.
+
 ## Steps
 
 ### 0. Preflight
@@ -42,6 +55,8 @@ It prints a decision and exits 0 when the pull request may be merged, 1 when it 
 
 If the only reason is "GitHub has not finished checking whether the pull request can be merged", GitHub is still computing it, and the state usually settles within a minute: run the same command again about 10 seconds later, up to 6 times, before stopping. Stop on any other reason at once. If it is still the only reason after the last try, say that the state never settled and that the person can run ship again in a minute.
 
+If the only reason is that checks are still running, wait for them instead of stopping: `gh pr checks <number> --repo <owner/name> --watch --fail-fast`, at most 20 minutes, then run the same command again. Stop at once if a check fails, or if any other reason appears besides the running checks. If they are still running after that time, stop and say which checks, and that the person can run ship again. This wait is not the confirmation of step 2: nothing is archived or merged during it.
+
 Record the head the approval was given on, to use after the archive: `git fetch origin <branch>` then `git rev-parse origin/<branch>`. Call it `<baseline>`.
 
 Then scan what will be merged. First ask whether another worktree holds the branch, because `git switch` refuses it with an error that names nothing: `node ${CLAUDE_PLUGIN_ROOT}/scripts/branch-worktree.mjs --branch <branch> --base <base> --json`. If it exits 1 it prints JSON with `holder` (the path of that worktree; a run of `go` that failed keeps its worktree, for example), `removable`, `reasons` and `holds`. Stop before anything is archived, pushed or merged, say that the branch is held by that worktree and its path, and then:
@@ -56,6 +71,14 @@ git switch <branch>
 git pull --ff-only origin <branch>
 git diff origin/<base>...HEAD | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs
 ```
+
+While the change is not archived yet, check that its specification still fits the main specifications that the archive will write into. A requirement that a sibling issue already added, or one that no longer exists, makes `openspec archive` stop, and running ship again cannot fix that:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/delta-check.mjs --change "<change folder name>" --issue $ARGUMENTS
+```
+
+If it exits 1, stop before the confirmation, changing nothing, and show what it printed: the capability, the requirement and what the delta must become (an ADDED requirement that already exists is a MODIFIED one with its full text). The way out is `/relevo:fix $ARGUMENTS`, which updates the specification first. If it exits 2, show what it printed and stop. If the change is already archived, skip this check.
 
 ### 2. Confirm, in writing
 
@@ -118,6 +141,8 @@ The push may start new checks or dismiss an approval. Wait for any running check
 ```bash
 gh pr merge <number> --repo <owner/name> --squash --delete-branch --subject "<the pull request title>" --body "Issue #$ARGUMENTS"
 ```
+
+If GitHub refuses the merge with "Base branch was modified", another pull request entered `<base>` a moment ago: run `ship-check.mjs` again, exactly as in step 4, and if it still qualifies merge it a second time. Stop on any other reason, and on a second refusal show GitHub's message and say that ship can be run again; never a third attempt. The written confirmation still covers it, because the pull request is the same one.
 
 The subject is the pull request title, which already ends with the issue number. The body holds only the reference to the issue: no list of commits, no links, no attribution lines.
 

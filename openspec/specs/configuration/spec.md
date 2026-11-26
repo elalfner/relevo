@@ -1,7 +1,7 @@
 # configuration Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+Defines `relevo.yml`, the per-repository configuration: the repository and team settings, the review and limit settings, the platforms, the runner, the agents and their models, the language, the autopilot and the local-project settings. Defaults apply when a key is missing, an invalid value is reported, secrets never live in the file, and the shipped template documents every key.
 
 ## Requirements
 
@@ -161,7 +161,7 @@ When `qa.rules_from` names a file, or a list of files, the `spec` lens SHALL rea
 - **THEN** validation fails and names the setting
 
 ### Requirement: Runner setting
-`relevo.yml` SHALL support `runner.labels`, a non-empty list of strings naming the runner that every Relevo workflow runs on. When it is absent the runner SHALL be `ubuntu-latest`. Validation SHALL reject an empty list, an entry that is not a non-empty string, and a value that is not a list.
+`relevo.yml` SHALL support `runner.labels`, a non-empty list of strings naming the runner that the jobs of every Relevo workflow run on, except the build job of the `go` workflow when `runner.build_labels` names another. When it is absent the runner SHALL be `ubuntu-latest`. Validation SHALL reject an empty list, an entry that is not a non-empty string, and a value that is not a list.
 
 #### Scenario: Default runner
 - **WHEN** `relevo.yml` has no `runner` key
@@ -429,3 +429,55 @@ The `labels` setting of `relevo.yml` SHALL accept the key `build-failed` to rena
 #### Scenario: Neither key
 - **WHEN** `labels` names neither
 - **THEN** validation passes and the label is `relevo:build-failed`
+
+### Requirement: Build runner setting
+`relevo.yml` SHALL support `runner.build_labels`, an optional non-empty list of strings naming the runner that the build job of the `go` workflow runs on. When it is absent the build job SHALL run on `runner.labels`. Validation SHALL apply to it the rules of `runner.labels`. The two settings SHALL be independent: either may name a runner of GitHub or a self-hosted one.
+
+#### Scenario: Absent
+- **WHEN** `relevo.yml` has `runner.labels: [self-hosted, linux]` and no `runner.build_labels`
+- **THEN** validation passes and the build job runs on `[self-hosted, linux]`, like every other job
+
+#### Scenario: Builds on their own runner
+- **WHEN** `runner.labels` is `[self-hosted, linux]` and `runner.build_labels` is `[self-hosted, relevo-build]`
+- **THEN** validation passes, the build job runs on `[self-hosted, relevo-build]` and every other job on `[self-hosted, linux]`
+
+#### Scenario: Light jobs on the runners of GitHub
+- **WHEN** `relevo.yml` has no `runner.labels` and `runner.build_labels` is `[self-hosted, relevo-build]`
+- **THEN** validation passes, the build job runs on the self-hosted runner and every other job on `ubuntu-latest`
+
+#### Scenario: Empty list
+- **WHEN** `runner.build_labels` is `[]`
+- **THEN** validation fails and says the list needs at least one label
+
+#### Scenario: A single string
+- **WHEN** `runner.build_labels` is `self-hosted`
+- **THEN** validation fails and says it must be a list of labels
+
+### Requirement: The tracker and the provider accept a local value and must agree
+`tracker` SHALL accept `github` and `files`, and `git_provider` SHALL accept `github` and `local`. The pair SHALL be `github` with `github` or `files` with `local`; any other pair SHALL fail validation with a message that names both keys. The defaults SHALL stay `github`.
+
+#### Scenario: Local pair
+- **WHEN** `tracker` is `files` and `git_provider` is `local`
+- **THEN** validation passes
+
+#### Scenario: Mixed pair
+- **WHEN** `tracker` is `files` and `git_provider` is `github`
+- **THEN** validation fails and says that `files` goes with `local`
+
+### Requirement: A files project is a project of one person
+With `tracker: files`, `review.mode` SHALL be `none`, and `team.*`, `limits.built_unreviewed_per_person`, `limits.concurrent_agents` above 1 and `runner.*` SHALL be ignored with a warning that says why, never an error, so that a project can change tracker without editing the file.
+
+#### Scenario: Review mode peer
+- **WHEN** `tracker` is `files` and `review.mode` is `peer`
+- **THEN** validation fails and says that a files project has no reviewer
+
+#### Scenario: Team set
+- **WHEN** `team.members` is set in a files project
+- **THEN** validation passes with a warning that it is ignored
+
+### Requirement: Depth is validated like any other setting
+`depth` SHALL be validated as an enum of `prototype` and `standard` with the default `standard`, and an unknown value SHALL name the allowed ones, as every other enum does.
+
+#### Scenario: Valid value
+- **WHEN** `depth` is `prototype`
+- **THEN** validation passes

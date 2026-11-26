@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 
 // The README is the cover and the documentation lives in docs/. Every page exists in English and in Spanish, and the
@@ -9,7 +9,7 @@ import { dirname, join, normalize } from 'node:path';
 const root = new URL('../', import.meta.url).pathname;
 const read = (p) => readFileSync(`${root}${p}`, 'utf8');
 
-const PAGES = ['get-started', 'install', 'upgrading', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format'];
+const PAGES = ['get-started', 'install', 'upgrading', 'how-it-works', 'commands', 'configuration', 'stacks', 'execution', 'built-with', 'guide', 'security', 'issue-format', 'lens-evaluation'];
 const pairs = [['README.md', 'README.es.md'], ['docs/README.md', 'docs/README.es.md'], ...PAGES.map((n) => [`docs/${n}.md`, `docs/${n}.es.md`])];
 const files = [...pairs.flat(), 'docs/brand/guia-de-uso.md'];
 
@@ -64,7 +64,8 @@ test('the cover shows the seven commands of the flow, in order, with the same pi
     assert.match(text, /`\/relevo:status`/);
     assert.match(text, /`\/relevo:doctor`/);
   }
-  const pictures = (s) => [...s.matchAll(/relevo-state-([a-z]+)-black\.svg/g)].map((m) => m[1]);
+  // Only the rows of the command table: the cover also shows state pictures in its handoff cards.
+  const pictures = (s) => [...s.matchAll(/^\|.*relevo-state-([a-z]+)-black\.svg/gm)].map((m) => m[1]);
   assert.deepEqual(pictures(read('README.md')), ['init', 'feature', 'think', 'issue', 'go', 'review', 'fix', 'ship']);
   assert.deepEqual(pictures(read('README.es.md')), pictures(read('README.md')));
 });
@@ -109,6 +110,16 @@ test('every relative link, every in-page anchor and every picture resolves, in e
       assert.ok(existsSync(`${root}${target(m[1])}`), `${f}: ${m[1]} does not exist`);
     }
   }
+});
+
+// Notes that are in English only by decision (each says so); every other page of docs/ needs its Spanish twin and a place in PAGES.
+const ENGLISH_ONLY = ['action-parameters', 'architecture-direction', 'pilot-findings'];
+
+test('every page of docs/ is checked here or is an English-only note', () => {
+  const names = readdirSync(`${root}docs`).filter((f) => f.endsWith('.md') && !f.endsWith('.es.md') && f !== 'README.md').map((f) => f.slice(0, -3));
+  for (const n of names) assert.ok(PAGES.includes(n) || ENGLISH_ONLY.includes(n), `docs/${n}.md is in neither PAGES nor ENGLISH_ONLY`);
+  for (const n of [...PAGES, ...ENGLISH_ONLY]) assert.ok(names.includes(n), `${n} is listed but docs/${n}.md does not exist`);
+  for (const n of ENGLISH_ONLY) assert.ok(!existsSync(`${root}docs/${n}.es.md`), `docs/${n}.es.md exists: move ${n} to PAGES`);
 });
 
 test('the README stays a cover: it links the documentation, and the documentation index links every page', () => {

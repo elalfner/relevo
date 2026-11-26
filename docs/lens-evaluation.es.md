@@ -1,5 +1,7 @@
 # Evaluación de las lentes de QA sobre defectos sembrados
 
+[English](lens-evaluation.md) · Español
+
 Esta página registra una evaluación de las cuatro lentes de QA (`spec`, `security`, `code`, `interface`) sobre defectos que se pusieron a propósito en cambios pequeños. Se hizo el 2026-11-02 con `scripts/eval-lenses.mjs`, y una segunda ejecución el 2026-11-04 cubrió todos los casos y midió el tiempo de cada lente. Lee los límites de abajo antes de fiarte de los números: la muestra es pequeña y la mayoría de las ejecuciones se gastaron en encontrar fallos de la propia evaluación.
 
 ## Qué se midió
@@ -34,7 +36,7 @@ Los casos: actualizar el estado tras un `await` sin comprobarlo (Flutter), una s
 
 El total fue de 2.11 USD y 295.4 s. Esta ejecución incluye `security/vue/hard-coded-secret`, que las primeras no cubrieron: encontró el defecto y no marcó la variante buena. Todas las lentes cumplieron el umbral en los 11 casos.
 
-Las lentes corren una a una, así que una pasada de las cuatro sobre un cambio pequeño tarda más o menos la suma de una ejecución de cada una, unos 50 s aquí, frente a 10 a 16 s de una sola lente. Son cambios pequeños con defectos sembrados; un cambio real tardará más. No hay medición del agente de QA único que precedió a las lentes, así que la tabla no dice cuánto más lentas son las cuatro lentes que él.
+Estas ejecuciones lanzaron las lentes una a una, así que una pasada de las cuatro sobre un cambio pequeño tardó más o menos la suma de una ejecución de cada una, unos 50 s aquí (`go` ahora las lanza juntas, así que tarda más o menos lo que la más lenta), frente a 10 a 16 s de una sola lente. Son cambios pequeños con defectos sembrados; un cambio real tardará más. No hay medición del agente de QA único que precedió a las lentes, así que la tabla no dice cuánto más lentas son las cuatro lentes que él.
 
 ## Cómo se llegó al resultado
 
@@ -50,6 +52,19 @@ Las primeras ejecuciones midieron la evaluación y no las lentes, y cada una se 
 | `interface`, variantes buenas que cumplen las otras reglas | Válida. 3/3 y 0/3 | 0.33 |
 
 El total es de unos 2.84 USD en uso de modelo. Tres de las seis ejecuciones son válidas para su lente.
+
+## Modelos más baratos (2026-11-06)
+
+`--model <nombre>` ejecuta todas las lentes elegidas con un solo modelo, en lugar del de su archivo de agente, para comprobar los modelos que `model: auto` puede elegir. Una ejecución por caso, así que la muestra es pequeña.
+
+| Lente | Modelo | Defectos encontrados | Variantes buenas marcadas | Costo (USD) |
+| --- | --- | --- | --- | --- |
+| `spec` | sonnet (por defecto: opus) | 4/4 | 0/4 | 0.44 |
+| `security` | sonnet (por defecto: opus) | 3/3 | 0/3 | 0.33 |
+| `code` | haiku (por defecto: sonnet) | 1/1 | 1/1 | 0.01 |
+| `interface` | haiku (por defecto: sonnet) | 3/3 | 1/3 | 0.04 |
+
+Según el umbral de arriba (todos los defectos encontrados, ninguna variante buena marcada): sonnet lo cumple en `spec` y `security`; haiku no lo cumple en `code` ni en `interface`. Encuentra los defectos sembrados, pero también rechaza cambios limpios (un `pubspec.yaml` ausente en el fixture, un stub sin marcador, un formulario), lo que devolvería al desarrollador un trabajo correcto. Por eso `auto` no debería bajar de sonnet en las lentes de QA hasta que una muestra mayor diga otra cosa.
 
 ## La lente `bugs` (2026-11-19)
 

@@ -1,7 +1,7 @@
 # security Specification
 
 ## Purpose
-TBD - created by archiving change relevo-v1. Update Purpose after archive.
+States the invariants that the platform enforces and the limits of what an agent can be made to respect. Humans approve, content from outside is data, secrets are never held by an agent or printed, the issue that is built is the issue that was approved, and protected and restricted paths are not changed or read. Each agent's controls are described honestly, with what holds and what only an instruction asks for.
 
 ## Requirements
 

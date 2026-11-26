@@ -101,6 +101,18 @@ test('dev never commits, never edits the specification and never automates the d
   assert.match(body, /automate the app or the device/);
 });
 
+test('dev marks each task when it finishes it, not at the end of its launch, and never takes a mark back', () => {
+  const { body } = load('dev');
+  const tasks = body.match(/## Tasks\n([\s\S]*?)\n## /);
+  assert.ok(tasks, 'dev.md has a Tasks section');
+  assert.match(tasks[1], /as soon as/);
+  assert.match(tasks[1], /one edit per task/);
+  assert.match(tasks[1], /before (you start )?the next/);
+  assert.match(tasks[1], /not (all )?at the end of your launch/i);
+  assert.match(tasks[1], /never remove a mark/i);
+  assert.match(tasks[1], /every mode|build, fix and replica/);
+});
+
 test('dev stops on an ambiguous specification instead of guessing', () => {
   const { body } = load('dev');
   assert.match(body, /stop and report what is unclear/);
