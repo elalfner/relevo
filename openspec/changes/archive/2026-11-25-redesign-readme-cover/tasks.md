@@ -21,7 +21,7 @@
 ## 4. Integration
 
 - [x] 4.1 Run `npm test` and `openspec validate --all`; verify both pass
-- [ ] 4.2 View both READMEs rendered on GitHub from the pushed branch, in light and dark and at phone width, and have the person approve the look; verify their approval is given
+- [x] 4.2 View both READMEs rendered on GitHub from the pushed branch, in light and dark and at phone width, and have the person approve the look; verify their approval is given
 
 ## Workflow follow-up
 
