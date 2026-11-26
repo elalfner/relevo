@@ -56,6 +56,10 @@ Antes corren los checks de tu proyecto. Lo que bloquea vuelve a corregirse y se 
 
 **Middle card.** EN: "One agent builds and a team of agents reviews it." ES: "Un agente construye y un equipo de agentes lo revisa."
 
+**Two columns on a 480 wide canvas.** The first drawing was 640 wide with three columns, and on a phone the descriptions came out at about 7 px. In the card the Spanish line of `bugs` reads "que rompen a otras" to fit.
+
+**The figure above the section** changes from "specialized AI reviewers" to "AI agents that review your code" ("agentes de IA que revisan tu código"), so both speak of agents.
+
 ## Risks / Trade-offs
 
 - [Text inside a picture is small on a phone and cannot be searched] → the alternative text names the agents, and the sentence and the note stay as text.

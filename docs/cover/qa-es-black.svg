@@ -1,44 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 486" width="640" height="486" role="img" aria-label="Un agente construye, corren tus checks y un equipo de agentes que no escribió el código examina el trabajo: Spec, Seguridad, Código, Bugs e Interfaz. Lo que bloquea se corrige y se revisa otra vez; después lo recibes tú." font-family="Nunito, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" fill="#000000">
-<rect x="30" y="4" width="250" height="46" rx="10" fill="none" stroke="#000000" stroke-width="2"></rect>
-<text x="155" y="33" font-size="16" font-weight="700" fill="#000000" text-anchor="middle">Un agente construye</text>
-<rect x="360" y="4" width="250" height="46" rx="10" fill="none" stroke="#000000" stroke-width="2"></rect>
-<text x="485" y="33" font-size="16" font-weight="700" fill="#000000" text-anchor="middle">Checks de tu proyecto</text>
-<path d="M290 27h58 M340 20l9 7-9 7" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round"></path>
-<path d="M485 54v36 M478 82l7 9 7-9" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round"></path>
-<path d="M155 92V56 M148 64l7-9 7 9" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="7 5"><animate attributeName="stroke-dashoffset" from="24" to="0" dur="1.2s" repeatCount="indefinite"/></path>
-<text x="168" y="77" font-size="13" font-weight="600" fill="#000000" text-anchor="start">lo que bloquea se corrige</text>
-<rect x="4" y="94" width="632" height="308" rx="10" fill="none" stroke="#000000" stroke-width="2"></rect>
-<text x="320" y="122" font-size="15" font-weight="800" fill="#000000" text-anchor="middle">Un equipo de agentes que no escribió el código</text>
-<rect x="20" y="136" width="196" height="122" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="0s" repeatCount="indefinite"/></rect>
-<g data-lens="spec" transform="translate(102,145)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h13l6 6v20H7z M20 3v6h6"/><path d="M11 19l4 4 7-8"/></g>
-<text x="118" y="196" font-size="17" font-weight="800" fill="#000000" text-anchor="middle">Spec</text>
-<text x="118" y="215" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">escenarios sin código</text>
-<text x="118" y="231" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">o sin prueba, tareas</text>
-<text x="118" y="247" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">dadas por hechas</text>
-<rect x="222" y="136" width="196" height="122" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="1s" repeatCount="indefinite"/></rect>
-<g data-lens="security" transform="translate(304,145)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z"/><path d="M11 16l4 4 7-8"/></g>
-<text x="320" y="196" font-size="17" font-weight="800" fill="#000000" text-anchor="middle">Seguridad</text>
-<text x="320" y="215" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">inyecciones, fallos</text>
-<text x="320" y="231" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">de permisos,</text>
-<text x="320" y="247" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">secretos expuestos</text>
-<rect x="424" y="136" width="196" height="122" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="2s" repeatCount="indefinite"/></rect>
-<g data-lens="code" transform="translate(506,145)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 8l-8 8 8 8 M21 8l8 8-8 8 M19 5l-6 22"/></g>
-<text x="522" y="196" font-size="17" font-weight="800" fill="#000000" text-anchor="middle">Código</text>
-<text x="522" y="215" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">pruebas débiles,</text>
-<text x="522" y="231" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">restos y malas</text>
-<text x="522" y="247" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">prácticas de tu stack</text>
-<rect x="121" y="268" width="196" height="122" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="3s" repeatCount="indefinite"/></rect>
-<g data-lens="bugs" transform="translate(203,277)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="16" cy="19" rx="7" ry="9"/><path d="M12 11a4 4 0 018 0 M9 15L3 12 M9 20H2 M10 25l-6 4 M23 15l6-3 M23 20h7 M22 25l6 4 M16 14v14"/></g>
-<text x="219" y="328" font-size="17" font-weight="800" fill="#000000" text-anchor="middle">Bugs</text>
-<text x="219" y="347" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">condiciones mal</text>
-<text x="219" y="363" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">puestas, funciones que</text>
-<text x="219" y="379" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">rompen a quien las usa</text>
-<rect x="323" y="268" width="196" height="122" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="4s" repeatCount="indefinite"/></rect>
-<g data-lens="interface" transform="translate(405,277)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="20" rx="2"/><path d="M3 11h26 M11 29h10 M16 25v4"/></g>
-<text x="421" y="328" font-size="17" font-weight="800" fill="#000000" text-anchor="middle">Interfaz</text>
-<text x="421" y="347" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">lo que incumple tus</text>
-<text x="421" y="363" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">reglas de diseño</text>
-<path d="M320 406v28 M313 426l7 9 7-9" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round"></path>
-<rect x="150" y="438" width="340" height="46" rx="10" fill="#000000" stroke="#000000" stroke-width="2"></rect>
-<text x="320" y="467" font-size="16" font-weight="800" fill="#FFFFFF" text-anchor="middle">Tú recibes el trabajo ya revisado</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 706" width="480" height="706" role="img" aria-label="Un agente construye, corren tus checks y un equipo de agentes que no escribió el código examina el trabajo: Spec, Seguridad, Código, Bugs e Interfaz. Lo que bloquea se corrige y se revisa otra vez; después lo recibes tú." font-family="Nunito, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" fill="#000000">
+<rect x="4" y="4" width="214" height="50" rx="10" fill="none" stroke="#000000" stroke-width="2"></rect>
+<text x="111" y="35" font-size="17" font-weight="700" fill="#000000" text-anchor="middle">Un agente construye</text>
+<rect x="262" y="4" width="214" height="50" rx="10" fill="none" stroke="#000000" stroke-width="2"></rect>
+<text x="369" y="35" font-size="17" font-weight="700" fill="#000000" text-anchor="middle">Checks de tu proyecto</text>
+<path d="M226 29h26 M244 22l9 7-9 7" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round"></path>
+<path d="M369 58v42 M362 92l7 9 7-9" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round"></path>
+<path d="M70 102V60 M63 68l7-9 7 9" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="7 5"><animate attributeName="stroke-dashoffset" from="24" to="0" dur="1.2s" repeatCount="indefinite"/></path>
+<text x="82" y="85" font-size="14" font-weight="600" fill="#000000" text-anchor="start">lo que bloquea se corrige</text>
+<rect x="2" y="104" width="476" height="512" rx="10" fill="none" stroke="#000000" stroke-width="2"></rect>
+<text x="240" y="134" font-size="16" font-weight="800" fill="#000000" text-anchor="middle">Un equipo de agentes que no escribió el código</text>
+<rect x="12" y="148" width="224" height="148" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="0s" repeatCount="indefinite"/></rect>
+<g data-lens="spec" transform="translate(108,158)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h13l6 6v20H7z M20 3v6h6"/><path d="M11 19l4 4 7-8"/></g>
+<text x="124" y="216" font-size="20" font-weight="800" fill="#000000" text-anchor="middle">Spec</text>
+<text x="124" y="241" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">escenarios sin código</text>
+<text x="124" y="260" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">o sin prueba, tareas</text>
+<text x="124" y="279" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">dadas por hechas</text>
+<rect x="244" y="148" width="224" height="148" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="1s" repeatCount="indefinite"/></rect>
+<g data-lens="security" transform="translate(340,158)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z"/><path d="M11 16l4 4 7-8"/></g>
+<text x="356" y="216" font-size="20" font-weight="800" fill="#000000" text-anchor="middle">Seguridad</text>
+<text x="356" y="241" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">inyecciones, fallos</text>
+<text x="356" y="260" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">de permisos,</text>
+<text x="356" y="279" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">secretos expuestos</text>
+<rect x="12" y="302" width="224" height="148" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="2s" repeatCount="indefinite"/></rect>
+<g data-lens="code" transform="translate(108,312)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 8l-8 8 8 8 M21 8l8 8-8 8 M19 5l-6 22"/></g>
+<text x="124" y="370" font-size="20" font-weight="800" fill="#000000" text-anchor="middle">Código</text>
+<text x="124" y="395" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">pruebas débiles,</text>
+<text x="124" y="414" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">restos y malas</text>
+<text x="124" y="433" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">prácticas de tu stack</text>
+<rect x="244" y="302" width="224" height="148" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="3s" repeatCount="indefinite"/></rect>
+<g data-lens="bugs" transform="translate(340,312)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="16" cy="19" rx="7" ry="9"/><path d="M12 11a4 4 0 018 0 M9 15L3 12 M9 20H2 M10 25l-6 4 M23 15l6-3 M23 20h7 M22 25l6 4 M16 14v14"/></g>
+<text x="356" y="370" font-size="20" font-weight="800" fill="#000000" text-anchor="middle">Bugs</text>
+<text x="356" y="395" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">condiciones mal</text>
+<text x="356" y="414" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">puestas, funciones</text>
+<text x="356" y="433" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">que rompen a otras</text>
+<rect x="128" y="456" width="224" height="148" rx="10" fill="none" stroke="#000000" stroke-width="2"><animate attributeName="stroke-width" values="2;5;2;2" keyTimes="0;0.1;0.2;1" dur="6s" begin="4s" repeatCount="indefinite"/></rect>
+<g data-lens="interface" transform="translate(224,466)" fill="none" stroke="#000000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="20" rx="2"/><path d="M3 11h26 M11 29h10 M16 25v4"/></g>
+<text x="240" y="524" font-size="20" font-weight="800" fill="#000000" text-anchor="middle">Interfaz</text>
+<text x="240" y="549" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">lo que incumple tus</text>
+<text x="240" y="568" font-size="16" font-weight="500" fill="#000000" text-anchor="middle">reglas de diseño</text>
+<path d="M240 620v28 M233 640l7 9 7-9" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round"></path>
+<rect x="60" y="654" width="360" height="48" rx="10" fill="#000000" stroke="#000000" stroke-width="2"></rect>
+<text x="240" y="684" font-size="17" font-weight="800" fill="#FFFFFF" text-anchor="middle">Tú recibes el trabajo ya revisado</text>
 </svg>

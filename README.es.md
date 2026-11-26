@@ -44,7 +44,7 @@ relevo install
 
 | 100+ | 5 | 100 mil+ |
 |:---:|:---:|:---:|
-| pull requests mergeados en proyectos reales | revisores de IA especializados | líneas en el proyecto más grande donde se usa |
+| pull requests mergeados en proyectos reales | agentes de IA que revisan tu código | líneas en el proyecto más grande donde se usa |
 
 [Cómo se contaron](docs/pilot-findings.md#use-on-real-projects-measured-2026-11-25) (en inglés)
 
@@ -54,7 +54,7 @@ relevo install
 
 <div align="center">
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/qa-es-white.svg"><img alt="Un agente construye, corren tus checks y un equipo de agentes que no escribió el código examina el trabajo: Spec, Seguridad, Código, Bugs e Interfaz. Lo que bloquea se corrige y se revisa otra vez; después lo recibes tú." src="docs/cover/qa-es-black.svg" width="640"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/qa-es-white.svg"><img alt="Un agente construye, corren tus checks y un equipo de agentes que no escribió el código examina el trabajo: Spec, Seguridad, Código, Bugs e Interfaz. Lo que bloquea se corrige y se revisa otra vez; después lo recibes tú." src="docs/cover/qa-es-black.svg" width="480"></picture>
 
 <sub>Interfaz corre cuando hay pantallas. Bugs avisa, o bloquea si lo activas.</sub>
 

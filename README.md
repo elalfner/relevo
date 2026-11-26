@@ -44,7 +44,7 @@ relevo install
 
 | 100+ | 5 | 100k+ |
 |:---:|:---:|:---:|
-| merged pull requests on real projects | specialized AI reviewers | lines in the largest project using it |
+| merged pull requests on real projects | AI agents that review your code | lines in the largest project using it |
 
 [How these were counted](docs/pilot-findings.md#use-on-real-projects-measured-2026-11-25)
 
@@ -54,7 +54,7 @@ relevo install
 
 <div align="center">
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/qa-en-white.svg"><img alt="An agent builds, your checks run, and a team of agents that did not write the code examines the work: Spec, Security, Code, Bugs and Interface. What blocks is fixed and reviewed again; then you receive it." src="docs/cover/qa-en-black.svg" width="640"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/qa-en-white.svg"><img alt="An agent builds, your checks run, and a team of agents that did not write the code examines the work: Spec, Security, Code, Bugs and Interface. What blocks is fixed and reviewed again; then you receive it." src="docs/cover/qa-en-black.svg" width="480"></picture>
 
 <sub>Interface runs when there are screens. Bugs advises, or blocks if you turn it on.</sub>
 
