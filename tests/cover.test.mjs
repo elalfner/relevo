@@ -89,12 +89,21 @@ const agentsSection = (file) => {
   return text.slice(from, to);
 };
 
-test('Scenario: a visitor asks what Relevo catches, and a new agent needs its row', () => {
+test('Scenario: a visitor asks what Relevo catches, and a new agent needs its card', () => {
   for (const [file, { names, claims }] of Object.entries(AGENTS)) {
     const section = agentsSection(file);
-    const rows = [...section.matchAll(/^\| \*\*(.+?)\*\* \| \S.*\|$/gm)].map((m) => m[1]);
-    assert.deepEqual([...rows].sort(), lenses.map((l) => names[l] ?? `a row for qa-${l}`).sort(), file);
     claims.forEach((c) => assert.match(section, c, file));
+    // Both themes of the picture show one card per agent file, and the alternative text names each one.
+    const pictures = [...section.matchAll(/(?:src|srcset)="(docs\/cover\/qa-[a-z]+-(?:black|white)\.svg)"/g)].map((m) => m[1]);
+    assert.equal(pictures.length, 2, file);
+    const alt = section.match(/alt="([^"]+)"/)[1];
+    for (const picture of pictures) {
+      const svg = read(picture);
+      const cards = [...svg.matchAll(/data-lens="([a-z]+)"/g)].map((m) => m[1]);
+      assert.deepEqual([...cards].sort(), [...lenses].sort(), picture);
+      for (const lens of lenses) assert.ok(svg.includes(`>${names[lens]}</text>`), `${picture}: the card of ${lens} has its name`);
+    }
+    for (const lens of lenses) assert.ok(alt.includes(names[lens] ?? `a name for qa-${lens}`), `${file}: the alternative text names ${lens}`);
   }
 });
 

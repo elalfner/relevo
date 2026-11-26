@@ -52,21 +52,15 @@ relevo install
 
 ## Relevo caza errores antes de que tú pruebes
 
-Un agente construye. Después, un equipo de agentes que no escribió el código lo examina:
+<div align="center">
 
-| Agente | Qué caza |
-|---|---|
-| **Spec** | escenarios sin código o sin prueba, tareas dadas por hechas |
-| **Seguridad** | inyecciones, fallos de permisos, secretos expuestos |
-| **Código** | pruebas débiles, restos y malas prácticas de tu stack |
-| **Bugs** | condiciones mal puestas, funciones que rompen a quien las usa |
-| **Interfaz** | lo que incumple tus reglas de diseño |
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/qa-es-white.svg"><img alt="Un agente construye, corren tus checks y un equipo de agentes que no escribió el código examina el trabajo: Spec, Seguridad, Código, Bugs e Interfaz. Lo que bloquea se corrige y se revisa otra vez; después lo recibes tú." src="docs/cover/qa-es-black.svg" width="640"></picture>
 
 <sub>Interfaz corre cuando hay pantallas. Bugs avisa, o bloquea si lo activas.</sub>
 
-Antes corren los checks de tu proyecto. Lo que bloquea vuelve a corregirse y se revisa otra vez, sin que tú intervengas.
+</div>
 
-**Tú recibes el trabajo ya revisado.**
+Antes corren los checks de tu proyecto. Lo que bloquea vuelve a corregirse y se revisa otra vez, sin que tú intervengas.
 
 ## Una cola que no te deja esperando
 

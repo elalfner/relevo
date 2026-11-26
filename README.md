@@ -52,21 +52,15 @@ relevo install
 
 ## Relevo catches mistakes before you start testing
 
-One agent builds. Then a team of agents that did not write the code examines it:
+<div align="center">
 
-| Agent | What it hunts |
-|---|---|
-| **Spec** | scenarios with no code or test, tasks taken for done |
-| **Security** | injection, permission flaws, exposed secrets |
-| **Code** | weak tests, leftovers and bad practices of your stack |
-| **Bugs** | wrong conditions, functions that break their callers |
-| **Interface** | what breaks your design rules |
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/cover/qa-en-white.svg"><img alt="An agent builds, your checks run, and a team of agents that did not write the code examines the work: Spec, Security, Code, Bugs and Interface. What blocks is fixed and reviewed again; then you receive it." src="docs/cover/qa-en-black.svg" width="640"></picture>
 
 <sub>Interface runs when there are screens. Bugs advises, or blocks if you turn it on.</sub>
 
-Your project's checks run first. What blocks goes back to be fixed and is reviewed again, without you stepping in.
+</div>
 
-**You receive work that has already been reviewed.**
+Your project's checks run first. What blocks goes back to be fixed and is reviewed again, without you stepping in.
 
 ## A queue that keeps you moving
 

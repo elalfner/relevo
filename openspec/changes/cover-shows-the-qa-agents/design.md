@@ -12,11 +12,11 @@ The five agents are `agents/qa-{spec,security,code,bugs,interface}.md`. `interfa
 
 ## Decisions
 
-**A table, one row per agent.** A list of three filters was rejected: it hid what the agents do. A sentence naming them was rejected for the same reason.
+**A diagram of the flow, in `docs/cover/qa-{en,es}-{black,white}.svg`.** The table was built and rejected on GitHub as dull. The picture has the style of the queue timeline: the builder, the checks, one card with a line icon for each agent, the arrow back for what blocks and, filled as the brand marks a person, the one who receives. Two quiet animations (the arrow back and the cards in turn). A list of three filters and a sentence naming the agents were rejected before: they hid what the agents do.
 
-**The test reads the agent files.** It counts `agents/qa-*.md` and expects as many rows, so a sixth agent cannot be forgotten.
+**The test reads the agent files.** It counts `agents/qa-*.md` and expects as many cards in each picture, so a sixth agent cannot be forgotten.
 
-**Agreed copy.**
+**Agreed copy.** The tables below are the texts of the cards; the sentence about the checks and the note stay as text under the picture, and the closing line is in the picture.
 
 ## Relevo catches mistakes before you start testing
 
@@ -57,6 +57,8 @@ Antes corren los checks de tu proyecto. Lo que bloquea vuelve a corregirse y se 
 **Middle card.** EN: "One agent builds and a team of agents reviews it." ES: "Un agente construye y un equipo de agentes lo revisa."
 
 ## Risks / Trade-offs
+
+- [Text inside a picture is small on a phone and cannot be searched] → the alternative text names the agents, and the sentence and the note stay as text.
 
 - ["Reviewed" can be read as "free of mistakes"] → the third handoff and the security section still say that the person tests before the merge.
 - [When the retries run out the work is not handed over as passed] → the section says only what happens to what blocks, not that all of it ends fixed.
