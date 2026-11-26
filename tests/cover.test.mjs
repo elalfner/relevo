@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 // What the cover says first, what it may claim and how the package describes itself (documentation spec).
 // Only what the requirements name is compared, so the wording around it stays free.
@@ -72,4 +72,35 @@ test('Scenario: the three descriptions', () => {
   assert.equal(JSON.parse(read('package.json')).description, `Relevo: ${words}`);
   assert.equal(JSON.parse(read('.claude-plugin/plugin.json')).description, words);
   assert.equal(JSON.parse(read('.claude-plugin/marketplace.json')).plugins[0].description, words);
+});
+
+// The section about what each QA agent looks for. A new agent file with no row here, or no row on a cover, fails.
+const AGENTS = {
+  'README.md': { title: /^## Relevo catches mistakes before you start testing$/m, queue: /^## A queue that keeps you moving$/m, names: { spec: 'Spec', security: 'Security', code: 'Code', bugs: 'Bugs', interface: 'Interface' }, claims: [/agents that did not write the code/, /Your project's checks run first/, /What blocks goes back to be fixed and is reviewed again/], note: /Interface runs when there are screens\. Bugs advises, or blocks if you turn it on\./ },
+  'README.es.md': { title: /^## Relevo caza errores antes de que tú pruebes$/m, queue: /^## Una cola que no te deja esperando$/m, names: { spec: 'Spec', security: 'Seguridad', code: 'Código', bugs: 'Bugs', interface: 'Interfaz' }, claims: [/agentes que no escribió el código/, /Antes corren los checks de tu proyecto/, /Lo que bloquea vuelve a corregirse y se revisa otra vez/], note: /Interfaz corre cuando hay pantallas\. Bugs avisa, o bloquea si lo activas\./ },
+};
+const lenses = readdirSync(new URL('../agents/', import.meta.url)).flatMap((f) => f.match(/^qa-([a-z]+)\.md$/)?.[1] ?? []);
+const agentsSection = (file) => {
+  const text = read(file);
+  const { title, queue } = AGENTS[file];
+  const from = text.search(title);
+  const to = text.search(queue);
+  assert.ok(from !== -1 && from < to, `${file}: the section comes before the queue`);
+  return text.slice(from, to);
+};
+
+test('Scenario: a visitor asks what Relevo catches, and a new agent needs its row', () => {
+  for (const [file, { names, claims }] of Object.entries(AGENTS)) {
+    const section = agentsSection(file);
+    const rows = [...section.matchAll(/^\| \*\*(.+?)\*\* \| \S.*\|$/gm)].map((m) => m[1]);
+    assert.deepEqual([...rows].sort(), lenses.map((l) => names[l] ?? `a row for qa-${l}`).sort(), file);
+    claims.forEach((c) => assert.match(section, c, file));
+  }
+});
+
+test('Scenario: the bugs agent advises and the interface agent runs with screens', () => {
+  for (const [file, { note }] of Object.entries(AGENTS)) {
+    assert.match(agentsSection(file), note, file);
+    assert.doesNotMatch(agentsSection(file), /prevents? (all )?(bugs|mistakes)|previene/i, file);
+  }
 });

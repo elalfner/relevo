@@ -50,6 +50,24 @@ relevo install
 
 </div>
 
+## Relevo catches mistakes before you start testing
+
+One agent builds. Then a team of agents that did not write the code examines it:
+
+| Agent | What it hunts |
+|---|---|
+| **Spec** | scenarios with no code or test, tasks taken for done |
+| **Security** | injection, permission flaws, exposed secrets |
+| **Code** | weak tests, leftovers and bad practices of your stack |
+| **Bugs** | wrong conditions, functions that break their callers |
+| **Interface** | what breaks your design rules |
+
+<sub>Interface runs when there are screens. Bugs advises, or blocks if you turn it on.</sub>
+
+Your project's checks run first. What blocks goes back to be fixed and is reviewed again, without you stepping in.
+
+**You receive work that has already been reviewed.**
+
 ## A queue that keeps you moving
 
 Ask for several builds and the queue takes it from there. You test what is ready while the agents keep going in the cloud.
@@ -71,14 +89,13 @@ Ask for several builds and the queue takes it from there. You test what is ready
 <table>
 <tr>
 <td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-think-white.svg"><img alt="think" src="docs/brand/states/relevo-state-think-black.svg" width="96"></picture><br><b>You think</b><br>Decide what to build and approve the issue.<br><code>/relevo:think</code></td>
-<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-go-white.svg"><img alt="go" src="docs/brand/states/relevo-state-go-black.svg" width="96"></picture><br><b>Agents deliver</b><br>One agent builds. Up to five reviewer agents audit it: spec, security, code, bugs and interface.<br><code>/relevo:go</code></td>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-go-white.svg"><img alt="go" src="docs/brand/states/relevo-state-go-black.svg" width="96"></picture><br><b>Agents deliver</b><br>One agent builds and a team of agents reviews it.<br><code>/relevo:go</code></td>
 <td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-review-white.svg"><img alt="review" src="docs/brand/states/relevo-state-review-black.svg" width="96"></picture><br><b>You decide</b><br>Test, ask for fixes or approve the merge.<br><code>/relevo:review</code></td>
 </tr>
 </table>
 
 ## Why Relevo?
 
-- **No agent grades its own work.** The builder is not the reviewer. Separate agents audit against your spec.
 - **You have the last word.** Approving and merging are a person's decisions.
 - **You always know what is next.** Every handoff says what happened, what is expected of you and which command to run.
 - **It fits your project.** Your rules, your checks, your limits. In the cloud or on your machine.

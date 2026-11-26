@@ -50,6 +50,24 @@ relevo install
 
 </div>
 
+## Relevo caza errores antes de que tú pruebes
+
+Un agente construye. Después, un equipo de agentes que no escribió el código lo examina:
+
+| Agente | Qué caza |
+|---|---|
+| **Spec** | escenarios sin código o sin prueba, tareas dadas por hechas |
+| **Seguridad** | inyecciones, fallos de permisos, secretos expuestos |
+| **Código** | pruebas débiles, restos y malas prácticas de tu stack |
+| **Bugs** | condiciones mal puestas, funciones que rompen a quien las usa |
+| **Interfaz** | lo que incumple tus reglas de diseño |
+
+<sub>Interfaz corre cuando hay pantallas. Bugs avisa, o bloquea si lo activas.</sub>
+
+Antes corren los checks de tu proyecto. Lo que bloquea vuelve a corregirse y se revisa otra vez, sin que tú intervengas.
+
+**Tú recibes el trabajo ya revisado.**
+
 ## Una cola que no te deja esperando
 
 Pide el build de varios issues y la cola se encarga. Tú pruebas lo que ya está listo mientras los agentes avanzan en la nube.
@@ -71,14 +89,13 @@ Pide el build de varios issues y la cola se encarga. Tú pruebas lo que ya está
 <table>
 <tr>
 <td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-think-white.svg"><img alt="think" src="docs/brand/states/relevo-state-think-black.svg" width="96"></picture><br><b>Tú piensas</b><br>Decides qué construir y apruebas el issue.<br><code>/relevo:think</code></td>
-<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-go-white.svg"><img alt="go" src="docs/brand/states/relevo-state-go-black.svg" width="96"></picture><br><b>Los agentes entregan</b><br>Un agente construye. Hasta cinco agentes revisores lo auditan: spec, seguridad, código, bugs e interfaz.<br><code>/relevo:go</code></td>
+<td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-go-white.svg"><img alt="go" src="docs/brand/states/relevo-state-go-black.svg" width="96"></picture><br><b>Los agentes entregan</b><br>Un agente construye y un equipo de agentes lo revisa.<br><code>/relevo:go</code></td>
 <td align="center" valign="top" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/states/relevo-state-review-white.svg"><img alt="review" src="docs/brand/states/relevo-state-review-black.svg" width="96"></picture><br><b>Tú decides</b><br>Pruebas, pides correcciones o apruebas el merge.<br><code>/relevo:review</code></td>
 </tr>
 </table>
 
 ## ¿Por qué usar Relevo?
 
-- **Nadie se califica solo.** Quien construye no es quien revisa. Revisores aparte auditan contra tu spec.
 - **Tú tienes la última palabra.** Aprobar y mergear son decisiones de una persona.
 - **Siempre sabes qué sigue.** Cada traspaso dice qué pasó, qué se espera de ti y qué comando correr.
 - **Se adapta a tu proyecto.** Tus reglas, tus checks, tus límites. En la nube o en tu máquina.
