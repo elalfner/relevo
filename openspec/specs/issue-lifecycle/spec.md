@@ -406,7 +406,7 @@ The lifecycle SHALL have a `local` label (default name `relevo:local`) that mark
 - **THEN** the gates ignore the label, and it is removed when the issue next changes state
 
 ### Requirement: A failed build has one label, whatever the reason
-A build that ends without a hand-off SHALL leave the issue with the `build-failed` label, whatever the reason: QA rejected the work, a limit stopped the run, or the build could not start or finish. There SHALL be one such label, owned by the assignee, and its description SHALL say that the build did not end in a hand-off and that the comment says why and what to do. The name of the label SHALL NOT name one of the reasons.
+A build that ends without a hand-off SHALL leave the issue with the `build-failed` label, whatever the reason: QA rejected the work, a limit stopped the run, or the build could not start or finish. There SHALL be one such label, owned by the assignee, and its description SHALL name the common recoveries and say that the comment says which applies. The name of the label SHALL NOT name one of the reasons.
 
 #### Scenario: QA rejected the work
 - **WHEN** QA still rejects the work after the retries
@@ -418,7 +418,7 @@ A build that ends without a hand-off SHALL leave the issue with the `build-faile
 
 #### Scenario: The description of the label
 - **WHEN** the label is created in a repository
-- **THEN** its description says that the build did not end in a hand-off, and does not say that QA rejected it
+- **THEN** its description names `/relevo:go <n> --resume` and `/relevo:fix <n>`, says that the comment says which, and does not say that QA rejected the work
 
 ### Requirement: The next-step table gives a build that stopped before it finished its own variant
 The next-step table SHALL give `build-failed` a variant for a build that stopped at a limit or was cut with its work kept on the branch. It SHALL be owned by the assignee, its command SHALL be `/relevo:go {n} --resume`, and its hint SHALL say that it continues the build from where it stopped and that `/relevo:fix {n}` is for work that QA rejected. The variant for work that QA rejected, and the one for a refused checkpoint after earlier ones were pushed, SHALL keep `/relevo:fix {n}`.
@@ -528,3 +528,34 @@ The table of "The life of an issue" in the guide, in English and in Spanish, SHA
 #### Scenario: Reading the guide
 - **WHEN** the table of the guide is compared with the table of next steps
 - **THEN** `draft` and `closed` have a row, and every command of a state or of its variants is in its row
+
+### Requirement: The label descriptions carry the next step
+The description of each state label, each exit label and `needs-reviewer` SHALL first say what the label means and then name the next command that the next-step table gives for it or, when the table gives no command, say that nothing is to be done, or who has to do what. It SHALL name no command that the table does not give for that state. It SHALL be in English and have at most 100 characters. The descriptions of `ship`, `urgent`, `go` and `local` SHALL stay as they are.
+
+#### Scenario: A state with a command
+- **WHEN** the `built` label is created
+- **THEN** its description says that it is built and QA passed, and then names `/relevo:review <n>`
+
+#### Scenario: A state where nobody acts
+- **WHEN** the `queued`, `building` or `blocked` label is created
+- **THEN** its description says what it is waiting for or doing, and then that nothing is to be done
+
+#### Scenario: Approval
+- **WHEN** the `ready` label is created
+- **THEN** its description names `/relevo:go <n>` and says that approving starts nothing
+
+#### Scenario: The spec goes back
+- **WHEN** the `needs-spec` label is created
+- **THEN** its description says that the spec needs work, names `/relevo:issue <n>` and says that the comment says the rest
+
+#### Scenario: A failed build
+- **WHEN** the `build-failed` label is created
+- **THEN** its description is `Build failed. Next: /relevo:go <n> --resume or /relevo:fix <n>; the comment says which`
+
+#### Scenario: No reviewer
+- **WHEN** the `needs-reviewer` label is created
+- **THEN** its description says that the spec writer assigns one or asks someone, and does not say that nothing is to be done
+
+#### Scenario: A command the table does not give
+- **WHEN** a description names a command that the table does not give for that state
+- **THEN** a test fails and names the label
