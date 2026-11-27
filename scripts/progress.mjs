@@ -10,7 +10,7 @@
 //       record; lenses run together, so each has its own start and end. It does not change the phase
 //   node scripts/progress.mjs class <built|inputs|policy|qa-non-fixable|qa-fixable-after-retries|conflict|other>
 //       records how the run ended, for the usage record; used by the go skill
-//   node scripts/progress.mjs watch --issue n --decision <base64> --max-minutes n [--repo owner/name] [--config relevo.yml]
+//   node scripts/progress.mjs watch --issue n --decision <base64> --max-minutes n [--repo owner/name] [--config relevo.yml] [--job-start <epoch seconds>]
 //       the loop of the workflow: every 30 seconds it edits the one progress comment; ends by itself
 //   node scripts/progress.mjs stop [--wait seconds]
 //       asks the loop to end and waits for it
@@ -38,6 +38,7 @@ import { readFileSync } from './lib/guarded-fs.mjs';
 import { groupInProgress, readGroups } from './lib/group-progress.mjs';
 import { writeChangeId } from './lib/build-state.mjs';
 import { LENSES, OUTCOME_CLASSES, recordLens, recordPhase, writeClass } from './lib/phase-log.mjs';
+import { buildTimeoutMinutes, jobDeadline, writeRunLimits } from './lib/time-limit.mjs';
 
 const args = process.argv.slice(3);
 const arg = (name) => {
@@ -68,6 +69,25 @@ function language() {
   if (!existsSync(path)) return { language: 'en', config: null };
   const loaded = loadConfig(readFileSync(path, 'utf8'));
   return loaded.ok ? { language: loaded.config.language, config: loaded.config } : { language: 'en', config: null };
+}
+
+// The limit of the run and the moment its job leaves it, for the hard stop. The timeout is read from the installed
+// workflow, so there is no second copy of it; what cannot be read is left out.
+function keepRunLimits(dir, b64, jobStart) {
+  let minutes = null;
+  try {
+    minutes = JSON.parse(Buffer.from(String(b64 ?? ''), 'base64').toString('utf8'))?.run_max_minutes ?? null;
+  } catch {
+    minutes = null;
+  }
+  let timeout = null;
+  try {
+    timeout = buildTimeoutMinutes(readFileSync('.github/workflows/relevo-go.yml', 'utf8'));
+  } catch {
+    timeout = null;
+  }
+  const start = /^\d{1,12}$/.test(String(jobStart ?? '')) ? Number(jobStart) * 1000 : null;
+  writeRunLimits(dir, { run_max_minutes: minutes, job_deadline: jobDeadline(start, timeout) });
 }
 
 // The decision of the workflow is data: only the change id, the base branch and the branch of the issue are read, and only when they look like names.
@@ -151,6 +171,7 @@ async function main(command) {
     rmSync(join(dir, 'stop'), { force: true });
     writeFileAtomic(statePath, JSON.stringify(state));
     writeFileSync(join(dir, 'watch.pid'), String(process.pid));
+    keepRunLimits(dir, arg('decision'), arg('job-start'));
     const building = resolveLabelNames(config?.labels ?? {}).building;
     const why = await watch({
       client, state, language: lang, maxMs: Number(arg('max-minutes') ?? 65) * 60 * 1000,

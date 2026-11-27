@@ -16,6 +16,7 @@ import { resolve } from 'node:path';
 import { loadConfig } from './lib/config.mjs';
 import { budgetStatus, recordAgent, wholeNumber } from './lib/run-budget.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
+import { writeRunLimits } from './lib/time-limit.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const arg = (name) => {
@@ -64,6 +65,8 @@ try {
     }
   } else if (command === 'check') {
     const { limits, notes } = limitsOf();
+    // Kept for what has no arguments of its own: the time guard and the long commands.
+    if (dir) writeRunLimits(dir, limits);
     const status = { ...budgetStatus({ dir, limits }), notes };
     console.log(JSON.stringify(status));
     process.exit(status.stop ? 1 : 0);

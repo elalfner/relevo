@@ -202,6 +202,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: |
+          # When the job started, for the hard stop of the run.
+          date +%s > "$RUNNER_TEMP/relevo-job-start"
           mkdir -p "$RUNNER_TEMP/relevo"
           npm pack "@elalfner/relevo@$RELEVO_VERSION" --silent --pack-destination "$RUNNER_TEMP" > /dev/null || exit 0
           tar -xzf "$RUNNER_TEMP"/elalfner-relevo-*.tgz --strip-components=1 -C "$RUNNER_TEMP/relevo" || exit 0
@@ -391,7 +393,7 @@ jobs:
           rm -rf "$dir"
           mkdir -p "$dir"
           echo "RELEVO_PROGRESS_DIR=$dir" >> "$GITHUB_ENV"
-          RELEVO_PROGRESS_DIR="$dir" nohup node "$script" watch --issue "$ISSUE" --decision "$DECISION" --max-minutes 65 > "$dir/watch.log" 2>&1 &
+          RELEVO_PROGRESS_DIR="$dir" nohup node "$script" watch --issue "$ISSUE" --decision "$DECISION" --max-minutes 65 --job-start "$(cat "$RUNNER_TEMP/relevo-job-start" 2>/dev/null)" > "$dir/watch.log" 2>&1 &
           exit 0
 
       # Fetches what the issue points to (its Design reference, and the Code pointers that name a file of a linked
@@ -653,7 +655,8 @@ jobs:
           exit 0
 
       # What the run used, read from the agent's execution log. The format of that log is not documented, so the
-      # reader is tolerant: when it finds nothing it posts nothing, and this step can never fail the job.
+      # reader is tolerant: when the agent ran and it finds nothing, the comment says that the usage is unknown and why.
+      # This step can never fail the job.
       - name: Report what the run used
         if: always()
         continue-on-error: true
@@ -661,15 +664,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
           EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           # With a subscription token and no API key the cost is notional.
           ONLY_SUBSCRIPTION: ${{ secrets.ANTHROPIC_API_KEY == '' && secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
         run: |
-          [ -n "$EXECUTION_FILE" ] || exit 0
-          flag=""; [ "$ONLY_SUBSCRIPTION" = "true" ] && flag="--subscription"
+          # A job that ended before the agent step used nothing to report.
+          [ -n "$AGENT_OUTCOME" ] && [ "$AGENT_OUTCOME" != "skipped" ] || exit 0
+          flag="--unknown-run $RUN_URL"; [ "$ONLY_SUBSCRIPTION" = "true" ] && flag="$flag --subscription"
           [ -n "$RELEVO_PROGRESS_DIR" ] && flag="$flag --progress-dir $RELEVO_PROGRESS_DIR"
           [ -f relevo.yml ] && flag="$flag --config relevo.yml"
           line=$(node .relevo-plugin/scripts/run-usage.mjs --file "$EXECUTION_FILE" $flag)
-          [ -n "$line" ] && gh issue comment "$ISSUE" --body "$line"
+          if [ -n "$line" ]; then
+            gh issue comment "$ISSUE" --body "$line" || echo "::warning::The usage of the run could not be posted on issue $ISSUE"
+          fi
           exit 0
 
       # The output of the agent, printed after its step ends and only when it is turned on (run.full_output in relevo.yml, or the

@@ -173,6 +173,16 @@ An installed go workflow must be the version with this step (`/relevo:init` repo
 
 A cloud run has four limits: `limits.run_max_turns` (the runner counts the main agent, Relevo the subagents together), `limits.run_max_minutes`, `limits.run_max_cost` and the `timeout-minutes` of the build job. Before it launches another agent `go` asks `run-budget.mjs`, which counts the turns of the subagents from the usage block that ends each report and the minutes since the run entered `planning`. When one limit was reached no other agent starts: the run takes the failure path with the reason `run limit reached`, commits the work as `wip: stopped by limit (#N)`, pushes it to the branch of the issue and names the agents that did not run. The guard fails open: when it cannot read its inputs it says so and the run goes on.
 
+**The hard stop.** The minutes limit stops the start of an agent; what is already running has until the hard stop, which is the limit plus 10 minutes. In a cloud build it is never later than 5 minutes before the `timeout-minutes` of the build job (with the defaults, 55 minutes after the job starts), when the installed workflow is the current one and that value can be read. No setting changes the margin. At the hard stop:
+
+- a long command (the test suite, the validation gate) is ended with the processes it started, its status says `cut` and no result of a check is recorded;
+- a subagent's next tool calls are refused, so that it writes its report and ends;
+- the run takes the same path as at any limit, and the comment says what was cut.
+
+A hook of the plugin (`hooks/hooks.json`) does the refusals, and also refuses to launch a Relevo agent after the minutes limit, so this does not depend on the model remembering to ask. It runs before every tool call of every session where the plugin is enabled and says nothing outside a build in progress. What can still run past the hard stop is a command that a subagent started in the foreground just before it, for as long as the shell tool of the runner allows (up to 10 minutes).
+
+When a cloud run has no usage figures to report (a cut run can leave none), the usage comment says that the usage is unknown, why, and links the run.
+
 When the runner itself cuts the agent (its turn or cost limit) or the job is cancelled or times out, the failure path never runs. A step of the go workflow that always runs, **Keep the work of a run that was cut**, looks at the issue: if it is still `building` or `ready` no outcome was recorded, so it commits what is left in the working tree and pushes it, through the same scans as every commit of Relevo. Its result says in the comment what happened to the work:
 
 - **kept**: the work is on the branch of the issue; `/relevo:go <n> --resume` continues the build from there (`/relevo:fix <n>` is for work that QA rejected).

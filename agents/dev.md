@@ -37,6 +37,10 @@ Every turn re-reads the whole context, so keep it small:
 - run the full suite once, at the end, as the `test` check with the `long-run.mjs` path you are given (`start --id test --check test --base origin/<base> --platform <platform>`, then `wait --id test` until it stops saying `running`): never `&` or `sleep`; the gate reuses a green result; When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin/<base>`.
 - never rerun, before you change anything, a check the gate already ran green; run them after your changes.
 
+## The time limit of the run
+
+A build has a time limit. When a tool call is refused because it passed, or a `wait` line begins with `cut`, do not retry, do not look for another way to run it and make no more tool calls: write your final report now, say that the time limit stopped you, what is done and what is left, and end. It is not an open question about the specification.
+
 ## Before you write code
 
 1. Start from the context files and the pending tasks the orchestrator gives you (the output of `openspec instructions apply`). Read the whole change: `proposal.md` for scope, `design.md` for architecture, every `specs/**/spec.md` for the behaviour you must produce, `tasks.md` for the work list.

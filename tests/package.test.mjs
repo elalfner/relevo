@@ -28,7 +28,7 @@ test('the package is public, scoped and named like the marketplace entry', () =>
 
 test('the package holds what runs and nothing else', () => {
   const files = packed();
-  const allowed = [/^\.claude-plugin\/plugin\.json$/, /^(scripts|skills|agents|stacks|knowledge|templates)\//, /^(LICENSE|NOTICE|package\.json|README(\.es)?\.md)$/];
+  const allowed = [/^\.claude-plugin\/plugin\.json$/, /^(scripts|hooks|skills|agents|stacks|knowledge|templates)\//, /^(LICENSE|NOTICE|package\.json|README(\.es)?\.md)$/];
   const stray = files.filter((f) => !allowed.some((re) => re.test(f)));
   assert.deepEqual(stray, [], 'these files would be installed on every machine');
   ['docs/', 'tests/', 'openspec/', 'CHANGELOG.md', 'TRADEMARKS.md', 'CLAUDE.md', '.claude-plugin/marketplace.json'].forEach((p) => {

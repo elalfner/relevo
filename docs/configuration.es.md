@@ -37,7 +37,7 @@ La plantilla que se distribuye, con un comentario en cada línea, es [templates/
 | `limits.concurrent_agents` | ejecuciones sin supervisión a la vez | 3 |
 | `limits.review_sla_hours` | horas antes de un recordatorio, y el mismo tiempo otra vez antes de escalar | 8 |
 | `limits.run_max_turns` | turnos por ejecución sin supervisión: el runner limita al agente principal y Relevo limita a los subagentes juntos al mismo número | 100 |
-| `limits.run_max_minutes` | minutos tras los cuales una ejecución sin supervisión no inicia más agentes (mínimo 5). Mantenla al menos 5 por debajo del `timeout-minutes` del job de build del workflow go, que es 60 | 50 |
+| `limits.run_max_minutes` | minutos tras los cuales una ejecución sin supervisión no inicia más agentes (mínimo 5). Lo que ya está en marcha se corta 10 minutos después ([el tope duro](execution.es.md#cuando-una-ejecución-se-detiene-en-un-límite-o-la-cortan)). Mantenla al menos 5 por debajo del `timeout-minutes` del job de build del workflow go, que es 60 | 50 |
 | `limits.building_alert_hours` | horas sin actividad antes de reportar como atascado un issue en `building` ([Dónde corre `go`](execution.es.md)) | 3 |
 | `limits.shared_file_wait_hours` | horas que un issue espera por un archivo que otro issue activo o anterior también nombra antes de empezar de todos modos (un entero de al menos 1; [Dónde corre `go`](execution.es.md)) | 24 |
 | `limits.run_max_cost` | **obligatorio** con `agent.build: claude` (el valor por defecto), y se rechaza con `antigravity`: dólares por ejecución sin supervisión; elige el tuyo | 5 |

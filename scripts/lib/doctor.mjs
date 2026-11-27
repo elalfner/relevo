@@ -26,6 +26,7 @@ import { onPath } from './on-path.mjs';
 import { SUPPORTED_SCHEMA, schemaFromConfigText } from './schema-guard.mjs';
 import { testDatabase } from './api-preflight.mjs';
 import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryProfilePath, resolveProfile } from './stack-profile.mjs';
+import { buildTimeoutMinutes } from './time-limit.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
 export const SKILL_INSTALL = {
@@ -1387,19 +1388,6 @@ function installStepChecks(f) {
     });
 }
 
-/** The `timeout-minutes` of the `build` job in the text of the go workflow, or null when it cannot be read. */
-export function buildTimeoutMinutes(text) {
-  const lines = String(text ?? '').split('\n');
-  const start = lines.findIndex((l) => /^ {2}build:\s*$/.test(l));
-  if (start === -1) return null;
-  for (let i = start + 1; i < lines.length; i += 1) {
-    if (/^ {2}\S[^:]*:\s*$/.test(lines[i])) return null; // the next job begins
-    const m = /^\s+timeout-minutes:\s*(\d+)\s*(?:#.*)?$/.exec(lines[i]);
-    if (m) return Number(m[1]);
-  }
-  return null;
-}
-
 // Minutes the job keeps after `limits.run_max_minutes` for the work that is kept when a run is cut and for the reports.
 const RUN_MINUTES_MARGIN = 5;
 
@@ -1942,3 +1930,5 @@ export function readOnlyGh(gh) {
     return gh(args);
   };
 }
+
+export { buildTimeoutMinutes };

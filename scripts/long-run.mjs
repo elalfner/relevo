@@ -12,14 +12,22 @@
 // --max-seconds (default 90, at most 110) whether or not the command finished. The files are under .relevo-run/<id>/, which
 // git ignores; the log is written by the operating system, so it stays readable if this script or the job is killed.
 //   exit 0: passed   exit 1: failed   exit 2: still running   exit 3: bad arguments or unknown id   exit 4: interrupted
+//   exit 5: cut
+// In a build, a command is ended, with the processes it started, at the hard stop of the run: its status is `cut` and no
+// check is recorded. One started after the hard stop does not run. Outside a build nothing is ever cut.
 
 import { spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from './lib/guarded-fs.mjs';
+import { loadConfig } from './lib/config.mjs';
+import { progressDir } from './lib/worktree-path.mjs';
+import { runClock } from './lib/time-limit.mjs';
 import { CHECK_NAMES, checkKey, ensureExcluded, recordResult, resolveContext, treeHash } from './lib/check-store.mjs';
 import { DEFAULT_WAIT_SECONDS, EXIT, MAX_WAIT_SECONDS, RUN_DIR, logTail, readSpec, runDir, statusLine, statusOf, tailLines, validId } from './lib/long-run.mjs';
 
+const KILL_AFTER_MS = 5000;
 const SELF = fileURLToPath(import.meta.url);
 const argv = process.argv.slice(2);
 const sub = argv[0];
@@ -82,6 +90,16 @@ async function report(id, dir, waiting) {
   process.exit(EXIT[st.state] ?? EXIT.usage);
 }
 
+// The limit of relevo.yml, for a build whose folder keeps none.
+function configuredMinutes(root) {
+  try {
+    const loaded = loadConfig(readFileSync(join(root, 'relevo.yml'), 'utf8'));
+    return loaded.ok ? loaded.config.limits?.run_max_minutes ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
 // The detached process: runs the command with its output going straight to the log, writes the end, and records a
 // check that passed on a diff that did not change.
 async function supervise(dir) {
@@ -98,19 +116,37 @@ async function supervise(dir) {
       if (ctx.ok) before = treeHash({ root: ctx.root, base: spec.check.base, profile: ctx.profile });
     } catch { before = null; }
   }
-  const code = await new Promise((done) => {
-    const c = spawn(spec.argv[0], spec.argv.slice(1), { cwd: spec.cwd, stdio: ['ignore', fd, fd] });
-    c.on('error', (e) => { writeFileSync(fd, `\n${e.message}\n`); done(127); });
-    c.on('close', (status, signal) => done(status ?? (signal ? 128 : 1)));
+  const clock = runClock({ dir: progressDir({ cwd: spec.cwd }), fallbackMinutes: configuredMinutes(spec.root ?? process.cwd()) });
+  let cut = clock !== null && Date.now() >= clock.hard;
+  const code = cut ? null : await new Promise((done) => {
+    // A command with a deadline leads its own process group, so that what it started ends with it.
+    const grouped = clock !== null && process.platform !== 'win32';
+    const c = spawn(spec.argv[0], spec.argv.slice(1), { cwd: spec.cwd, stdio: ['ignore', fd, fd], detached: grouped });
+    const signal = (name) => { try { process.kill(grouped ? -c.pid : c.pid, name); } catch { /* already gone */ } };
+    let kill = null;
+    const timer = clock === null ? null : setTimeout(() => {
+      cut = true;
+      signal('SIGTERM');
+      kill = setTimeout(() => signal('SIGKILL'), KILL_AFTER_MS);
+    }, clock.hard - Date.now());
+    const end = (status) => {
+      clearTimeout(timer);
+      clearTimeout(kill);
+      if (cut) signal('SIGKILL'); // what ignored the first signal and outlived its leader
+      done(status);
+    };
+    c.on('error', (e) => { writeFileSync(fd, `\n${e.message}\n`); end(127); });
+    c.on('close', (status, sig) => end(status ?? (sig ? 128 : 1)));
   });
+  if (cut) writeFileSync(fd, '\nrelevo: cut by the time limit of the run\n');
   closeSync(fd);
   const duration_ms = Date.now() - t0;
   // The check is recorded before the end is written, so a `wait` that sees the end also sees the record.
-  if (spec.check && before) {
+  if (spec.check && before && !cut) {
     try {
       const after = treeHash({ root: ctx.root, base: spec.check.base, profile: ctx.profile });
       if (after === before) recordResult(ctx.root, { key: checkKey({ hash: before, command: spec.command, path: ctx.platform.path }), name: spec.check.name, command: spec.command, exit_code: code, duration_ms, output: logTail(dir, 8192) });
     } catch { /* the gate then runs the check itself */ }
   }
-  writeAtomic(join(dir, 'status.json'), { state: 'done', pid: process.pid, exit_code: code, duration_ms });
+  writeAtomic(join(dir, 'status.json'), { state: 'done', pid: process.pid, exit_code: code, duration_ms, ...(cut ? { cut: true } : {}) });
 }

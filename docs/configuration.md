@@ -37,7 +37,7 @@ The shipped template, with a comment on every line, is [templates/relevo.yml](..
 | `limits.concurrent_agents` | unattended runs at the same time | 3 |
 | `limits.review_sla_hours` | hours before a reminder, and the same time again before escalation | 8 |
 | `limits.run_max_turns` | turns per unattended run: the runner limits the main agent, and Relevo limits the subagents together to the same number | 100 |
-| `limits.run_max_minutes` | minutes after which an unattended run starts no further agent (at least 5). Keep it at least 5 below the `timeout-minutes` of the build job of the go workflow, which is 60 | 50 |
+| `limits.run_max_minutes` | minutes after which an unattended run starts no further agent (at least 5). What is already running is cut 10 minutes later ([the hard stop](execution.md#when-a-run-stops-at-a-limit-or-is-cut)). Keep it at least 5 below the `timeout-minutes` of the build job of the go workflow, which is 60 | 50 |
 | `limits.building_alert_hours` | hours without activity before an issue on `building` is reported as stuck ([Where `go` runs](execution.md)) | 3 |
 | `limits.shared_file_wait_hours` | hours an issue waits for a file that an active or earlier issue also names before it starts anyway (a whole number of at least 1; [Where `go` runs](execution.md)) | 24 |
 | `limits.run_max_cost` | **required** with `agent.build: claude` (the default), and refused with `antigravity`: US dollars per unattended run; choose your own | 5 |

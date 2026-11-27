@@ -47,7 +47,7 @@ After each agent, and when `wait` says `cut`, `go` asks the guard before it read
 ## Risks / Trade-offs
 
 - [Hooks do not load with `--plugin-dir` in the action] → the first task verifies it in the sandbox before anything is built on it. If they do not, stop and revise this design.
-- [The hook starts a Node process on every tool call of every session with the plugin] → it reads the environment and the folder first and exits at once; the task measures the cost.
+- [The hook starts a Node process on every tool call of every session with the plugin] → it reads the environment and the folder first and exits at once; measured on a Mac with Node 24: 34 ms per call outside a build (median of 40), of which 24 ms are the start of Node.
 - [A foreground command of a subagent started just before the hard stop runs on, up to the limit of the shell tool (10 minutes)] → long work is already told to use `long-run.mjs`; stated in the documentation as the remaining overshoot.
 - [A subagent keeps trying after refusals] → each refusal repeats the instruction to end, and the turn and cost limits still apply.
 - [A project whose normal suite needs more than the margin gets it cut] → the comment says so and the next step raises `run_max_minutes` and resumes from the checkpoints.

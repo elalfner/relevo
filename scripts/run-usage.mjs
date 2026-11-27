@@ -7,6 +7,8 @@
 // --config gives the limits of the run: the sentence says when the turns (the subagents' included) or the cost went past them.
 // --progress-dir is where `go` kept the start of each phase and of each QA lens, the class of the outcome, the model plan and the reason of the model of each replica: they go into the marker.
 // With a model plan the sentence also says which model each role used and why.
+// --unknown-run <url> is for the step that posts the comment of a run whose agent ran: when there are no figures, a
+// sentence says that the usage is unknown, why and where the run is. It carries no marker.
 // --subscription says that the cost is notional. Prints nothing when the log is missing or has no usage.
 // It never fails: exit 0 always, so a step that posts the text cannot fail a run.
 
@@ -14,6 +16,7 @@ import { checksFromReceipt, planFromJson, readUsage, replicaReasonsFromJson, usa
 import { lensSeconds, phaseSeconds, readClass, readLensLog, readPhaseLog } from './lib/phase-log.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { loadConfig } from './lib/config.mjs';
+import { usagePhrase } from './lib/messages.mjs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -21,8 +24,12 @@ const arg = (name) => {
 };
 
 let text = '';
+let read = false;
 try {
-  if (arg('file')) text = readFileSync(arg('file'), 'utf8');
+  if (arg('file')) {
+    text = readFileSync(arg('file'), 'utf8');
+    read = true;
+  }
 } catch {
   text = '';
 }
@@ -80,3 +87,4 @@ try {
 }
 const marker = usageMarker(usage, { subscription, phases, lenses, outcomeClass, plan, checks });
 if (line) console.log(marker ? `${line}\n\n${marker}` : line);
+else if (arg('unknown-run')) console.log(usagePhrase(language ?? 'en', read ? 'unknown_no_result' : 'unknown_no_log', { run: arg('unknown-run') }));

@@ -255,7 +255,8 @@ test('Scenario: Log with usage / without usage - the consumption step runs after
   assert.match(step, /run-usage\.mjs --file "\$EXECUTION_FILE" \$flag/);
   assert.match(step, /gh issue comment "\$ISSUE" --body "\$line"/, 'the whole output of the script is posted, so the hidden marker travels with the sentence');
   assert.match(step, /ONLY_SUBSCRIPTION: \$\{\{ secrets\.ANTHROPIC_API_KEY == '' && secrets\.CLAUDE_CODE_OAUTH_TOKEN != '' \}\}/);
-  assert.match(step, /\[ -n "\$line" \] && gh issue comment/);
+  assert.match(step, /if \[ -n "\$line" \]; then\s+gh issue comment/);
+  assert.match(step, /--unknown-run \$RUN_URL/);
   assert.match(step, /exit 0/);
 });
 

@@ -4,6 +4,15 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **A build has a hard stop for what is already running.** `limits.run_max_minutes` only stopped the start of another agent, so a long developer agent or test suite could pass it by any amount. Now what is running has until the limit plus 10 minutes, and in the cloud never later than 5 minutes before the build job is cut: a long command is ended with the processes it started (`long-run.mjs` says `cut` and records no check), a subagent's tool calls are refused so that it reports and ends, and the run keeps the work as it does at any limit.
+- **The plugin ships a hook.** `hooks/hooks.json` runs `scripts/time-guard.mjs` before every tool call. It refuses the launch of a Relevo agent after the minutes limit and the calls of a subagent after the hard stop. It never allows or changes a call, and says nothing outside a build in progress; there it adds the start of a Node process to each call.
+
+### Changed
+
+- **A cloud run with no usage figures says so.** The usage comment was left out without a word when the execution log was missing or had no result; it now says that the usage is unknown, why, and links the run. A project gets this, and the job cap of the hard stop, when `/relevo:init` updates its go workflow.
+
 ## [0.19.0] - 2026-11-26
 
 ### Added

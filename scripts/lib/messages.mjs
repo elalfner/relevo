@@ -582,6 +582,8 @@ export const CATALOG = {
 // and tests/messages-language.test.mjs fails the build of Relevo when they differ.
 export const USAGE_TEXT = {
   en: {
+    unknown_no_log: 'The usage of this run is unknown: the agent left no execution log. Run: {{run}}',
+    unknown_no_result: 'The usage of this run is unknown: its execution log has no usage figures, which is what a run that was cut leaves. Run: {{run}}',
     used: 'This run used {{parts}}.',
     turn_one: '{{n}} turn',
     turn_many: '{{n}} turns',
@@ -622,6 +624,8 @@ export const USAGE_TEXT = {
     quota_resets: ' (resets {{at}})',
   },
   es: {
+    unknown_no_log: 'El uso de esta ejecución se desconoce: el agente no dejó registro de ejecución. Ejecución: {{run}}',
+    unknown_no_result: 'El uso de esta ejecución se desconoce: su registro de ejecución no tiene cifras de uso, que es lo que deja una ejecución cortada. Ejecución: {{run}}',
     used: 'Esta ejecución usó {{parts}}.',
     turn_one: '{{n}} turno',
     turn_many: '{{n}} turnos',

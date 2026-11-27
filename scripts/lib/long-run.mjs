@@ -12,7 +12,7 @@ export const RUN_DIR = '.relevo-run';
 export const MAX_WAIT_SECONDS = 110;
 export const DEFAULT_WAIT_SECONDS = 90;
 /** The exit codes of `status` and `wait`. */
-export const EXIT = { passed: 0, failed: 1, running: 2, usage: 3, interrupted: 4 };
+export const EXIT = { passed: 0, failed: 1, running: 2, usage: 3, interrupted: 4, cut: 5 };
 /** How long a started run may have no status file before it is called interrupted (the supervisor writes it at once). */
 const START_GRACE_MS = 10_000;
 
@@ -55,8 +55,8 @@ export function lastLine(text, max = 160) {
 export const tailLines = (text, n) => clean(text).split('\n').slice(-Math.max(1, Math.min(200, n)) - 1).join('\n').trimEnd();
 
 /**
- * The state of a run: { state: 'unknown' | 'running' | 'passed' | 'failed' | 'interrupted', exit_code?, seconds, started_at }.
- * `interrupted` is a run whose supervisor is gone before it wrote its end: the log is still there.
+ * The state of a run: { state: 'unknown' | 'running' | 'passed' | 'failed' | 'interrupted' | 'cut', exit_code?, seconds, started_at }.
+ * `cut` is a command that the time limit of the build ended, or did not let start. `interrupted` is a run whose supervisor is gone before it wrote its end: the log is still there.
  */
 export function statusOf(dir, now = Date.now()) {
   const spec = readSpec(dir);
@@ -64,6 +64,7 @@ export function statusOf(dir, now = Date.now()) {
   const started = Date.parse(spec.started_at) || now;
   const st = readJson(join(dir, 'status.json'));
   if (!st) return { state: now - started < START_GRACE_MS ? 'running' : 'interrupted', seconds: Math.round((now - started) / 1000), started_at: spec.started_at };
+  if (st.state === 'done' && st.cut) return { state: 'cut', seconds: Math.round((st.duration_ms ?? 0) / 1000), started_at: spec.started_at };
   if (st.state === 'done') return { state: st.exit_code === 0 ? 'passed' : 'failed', exit_code: st.exit_code, seconds: Math.round((st.duration_ms ?? 0) / 1000), started_at: spec.started_at };
   return { state: alive(st.pid) ? 'running' : 'interrupted', seconds: Math.round((now - started) / 1000), started_at: spec.started_at };
 }
@@ -77,6 +78,7 @@ export function statusLine(id, dir, st) {
   const last = lastLine(logTail(dir, 2048));
   const tail = last ? ` | last: ${last}` : '';
   if (st.state === 'running') return `running ${st.seconds}s | ${id} | log ${size(bytes)}${tail}`;
+  if (st.state === 'cut') return `cut by the time limit of the run after ${st.seconds}s | ${id} | do not start it again | the log is readable: ${log}${tail}`;
   if (st.state === 'interrupted') return `interrupted after ${st.seconds}s | ${id} | the log is readable: ${log}${tail}`;
   return `${st.state} exit=${st.exit_code} ${st.seconds}s | ${id} | log ${size(bytes)}${tail}`;
 }

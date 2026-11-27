@@ -1,0 +1,11 @@
+{
+  "description": "Stops what a Relevo build would start or keep running after its time limit. Does nothing outside a build.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/time-guard.mjs\"", "timeout": 10 }]
+      }
+    ]
+  }
+}

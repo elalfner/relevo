@@ -11,6 +11,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readPhaseLog } from './phase-log.mjs';
+import { runClock } from './time-limit.mjs';
 
 const LEDGER = 'budget.jsonl';
 const AGENT_RE = /^[A-Za-z0-9:._-]{1,60}$/;
@@ -69,7 +70,7 @@ export function subagentTurns(entries) {
 export function budgetStatus({ dir, limits = {}, now = Date.now() }) {
   const maxTurns = Number.isFinite(limits.run_max_turns) && limits.run_max_turns > 0 ? limits.run_max_turns : null;
   const maxMinutes = Number.isFinite(limits.run_max_minutes) && limits.run_max_minutes > 0 ? limits.run_max_minutes : null;
-  const base = { known: false, stop: false, reason: null, subagent_turns: null, max_turns: maxTurns, elapsed_minutes: null, max_minutes: maxMinutes, agents: [] };
+  const base = { known: false, stop: false, reason: null, subagent_turns: null, max_turns: maxTurns, elapsed_minutes: null, max_minutes: maxMinutes, hard_stop_passed: false, agents: [] };
   if (!dir) return base;
   let entries;
   let phases;
@@ -82,7 +83,10 @@ export function budgetStatus({ dir, limits = {}, now = Date.now() }) {
   const turns = subagentTurns(entries);
   const started = phases.length ? phases[0].at : null;
   const elapsed = started === null ? null : Math.max(0, (now - started) / 60000);
-  const reason = maxTurns !== null && turns >= maxTurns ? 'turns' : maxMinutes !== null && elapsed !== null && elapsed >= maxMinutes ? 'minutes' : null;
+  // The hard stop can come before the limit itself, when the job leaves less than that: no agent starts past it either.
+  const clock = runClock({ dir, fallbackMinutes: maxMinutes, now });
+  const late = clock !== null && now >= clock.soft;
+  const reason = maxTurns !== null && turns >= maxTurns ? 'turns' : late || (maxMinutes !== null && elapsed !== null && elapsed >= maxMinutes) ? 'minutes' : null;
   return {
     known: true,
     stop: reason !== null,
@@ -91,6 +95,7 @@ export function budgetStatus({ dir, limits = {}, now = Date.now() }) {
     max_turns: maxTurns,
     elapsed_minutes: elapsed === null ? null : Math.round(elapsed * 10) / 10,
     max_minutes: maxMinutes,
+    hard_stop_passed: clock !== null && now >= clock.hard,
     agents: entries.map((e) => e.agent),
   };
 }

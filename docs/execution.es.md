@@ -173,6 +173,16 @@ Un workflow de go instalado debe ser la versión con este paso (`/relevo:init` a
 
 Una ejecución en la nube tiene cuatro límites: `limits.run_max_turns` (el runner cuenta al agente principal, Relevo a los subagentes juntos), `limits.run_max_minutes`, `limits.run_max_cost` y el `timeout-minutes` del job de build. Antes de lanzar otro agente, `go` consulta a `run-budget.mjs`, que cuenta los turnos de los subagentes desde el bloque de uso que cierra cada reporte y los minutos desde que la ejecución entró en `planning`. Cuando se alcanzó un límite no empieza otro agente: la ejecución toma la ruta de fallo con la razón `run limit reached`, hace commit del trabajo como `wip: stopped by limit (#N)`, lo sube a la rama del issue y nombra a los agentes que no corrieron. El guardia falla abierto: cuando no puede leer sus entradas lo dice y la ejecución sigue.
 
+**El tope duro.** El límite de minutos impide que empiece un agente; lo que ya está en marcha tiene hasta el tope duro, que es el límite más 10 minutos. En una construcción en la nube nunca es más tarde que 5 minutos antes del `timeout-minutes` del job de build (con los valores por defecto, 55 minutos después de que empiece el job), cuando el workflow instalado es el actual y ese valor se puede leer. Ningún ajuste cambia el margen. Al llegar al tope duro:
+
+- un comando largo (la suite de pruebas, la puerta de validación) se termina junto con los procesos que inició, su estado dice `cut` y no se registra ningún resultado de comprobación;
+- las siguientes llamadas a herramientas de un subagente se rechazan, para que escriba su reporte y termine;
+- la ejecución toma la misma ruta que en cualquier límite, y el comentario dice qué se cortó.
+
+Un hook del plugin (`hooks/hooks.json`) hace los rechazos, y también rechaza lanzar un agente de Relevo pasado el límite de minutos, así que no depende de que el modelo se acuerde de preguntar. Se ejecuta antes de cada llamada a herramienta de toda sesión con el plugin activado y no dice nada fuera de una construcción en curso. Lo que todavía puede pasar del tope duro es un comando que un subagente haya lanzado en primer plano justo antes, mientras lo permita la herramienta de consola del ejecutor (hasta 10 minutos).
+
+Cuando una ejecución en la nube no tiene cifras de uso que reportar (una ejecución cortada puede no dejar ninguna), el comentario de uso dice que el uso se desconoce, por qué, y enlaza la ejecución.
+
 Cuando el propio runner corta al agente (su límite de turnos o de costo) o el job se cancela o vence, la ruta de fallo nunca corre. Un paso del workflow go que siempre corre, **Keep the work of a run that was cut**, mira el issue: si sigue en `building` o `ready` no se registró ningún resultado, así que hace commit de lo que queda en el árbol de trabajo y lo sube, con los mismos escaneos de todo commit de Relevo. Su resultado dice en el comentario qué pasó con el trabajo:
 
 - **guardado**: el trabajo está en la rama del issue; `/relevo:fix <n>` lo verifica y continúa.
