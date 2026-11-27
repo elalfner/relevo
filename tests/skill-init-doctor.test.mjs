@@ -283,3 +283,11 @@ test('init --local makes only the first commit of a new repository, and says why
   assert.match(section, /the one exception to "Never commit or push" below/);
   assert.match(section, /`doctor` fails until `relevo\.yml` is committed there/);
 });
+
+test('Scenario: Init ends - the report, and the local flow, end with the step after init from the table', () => {
+  const { body } = load('init');
+  assert.match(body.split('## Report')[1], /After the steps by hand, end with the next step[\s\S]*scripts\/next-step\.mjs --after init/);
+  const local = body.split('## Local project')[1].split('\n## ')[0];
+  assert.match(local, /scripts\/next-step\.mjs --after init/);
+  assert.doesNotMatch(local, /Then say the next step: `\/relevo:think`/);
+});

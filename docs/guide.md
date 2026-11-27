@@ -24,16 +24,17 @@ Which path is yours:
 
 ## The life of an issue
 
-An issue is always in one state, shown by a label, and each state has one next step. The same table is what the hand-off messages say.
+An issue is always in one state, shown by a label (a `draft` and a `closed` issue have none), and each state has one next step. The same table is what the hand-off messages say.
 
 | State | Next command | Who |
 |---|---|---|
+| `draft` | `/relevo:issue <n>`; if the idea needs exploring, `/relevo:think #<n>` first | the spec writer |
 | `ready` | approved, and nothing starts by itself: `/relevo:go <n>` on your machine, or apply `relevo:go` for the cloud | the assignee |
 | `queued` | none: it starts when the assignee has capacity, an agent is free, or the issue that shares a file with it is merged | nobody |
-| `building` | none: the agent is building it | nobody |
+| `building` | none: the agent is building it; if its runner stopped answering, the comment of the run says how to start it again | nobody |
 | `blocked` | none: it starts when the issues it depends on are merged | nobody |
 | `built` | `/relevo:review <n>` | the assignee |
-| `in-review` | `/relevo:review <n>` to continue; if something fails, `/relevo:fix <n>` | the assignee |
+| `in-review` | `/relevo:review <n>` to continue; if something fails, `/relevo:fix <n>`; in a project with `tracker: files`, `/relevo:ship <n>` once the review passed | the assignee |
 | `pr-open` | `/relevo:ship <n>`, after someone other than the author approves on GitHub; or apply `relevo:ship` to the issue | the approver |
 | `needs-spec` | `/relevo:issue <n>`; if the question needs exploring, `/relevo:think #<n>` first | the spec writer |
 | `build-failed` | `/relevo:go <n> --resume` when the build stopped at a limit or was cut and its work was kept; `/relevo:fix <n>` when QA rejected the work; if the branch has only the specification, delete it and apply `relevo:go` (or run `/relevo:go <n> --retry`); if QA found something that only a person can supply or decide, `/relevo:issue <n>` after that | the assignee |
@@ -43,8 +44,9 @@ An issue is always in one state, shown by a label, and each state has one next s
 | `urgent` | none: it travels next to the state above and asks for an early start (see below) | nobody |
 | `go` | none: a request next to `ready`; the cloud decides about the issue and removes the label | nobody |
 | `local` | none: it marks a build on a machine next to `building`, and leaves with it | nobody |
+| `closed` | none: it was delivered; promoting the base branch to the release branch is a separate pull request | nobody |
 
-Before an issue has a state, `/relevo:think` explores the idea and `/relevo:issue` writes the issue. `/relevo:status` shows who is waiting on what.
+Before there is an issue, `/relevo:think` explores the idea and `/relevo:issue` writes it. `/relevo:status` shows who is waiting on what.
 
 ## What do I do when…
 

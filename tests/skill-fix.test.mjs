@@ -181,3 +181,16 @@ test('Scenario: Fix says that --resume continues an unfinished build, and only f
   assert.match(body, /goes on with the correction only if the person wants to correct the work instead|only if the person wants to correct/);
   assert.match(body, /For `wip: rejected by QA`[^.]*(does not|never|not) mention `--resume`|rejected by QA[^.]*no `--resume`/s);
 });
+
+test('Scenario: Fix finishes - the comment gets the state, the assignee is told with no ask, and no step is written by hand', () => {
+  assert.match(body, /`state` \(the `to` that `fix-state\.mjs` printed\)/);
+  assert.match(body, /the issue's assignee as `recipient`, with no `ask`/);
+  assert.doesNotMatch(body, /Your next step: \/relevo:/);
+});
+
+test('Scenario: Fix of an issue with a pull request - the report ends with the step read from the labels after the fix', () => {
+  const report = body.split('## Report')[1];
+  assert.match(report, /scripts\/next-step\.mjs --labels "<the issue's labels, comma separated>" --issue <issue>/);
+  assert.match(report, /A fix that stopped keeps the instruction/);
+});
+

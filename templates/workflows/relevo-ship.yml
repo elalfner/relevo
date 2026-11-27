@@ -146,5 +146,9 @@ jobs:
           if [ -f "$RUNNER_TEMP/relevo/scripts/render-message.mjs" ]; then
             body=$(jq -n --arg issue "$ISSUE" --arg run "$RUN_URL" --arg actor "$ACTOR" '{issue: $issue, run: $run, actor: $actor}' | node "$RUNNER_TEMP/relevo/scripts/render-message.mjs" ship_failed --config work/relevo.yml) || body=""
           fi
-          [ -n "$body" ] || body="@$ACTOR #$ISSUE was not shipped: the run ended without an outcome. Read the log to see why: $RUN_URL"
+          if [ -z "$body" ]; then
+            lang=$(sed -n 's/^language:[[:space:]]*\([a-z][a-z]*\).*/\1/p' work/relevo.yml 2>/dev/null | head -n 1)
+            body="@$ACTOR #$ISSUE was not shipped: the run ended without an outcome. Read the log to see why: $RUN_URL . When the cause is fixed, apply relevo:ship again."
+            [ "$lang" = "es" ] && body="@$ACTOR #$ISSUE no se fusionó: la ejecución terminó sin resultado. Lee el log para ver por qué: $RUN_URL . Cuando la causa esté resuelta, vuelve a poner relevo:ship."
+          fi
           gh issue comment "$ISSUE" --body "$body"

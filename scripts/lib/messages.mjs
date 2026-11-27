@@ -39,7 +39,7 @@ const REQUIRED = {
   go_denied_maintainer: ['issue'],
   go_needs_ready: ['issue'],
   go_building: ['issue'],
-  go_already_built: ['issue'],
+  go_already_built: ['issue', 'state'],
   go_use_fix: ['issue'],
   go_resume_stalled: ['issue'],
   approval_withdrawn: ['issue', 'edited'],
@@ -47,7 +47,7 @@ const REQUIRED = {
   queued_capacity: ['issue', 'title', 'assignee', 'built', 'limit'],
   queued_agents: ['issue', 'title'],
   queued_shared_files: ['issue', 'title', 'file', 'other', 'hours'],
-  fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration'],
+  fix_done: ['issue', 'title', 'summary', 'qa', 'commit', 'iteration', 'state'],
   ship_stopped: ['actor', 'issue', 'reasons'],
   ship_retry: ['actor', 'issue', 'reasons'],
   ship_not_approver: ['actor', 'issue'],
@@ -155,6 +155,7 @@ export const CATALOG = {
       '@{{reviewer}} reminder: #{{issue}} has been waiting for your review for {{hours}} hours',
       '',
       'Pull request: {{pr}}',
+      'Your next step: review the pull request on GitHub: approve it or request changes.',
     ],
     review_escalation: [
       '@{{spec_writer}} #{{issue}} has waited {{hours}} hours without a review from @{{reviewer}}',
@@ -174,26 +175,32 @@ export const CATALOG = {
     ],
     ready_denied: [
       '#{{issue}} was not built: only people with write access can approve an issue with ready, so the ready and go labels were removed',
+      'Your next step: if it should be built, someone with write access approves it with the ready label.',
       'Applied by: @{{actor}}',
     ],
     ready_denied_maintainer: [
       '#{{issue}} was not built: this repository is public, so only maintainers can approve an issue with ready, and the ready and go labels were removed',
+      'Your next step: if it should be built, a maintainer approves it with the ready label.',
       'Applied by: @{{actor}}',
     ],
     urgent_denied: [
       '#{{issue}}: the urgent label was removed because only people with write access can ask for an early start. The issue keeps its place in the queue.',
+      'Nothing to do now: only the early start was refused, and the issue goes on as before.',
       'Applied by: @{{actor}}',
     ],
     urgent_denied_maintainer: [
       '#{{issue}}: the urgent label was removed because this repository is public, so only maintainers can ask for an early start. The issue keeps its place in the queue.',
+      'Nothing to do now: only the early start was refused, and the issue goes on as before.',
       'Applied by: @{{actor}}',
     ],
     go_denied: [
       '#{{issue}} was not built: only people with write access can request a build, so the go label was removed. The issue stays ready.',
+      'Your next step: someone with write access applies the go label, or runs `/relevo:go {{issue}}` on their machine.',
       'Applied by: @{{actor}}',
     ],
     go_denied_maintainer: [
       '#{{issue}} was not built: this repository is public, so only maintainers can request a build, and the go label was removed. The issue stays ready.',
+      'Your next step: a maintainer applies the go label, or runs `/relevo:go {{issue}}` on their machine.',
       'Applied by: @{{actor}}',
     ],
     go_needs_ready: [
@@ -203,10 +210,12 @@ export const CATALOG = {
     ],
     go_building: [
       '#{{issue}} is being built already, so the go label was removed. The build in progress was not touched.',
+      '{{next_line}}',
       'Applied by: @{{actor}}',
     ],
     go_already_built: [
-      '#{{issue}} is already built, so the go label was removed. Its state says the next step.',
+      '#{{issue}} is already built, so the go label was removed.',
+      '{{next_line}}',
       'Applied by: @{{actor}}',
     ],
     go_use_fix: [
@@ -259,6 +268,7 @@ export const CATALOG = {
       'QA: {{qa}}',
       'Commit: {{commit}}',
       '@{{recipient}} {{ask}}',
+      '{{next_line}}',
     ],
     ship_stopped: [
       '@{{actor}} #{{issue}} was not shipped',
@@ -293,13 +303,14 @@ export const CATALOG = {
       'Pull request {{pr}} was squash-merged into {{base}} as {{commit}}.',
       'Applied by: @{{actor}}',
       '{{checks_note}}',
-      'The issue is closed and its labels removed. Promoting {{base}} to the release branch is a separate pull request.',
+      'Nothing to do now: the issue is closed and its labels removed, so nothing is left to do for it. Promoting {{base}} to the release branch is a separate pull request.',
     ],
     run_progress: [
       'Relevo build in progress: {{phase_label}}{{attempt_suffix}}',
       'Tasks: {{tasks_done}} of {{tasks_total}}',
       'Group {{group}} of {{groups}}',
       'Running for {{minutes}} min',
+      '{{next_line}}',
       '',
       'This comment is updated while the run lasts and is closed when it ends.',
     ],
@@ -403,6 +414,7 @@ export const CATALOG = {
       '@{{reviewer}} recordatorio: #{{issue}} lleva {{hours}} horas esperando tu revisión',
       '',
       'Pull request: {{pr}}',
+      'Tu siguiente paso: revisa el pull request en GitHub: apruébalo o pide cambios.',
     ],
     review_escalation: [
       '@{{spec_writer}} #{{issue}} lleva {{hours}} horas sin revisión de @{{reviewer}}',
@@ -422,26 +434,32 @@ export const CATALOG = {
     ],
     ready_denied: [
       '#{{issue}} no se construyó: solo quienes tienen acceso de escritura pueden aprobar un issue con ready, así que se quitaron las etiquetas ready y go',
+      'Tu siguiente paso: si hay que construirlo, alguien con acceso de escritura lo aprueba con la etiqueta ready.',
       'Aplicada por: @{{actor}}',
     ],
     ready_denied_maintainer: [
       '#{{issue}} no se construyó: este repositorio es público, así que solo quienes mantienen el proyecto pueden aprobar un issue con ready, y se quitaron las etiquetas ready y go',
+      'Tu siguiente paso: si hay que construirlo, quien mantiene el proyecto lo aprueba con la etiqueta ready.',
       'Aplicada por: @{{actor}}',
     ],
     urgent_denied: [
       '#{{issue}}: se quitó la etiqueta de urgente porque solo quienes tienen acceso de escritura pueden pedir un inicio anticipado. El issue conserva su lugar en la cola.',
+      'Nada que hacer ahora: solo se rechazó el inicio anticipado, y el issue sigue como antes.',
       'Aplicada por: @{{actor}}',
     ],
     urgent_denied_maintainer: [
       '#{{issue}}: se quitó la etiqueta de urgente porque este repositorio es público, así que solo quienes mantienen el proyecto pueden pedir un inicio anticipado. El issue conserva su lugar en la cola.',
+      'Nada que hacer ahora: solo se rechazó el inicio anticipado, y el issue sigue como antes.',
       'Aplicada por: @{{actor}}',
     ],
     go_denied: [
       '#{{issue}} no se construyó: solo quienes tienen acceso de escritura pueden pedir un build, así que se quitó la etiqueta go. El issue sigue en ready.',
+      'Tu siguiente paso: alguien con acceso de escritura pone la etiqueta go, o ejecuta `/relevo:go {{issue}}` en su máquina.',
       'Aplicada por: @{{actor}}',
     ],
     go_denied_maintainer: [
       '#{{issue}} no se construyó: este repositorio es público, así que solo quienes mantienen el proyecto pueden pedir un build, y se quitó la etiqueta go. El issue sigue en ready.',
+      'Tu siguiente paso: quien mantiene el proyecto pone la etiqueta go, o ejecuta `/relevo:go {{issue}}` en su máquina.',
       'Aplicada por: @{{actor}}',
     ],
     go_needs_ready: [
@@ -451,10 +469,12 @@ export const CATALOG = {
     ],
     go_building: [
       '#{{issue}} ya se está construyendo, así que se quitó la etiqueta go. El build en curso no se tocó.',
+      '{{next_line}}',
       'Aplicada por: @{{actor}}',
     ],
     go_already_built: [
-      '#{{issue}} ya está construido, así que se quitó la etiqueta go. Su estado dice el siguiente paso.',
+      '#{{issue}} ya está construido, así que se quitó la etiqueta go.',
+      '{{next_line}}',
       'Aplicada por: @{{actor}}',
     ],
     go_use_fix: [
@@ -507,6 +527,7 @@ export const CATALOG = {
       'QA: {{qa}}',
       'Commit: {{commit}}',
       '@{{recipient}} {{ask}}',
+      '{{next_line}}',
     ],
     ship_stopped: [
       '@{{actor}} #{{issue}} no se fusionó',
@@ -541,13 +562,14 @@ export const CATALOG = {
       'El pull request {{pr}} se fusionó con squash en {{base}} como {{commit}}.',
       'La pidió: @{{actor}}',
       '{{checks_note}}',
-      'El issue está cerrado y sin etiquetas. Promover {{base}} a la rama de release es un pull request aparte.',
+      'Nada que hacer ahora: el issue está cerrado y sin etiquetas, así que no queda nada por hacer en él. Promover {{base}} a la rama de release es un pull request aparte.',
     ],
     run_progress: [
       'Construcción de Relevo en curso: {{phase_label}}{{attempt_suffix}}',
       'Tareas: {{tasks_done}} de {{tasks_total}}',
       'Grupo {{group}} de {{groups}}',
       'Lleva {{minutes}} min',
+      '{{next_line}}',
       '',
       'Este comentario se actualiza mientras dura la ejecución y se cierra al terminar.',
     ],
@@ -1022,6 +1044,14 @@ export function renderMessage(kind, data = {}, language = 'en') {
       const kept = ['kept', 'resume', 'input', 'spec', 'policy', 'protected', 'partial'].includes(step.reason);
       values.next_line = step.command ? `${nextStepPrefix(language_)}: ${values.command ?? step.command}${kept ? ` (${step.hint})` : ''}` : `${nextStepPrefix(language_)}: ${step.hint}.`;
     }
+  }
+  // A build in progress is a wait; an issue that is already built or fixed has the next step of the state it is in.
+  if (kind === 'go_building' || kind === 'run_progress') values.next_line = nextStep({ state: 'building', language: language_ }).line;
+  if (kind === 'go_already_built') values.next_line = nextStep({ state: values.state, issue: values.issue, language: language_ }).line;
+  if (kind === 'fix_done') {
+    const { line } = nextStep({ state: values.state, issue: values.issue, language: language_ });
+    // With no ask the person to tell is mentioned in front of the step; with one, the ask has its own line above.
+    values.next_line = present(values.recipient) && !present(values.ask) ? `@${values.recipient} ${line}` : line;
   }
   if (kind === 'build_failed') {
     values.class_line = classLine(values, es);

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { resolveLabelNames } from '../scripts/lib/labels.mjs';
+import { nextStep } from '../scripts/lib/next-step.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
 const workflow = readFileSync(`${root}templates/workflows/relevo-go.yml`, 'utf8');
@@ -676,6 +677,14 @@ test('Scenario: The runner of the build is lost - a failed or cancelled build le
 test('the line of a lost runner is in the language of relevo.yml', () => {
   const t = runClose({ language: 'es' }, 'failure');
   assert.match(t.state().comments[0].body, /^La construcción de Relevo terminó sin resultado: su runner dejó de responder\.\nEjecución: https:\/\/example\.test\/run\/9/);
+});
+
+test('Scenario: The words drift apart - the line of the lost runner is the one of the table, in both languages', () => {
+  ['en', 'es'].forEach((language) => {
+    const t = runClose({ language: language === 'es' ? 'es' : null }, 'failure');
+    const lines = t.state().comments[0].body.split('\n');
+    assert.equal(lines[2], nextStep({ state: 'building', reason: 'lost-runner', issue: 42, language }).line, language);
+  });
 });
 
 test('Scenario: The labels are not changed - closing for a lost runner edits one comment and changes nothing else', () => {

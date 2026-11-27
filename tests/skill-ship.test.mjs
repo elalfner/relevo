@@ -79,7 +79,8 @@ test('the archive may only touch the specifications folder, and is checked befor
 
 test('it handles approvals dismissed by the archive push, and reminds that releasing is separate', () => {
   assert.match(body, /an approval dismissed by the push/);
-  assert.match(body, /promoting `<base>` to `<release>` is a separate pull request/);
+  assert.match(body, /the promotion is from `<base>` to `<release>`, with a version tag/);
+  assert.match(body, /next-step\.mjs --state closed/);
 });
 
 test('the skill mentions neither private sources nor personal data', () => {
@@ -223,4 +224,23 @@ test('Scenario: Clash found in a session - the delta is checked in step 1, befor
   assert.match(after, /exits 1[^.]*stop[^.]*changing nothing/i);
   assert.match(after, /\/relevo:fix \$ARGUMENTS/);
   assert.match(after, /ADDED[^.]*MODIFIED/);
+});
+
+test('Scenario: Ship stops - every stop ends with the state read from the issue and its step, never a state taken for granted', () => {
+  const report = body.split('## Report')[1];
+  const stopped = report.split('### Stopped without merging')[1];
+  assert.match(stopped, /every stop above, at whatever step/);
+  assert.match(stopped, /scripts\/next-step\.mjs --labels "<the issue's labels, comma separated>" --issue \$ARGUMENTS/);
+  assert.match(stopped, /--state closed --issue \$ARGUMENTS/);
+  assert.match(stopped, /never say that the issue is on a state you did not read/);
+  assert.doesNotMatch(report, /pr-open/);
+});
+
+test('a merge ends with the step of a closed issue, and a files project keeps its own report and uses the local variant on a stop', () => {
+  const merged = body.split('### Merged')[1].split('### Stopped')[0];
+  assert.match(merged, /scripts\/next-step\.mjs --state closed --issue \$ARGUMENTS/);
+  assert.match(merged, /with a version tag/);
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /Nothing else of the report of a merge below applies/);
+  assert.match(section, /--state in-review --reason local --issue \$ARGUMENTS/);
 });

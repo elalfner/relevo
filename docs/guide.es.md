@@ -24,16 +24,17 @@ Cuál es tu camino:
 
 ## La vida de un issue
 
-Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tiene un siguiente paso. Esta misma tabla es lo que dicen los mensajes de traspaso.
+Un issue está siempre en un estado, que muestra una etiqueta (un `draft` y un issue `closed` no tienen ninguna), y cada estado tiene un siguiente paso. Esta misma tabla es lo que dicen los mensajes de traspaso.
 
 | Estado | Siguiente comando | Quién |
 |---|---|---|
+| `draft` | `/relevo:issue <n>`; si la idea necesita explorarse, antes `/relevo:think #<n>` | quien escribe la spec |
 | `ready` | aprobado, y nada empieza solo: `/relevo:go <n>` en tu máquina, o pon `relevo:go` para la nube | la persona asignada |
 | `queued` | ninguno: empieza cuando la persona asignada tiene capacidad, hay un agente libre o se fusiona el issue que comparte un archivo con él | nadie |
-| `building` | ninguno: el agente lo está construyendo | nadie |
+| `building` | ninguno: el agente lo está construyendo; si su runner dejó de responder, el comentario de la ejecución dice cómo volver a iniciarlo | nadie |
 | `blocked` | ninguno: empieza cuando se fusionan los issues de los que depende | nadie |
 | `built` | `/relevo:review <n>` | la persona asignada |
-| `in-review` | `/relevo:review <n>` para continuar; si algo falla, `/relevo:fix <n>` | la persona asignada |
+| `in-review` | `/relevo:review <n>` para continuar; si algo falla, `/relevo:fix <n>`; en un proyecto con `tracker: files`, `/relevo:ship <n>` cuando la revisión pasó | la persona asignada |
 | `pr-open` | `/relevo:ship <n>`, después de que alguien que no sea el autor apruebe en GitHub; o pon `relevo:ship` al issue | quien aprueba |
 | `needs-spec` | `/relevo:issue <n>`; si la pregunta necesita explorarse, antes `/relevo:think #<n>` | quien escribe la spec |
 | `build-failed` | `/relevo:go <n> --resume` cuando el build se detuvo en un límite o lo cortaron y se guardó su trabajo; `/relevo:fix <n>` cuando QA rechazó el trabajo; si la rama solo tiene la especificación, bórrala y pon `relevo:go` (o ejecuta `/relevo:go <n> --retry`); si QA encontró algo que solo una persona puede aportar o decidir, `/relevo:issue <n>` después | la persona asignada |
@@ -43,8 +44,9 @@ Un issue está siempre en un estado, que muestra una etiqueta, y cada estado tie
 | `urgent` | ninguno: acompaña al estado de arriba y pide un inicio anticipado (ver abajo) | nadie |
 | `go` | ninguno: una petición junto a `ready`; la nube decide sobre el issue y quita la etiqueta | nadie |
 | `local` | ninguno: marca un build en una máquina junto a `building`, y se va con él | nadie |
+| `closed` | ninguno: se entregó; promover la rama base a la rama de release es un pull request aparte | nadie |
 
-Antes de que un issue tenga estado, `/relevo:think` explora la idea y `/relevo:issue` escribe el issue. `/relevo:status` muestra quién espera a quién.
+Antes de que haya un issue, `/relevo:think` explora la idea y `/relevo:issue` lo escribe. `/relevo:status` muestra quién espera a quién.
 
 ## Qué hago cuando…
 

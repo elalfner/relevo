@@ -214,10 +214,12 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
     decisions.push(out);
   }
 
+  // The state of an issue that is already built, which the refusal of `go` gives the next step of.
+  const builtState = (issue) => ['built', 'in-review', 'pr-open', 'changes-requested'].find((k) => has(issue, k));
   // What a `go` label on an issue that cannot take it says, by the state of the issue. `go` never stands in for the approval.
   const refusal = (issue) => {
     if (has(issue, 'building')) return 'go_building';
-    if (['built', 'in-review', 'pr-open', 'changes-requested'].some((k) => has(issue, k))) return 'go_already_built';
+    if (builtState(issue)) return 'go_already_built';
     if (has(issue, 'build-failed')) {
       if (issue.has_branch !== true) return null;
       return issue.resume_check?.state === 'resume' && stallOf(issue) !== null ? 'go_resume_stalled' : 'go_use_fix';
@@ -283,7 +285,7 @@ export function planGo({ config, issues, completed = [], completedExternal = [],
         return;
       }
       decision(issue, 'refuse', `the go label cannot be taken by this issue (${kind})`, {
-        comment: { kind, data: { issue: issue.number, ...(issue.go_by ? { actor: issue.go_by } : {}) } },
+        comment: { kind, data: { issue: issue.number, ...(issue.go_by ? { actor: issue.go_by } : {}), ...(kind === 'go_already_built' ? { state: builtState(issue) } : {}) } },
       });
       return;
     }

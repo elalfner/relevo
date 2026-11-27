@@ -771,6 +771,7 @@ test('Scenario: Already built - go on built, in-review or pr-open is refused as 
     const d = refused([state, 'relevo:go']);
     assert.equal(d.action, 'refuse', state);
     assert.equal(d.comment.kind, 'go_already_built', state);
+    assert.equal(d.comment.data.state, state.replace('relevo:', ''), 'the comment gives the next step of this state');
     assert.deepEqual(d.labels, { add: [], remove: ['relevo:go'] }, state);
   });
 });

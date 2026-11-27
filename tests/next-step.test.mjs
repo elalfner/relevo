@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { LABEL_KEYS } from '../scripts/lib/labels.mjs';
 import { NEXT_STEP_REASONS, NEXT_STEP_STATES, nextStep } from '../scripts/lib/next-step.mjs';
 
@@ -10,7 +13,22 @@ const run = (...args) => spawnSync('node', [CLI, ...args], { encoding: 'utf8' })
 test('Scenario: Every state has an entry - a lifecycle label without one fails this test', () => {
   const missing = LABEL_KEYS.filter((key) => !NEXT_STEP_STATES.includes(key));
   assert.deepEqual(missing, [], `these lifecycle states have no next step: ${missing.join(', ')}`);
-  assert.deepEqual(NEXT_STEP_STATES.filter((key) => !LABEL_KEYS.includes(key)), [], 'an entry for a state that does not exist');
+  // `draft` and `closed` are states of an issue with no label.
+  assert.deepEqual([...NEXT_STEP_STATES].sort(), [...LABEL_KEYS, 'draft', 'closed'].sort(), 'an entry for a state that does not exist, or a missing one');
+});
+
+test('Scenario: A hand-off has someone who acts and a wait has nobody - every entry and variant has a hint, in both languages', () => {
+  NEXT_STEP_STATES.forEach((state) => {
+    (NEXT_STEP_REASONS[state] ?? [null]).forEach((reason) => {
+      ['en', 'es'].forEach((language) => {
+        const step = nextStep({ state, reason, issue: 42, language });
+        assert.ok(step.hint.length > 5, `${state}/${reason}/${language}`);
+        assert.ok(['nobody', 'assignee', 'spec_writer', 'author', 'approver', 'person'].includes(step.who), `${state}/${reason}: ${step.who}`);
+        if (step.who === 'nobody') assert.equal(step.command, null, `${state}/${reason}: a wait has no command`);
+        assert.doesNotMatch(step.line, /\(undefined\)|\(\)/, `${state}/${reason}/${language}`);
+      });
+    });
+  });
 });
 
 test('every state and every reason gives a line in both languages', () => {
@@ -193,7 +211,8 @@ test('every text that used to say "apply ready again" names the go label or --re
       ['en', 'es'].forEach((language) => {
         const { line } = nextStep({ state, reason, issue: 7, language });
         if (/ready/.test(line)) assert.match(line, /relevo:go|\/relevo:go 7/, `${state}/${reason}/${language}`);
-        assert.doesNotMatch(line, /(label it|label the issue relevo:)ready again|ponerle ready|poner relevo:ready/, `${state}/${reason}/${language}`);
+        // The restart of a lost runner puts `ready` back and says that it starts nothing, in the words of `status`.
+        if (!/starts nothing|no inicia nada/.test(line)) assert.doesNotMatch(line, /(label it|label the issue relevo:)ready again|ponerle ready|poner relevo:ready/, `${state}/${reason}/${language}`);
       });
     });
   });
@@ -238,3 +257,67 @@ test('the stalled variant has no command: resuming again would not help, and the
   assert.match(es.hint, /reanudar de nuevo no ayudará/);
   assert.match(es.hint, /parte el issue/);
 });
+
+test('Scenario: A draft - the spec writer runs /relevo:issue, after /relevo:think if the idea needs exploring', () => {
+  const r = run('--state', 'draft', '--issue', '7');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Your next step: \/relevo:issue 7 \(the spec writer\): .*\/relevo:think #7/);
+  assert.match(run('--state', 'draft', '--issue', '7', '--language', 'es').stdout, /^Tu siguiente paso: \/relevo:issue 7 /);
+});
+
+test('Scenario: A closed issue - nobody acts, it was delivered, and the promotion is a separate pull request', () => {
+  const r = run('--state', 'closed', '--issue', '7');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Nothing to do now: it was delivered; promoting the base branch to the release branch is a separate pull request\./);
+  assert.match(run('--state', 'closed', '--issue', '7', '--language', 'es').stdout, /^Nada que hacer ahora: se entregó/);
+});
+
+test('Scenario: Review passed in a files project - in-review has a local variant that is ship, with no pull request or approval', () => {
+  const step = nextStep({ state: 'in-review', reason: 'local', issue: 7 });
+  assert.deepEqual([step.command, step.who], ['/relevo:ship 7', 'person']);
+  assert.doesNotMatch(step.line, /pull request|GitHub|approv/);
+  assert.equal(nextStep({ state: 'in-review', issue: 7 }).command, '/relevo:review 7', 'continue is the default');
+});
+
+test('Scenario: The runner is lost - building has a variant with no command that gives the restart to the assignee', () => {
+  const step = nextStep({ state: 'building', reason: 'lost-runner', issue: 7 });
+  assert.deepEqual([step.command, step.who], [null, 'assignee']);
+  assert.match(step.line, /^Your next step: read the run, then remove relevo:building and apply relevo:ready again \(it starts nothing\), then apply relevo:go or run \/relevo:go 7 \(the assignee\)\.$/);
+  assert.match(nextStep({ state: 'building', reason: 'lost-runner', issue: 7, language: 'es' }).line, /^Tu siguiente paso: lee la ejecución/);
+  assert.equal(nextStep({ state: 'building' }).who, 'nobody', 'the agent is the default');
+});
+
+test('Scenario: The state read from the labels - the lifecycle label, else draft, and needs-reviewer adds its line', () => {
+  const lines = (...args) => run(...args).stdout.trim().split('\n');
+  assert.deepEqual(lines('--labels', 'relevo:built,relevo:urgent,bug', '--issue', '7'), ['State: built', nextStep({ state: 'built', issue: 7 }).line]);
+  assert.deepEqual(lines('--labels', '', '--issue', '7'), ['State: draft', nextStep({ state: 'draft', issue: 7 }).line]);
+  assert.deepEqual(lines('--labels', 'relevo:pr-open,relevo:needs-reviewer', '--issue', '7'), ['State: pr-open', nextStep({ state: 'pr-open', issue: 7 }).line, nextStep({ state: 'needs-reviewer' }).line]);
+  assert.deepEqual(lines('--labels', 'relevo:in-review', '--reason', 'local', '--issue', '7', '--language', 'es'), ['Estado: in-review', nextStep({ state: 'in-review', reason: 'local', issue: 7, language: 'es' }).line]);
+});
+
+test('the labels are read under their configured names', () => {
+  const config = join(mkdtempSync(join(tmpdir(), 'next-step-')), 'relevo.yml');
+  const template = readFileSync(new URL('../templates/relevo.yml', import.meta.url), 'utf8').replace('[]          # GitHub', '[ana]       # GitHub');
+  assert.doesNotMatch(template, /^labels:/m);
+  writeFileSync(config, `${template}\nlabels:\n  built: listo\n`);
+  assert.match(run('--labels', 'listo', '--issue', '7', '--config', config).stdout, /^State: built\n/);
+});
+
+test('needs-spec and build-failed with no reason point to the last comment, and with a reason give its step', () => {
+  ['needs-spec', 'build-failed'].forEach((state) => {
+    const out = run('--labels', `relevo:${state}`, '--issue', '7').stdout;
+    assert.match(out, /read the last comment of the issue/);
+    assert.doesNotMatch(out, /\/relevo:/);
+    assert.match(run('--labels', `relevo:${state}`, '--issue', '7', '--language', 'es').stdout, /lee el último comentario del issue/);
+  });
+  assert.match(run('--labels', 'relevo:build-failed', '--reason', 'resume', '--issue', '7').stdout, /\/relevo:go 7 --resume/);
+  assert.equal(run('--labels', 'relevo:built', '--state', 'built', '--issue', '7').status, 2);
+});
+
+test('--after init names think and then issue, in both languages', () => {
+  const r = run('--after', 'init');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Your next step: after the steps above, run \/relevo:think .* then \/relevo:issue /);
+  assert.match(run('--after', 'init', '--language', 'es').stdout, /^Tu siguiente paso: después de los pasos anteriores, ejecuta \/relevo:think .* \/relevo:issue /);
+});
+

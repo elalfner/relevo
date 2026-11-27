@@ -4,11 +4,18 @@
 // Every message and report that tells a person what to do next asks this table, so the command, who runs it and
 // the short hint cannot drift apart. A test checks that every lifecycle state has an entry.
 
+import { LABELS, resolveLabelNames } from './labels.mjs';
 import { pickLanguage } from './language.mjs';
 
 // command: the command to run (`{n}` is the issue number), or null when nobody has to act yet.
 // who:     the role that runs it; the words for each role are in WHO.
 const TABLE = {
+  // Not a label: an open issue with no lifecycle label.
+  draft: {
+    command: '/relevo:issue {n}',
+    who: 'spec_writer',
+    hint: { en: 'write it up; if the idea needs exploring, run /relevo:think #{n} first', es: 'redáctalo; si la idea necesita explorarse, ejecuta antes /relevo:think #{n}' },
+  },
   // The approval starts nothing: someone decides where it is built.
   ready: {
     command: '/relevo:go {n}',
@@ -21,9 +28,21 @@ const TABLE = {
     hint: { en: 'it starts when the assignee has capacity, an agent is free, or the issue that shares a file with it is merged', es: 'empieza cuando la persona asignada tenga capacidad, haya un agente libre o se fusione el issue que comparte un archivo con él' },
   },
   building: {
-    command: null,
-    who: 'nobody',
-    hint: { en: 'the agent is building it', es: 'el agente la está construyendo' },
+    agent: {
+      command: null,
+      who: 'nobody',
+      hint: { en: 'the agent is building it', es: 'el agente la está construyendo' },
+    },
+    // Nobody is building it and the issue stays `building`. The `requeue` job of relevo-go.yml writes this same line with no
+    // script, and a test compares them. No command: the labels come first.
+    'lost-runner': {
+      command: null,
+      who: 'assignee',
+      hint: {
+        en: 'read the run, then remove relevo:building and apply relevo:ready again (it starts nothing), then apply relevo:go or run /relevo:go {n}',
+        es: 'lee la ejecución, luego quita relevo:building y vuelve a poner relevo:ready (no inicia nada), luego pon relevo:go o ejecuta /relevo:go {n}',
+      },
+    },
   },
   blocked: {
     command: null,
@@ -36,9 +55,17 @@ const TABLE = {
     hint: { en: 'review it on a device', es: 'revísala en un dispositivo' },
   },
   'in-review': {
-    command: '/relevo:review {n}',
-    who: 'assignee',
-    hint: { en: 'continue the review; if something fails, run /relevo:fix {n}', es: 'continúa la revisión; si algo falla, ejecuta /relevo:fix {n}' },
+    continue: {
+      command: '/relevo:review {n}',
+      who: 'assignee',
+      hint: { en: 'continue the review; if something fails, run /relevo:fix {n}', es: 'continúa la revisión; si algo falla, ejecuta /relevo:fix {n}' },
+    },
+    // A files project whose review passed: no pull request is opened and no label moves, so the delivery is local.
+    local: {
+      command: '/relevo:ship {n}',
+      who: 'person',
+      hint: { en: 'the review passed: deliver it on this machine', es: 'la revisión pasó: entrégala en esta máquina' },
+    },
   },
   'pr-open': {
     command: '/relevo:ship {n}',
@@ -254,11 +281,23 @@ const TABLE = {
     who: 'nobody',
     hint: { en: 'it is being built on a machine', es: 'se está construyendo en una máquina' },
   },
+  // Not a label: the issue was delivered and closed, and every Relevo label was removed.
+  closed: {
+    command: null,
+    who: 'nobody',
+    hint: { en: 'it was delivered; promoting the base branch to the release branch is a separate pull request', es: 'se entregó; promover la rama base a la rama de release es un pull request aparte' },
+  },
+};
+
+// The step after `init`. It is not the state of an issue, so it is not an entry of the table.
+const AFTER_INIT = {
+  en: 'after the steps above, run /relevo:think to explore an idea, and then /relevo:issue to write the issue',
+  es: 'después de los pasos anteriores, ejecuta /relevo:think para explorar una idea y luego /relevo:issue para escribir el issue',
 };
 
 const WHO = {
-  en: { assignee: 'the assignee', spec_writer: 'the spec writer', author: 'the author', approver: 'whoever merges', nobody: '' },
-  es: { assignee: 'la persona asignada', spec_writer: 'quien escribe las specs', author: 'el autor', approver: 'quien fusiona', nobody: '' },
+  en: { assignee: 'the assignee', spec_writer: 'the spec writer', author: 'the author', approver: 'whoever merges', person: 'the person', nobody: '' },
+  es: { assignee: 'la persona asignada', spec_writer: 'quien escribe las specs', author: 'el autor', approver: 'quien fusiona', person: 'la persona', nobody: '' },
 };
 
 const PREFIX = {
@@ -266,11 +305,13 @@ const PREFIX = {
   es: { act: 'Tu siguiente paso', wait: 'Nada que hacer ahora' },
 };
 
-/** The states that have an entry: every lifecycle state. */
+/** The states that have an entry: every lifecycle label, and `draft` and `closed`. */
 export const NEXT_STEP_STATES = Object.keys(TABLE);
 
 /** Reasons for the states whose next step depends on one. */
 export const NEXT_STEP_REASONS = {
+  building: ['agent', 'lost-runner'],
+  'in-review': ['continue', 'local'],
   'needs-spec': ['missing', 'ambiguous', 'inputs', 'policy', 'conflict'],
   'build-failed': ['fix', 'kept', 'resume', 'stalled', 'toolchain', 'installed', 'input', 'spec', 'policy', 'protected', 'delete-branch', 'restricted', 'rebuild', 'partial', 'schema'],
 };
@@ -281,7 +322,8 @@ const fill = (text, issue, branch = null) => String(text).replaceAll('{n}', Stri
 /**
  * The next step for an issue in `state`.
  * `branch` (optional) names the branch, so that `delete-branch` gives the command that deletes it.
- * `reason` picks the variant of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `build-failed`
+ * `reason` picks the variant of `building` (`agent` by default, or `lost-runner`), of `in-review` (`continue` by default, or `local`
+ * for a files project whose review passed), of `needs-spec` (`missing` by default, `ambiguous`, `inputs`, `policy` or `conflict`) and of `build-failed`
  * (`fix` by default, `kept` when the branch holds the work that QA rejected, `input`, `spec` or `policy` when that work was rejected for a finding that the developer agent cannot correct, `installed` when the dependencies of the platform were never installed, `delete-branch` when the branch holds only the specification, `protected` when the commit guard refused a protected path, `restricted` when the base branch versions a restricted file, `rebuild` when nothing was pushed, `partial` when a checkpoint was refused after earlier ones were pushed, or `schema` when the OpenSpec schema of the change is not one Relevo reads).
  * Returns { state, reason, command, who, hint, line }; `command` is null when nobody has to act yet.
  */
@@ -310,5 +352,50 @@ export function nextStep({ state, reason = null, issue = null, language = 'en', 
   return { state, reason: used, command, who: chosen.who, hint, line };
 }
 
+// The states whose step depends on why the issue is there, which the labels do not say.
+const FROM_COMMENT = {
+  'needs-spec': 'spec_writer',
+  'build-failed': 'assignee',
+};
+
+/**
+ * The state that the labels of an open issue give, under their configured names: the lifecycle label, else `draft`.
+ * `reviewer` is true when `needs-reviewer` travels next to it. A closed issue has no labels, so `closed` is never read here.
+ */
+export function stateOfLabels(labels = [], overrides = {}) {
+  const names = resolveLabelNames(overrides);
+  const found = LABELS.find((l) => (l.kind === 'state' || l.kind === 'exit') && labels.includes(names[l.key]));
+  return { state: found?.key ?? 'draft', reviewer: labels.includes(names['needs-reviewer']) };
+}
+
+/**
+ * The steps of an issue read from its labels: `{ state, steps }`, with a second step when `needs-reviewer` is on it.
+ * A `needs-spec` or `build-failed` issue with no `reason` gets no command: a default would be a guess, so the step points
+ * to the last comment of the issue, which was written knowing why.
+ */
+export function stepsOfLabels({ labels = [], overrides = {}, reason = null, issue = null, language = 'en' } = {}) {
+  const { state, reviewer } = stateOfLabels(labels, overrides);
+  const lang = pickLanguage(language);
+  let step;
+  if (reason === null && FROM_COMMENT[state]) {
+    const hint = lang === 'es' ? 'lee el último comentario del issue, que dice qué hacer' : 'read the last comment of the issue, which says what to do';
+    const who = FROM_COMMENT[state];
+    step = { state, reason: null, command: null, who, hint, line: `${PREFIX[lang].act}: ${hint} (${WHO[lang][who]}).` };
+  } else {
+    step = nextStep({ state, reason, issue, language: lang });
+  }
+  const steps = reviewer && state !== 'needs-reviewer' ? [step, nextStep({ state: 'needs-reviewer', language: lang })] : [step];
+  return { state, steps };
+}
+
+/** The line that ends the report of `init`. */
+export function afterInit(language = 'en') {
+  const lang = pickLanguage(language);
+  return `${PREFIX[lang].act}: ${AFTER_INIT[lang]}.`;
+}
+
 /** The words that open a next-step line in a language ("Your next step"), for messages that build their own line. */
 export const nextStepPrefix = (language) => PREFIX[pickLanguage(language)].act;
+
+/** The words that open the line of a wait ("Nothing to do now"). */
+export const waitPrefix = (language) => PREFIX[pickLanguage(language)].wait;

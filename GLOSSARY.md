@@ -59,3 +59,19 @@ _Avoid_: resume, continue, fix
 **Fix**:
 To correct the work that QA rejected, starting from its finding.
 _Avoid_: resume, finish the build, retry
+
+**Hand-off**:
+The point where Relevo stops and a specific person must act. It names who acts and what to do, and the command when there is one.
+_Avoid_: pause, handover
+
+**Wait**:
+The point where nobody has to act yet, and it says why.
+_Avoid_: idle, stopped
+
+**Next step**:
+What the single table says for a state: who acts and what to do.
+_Avoid_: follow-up, what follows
+
+**Closed**:
+An issue that was delivered, with every Relevo label removed.
+_Avoid_: done, finished

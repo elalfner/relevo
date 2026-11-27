@@ -36,7 +36,7 @@ When `tracker` in `relevo.yml` is `files` there is one person, no remote, no pul
 - After step 1, the gate must be green on the commit `ship` will merge. When the merge of `<base>` brought changes, QA runs as step 2 says; when it brought none (an empty merge, or only `relevo.yml`), run only the validation gate (step 1 of `${CLAUDE_PLUGIN_ROOT}/skills/go/references/qa-run.md`, without the lenses: the code is the code QA already passed). If the dependencies are not installed, ask the person before installing them. In both cases, when the gate is green, record it from this worktree before going on: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs record-gate --issue $ARGUMENTS`. A commit made after the last recorded gate (the merge itself, a change of `relevo.yml`) makes `ship` refuse the branch, and the person would have to switch branch to run the gate again.
 - Step 3: the `built` comment is the last one of `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs comments-list $ARGUMENTS`.
 - Local refs: this project has no remote, so wherever this skill, a reference it points to or a script's usage says `origin/<base>` or `origin/<branch>`, use the local `<base>` and `<branch>`, and skip every `git fetch`, `git pull` and `git push`. Step 1 merges the local `<base>` (`git merge --no-edit <base>`), and the diffs and scans use `<base>...HEAD`.
-- Steps 6 and 7: in place of opening a pull request, record the review once `decide` exited 0 and the person said yes: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs record-review --issue $ARGUMENTS --result passed`. Scan what the branch adds first (`git diff <base>...HEAD | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs`) and stop if it reports anything. Push nothing, pick no reviewer, move no label to `pr-open`, and say that the next step is `/relevo:ship $ARGUMENTS`. When a step fails and the person ends the review, record `--result failed` and point to `/relevo:fix $ARGUMENTS`.
+- Steps 6 and 7: in place of opening a pull request, record the review once `decide` exited 0 and the person said yes: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs record-review --issue $ARGUMENTS --result passed`. Scan what the branch adds first (`git diff <base>...HEAD | node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-diff.mjs`) and stop if it reports anything. Push nothing, pick no reviewer, move no label to `pr-open`, and end the report with `node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state in-review --reason local --issue $ARGUMENTS`. When a step fails and the person ends the review, record `--result failed` and point to `/relevo:fix $ARGUMENTS`.
 - Step 8: no pull request receives the evidence, so keep the `evidence/` folder as it is and tell the person where it is.
 
 ## Steps
@@ -288,3 +288,11 @@ If the condition does not hold (a separate worktree, or the base branch is check
 ## Report
 
 Finish with one short block: the issue, the review verdict, the checklist result, the pull request link (or why none was opened), and the issue's new state.
+
+End with the next step, from the same table the comments use. Print the lines the script gives as they are, and write no step of your own:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --labels "<the issue's labels now, comma separated>" --issue $ARGUMENTS
+```
+
+Read the labels after the last change of this run (`node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs issue-get $ARGUMENTS --fields labels`): an opened pull request gives the step of `pr-open`, with the one of `needs-reviewer` when nobody was eligible, and a review that did not pass gives the step of the state the issue stays in. In a files project whose review was recorded as passed, run instead `node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state in-review --reason local --issue $ARGUMENTS`.

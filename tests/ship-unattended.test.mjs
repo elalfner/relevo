@@ -574,3 +574,20 @@ test('the script runs no hook of the repository', async () => {
   assert.equal(out.outcome, 'merged');
   assert.throws(() => readFileSync(marker));
 });
+
+test('Scenario: A ship that ended without an outcome and without the catalog - the fallback says to apply the label again, in both languages', () => {
+  const workflow = readFileSync(new URL('../templates/workflows/relevo-ship.yml', import.meta.url), 'utf8');
+  const step = workflow.split('- name: Report a run that ended without an outcome')[1];
+  const script = /run: \|\n((?: {10}.*\n|\n)+)/.exec(step)[1].split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  [[null, /was not shipped.*When the cause is fixed, apply relevo:ship again\./], ['es', /no se fusionó.*Cuando la causa esté resuelta, vuelve a poner relevo:ship\./]].forEach(([language, expected]) => {
+    const dir = mkdtempSync(join(tmpdir(), 'ship-fallback-'));
+    mkdirSync(join(dir, 'bin'));
+    mkdirSync(join(dir, 'work'));
+    writeFileSync(join(dir, 'work', 'relevo.yml'), language ? `language: ${language}\n` : 'tracker: github\n');
+    // `gh issue view` answers with the ship label; the body of the comment is kept in a file.
+    writeFileSync(join(dir, 'bin', 'gh'), '#!/bin/sh\n[ "$2" = view ] && echo relevo:ship\n[ "$2" = comment ] && printf %s "$5" > "$OUT"\nexit 0\n', { mode: 0o755 });
+    const r = spawnSync('bash', ['-e', '-c', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: dir, ISSUE: '42', ACTOR: 'ana', RUN_URL: 'https://example.test/run/9', OUT: join(dir, 'body') } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(readFileSync(join(dir, 'body'), 'utf8'), expected);
+  });
+});

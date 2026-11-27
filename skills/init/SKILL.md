@@ -20,7 +20,7 @@ When `$ARGUMENTS` has `--local`, set up a project of one person on this machine,
 3. Ask for a yes to the plan. Without it, change nothing.
 4. Apply: `node ${CLAUDE_PLUGIN_ROOT}/scripts/init-local.mjs apply --answers <file>`. It carries out the "will do" changes that are not installs and stops at the first failure. The only commit it makes is the first one of a repository that had none, which the plan you confirmed lists: it is the one exception to "Never commit or push" below. In a repository that already has commits it commits nothing: tell the person to commit `relevo.yml` and `.relevo/` now, because a build runs in a worktree made from the base branch and `doctor` fails until `relevo.yml` is committed there.
 5. Offer each install of the plan, one at a time, with its exact command, as step 4 below does (OpenSpec and its `openspec init`, then the skills that `think` needs). Run none without a yes to that command alone, and commit `openspec/` afterwards if the person agrees.
-6. Check: `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs`, which judges a local project by what it needs. Then say the next step: `/relevo:think` to talk the idea through, then `/relevo:issue`.
+6. Check: `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs`, which judges a local project by what it needs. Then end with the next step, from the same table the comments use, printed as it is: `node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --after init`.
 
 Running it again lists only what differs. Never read, write or ask for the model credential.
 
@@ -103,3 +103,9 @@ Run `node ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs` and show its output.
 ## Report
 
 Finish with: what was created, what was left alone, what the person must still do by hand (always the model credential in the repository secrets, with all whitespace removed from a subscription token: `pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_CODE_OAUTH_TOKEN`, and committing and pushing the new files to the default branch, because a workflow only runs from there; name each `.relevo/stacks/<stack>.md` it created among them), and the doctor result.
+
+After the steps by hand, end with the next step, from the same table the comments use, printed as it is:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --after init
+```

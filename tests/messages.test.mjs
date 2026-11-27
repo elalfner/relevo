@@ -774,8 +774,8 @@ test('Scenario: Already building - go_building says it is being built and the bu
 });
 
 test('Scenario: Already built - go_already_built says so', () => {
-  assert.match(renderMessage('go_already_built', GO, 'en'), /already built/);
-  assert.match(renderMessage('go_already_built', GO, 'es'), /ya está construido/);
+  assert.match(renderMessage('go_already_built', { ...GO, state: 'built' }, 'en'), /already built/);
+  assert.match(renderMessage('go_already_built', { ...GO, state: 'built' }, 'es'), /ya está construido/);
 });
 
 test('Scenario: A resume with the same limits after a stall - go_resume_stalled says which limits to raise', () => {
@@ -792,7 +792,7 @@ test('Scenario: Failed build with code - go_use_fix says to run /relevo:fix', ()
 
 test('the refusals name nobody when the applier is unknown', () => {
   ['go_denied', 'go_needs_ready', 'go_building', 'go_already_built', 'go_use_fix', 'go_resume_stalled'].forEach((kind) => {
-    assert.doesNotMatch(renderMessage(kind, { issue: 42 }, 'en'), /@/, kind);
+    assert.doesNotMatch(renderMessage(kind, { issue: 42, state: 'built' }, 'en'), /@/, kind);
   });
 });
 

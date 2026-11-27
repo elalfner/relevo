@@ -30,7 +30,9 @@ When `tracker` in `relevo.yml` is `files` there is no pull request, no remote an
 4. **Confirm, in writing.** Show the issue, its branch, how many commits it holds and what will happen: the specification is archived on the branch, the branch is squash-merged into `<base>` as one commit, the branch and its worktree are deleted, and the issue is closed. Say that nothing is sent anywhere. Wait for a clear written yes; **without it nothing is archived or merged.**
 5. **Archive the specification on the branch.** Do it where the branch is checked out: if another worktree holds it (`branch-worktree.mjs --branch <branch> --base <base> --json`) work there, otherwise check the branch out and come back to `<base>` afterwards. Run the archive exactly as step 3 below says (`archive-state.mjs`, `openspec validate`, `fix-tasks.mjs --stage after`, `openspec archive -y`, `check-archive.mjs`, `stage.mjs`, and the commit `chore(openspec): archive <change folder name> (#$ARGUMENTS)`), and **do not push**. This commit does not make the review or the gate stale.
 6. **Check again, then merge.** From `<base>`: `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs check --issue $ARGUMENTS`, and only on exit 0 `node ${CLAUDE_PLUGIN_ROOT}/scripts/ship-local.mjs merge --issue $ARGUMENTS --title "<title> (#$ARGUMENTS)"`. It makes the one squash commit, deletes the branch, removes its worktree when git allows it, and closes the issue and clears its Relevo state. It refuses and changes nothing if the base branch is not checked out or the tree is not clean; if it reports a worktree it could not remove, give its path.
-7. **Report.** The issue, the merge commit, that the issue is closed, and that the work is only in this repository.
+7. **Report.** The issue, the merge commit, that the issue is closed, and that the work is only in this repository. Nothing else of the report of a merge below applies: there is no pull request to promote it with.
+
+A stop at any of these steps ends its report as "Stopped without merging" below says, reading the labels as it says. When the cause is not the review (another branch checked out, a dirty tree) and the review recorded as passed still holds, because `ship-local.mjs check` asks for neither `/relevo:review` nor `/relevo:fix`, run instead `node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state in-review --reason local --issue $ARGUMENTS`.
 
 ## Steps
 
@@ -160,8 +162,26 @@ The subject is the pull request title, which already ends with the issue number.
 
 ## Report
 
+### Merged
+
 Finish with one short block: the issue, the pull request, the merge commit, that the issue is closed and the labels removed, and which commit's checks it relied on: the merged commit, or `<baseline>` (the summary's `checksOid`) when the archive commit had none of its own, and that the checks of the merged commit were finished and passing, or that it had none of its own.
 
-End with this reminder: promoting `<base>` to `<release>` is a separate pull request, with a version tag. `ship` does not do it.
+Then the step of a closed issue, from the same table the comments use, printed as it is:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state closed --issue $ARGUMENTS
+```
+
+Add that the promotion is from `<base>` to `<release>`, with a version tag, and that `ship` does not do it.
 
 When the repository has the ship workflow (`.github/workflows/relevo-ship.yml`), add one line: next time, the person who ships can apply the `relevo:ship` label to the issue instead, and GitHub ships it with the same checks, without a local copy.
+
+### Stopped without merging
+
+This applies to every stop above, at whatever step. After the reasons, read the issue as it is now (`node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs issue-get $ARGUMENTS --fields labels,state`) and end with its state and its next step:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --labels "<the issue's labels, comma separated>" --issue $ARGUMENTS
+```
+
+When the issue is closed, run `node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --state closed --issue $ARGUMENTS` instead. Name the state the script prints and give the step it prints: never say that the issue is on a state you did not read.

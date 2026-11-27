@@ -165,7 +165,7 @@ test('fix-guard CLI against a real git repository', () => {
 
 test('the fix comment summarises the change, the QA verdict and the commit, and asks the recipient to act', () => {
   const text = renderMessage('fix_done', {
-    issue: 31, title: 'Summary screen', iteration: 2, summary: 'the empty state is now handled',
+    issue: 31, title: 'Summary screen', iteration: 2, state: 'pr-open', summary: 'the empty state is now handled',
     qa: 'QA PASSED', commit: 'a1b2c3d', recipient: 'persona-c', ask: 'please re-review',
   });
   assert.match(text, /^#31 "Summary screen" fixed \(iteration 2\)/);
@@ -176,7 +176,7 @@ test('the fix comment summarises the change, the QA verdict and the commit, and 
 });
 
 test('with nobody to notify the comment mentions no one', () => {
-  const text = renderMessage('fix_done', { issue: 1, title: 't', iteration: 1, summary: 's', qa: 'QA PASSED', commit: 'abc' });
+  const text = renderMessage('fix_done', { issue: 1, title: 't', iteration: 1, state: 'built', summary: 's', qa: 'QA PASSED', commit: 'abc' });
   assert.doesNotMatch(text, /@/);
-  assert.match(renderMessage('fix_done', { issue: 1, title: 't', iteration: 1, summary: 's', qa: 'QA PASSED', commit: 'abc' }, 'es'), /corregido \(iteración 1\)/);
+  assert.match(renderMessage('fix_done', { issue: 1, title: 't', iteration: 1, state: 'built', summary: 's', qa: 'QA PASSED', commit: 'abc' }, 'es'), /corregido \(iteración 1\)/);
 });

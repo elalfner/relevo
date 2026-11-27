@@ -131,12 +131,20 @@ Use what `fix-state.mjs` printed in step 0.
 
 1. If `labels` is not empty, apply it with `node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs state-set <issue> --add <names> --remove <names>` (it returns a `build-failed` issue to `built`, and a `changes-requested` one to `pr-open`). In every other state the labels do not change.
 2. Decide who is told:
-   - `notify` is `assignee`: the issue's assignee, with the ask `Your next step: /relevo:review <issue>`.
+   - `notify` is `assignee`: the issue's assignee as `recipient`, with no `ask`: the message mentions them in front of the next step.
    - `notify` is `reviewer`: find the pull request (`node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs delivery-get <branch>`, which prints its `number` and `reviews`), take the people who requested changes, re-request each one with `gh pr edit <number> --add-reviewer <login>`, and mention them with the ask `please re-review`.
    - otherwise: mention nobody.
-3. Post one comment built by `node ${CLAUDE_PLUGIN_ROOT}/scripts/render-message.mjs fix_done` with: `issue`, `title`, `iteration` (the number from step 2), `summary` (one line of what changed), `qa` (`QA PASSED`), `commit` (the short hash), and `recipient` and `ask` when someone is told.
+3. Post one comment built by `node ${CLAUDE_PLUGIN_ROOT}/scripts/render-message.mjs fix_done` with: `issue`, `title`, `iteration` (the number from step 2), `summary` (one line of what changed), `qa` (`QA PASSED`), `commit` (the short hash), `state` (the `to` that `fix-state.mjs` printed), and `recipient`, and `ask` for a reviewer, when someone is told. The message ends with the next step of that state, from the table: never write one yourself.
 4. If `evidence/review-state.json` exists (a review is in progress), reconcile it with the new specification: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs sync openspec/changes/<change>`. Lines already confirmed stay confirmed, lines that failed are tested again, new scenarios are added, and the log audit and the agreement are repeated. Tell the person to restart the app and resume with `/relevo:review <issue>`, and that they can write `retest <numbers>` for any confirmed line the fix may have affected, because QA only audited this correction.
 
 ## Report
 
 Finish with one short block: the issue, the iteration, what changed, the QA verdict, the commit, and the issue's state before and after.
+
+End with the next step of the state the issue is in after the fix, from the same table the comments use. Pass the labels the issue has after step 7, and print the lines it gives as they are:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/next-step.mjs --labels "<the issue's labels, comma separated>" --issue <issue>
+```
+
+This is for a fix that finished. A fix that stopped keeps the instruction of the step where it stopped (for example, to run `/relevo:fix <issue>` again).

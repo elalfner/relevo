@@ -503,7 +503,7 @@ test('Scenario: Files project - the review is of the branch, records its result 
   assert.match(section, /ship-local\.mjs record-review --issue \$ARGUMENTS --result passed/);
   assert.match(section, /--result failed/);
   assert.match(section, /Push nothing, pick no reviewer, move no label to `pr-open`/);
-  assert.match(section, /\/relevo:ship \$ARGUMENTS/);
+  assert.match(section, /next-step\.mjs --state in-review --reason local --issue \$ARGUMENTS/);
   assert.match(skill, /tracker\.mjs state-set <issue> --add <names> --remove <names>/);
   assert.match(skill, /tracker\.mjs issue-get \$ARGUMENTS --fields title,body,comments/);
 });
@@ -535,4 +535,18 @@ test('Scenario: The specification must still fit the base branch - checked after
   assert.match(after, /\/relevo:fix \$ARGUMENTS/);
   assert.match(after, /ADDED[^.]*MODIFIED/);
   assert.match(after, /exits 0[^.]*(say nothing|nothing about the specification)/i);
+});
+
+test('Scenario: Review opens the pull request - the report ends with the step read from the labels, needs-reviewer included', () => {
+  const report = body.split('## Report')[1];
+  assert.match(report, /scripts\/next-step\.mjs --labels "<the issue's labels now, comma separated>" --issue \$ARGUMENTS/);
+  assert.match(report, /with the one of `needs-reviewer` when nobody was eligible/);
+  assert.match(report, /did not pass gives the step of the state the issue stays in/);
+});
+
+test('Scenario: Review passed in a files project - the report ends with the local variant, not with a command written by hand', () => {
+  const section = body.split('## Files project')[1].split('\n## ')[0];
+  assert.match(section, /scripts\/next-step\.mjs --state in-review --reason local --issue \$ARGUMENTS/);
+  assert.doesNotMatch(section, /say that the next step is `\/relevo:ship/);
+  assert.match(body.split('## Report')[1], /--state in-review --reason local/);
 });
