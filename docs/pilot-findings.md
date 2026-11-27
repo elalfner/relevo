@@ -699,6 +699,19 @@ Date: 2026-11-25. A sandbox issue that asked for three new test files, which the
 
 ---
 
+# A plugin hook inside the cloud action (measured 2026-11-26)
+
+Task 1.1 of `bound-run-time` (#220): does a `PreToolUse` hook shipped by the plugin run when `claude-code-action` loads it with `--plugin-dir`? One cloud build of a four-task issue in the sandbox, from a throwaway branch whose hook logged every call and refused the first call of a subagent, once ([run](https://github.com/elalfner/relevo-sandbox/actions/runs/45931462232)).
+
+- **The hook runs.** 73 calls were logged: 39 of the orchestrator and 34 of the developer and the five QA lenses.
+- **Subagent calls are told apart.** They carry `agent_id` and `agent_type` (`relevo:dev`, `relevo:qa-*`); the orchestrator's calls carry neither.
+- **A launch is visible.** The nine launches appear as the tool `Agent` with `subagent_type`.
+- **The hook sees `RELEVO_PROGRESS_DIR`**, so it can find the state of the build.
+- **A refusal reaches the subagent.** The refused developer call came back as `PreToolUse:Bash hook error: <reason>`, the developer made four more calls and the build ended `built`.
+- **Not tried**: refusing every later call of a subagent, refusing an `Agent` launch, and the time the hook adds to a call.
+
+---
+
 # Use on real projects (measured 2026-11-25)
 
 Four private repositories, with Vue and Flutter projects (one of them a Flutter plugin). The work measured goes from 2026-10-23 to 2026-11-25. The figures come from the pull requests and comments on GitHub and from a line count of the working copies. The repositories are private, so a reader cannot check them.

@@ -2,7 +2,7 @@
 
 ## 1. Verify the hook where it has to work
 
-- [ ] 1.1 In the sandbox, with a throwaway hook in a pinned commit that only logs, run one cloud build and confirm that a plugin `PreToolUse` hook loaded with `--plugin-dir` fires in the action for the orchestrator and for a subagent, with `agent_id`, and that a denial reaches the subagent; record the result in `docs/pilot-findings.md`. If it does not, stop and revise the design
+- [x] 1.1 In the sandbox, with a throwaway hook in a pinned commit that only logs, run one cloud build and confirm that a plugin `PreToolUse` hook loaded with `--plugin-dir` fires in the action for the orchestrator and for a subagent, with `agent_id`, and that a denial reaches the subagent; record the result in `docs/pilot-findings.md`. If it does not, stop and revise the design
 
 ## 2. The deadline and long commands
 
