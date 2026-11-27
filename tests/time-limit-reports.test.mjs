@@ -106,7 +106,7 @@ test('the skill, the gate steps and the developer treat a cut as the limit', () 
   const skill = read('skills/go/SKILL.md');
   assert.match(skill, /\*\*The hard stop\.\*\*/);
   assert.match(skill, /do not treat the open questions of that agent as a spec defect/);
-  assert.match(skill, /names what was cut/);
+  assert.match(skill, /two parts, and both are required[^.]*what was cut, and everything that did not run/);
   assert.match(read('skills/go/references/qa-run.md'), /`cut` is different.*Never start it again.*`run limit reached`/);
   assert.match(read('agents/dev.md'), /## The time limit of the run[\s\S]*make no more tool calls/);
 });

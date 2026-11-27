@@ -27,4 +27,4 @@
 ## 6. Integration
 
 - [x] 6.1 Run `npm test`, `openspec validate --all` and `claude plugin validate .`; verify all pass
-- [ ] 6.2 In the sandbox, from a pinned commit of `dev`, with `run_max_minutes: 5` and a slow test, run one build whose developer passes the hard stop; verify that the run ends within the hard stop plus the time to keep the work, that the work is on the branch, that the comment names what was cut, and record the run in `docs/pilot-findings.md`
+- [x] 6.2 In the sandbox, from a pinned commit of `dev`, with `run_max_minutes: 5` and a slow test, run one build whose developer passes the hard stop; verify that the run ends within the hard stop plus the time to keep the work, that the work is on the branch, that the comment names what was cut, and record the run in `docs/pilot-findings.md`

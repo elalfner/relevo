@@ -712,6 +712,21 @@ Task 1.1 of `bound-run-time` (#220): does a `PreToolUse` hook shipped by the plu
 
 ---
 
+# The hard stop in a cloud build (measured 2026-11-26)
+
+Task 6.2 of `bound-run-time` (#220): one cloud build in the sandbox with the plugin of `23f75d6`, its go workflow, `limits.run_max_minutes: 5` and a temporary test that sleeps 20 minutes ([run](https://github.com/elalfner/relevo-sandbox/actions/runs/45934291810)). The hard stop was therefore 15 minutes after the run entered `planning`.
+
+- **The suite was cut.** The developer of the last group started the full test run; `long-run.mjs wait` answered `cut by the time limit of the run after 380s`.
+- **The developer was made to end.** Its next call was refused by the hook with the time limit as the reason.
+- **The run stopped where expected.** The guard said `stop`, with `hard_stop_passed`, at 15.1 minutes. The job took 16.5 minutes in all, where the suite alone would have taken 20.
+- **The work was kept.** The branch holds the specification, two checkpoints and `wip: stopped by limit`, and the issue is `build-failed` with `--resume` as the next step.
+- **The comment says what was cut** (the developer of group 3, in the full test run) and the task left. It did not name the gate and the lenses as not run, which the specification of `go` asks for.
+- **The usage comment was posted**, with 13.4 minutes for the cut developer.
+- **The job deadline was recorded**: 55 minutes after the start of a job with `timeout-minutes: 60`. It was not reached, so the cap itself cut nothing.
+- **Not tried**: a cut validation gate, a refused agent launch, and the comment of a run with no usage figures. The unit tests cover them.
+
+---
+
 # Use on real projects (measured 2026-11-25)
 
 Four private repositories, with Vue and Flutter projects (one of them a Flutter plugin). The work measured goes from 2026-10-23 to 2026-11-25. The figures come from the pull requests and comments on GitHub and from a line count of the working copies. The repositories are private, so a reader cannot check them.
