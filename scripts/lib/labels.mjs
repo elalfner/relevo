@@ -1,22 +1,25 @@
 // Label set and state transitions.
 // Implements openspec/specs/issue-lifecycle/spec.md.
 
+// The description of a state, an exit and needs-reviewer says what it is and the next step of next-step.mjs, in at most 100
+// characters (the limit of GitHub); tests/labels.test.mjs holds it to that table.
+//
 // kind:
 //   state   - lifecycle label; exactly one of the exclusive labels at a time
 //   exit    - side exit that replaces the lifecycle label
 //   overlay - added next to the current state, never replaces it
 export const LABELS = [
-  { key: 'ready', name: 'relevo:ready', color: '0e8a16', kind: 'state', description: 'Approved: the text is what should be built; starts nothing' },
-  { key: 'queued', name: 'relevo:queued', color: 'c5def5', kind: 'state', description: 'Waiting for capacity' },
-  { key: 'building', name: 'relevo:building', color: 'fbca04', kind: 'state', description: 'The agent is building it' },
-  { key: 'built', name: 'relevo:built', color: '1d76db', kind: 'state', description: 'Built and QA passed; waiting for the assignee' },
-  { key: 'in-review', name: 'relevo:in-review', color: '5319e7', kind: 'state', description: 'Being reviewed on a device' },
-  { key: 'pr-open', name: 'relevo:pr-open', color: '0075ca', kind: 'state', description: 'Pull request open; waiting for the peer' },
-  { key: 'needs-spec', name: 'relevo:needs-spec', color: 'd93f0b', kind: 'exit', description: 'Spec is incomplete or defective; back to the spec writer' },
-  { key: 'blocked', name: 'relevo:blocked', color: 'b60205', kind: 'exit', description: 'Waiting for a dependency to merge' },
-  { key: 'build-failed', name: 'relevo:build-failed', color: 'e11d21', kind: 'exit', description: 'The build did not end in a hand-off; the comment says why and what to do' },
-  { key: 'changes-requested', name: 'relevo:changes-requested', color: 'f9d0c4', kind: 'exit', description: 'The reviewer asked for changes' },
-  { key: 'needs-reviewer', name: 'relevo:needs-reviewer', color: 'fef2c0', kind: 'overlay', description: 'No reviewer available or the review is overdue' },
+  { key: 'ready', name: 'relevo:ready', color: '0e8a16', kind: 'state', description: 'Spec ready. Next: /relevo:go <n>, or apply the go label; approving starts nothing' },
+  { key: 'queued', name: 'relevo:queued', color: 'c5def5', kind: 'state', description: 'Waiting for capacity, a free agent and no file clash. Nothing to do' },
+  { key: 'building', name: 'relevo:building', color: 'fbca04', kind: 'state', description: 'The agent is building it. Nothing to do' },
+  { key: 'built', name: 'relevo:built', color: '1d76db', kind: 'state', description: 'Built and QA passed. Next: /relevo:review <n>, to review it on a device' },
+  { key: 'in-review', name: 'relevo:in-review', color: '5319e7', kind: 'state', description: 'Being reviewed. Next: /relevo:review <n> to continue; if something fails, /relevo:fix <n>' },
+  { key: 'pr-open', name: 'relevo:pr-open', color: '0075ca', kind: 'state', description: 'Pull request open. Next: /relevo:ship <n>, once someone else approves it' },
+  { key: 'needs-spec', name: 'relevo:needs-spec', color: 'd93f0b', kind: 'exit', description: 'The spec needs work. Next: /relevo:issue <n>; the comment says the rest' },
+  { key: 'blocked', name: 'relevo:blocked', color: 'b60205', kind: 'exit', description: 'Waiting for the issues it depends on to be merged. Nothing to do' },
+  { key: 'build-failed', name: 'relevo:build-failed', color: 'e11d21', kind: 'exit', description: 'Build failed. Next: /relevo:go <n> --resume or /relevo:fix <n>; the comment says which' },
+  { key: 'changes-requested', name: 'relevo:changes-requested', color: 'f9d0c4', kind: 'exit', description: 'The reviewer asked for changes. Next: /relevo:fix <n>' },
+  { key: 'needs-reviewer', name: 'relevo:needs-reviewer', color: 'fef2c0', kind: 'overlay', description: 'No reviewer or review overdue. Next: the spec writer assigns one or asks someone; no command' },
   // A request, not a state: the ship workflow merges the pull request and always removes it.
   { key: 'ship', name: 'relevo:ship', color: '2ea44f', kind: 'overlay', description: 'Ship it: merge the approved pull request on GitHub' },
   // A request, not a state: start it before the others and without waiting for the assignee's review capacity.

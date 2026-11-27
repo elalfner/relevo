@@ -19,7 +19,7 @@ A workflow copied from an older version still adds the plugin from a marketplace
 ## The order
 
 1. Update the plugin on every machine. This is safe in any order: a newer plugin reads an older `relevo.yml`, because the settings it adds are optional and have defaults.
-2. Run `/relevo:init` and read its plan. The workflows that can be merged with the new template without a conflict are offered as updates, with their difference. Apply, commit the files on a branch and open a pull request to the default branch, because a workflow runs only from there. The labels and the other settings of the repository that `init` changes are changed at once, and the files are left in your working copy for you to commit.
+2. Run `/relevo:init` and read its plan. The workflows that can be merged with the new template without a conflict are offered as updates, with their difference. Apply, commit the files on a branch and open a pull request to the default branch, because a workflow runs only from there. When the labels carry an older description, the plan lists each one with its old and new text (`labels.describe`): the new descriptions say what each label means and what to do next, and you can refuse that item alone. The labels and the other settings of the repository that `init` changes are changed at once, and the files are left in your working copy for you to commit.
 3. Only when every machine and every workflow runs the new version, add the new settings to `relevo.yml`. An older version rejects a setting it does not know (`unknown setting`), so a new key breaks the machine or the workflow that is still behind.
 4. Run `/relevo:doctor` to check the result.
 

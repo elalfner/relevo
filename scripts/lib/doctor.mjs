@@ -374,7 +374,10 @@ export function gatherFacts(p) {
     f.defaultBranch = repoInfo.default_branch ?? release;
     const sa = repoInfo.security_and_analysis;
     f.secretScanning = sa ? { scanning: sa.secret_scanning?.status === 'enabled', pushProtection: sa.secret_scanning_push_protection?.status === 'enabled' } : null;
-    f.labels = tryRun(() => flat(api(`repos/${f.repo}/labels?per_page=100`, true)).map((l) => l.name));
+    const labels = tryRun(() => flat(api(`repos/${f.repo}/labels?per_page=100`, true)));
+    f.labels = tryRun(() => labels.map((l) => l.name));
+    // `init` offers to bring the descriptions of the labels up to date: no map when the labels could not be read.
+    f.labelDescriptions = tryRun(() => Object.fromEntries(labels.map((l) => [l.name, l.description ?? ''])));
     // The open issues that carry the mark of a local build without `building`: the mark then says nothing.
     {
       const labelNames = resolveLabelNames(f.config?.labels ?? {});

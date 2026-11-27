@@ -308,6 +308,23 @@ test('gatherFacts reads tools, skills, files and the GitHub state through the in
   assert.equal(f.openspecRootTracked, true);
 });
 
+test('gatherFacts keeps the description of each label, empty when it has none, and none at all when the labels cannot be read', () => {
+  const read = (labels) => gatherFacts({
+    tool: () => 'ok',
+    gh: (args) => {
+      if (args[args.length - 1] !== 'repos/o/r/labels?per_page=100' || labels === null) throw new Error('HTTP 404');
+      return JSON.stringify([labels]);
+    },
+    exists: () => false, read: () => null, listDir: () => [], skillDirs: [], repo: 'o/r',
+  });
+  const f = read([{ name: 'relevo:ready', description: 'old text' }, { name: 'bug', description: null }]);
+  assert.deepEqual(f.labels, ['relevo:ready', 'bug']);
+  assert.deepEqual(f.labelDescriptions, { 'relevo:ready': 'old text', bug: '' });
+  const unreadable = read(null);
+  assert.equal(unreadable.labels, null);
+  assert.equal(unreadable.labelDescriptions, null);
+});
+
 test('Scenario: Agent tries to push outside feature branches - doctor warns when the push-scope ruleset is missing', () => {
   const r = byId(runChecks(healthy({ pushScope: false })), 'repo.push-scope');
   assert.equal(r.status, 'warn');

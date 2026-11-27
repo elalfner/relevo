@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LABELS, LABEL_KEYS, clearAll, labelDefinitions, resolveLabelNames, transition } from '../scripts/lib/labels.mjs';
+import { NEXT_STEP_REASONS, nextStep } from '../scripts/lib/next-step.mjs';
 
 test('label set matches the lifecycle spec', () => {
   const states = LABELS.filter((l) => l.kind === 'state').map((l) => l.key);
@@ -86,12 +87,62 @@ test('unknown keys are rejected', () => {
   assert.throws(() => transition([], 'merged'), /unknown label key/);
 });
 
-test('Scenario: the failed-build label is build-failed, with a description that says what it marks', () => {
+test('Scenario: the failed-build label is build-failed, and its description names the common recoveries', () => {
   const l = LABELS.find((x) => x.key === 'build-failed');
   assert.equal(l.name, 'relevo:build-failed');
   assert.equal(l.kind, 'exit');
-  assert.equal(l.description, 'The build did not end in a hand-off; the comment says why and what to do');
+  assert.equal(l.description, 'Build failed. Next: /relevo:go <n> --resume or /relevo:fix <n>; the comment says which');
   assert.ok(!LABEL_KEYS.includes('qa-failed'));
+});
+
+// --- The label descriptions say the state and the next step ---
+
+const DESCRIBED = LABELS.filter((l) => l.kind !== 'overlay' || l.key === 'needs-reviewer');
+// A command with its issue number and its option, with `<n>` read as the `{n}` of the table.
+const commandsOf = (text) => (String(text).replaceAll('<n>', '{n}').match(/\/relevo:[a-z]+(?: #?\{n\})?(?: --[a-z-]+)?/g) ?? []);
+// Every variant of a state, with `{n}` left in place of the issue number.
+const variantsOf = (state) => (NEXT_STEP_REASONS[state] ?? [null]).map((reason) => nextStep({ state, reason, issue: '{n}' }));
+
+test('Scenario: A command the table does not give - every command of a description is one of its state', () => {
+  DESCRIBED.forEach((l) => {
+    const given = variantsOf(l.key).flatMap((s) => commandsOf(`${s.command ?? ''}; ${s.hint}`));
+    commandsOf(l.description).forEach((command) => {
+      assert.ok(given.includes(command), `${l.key}: the table does not give ${command} for this state`);
+    });
+  });
+});
+
+test('Scenario: A state with a command, and a state where nobody acts - the description says which', () => {
+  assert.equal(DESCRIBED.length, 11);
+  DESCRIBED.forEach((l) => {
+    const variants = variantsOf(l.key);
+    const { command } = variants[0];
+    if (command !== null) assert.ok(commandsOf(l.description).includes(command), `${l.key}: names ${command}`);
+    // needs-reviewer has no command, but a person has to act: it must not say that nothing is to be done.
+    else if (l.key === 'needs-reviewer') assert.match(l.description, /spec writer assigns one or asks someone/);
+    else if (variants.every((s) => s.command === null)) assert.match(l.description, /^\S.*\. Nothing to do$/, `${l.key}: says what it is and that nothing is to be done`);
+  });
+});
+
+test('Scenario: The spec goes back - needs-spec names the common command and refers to the comment', () => {
+  assert.equal(LABELS.find((l) => l.key === 'needs-spec').description, 'The spec needs work. Next: /relevo:issue <n>; the comment says the rest');
+});
+
+test('Scenario: What the label means - each description says what it is before the next step', () => {
+  DESCRIBED.forEach((l) => assert.match(l.description, /^(?!Next:|Nothing )[^.]+\. /, `${l.key}: starts with what it is`));
+});
+
+test('every description fits the 100 characters of GitHub', () => {
+  LABELS.forEach((l) => assert.ok(l.description.length <= 100, `${l.key}: ${l.description.length} characters`));
+});
+
+test('the requests and marks keep their description', () => {
+  assert.deepEqual(['ship', 'urgent', 'go', 'local'].map((key) => LABELS.find((l) => l.key === key).description), [
+    'Ship it: merge the approved pull request on GitHub',
+    'Start it first, even if the assignee has built issues waiting for review',
+    'Build it in the cloud: a request on a ready issue, removed when the cloud decides',
+    'Being built on a machine; applied by a local build, not by hand',
+  ]);
 });
 
 test('Scenario: the go and local labels - default names, overlays, renamable', () => {
@@ -106,7 +157,7 @@ test('Scenario: the go and local labels - default names, overlays, renamable', (
 });
 
 test('Scenario: ready is the approval - its description says that it starts nothing', () => {
-  assert.match(LABELS.find((l) => l.key === 'ready').description, /starts nothing/);
+  assert.match(LABELS.find((l) => l.key === 'ready').description, /\/relevo:go <n>.*approving starts nothing/);
 });
 
 test('Scenario: Local build ends - a move out of building removes local in the same operation', () => {

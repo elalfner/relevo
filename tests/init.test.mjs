@@ -1341,3 +1341,81 @@ test('Scenario: Init for Nhost - the plugin ships the profile, so the plan has n
   const items = planInit({ facts: ownFacts, answers: goAnswers({ platforms: { backend: { stack: 'nhost', path: 'backend' } } }), templates: { ...templates, shippedStacks: SHIPPED }, current: empty(), admin: true });
   assert.equal(profileOf(items, 'nhost'), undefined);
 });
+
+// --- Init updates the label descriptions that differ ---
+
+const DESCRIPTIONS = Object.fromEntries(labelDefinitions({}).map((l) => [l.name, l.description]));
+const described = (over = {}, facts = {}) => withConfig({ labels: allLabels, labelDescriptions: { ...DESCRIPTIONS, ...over }, ...facts });
+const calling = () => {
+  const calls = [];
+  return { calls, io: { gh: (a) => { calls.push(a); return JSON.stringify({ commit: { sha: 'abc' } }); }, write() {}, append() {} } };
+};
+const edits = (calls) => calls.filter((a) => a[0] === 'label' && a[1] === 'edit');
+const OLD = { 'relevo:built': 'Built and QA passed; waiting for the assignee', 'relevo:blocked': 'Waiting for a dependency to merge' };
+
+test('Scenario: Older descriptions - one item lists each label that differs with both texts, and planning edits nothing', () => {
+  const items = plan(described(OLD));
+  const item = get(items, 'labels.describe');
+  assert.equal(item.status, 'todo');
+  assert.deepEqual(item.changes, Object.entries(OLD).map(([name, from]) => ({ name, from, to: DESCRIPTIONS[name] })));
+  const text = renderPlan(items);
+  Object.entries(OLD).forEach(([name, from]) => assert.ok(text.includes(`${name}\n            old: ${from}\n            new: ${DESCRIPTIONS[name]}`), name));
+});
+
+test('Scenario: Accepted - gh label edit changes only the description', () => {
+  const { calls, io } = calling();
+  const results = applyPlan(plan(described(OLD)).filter((i) => i.id === 'labels.describe'), { repo: 'o/r', io });
+  assert.deepEqual(results.map((r) => r.ok), [true]);
+  assert.deepEqual(calls, Object.keys(OLD).map((name) => ['label', 'edit', name, '--repo', 'o/r', '--description', DESCRIPTIONS[name]]));
+});
+
+test('Scenario: Declined - the item alone is skipped, the rest is applied, and a later plan lists it again', () => {
+  const { calls, io } = calling();
+  applyPlan(skipItems(plan(described(OLD)), ['labels.describe']), { repo: 'o/r', io });
+  assert.deepEqual(edits(calls), []);
+  assert.ok(calls.length > 0, 'the other changes were applied');
+  assert.ok(get(plan(described(OLD)), 'labels.describe'));
+});
+
+test('Scenario: Renamed label - the configured name is listed and edited', () => {
+  const text = `${renderConfig(template, ANSWERS)}\nlabels:\n  built: team:built\n`;
+  const { config } = loadConfig(text);
+  const labels = labelDefinitions({ built: 'team:built' }).map((l) => l.name);
+  const items = plan(bare({ configText: text, config, labels, labelDescriptions: { ...DESCRIPTIONS, 'team:built': 'old' } }));
+  assert.deepEqual(get(items, 'labels.describe').changes.map((c) => c.name), ['team:built']);
+});
+
+test('Scenario: Changed by hand - the text of the person is shown next to the new one, also when it is empty', () => {
+  const items = plan(described({ 'relevo:ready': 'ours: ask Ana', 'relevo:queued': '' }));
+  assert.deepEqual(get(items, 'labels.describe').changes.map((c) => c.from), ['ours: ask Ana', '']);
+  assert.match(renderPlan(items), /old: ""\n/);
+});
+
+test('Scenario: Already matching - no item', () => {
+  assert.equal(get(plan(described()), 'labels.describe'), undefined);
+});
+
+test('Scenario: Missing label - it is created with the new description and not listed', () => {
+  const { 'relevo:built': _gone, ...rest } = DESCRIPTIONS;
+  const items = plan(withConfig({ labels: allLabels.filter((n) => n !== 'relevo:built'), labelDescriptions: rest }));
+  assert.equal(get(items, 'labels.describe'), undefined);
+  assert.deepEqual(get(items, 'labels').labels.map((l) => [l.name, l.description]), [['relevo:built', DESCRIPTIONS['relevo:built']]]);
+});
+
+test('Scenario: Requests and marks - ship, urgent, go and local are left alone', () => {
+  const other = Object.fromEntries(['ship', 'urgent', 'go', 'local'].map((k) => [`relevo:${k}`, 'something else']));
+  assert.equal(get(plan(described(other)), 'labels.describe'), undefined);
+});
+
+test('Scenario: Files tracker - no item', () => {
+  const text = 'tracker: files\ngit_provider: local\nlimits:\n  run_max_cost: 5\nplatform: flutter-android\n';
+  const loaded = loadConfig(text);
+  assert.ok(loaded.ok, JSON.stringify(loaded.errors));
+  const items = plan(bare({ configText: text, config: loaded.config, labels: allLabels, labelDescriptions: { ...DESCRIPTIONS, ...OLD } }));
+  assert.equal(get(items, 'labels.describe'), undefined);
+});
+
+test('Scenario: Labels cannot be read - no item', () => {
+  const items = plan(withConfig({ labels: null, labelDescriptions: null }));
+  assert.equal(get(items, 'labels.describe'), undefined);
+});

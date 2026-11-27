@@ -19,7 +19,7 @@ Un workflow copiado de una versión anterior todavía añade el plugin desde un 
 ## El orden
 
 1. Actualiza el plugin en cada máquina. Es seguro en cualquier orden: un plugin más nuevo lee un `relevo.yml` más viejo, porque los ajustes que añade son opcionales y tienen valor por defecto.
-2. Ejecuta `/relevo:init` y lee su plan. Los workflows que se pueden fusionar con la plantilla nueva sin un conflicto se ofrecen como actualizaciones, con su diferencia. Aplica, haz commit de los archivos en una rama y abre un pull request a la rama por defecto, porque un workflow solo corre desde ahí. Las etiquetas y los demás ajustes del repositorio que `init` cambia se cambian en el acto, y los archivos quedan en tu copia de trabajo para que los commitees.
+2. Ejecuta `/relevo:init` y lee su plan. Los workflows que se pueden fusionar con la plantilla nueva sin un conflicto se ofrecen como actualizaciones, con su diferencia. Aplica, haz commit de los archivos en una rama y abre un pull request a la rama por defecto, porque un workflow solo corre desde ahí. Cuando las etiquetas tienen una descripción anterior, el plan lista cada una con su texto actual y el nuevo (`labels.describe`): las descripciones nuevas dicen qué significa cada etiqueta y qué hacer después, y puedes rechazar solo ese ítem. Las etiquetas y los demás ajustes del repositorio que `init` cambia se cambian en el acto, y los archivos quedan en tu copia de trabajo para que los commitees.
 3. Solo cuando cada máquina y cada workflow corran la versión nueva, añade los ajustes nuevos a `relevo.yml`. Una versión más vieja rechaza un ajuste que no conoce (`unknown setting`), así que una clave nueva rompe la máquina o el workflow que todavía va atrás.
 4. Ejecuta `/relevo:doctor` para comprobar el resultado.
 

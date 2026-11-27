@@ -72,6 +72,7 @@ const SPECS = {
   'issue edit': { flags: { repo: 'value', title: 'value', body: 'value', 'body-file': 'value', 'add-label': 'list', 'remove-label': 'list' }, positional: 1 },
   'repo view': { flags: { json: 'value', jq: 'value' }, positional: 0, optional: true },
   'label create': { flags: { repo: 'value', color: 'value', description: 'value', force: 'bool' }, positional: 1 },
+  'label edit': { flags: { repo: 'value', description: 'value' }, positional: 1 },
 };
 const SHORT = { '-q': '--jq', '-R': '--repo' };
 
@@ -315,7 +316,15 @@ function labelCreate({ positional, flags }, ctx) {
   return `✓ Label "${name}" created in ${ctx.repo}\n`;
 }
 
-const COMMANDS = { 'issue view': issueView, 'issue list': issueList, 'issue create': issueCreate, 'issue edit': issueEdit, 'repo view': repoView, 'label create': labelCreate };
+// Only the description: the name and the color of the label stay as they are.
+function labelEdit({ positional, flags }, ctx) {
+  const name = positional[0];
+  if (flags.description === undefined) refuse('"gh label edit" got nothing to change');
+  ctx.api(['api', '-X', 'PATCH', `repos/${ctx.repo}/labels/${enc(name)}`, '--input', '-'], JSON.stringify({ description: flags.description }));
+  return `✓ Label "${name}" updated in ${ctx.repo}\n`;
+}
+
+const COMMANDS = { 'issue view': issueView, 'issue list': issueList, 'issue create': issueCreate, 'issue edit': issueEdit, 'repo view': repoView, 'label create': labelCreate, 'label edit': labelEdit };
 
 // ---- access
 

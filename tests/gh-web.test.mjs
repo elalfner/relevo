@@ -153,6 +153,20 @@ test('repo view reads the repository over REST and label create falls back to an
   assert.equal(run(['label', 'create', 'x'], { w }).code, 1, 'without --force an existing label is an error');
 });
 
+test('label edit sends only the description, and refuses to rename or recolor', () => {
+  const w = world({ 'PATCH repos/elalfner/relevo-sandbox/labels/relevo%3Abuilt': {} });
+  const r = run(['label', 'edit', 'relevo:built', '--repo', REPO, '--description', 'Next: /relevo:review <n>'], { w });
+  assert.equal(r.code, 0);
+  assert.equal(r.calls.length, 1);
+  assert.deepEqual(JSON.parse(r.calls[0].input), { description: 'Next: /relevo:review <n>' });
+  for (const flag of ['--color', '--name']) {
+    const refused = run(['label', 'edit', 'relevo:built', flag, 'x'], { w: world() });
+    assert.equal(refused.code, 1, flag);
+    assert.deepEqual(refused.calls, [], flag);
+  }
+  assert.equal(run(['label', 'edit', 'relevo:built'], { w: world() }).code, 1, 'nothing to change');
+});
+
 // ---- web-sessions: outside a remote session nothing changes
 
 test('Scenario: A terminal - the arguments reach gh unchanged and its exit code comes back', () => {

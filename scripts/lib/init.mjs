@@ -507,6 +507,13 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   }
   const missing = (facts.labels ?? null) === null ? names : names.filter((l) => (renaming && l.key === 'build-failed') || !facts.labels.includes(l.name));
   items.push(missing.length === 0 ? item('labels', 'ok', 'All lifecycle labels exist') : item('labels', 'todo', `Create ${missing.length} label(s): ${missing.map((l) => l.name).join(', ')}`, { labels: missing }));
+  // The labels that exist keep the description they were created with: offer the current one, and change nothing else.
+  // Only the labels that say a next step; a files project has no labels, and unreadable ones give no map.
+  const stale = facts.config?.tracker === 'files' ? [] : names
+    .filter((l) => l.kind !== 'overlay' || l.key === 'needs-reviewer')
+    .map((l) => ({ name: l.name, from: facts.labelDescriptions?.[l.name], to: l.description }))
+    .filter((c) => c.from !== undefined && c.from !== c.to);
+  if (stale.length > 0) items.push(item('labels.describe', 'todo', `Update the description of ${stale.length} label(s), keeping name and color: ${stale.map((c) => c.name).join(', ')}`, { changes: stale }));
 
   // base branch
   items.push(facts.branches?.base ? item('branch.base', 'ok', `Base branch ${base} exists`) : item('branch.base', 'todo', `Create branch ${base} from ${release}`, { base, release }));
@@ -634,6 +641,7 @@ export function renderPlan(items) {
   const lines = items.flatMap((i) => [
     `[${tag[i.status]}] ${i.description}${i.install ? ` (${i.command})` : ''}`,
     ...(i.diff ? indent(i.diff.trimEnd()) : []),
+    ...(i.changes ?? []).flatMap((c) => indent(`${c.name}\n  old: ${c.from || '""'}\n  new: ${c.to}`)),
     ...(i.conflicts ?? []).flatMap((c) => [indent('yours:'), indent(c.yours), indent('the new template:'), indent(c.theirs)].flat()),
   ]);
   lines.push('', todo === 0 ? 'Nothing to do.' : `${todo} change(s) to make.`);
@@ -668,6 +676,10 @@ export function applyPlan(items, { repo, io }) {
           break;
         case 'labels':
           it.labels.forEach((l) => io.gh(['label', 'create', l.name, '--repo', repo, '--color', l.color, '--description', l.description, '--force']));
+          break;
+        case 'labels.describe':
+          // `label edit`, not `label create --force`, which rewrites the color too.
+          it.changes.forEach((c) => io.gh(['label', 'edit', c.name, '--repo', repo, '--description', c.to]));
           break;
         case 'branch.base': {
           const sha = JSON.parse(io.gh(['api', `repos/${repo}/branches/${it.release}`])).commit.sha;
