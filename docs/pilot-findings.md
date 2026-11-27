@@ -746,3 +746,14 @@ Four private repositories, with Vue and Flutter projects (one of them a Flutter 
 
 - **Cloud builds without a result:** of 70 closed progress comments in three of the repositories, 15 ended without a result. Their causes were not all classified.
 - **Refused merges:** 30 "not merged" notices in the largest repository, among them conflicts, a base branch that moved, checks that GitHub had not finished and a specification that could not be archived.
+
+## The record of what QA stopped (sandbox #205 and #206, task 4.2 of `record-qa-findings`)
+
+The sandbox workflow was pinned to `82ecee3` of `dev` (sandbox PR 204). #205, a small issue about the header of the to-do list, was built in the cloud and then corrected with `/relevo:fix` on a machine, from a clone with the plugin of that commit.
+
+- **`go`:** `built` in about 4 minutes, 2 of 2 tasks, QA passed on the first attempt, 62 turns, about $1.34 notional. The comment carries `<!-- relevo:qa-record -->` with one round: green gate, no blocking finding, 4 notes.
+- **`fix`:** the correction asked for the widget test that a project rule requires. The comment says `Kind of correction: a defect` and carries the record with `"kind":"defect"`: green gate, no blocking finding, 2 notes.
+- **`relevo qa-report --list`**, against the real comments of the sandbox: 2 runs recorded (1 of `go`, 1 of `fix`), 0 in which QA stopped something, corrections by kind `defect 1`, and one line for each run.
+- **QA passed #205 with no test for the new behaviour**, although a rule of the project asks for a widget test for every user-visible behaviour. The issue left the tests to a later one, and no reviewer cited the rule. The record cannot show this: it counts what was blocked, not what was let through.
+- **#206 did not reach QA.** It was written to be rejected, with a limit of lines that its own scope did not allow to meet. The build saw the contradiction at the specification and returned it to `needs-spec` after 1 minute, so nothing was recorded.
+- Not seen: a rejection by the reviewers or a red gate, so no finding text has gone through a real comment or the list (only the tests cover it); the digest line (the sandbox has no `digest.issue`); `trust: public`; and a person correcting the kind that `fix` named.
