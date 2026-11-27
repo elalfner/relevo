@@ -65,7 +65,7 @@ When a cloud run ends because the usage limit, the quota or the credit was reach
 - **THEN** the comment is the generic one with the link to the run
 
 ### Requirement: The consumption of a run is visible
-After a cloud run, a comment on the issue SHALL give the number of turns, the cost and the tokens that the execution log reports, and say that the cost is notional when the mode is a subscription. The comment SHALL also carry a hidden, machine-readable marker with those figures and whether the cost is notional, so that they can be added up without reading the sentence. When the log reports none of them, nothing SHALL be posted.
+After a cloud run, a comment on the issue SHALL give the number of turns, the cost and the tokens that the execution log reports, and say that the cost is notional when the mode is a subscription. The comment SHALL also carry a hidden, machine-readable marker with those figures and whether the cost is notional, so that they can be added up without reading the sentence. When the agent ran and the log reports none of them, a comment SHALL say that the usage is unknown and why, with a link to the run and without the marker.
 
 #### Scenario: Log with usage
 - **WHEN** the execution log has a result with turns, cost and token counts
@@ -76,8 +76,12 @@ After a cloud run, a comment on the issue SHALL give the number of turns, the co
 - **THEN** the sentence and the marker both give the turns and leave the cost out
 
 #### Scenario: Log without usage
-- **WHEN** the execution log is missing or has no result
-- **THEN** no comment is posted and the run is not reported as failed
+- **WHEN** the agent step ran and the execution log is missing or has no result
+- **THEN** one comment says that the usage of the run is unknown and which of the two happened, it carries no usage marker, and the run is not reported as failed
+
+#### Scenario: The agent never started
+- **WHEN** the job ends before the agent step
+- **THEN** no usage comment is posted
 
 ### Requirement: A local run uses the same limits and tools as the cloud
 `go-local.mjs <issue>` SHALL run `/relevo:go <issue>` in a separate git worktree using the runner configured by `agent.build` (`claude` with `claude -p` or `antigravity` with `agent-guard.mjs run` and `agy`), applying the respective turn, cost or token limits from `relevo.yml` and the tool restrictions of the workflow. With `antigravity` it SHALL pass the guard only arguments the guard accepts, and a run the guard refuses to start SHALL keep the worktree and print its path. It SHALL NOT warn that the cloud can also build the issue, because a local build does not start the cloud.
