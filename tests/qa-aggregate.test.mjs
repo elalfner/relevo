@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { aggregate, parseReport, verdictOf } from '../scripts/lib/qa-aggregate.mjs';
@@ -453,4 +453,24 @@ test('Scenario: The default changes nothing - for every combination of the four 
       assert.equal(withBugs.action, without.action);
     }
   }
+});
+
+test('Scenario: A rejection then a pass - --log records each decided attempt, nothing on a reask, and never changes the exit code', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-agg-log-'));
+  const cli = new URL('../scripts/qa-aggregate.mjs', import.meta.url).pathname;
+  const file = (name, text) => { writeFileSync(join(dir, name), text); return join(dir, name); };
+  const plan = file('plan.json', JSON.stringify(THREE));
+  const decide = (spec, log) => spawnSync('node', [cli, '--plan', plan, '--attempt', '1', '--retries', '1',
+    '--report', `spec=${file('spec.md', spec)}`, '--report', `security=${file('sec.md', passed())}`, '--report', `code=${file('code.md', passed())}`, '--log', log], { encoding: 'utf8' });
+  const log = join(dir, 'qa.jsonl');
+  assert.equal(decide('no verdict', log).status, 4);
+  assert.equal(existsSync(log), false, 'a reask records nothing');
+  assert.equal(decide(rejected('1. Scenario 2 has no code.', '2. Scenario 3 has no test.'), log).status, 1);
+  assert.equal(decide(passed(), log).status, 0);
+  const lines = readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(lines.map((l) => [l.gate, l.blocking.map((f) => `${f.lens}:${f.class}`)]), [['green', ['spec:fixable', 'spec:fixable']], ['green', []]]);
+  assert.equal(lines[0].blocking[0].text, 'Scenario 2 has no code.');
+  const unwritable = join(dir, 'missing', 'qa.jsonl');
+  assert.equal(decide(rejected('1. x'), unwritable).status, 1);
+  assert.equal(decide(passed(), unwritable).status, 0);
 });

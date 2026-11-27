@@ -10,6 +10,7 @@ import { stalledMarker } from './stalled-marker.mjs';
 import { pickLanguage, SUPPORTED_LANGUAGES } from './language.mjs';
 import { nextStep, nextStepPrefix } from './next-step.mjs';
 import { sharedWaitMarker } from './shared-wait.mjs';
+import { FIX_KINDS, recordMarker } from './qa-record.mjs';
 
 // Kept here as well so that existing imports keep working.
 export { pickLanguage, SUPPORTED_LANGUAGES };
@@ -99,6 +100,7 @@ export const CATALOG = {
       '',
       '{{checklist}}',
       '{{qa_notes_marker}}',
+      '{{qa_record_marker}}',
     ],
     build_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" {{headline}}',
@@ -112,6 +114,7 @@ export const CATALOG = {
       'Full QA report: {{log_url}}',
       '{{next_line}}',
       '{{stalled_marker}}',
+      '{{qa_record_marker}}',
     ],
     toolchain_missing: [
       '@{{assignee}} #{{issue}} "{{title}}" was not built: the runner has no {{tools}} ❌',
@@ -265,10 +268,12 @@ export const CATALOG = {
       '#{{issue}} "{{title}}" fixed (iteration {{iteration}})',
       '',
       'What changed: {{summary}}',
+      '{{kind_line}}',
       'QA: {{qa}}',
       'Commit: {{commit}}',
       '@{{recipient}} {{ask}}',
       '{{next_line}}',
+      '{{qa_record_marker}}',
     ],
     ship_stopped: [
       '@{{actor}} #{{issue}} was not shipped',
@@ -358,6 +363,7 @@ export const CATALOG = {
       '',
       '{{checklist}}',
       '{{qa_notes_marker}}',
+      '{{qa_record_marker}}',
     ],
     build_failed: [
       '@{{assignee}} #{{issue}} "{{title}}" {{headline}}',
@@ -371,6 +377,7 @@ export const CATALOG = {
       'Reporte completo de QA: {{log_url}}',
       '{{next_line}}',
       '{{stalled_marker}}',
+      '{{qa_record_marker}}',
     ],
     toolchain_missing: [
       '@{{assignee}} #{{issue}} "{{title}}" no se construyó: el runner no tiene {{tools}} ❌',
@@ -524,10 +531,12 @@ export const CATALOG = {
       '#{{issue}} "{{title}}" corregido (iteración {{iteration}})',
       '',
       'Qué cambió: {{summary}}',
+      '{{kind_line}}',
       'QA: {{qa}}',
       'Commit: {{commit}}',
       '@{{recipient}} {{ask}}',
       '{{next_line}}',
+      '{{qa_record_marker}}',
     ],
     ship_stopped: [
       '@{{actor}} #{{issue}} no se fusionó',
@@ -926,6 +935,30 @@ function usageLimitRetry(values, es) {
     : `${mention(values)}The run stopped because the usage limit (or the credit) of the model account was reached. Nothing is wrong with the code. The issue is back in the queue and retries by itself (retry ${values.attempt} of ${values.max}). ${why} The queue looks every 30 minutes, so it can start a little later.${keptBranch} ${values.run}`;
 }
 
+// What kind of correction `fix` made, in the words of the comment. `defect` is the only one that QA could have caught.
+const FIX_KIND_WORDS = {
+  en: { defect: 'a defect', 'spec-gap': 'a gap in the specification', change: 'a change of mind', integration: 'an integration', unfinished: 'the completion of unfinished work' },
+  es: { defect: 'un defecto', 'spec-gap': 'un vacío de la especificación', change: 'un cambio de idea', integration: 'una integración', unfinished: 'completar trabajo sin terminar' },
+};
+function kindLine(values, es) {
+  if (!present(values.kind)) return '';
+  if (!FIX_KINDS.includes(values.kind)) throw new Error(`message "fix_done" has an unknown kind "${values.kind}"`);
+  return es ? `Tipo de corrección: ${FIX_KIND_WORDS.es[values.kind]}` : `Kind of correction: ${FIX_KIND_WORDS.en[values.kind]}`;
+}
+
+// A build that failed after QA passed, because the base branch could not be integrated.
+const FAILED_AFTER_QA = new Set(['conflict with the base branch', 'automated validation failed after merging the base branch']);
+
+// The hidden record of what QA stopped, in the comment that ends a run. `qa_record` ({ rounds, withText }) is what
+// render-message.mjs read from the log of the run; without it the message is the one of a run with no record.
+function qaRecordMarker(kind, values) {
+  const command = { built: 'go', build_failed: 'go', fix_done: 'fix' }[kind];
+  const record = values.qa_record;
+  if (!command || !record?.rounds?.length) return '';
+  const passed = kind !== 'build_failed' || FAILED_AFTER_QA.has(values.reason);
+  return recordMarker({ command, passed, rounds: record.rounds, kind: values.kind, withText: record.withText === true });
+}
+
 export function renderMessage(kind, data = {}, language = 'en') {
   if (!REQUIRED[kind]) throw new Error(`unknown message kind "${kind}"`);
   const values = { ...data };
@@ -1053,6 +1086,8 @@ export function renderMessage(kind, data = {}, language = 'en') {
     // With no ask the person to tell is mentioned in front of the step; with one, the ask has its own line above.
     values.next_line = present(values.recipient) && !present(values.ask) ? `@${values.recipient} ${line}` : line;
   }
+  values.qa_record_marker = qaRecordMarker(kind, values);
+  values.kind_line = kind === 'fix_done' ? kindLine(values, es) : '';
   if (kind === 'build_failed') {
     values.class_line = classLine(values, es);
     values.contradiction_line = contradictionLine(values, es);
@@ -1119,7 +1154,7 @@ export function renderMessage(kind, data = {}, language = 'en') {
     const names = [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
     const optionalEmpty = names.some((n) => !present(values[n]) && !n.endsWith('_suffix'));
     if (names.length > 0 && optionalEmpty) return;
-    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' || n === 'body' || n === 'wait_marker' || n === 'stalled_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
+    out.push(template.replace(/\{\{(\w+)\}\}/g, (_, n) => (n === 'checklist' || n === 'qa_notes_marker' || n === 'body' || n === 'wait_marker' || n === 'stalled_marker' || n === 'qa_record_marker' ? String(values[n] ?? '') : shorten(values[n] ?? ''))));
   });
 
   // Collapse repeated blank lines and trim the ends.

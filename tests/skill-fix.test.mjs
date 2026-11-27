@@ -194,3 +194,23 @@ test('Scenario: Fix of an issue with a pull request - the report ends with the s
   assert.match(report, /A fix that stopped keeps the instruction/);
 });
 
+
+test('Scenario: Each attempt of QA is recorded - the QA reference, go and fix pass one log of the run to the scripts and the message', () => {
+  const read = (p) => readFileSync(root(p), 'utf8');
+  const qa = read('skills/go/references/qa-run.md');
+  assert.match(qa, /validation-gate\.mjs [^\n]*--log <qa_log>/);
+  assert.match(qa, /qa-aggregate\.mjs [^\n]*--log <qa_log>/);
+  assert.match(qa, /`review` gives no `<qa_log>`/);
+  for (const skill of [read('skills/go/SKILL.md'), body]) {
+    assert.match(skill, /--log <qa_log>/);
+    assert.match(skill, /`qa_log` \(the path of the QA record/);
+  }
+});
+
+test('Scenario: A defect, and the person disagrees - the skill names the five kinds, says the one it chose, takes the person\'s and passes it', () => {
+  const decide = body.slice(body.indexOf('### 1. Understand the defect'), body.indexOf('### 2. Specification first'));
+  for (const kind of ['defect', 'spec-gap', 'change', 'integration', 'unfinished']) assert.match(decide, new RegExp(`^- \`${kind}\`:`, 'm'));
+  assert.match(decide, /Say it to the person/);
+  assert.match(decide, /use theirs/);
+  assert.match(body.slice(body.indexOf('### 7. The issue')), /`kind` \(the kind of step 1/);
+});

@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// relevo init | install | update | doctor | version. See scripts/lib/cli.mjs and scripts/lib/init-tools.mjs. `install`
+// relevo init | install | update | doctor | qa-report | version. See scripts/lib/cli.mjs and scripts/lib/init-tools.mjs. `install`
 // and `init` without --scope ask where, in a terminal, with the project preselected; `init` also asks for the tools.
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { USAGE, execute, isInsideGitRepo, parseArgs, resolveScope, scopeChoices } from './lib/cli.mjs';
 import { TOOLS, initScopeChoices, parseInitArgs, repoRoot, resolveInitScope, runInit, runUpdate } from './lib/init-tools.mjs';
 import { select, selectMany } from './lib/select.mjs';
+import { findRepo } from './lib/gh-web.mjs';
+import { realGh } from './lib/github.mjs';
+import { runQaReport } from './lib/qa-report.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -63,6 +66,15 @@ if (parsed.command === 'init') {
     if (resolved.reason) process.stdout.write(`relevo: ${resolved.reason}.\n`);
   }
   finish(runInit({ tools, scope, force: Boolean(parsed.force) }, deps));
+}
+
+if (parsed.command === 'qa-report') {
+  const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const repo = findRepo({ flag: parsed.repo, env: process.env, git });
+  const { code, lines } = runQaReport({ gh: realGh, repo, since: parsed.since, list: parsed.list });
+  // Not `finish`: leaving before the write ends would cut a long list that is piped.
+  await new Promise((done) => process.stdout.write(`${lines.join('\n')}\n`, done));
+  process.exit(code);
 }
 
 let { scope } = parsed;

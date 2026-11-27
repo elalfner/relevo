@@ -119,7 +119,8 @@ test('digest.issue is a validated optional setting', () => {
 
 // ---------- blocks that come from another repository
 
-import { gatherStatus, gatherUsage } from '../scripts/lib/status-data.mjs';
+import { attemptOf, recordMarker } from '../scripts/lib/qa-record.mjs';
+import { gatherRuns, gatherStatus, gatherUsage } from '../scripts/lib/status-data.mjs';
 
 const LINKED = loadConfig(tpl.replace('links: []', 'links: [acme/api]')).config;
 
@@ -716,4 +717,29 @@ test('the status skill says that it shows the builds of this machine, from the s
   assert.match(skill, /the builds running on this machine[^)]*the group, the tasks done, the minutes and when its progress last changed/);
   assert.match(skill, /state beside the worktrees, only for this machine/);
   assert.match(skill, /listed without progress/);
+});
+
+// ---------- what QA stopped, in the digest
+
+const qaComment = (over) => ({ user: { type: 'Bot' }, created_at: NOW.toISOString(), body: recordMarker({ command: 'go', passed: true, rounds: [attemptOf()], ...over }) });
+const caught = [attemptOf({ findings: [{ lens: 'spec', class: 'fixable', text: 'x' }] }), attemptOf()];
+
+test('Scenario: A week with records - four runs, two stopped by QA and one defect corrected by a person, from one read of the comments', () => {
+  const comments = [
+    qaComment({ rounds: caught }), qaComment({ rounds: [attemptOf({ gate: 'red' }), attemptOf()] }), qaComment({}),
+    qaComment({ command: 'fix', kind: 'defect' }),
+    { ...qaComment({ rounds: caught }), created_at: new Date(NOW.getTime() - 8 * 24 * 3600 * 1000).toISOString() },
+  ];
+  const calls = [];
+  const { qaRecords, usage } = gatherRuns({ gh: (args) => { calls.push(args); return JSON.stringify([comments]); }, repo: 'acme/app', now: NOW });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(usage, []);
+  const text = (language) => renderDigest(buildStatus({ config, now: NOW, issues: [issue(1, ['relevo:built'])], prs: [], qaRecords }), language);
+  assert.match(text('en'), /\n\nQA, last 7 days: 4 runs recorded, 2 stopped by QA, 1 defect corrected by a person\.$/);
+  assert.match(text('es'), /\n\nQA, últimos 7 días: 4 ejecuciones con registro, 2 detenidas por QA, 1 defecto corregido por una persona\.$/);
+});
+
+test('Scenario: A week without records - the digest has no line about QA', () => {
+  assert.doesNotMatch(digestWith([]), /QA,/);
+  assert.doesNotMatch(digestWith(RUNS), /QA,/);
 });

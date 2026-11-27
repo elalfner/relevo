@@ -4,15 +4,19 @@
 
 You are given by the skill that sent you here: the change folder `openspec/changes/<change_id>/`, `<issue_file>` (the saved body of the issue), the base branch `<base>`, the platform and its folder `<path>`, the rules files (`qa.rules_from`), `allow_paths`, the number of retries `<qa_retries>`, and the files the developer agent reported. All reports and plans are saved in the scratch folder of the run, never in the repository.
 
+**The QA record.** `go` and `fix` also give you `<qa_log>`, one file in that scratch folder, new for this run and the same for every attempt of it. Add `--log <qa_log>` to the gate of step 1 and to the aggregation of step 4: the two scripts write what was blocked, and you never write, edit or delete that file. `review` gives no `<qa_log>`, so there leave `--log` out. Recording never changes what you do: when a script says it could not write the record, go on.
+
 **The attempts.** The total number of developer attempts is `<qa_retries> + 1`, and `<n>` is the number of the attempt you are on (1 the first time). A red gate uses an attempt, exactly as a rejection by the lenses does, so the total never grows. The **last attempt** is the one numbered `<qa_retries> + 1`.
 
 ## 1. Make the new files visible and run the gate
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/intent-to-add.mjs <files the developer reported>
-node ${CLAUDE_PLUGIN_ROOT}/scripts/long-run.mjs start --id gate -- node ${CLAUDE_PLUGIN_ROOT}/scripts/validation-gate.mjs --base origin/<base> --platform <platform> --files <the same files, comma separated> When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin/<base>`.
+node ${CLAUDE_PLUGIN_ROOT}/scripts/long-run.mjs start --id gate -- node ${CLAUDE_PLUGIN_ROOT}/scripts/validation-gate.mjs --base origin/<base> --platform <platform> --files <the same files, comma separated> --log <qa_log>
 node ${CLAUDE_PLUGIN_ROOT}/scripts/long-run.mjs wait --id gate --tail 2
 ```
+
+When the orchestrator says that the project has no remote, read the local `<base>` where this says `origin/<base>`.
 
 The gate can last longer than the 2 minutes after which your shell tool cuts a foreground command, so it runs through `long-run.mjs`, which runs it in the background with a log: `wait` returns within 110 seconds and prints one line whose first word is `running`, `passed`, `failed` or `interrupted`. **While it says `running`, run the same `wait` again.** Do not use `&`, `sleep` or your own polling loop. When it ends, `exit=<n>` is the exit code of the gate below, and the log (`--tail <n>` of `status`) has the lines the gate printed. `interrupted` means the job was killed: run the same `start` line again (the gate runs only what it has not already run for this diff). `cut` is different: the time limit of the run ended it (or did not let it start). Never start it again: take the failure path with the reason `run limit reached`, and say in the `finding` that the gate was cut.
 
@@ -52,7 +56,7 @@ The lenses are read-only and independent, so the lenses of a batch are launched 
 ## 4. Aggregate
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/qa-aggregate.mjs --plan <plan.json> --attempt <n> --retries <qa_retries> --report spec=<file> --report security=<file> --report code=<file> [--report interface=<file>] [--report bugs=<file>] --rules-file <qa.rules_from, comma separated> [--previous spec=<file> --previous security=<file> --previous code=<file> [--previous interface=<file>] [--previous bugs=<file>]]
+node ${CLAUDE_PLUGIN_ROOT}/scripts/qa-aggregate.mjs --plan <plan.json> --attempt <n> --retries <qa_retries> --report spec=<file> --report security=<file> --report code=<file> [--report interface=<file>] [--report bugs=<file>] --rules-file <qa.rules_from, comma separated> --log <qa_log> [--previous spec=<file> --previous security=<file> --previous code=<file> [--previous interface=<file>] [--previous bugs=<file>]]
 ```
 
 Keep the reports of every attempt in files of their own (the report of a lens on attempt `<n>` is not overwritten by attempt `<n> + 1`). From the second attempt, pass the reports of attempt `<n> - 1` as `--previous`, one per lens that ran; on the first attempt pass none. With them the script can tell that a lens now rejects what another lens asked for in the attempt before.

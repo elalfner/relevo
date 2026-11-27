@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pickLanguage, renderMessage } from '../scripts/lib/messages.mjs';
 
 const BUILT = {
@@ -952,4 +956,63 @@ test('Scenario: A run cut by the runner on the branch of the issue - the next st
 test('the stop after the retries of a usage limit says --resume continues from the branch that kept the work', () => {
   const data = { ...RUN, situation: 'usage_limit_stopped', rescue_state: 'kept', rescue_branch: 'feature/12-x', max: 3 };
   assert.match(renderMessage('run_no_outcome', data, 'en'), /`\/relevo:go 12 --resume` continues from it/);
+});
+
+// ---------- the record of QA in the closing comment
+
+const RECORD = { rounds: [{ gate: 'green', blocking: [{ lens: 'security', class: 'fixable', text: 'The token is logged' }], advisory: 2 }], withText: true };
+const FIX_DATA = { issue: 31, title: 'Totals', summary: 'the total counts each client once', qa: 'QA PASSED', commit: 'abc1234', iteration: 1, state: 'built' };
+const FAILED_DATA = { assignee: 'ana', issue: 31, title: 'Totals', finding: 'x', branch: 'feature/31-totals' };
+const markerOf = (text) => JSON.parse(/^<!-- relevo:qa-record (.*) -->$/m.exec(text)[1]);
+const without = (text) => text.split('\n').filter((l) => !l.startsWith('<!-- relevo:qa-record')).join('\n');
+
+test('Scenario: A built issue - built, build_failed and fix_done carry the marker and their visible text is the same', () => {
+  for (const language of ['en', 'es']) {
+    for (const [kind, data, command, passed] of [['built', BUILT, 'go', true], ['build_failed', FAILED_DATA, 'go', false], ['fix_done', FIX_DATA, 'fix', true]]) {
+      const plain = renderMessage(kind, data, language);
+      assert.doesNotMatch(plain, /qa-record/);
+      assert.equal(renderMessage(kind, { ...data, qa_record: { rounds: [] } }, language), plain);
+      const text = renderMessage(kind, { ...data, qa_record: RECORD }, language);
+      assert.equal(without(text), plain);
+      assert.deepEqual([markerOf(text).command, markerOf(text).passed, markerOf(text).rounds.length], [command, passed, 1]);
+    }
+  }
+});
+
+test('a build that failed on the integration of the base branch says that QA passed', () => {
+  for (const reason of ['conflict with the base branch', 'automated validation failed after merging the base branch']) {
+    assert.equal(markerOf(renderMessage('build_failed', { ...FAILED_DATA, reason, qa_record: RECORD })).passed, true);
+  }
+  assert.equal(markerOf(renderMessage('build_failed', { ...FAILED_DATA, reason: 'QA rejected after the retries', qa_record: RECORD })).passed, false);
+});
+
+test('Scenario: A defect - fix_done says the kind of the correction and records it; none leaves the comment as it was', () => {
+  const words = { defect: ['a defect', 'un defecto'], 'spec-gap': ['a gap in the specification', 'un vacío de la especificación'], change: ['a change of mind', 'un cambio de idea'], integration: ['an integration', 'una integración'], unfinished: ['the completion of unfinished work', 'completar trabajo sin terminar'] };
+  for (const [kind, [en, es]] of Object.entries(words)) {
+    assert.ok(renderMessage('fix_done', { ...FIX_DATA, kind }).includes(`\nKind of correction: ${en}\n`));
+    assert.ok(renderMessage('fix_done', { ...FIX_DATA, kind }, 'es').includes(`\nTipo de corrección: ${es}\n`));
+    assert.equal(markerOf(renderMessage('fix_done', { ...FIX_DATA, kind, qa_record: RECORD })).kind, kind);
+  }
+  assert.throws(() => renderMessage('fix_done', { ...FIX_DATA, kind: 'typo' }), /unknown kind "typo"/);
+  assert.doesNotMatch(renderMessage('fix_done', FIX_DATA), /Kind of correction/);
+  assert.equal(markerOf(renderMessage('fix_done', { ...FIX_DATA, qa_record: RECORD })).kind, undefined);
+});
+
+test('Scenario: Recording fails - render-message reads qa_log, keeps no text for a public or unknown trust, and adds nothing when the log is unreadable', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-msg-'));
+  const log = join(dir, 'qa.jsonl');
+  writeFileSync(log, `${JSON.stringify(RECORD.rounds[0])}\n`);
+  const cli = new URL('../scripts/render-message.mjs', import.meta.url).pathname;
+  const render = (data, trust) => {
+    const config = join(dir, 'relevo.yml');
+    if (trust) writeFileSync(config, `trust: ${trust}\nlimits:\n  run_max_cost: 5\nplatforms:\n  app:\n    path: .\n    stack: flutter\n    targets: [android]\n`);
+    const r = spawnSync('node', [cli, 'built', '--config', trust ? config : join(dir, 'none.yml'), '--language', 'en'], { cwd: dir, encoding: 'utf8', input: JSON.stringify(data) });
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout.trimEnd();
+  };
+  assert.equal(markerOf(render({ ...BUILT, qa_log: log }, 'private-team')).rounds[0].blocking[0].text, 'The token is logged');
+  for (const trust of ['public', null]) assert.doesNotMatch(render({ ...BUILT, qa_log: log }, trust), /token is logged/);
+  const plain = render(BUILT, 'private-team');
+  assert.equal(render({ ...BUILT, qa_log: join(dir, 'missing') }, 'private-team'), plain);
+  assert.equal(render({ ...BUILT, qa_record: RECORD }, 'private-team'), plain);
 });

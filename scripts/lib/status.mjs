@@ -9,6 +9,7 @@
 import { resolveLabelNames } from './labels.mjs';
 import { renderMessage } from './messages.mjs';
 import { mainAgentShare, sumUsage, summarizeOutcomes, USAGE_DAYS } from './run-usage.mjs';
+import { summarizeRecords } from './qa-record.mjs';
 import { STAGE_DAYS, formatDuration, summarizeStages } from './stages.mjs';
 
 /** Reviews one person can complete per working day; used only for the capacity warning. */
@@ -43,7 +44,7 @@ function stateOf(issue, names) {
   return order.find((k) => issue.labels.includes(names[k])) ?? null;
 }
 
-export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, cloudReason = null, unread = [], usage = [], stages = [], localBuilds, me = null, now = new Date() }) {
+export function buildStatus({ config, issues, prs = [], milestones = [], externalBlocks = {}, cloudBuilds = true, cloudReason = null, unread = [], usage = [], qaRecords = [], stages = [], localBuilds, me = null, now = new Date() }) {
   const names = resolveLabelNames(config.labels);
   const entries = issues.map((i) => ({
     number: i.number, title: i.title, state: stateOf(i, names), assignee: i.assignees[0] ?? null, milestone: i.milestone ?? null,
@@ -152,6 +153,8 @@ export function buildStatus({ config, issues, prs = [], milestones = [], externa
     mainAgent: usage.length ? mainAgentShare(usage) : null,
     // How those runs ended and where their time went; nothing is stored, it is read from the markers each time.
     outcomes: usage.length ? summarizeOutcomes(usage) : null,
+    // What QA stopped in the runs of the last seven days, or null when none left a record. Only the digest shows it.
+    qa: qaRecords.length ? summarizeRecords(qaRecords) : null,
     // The median time of each stage that finished in the last seven days, or null when none did. Only the digest shows it.
     stages: stages.length ? summarizeStages(stages) : null,
     readOnly: true,
@@ -338,6 +341,12 @@ function digestStagesLine(stages, es) {
   return `${es ? `Etapas, últimos ${STAGE_DAYS} días (mediana)` : `Stages, last ${STAGE_DAYS} days (median)`}: ${parts.join(', ')}.`;
 }
 
+// One line for the digest: what QA stopped before a person saw it, and the defects a person then had corrected.
+function digestQaLine({ runs, stopped, defects }, es) {
+  if (es) return `QA, últimos ${USAGE_DAYS} días: ${runs} ${runs === 1 ? 'ejecución' : 'ejecuciones'} con registro, ${stopped} ${stopped === 1 ? 'detenida' : 'detenidas'} por QA, ${defects} ${defects === 1 ? 'defecto corregido' : 'defectos corregidos'} por una persona.`;
+  return `QA, last ${USAGE_DAYS} days: ${runs} ${runs === 1 ? 'run' : 'runs'} recorded, ${stopped} stopped by QA, ${defects} ${defects === 1 ? 'defect' : 'defects'} corrected by a person.`;
+}
+
 export function renderDigest(report, language = 'en') {
   const es = String(language).startsWith('es');
   const people = Object.keys(report.waiting).sort();
@@ -365,5 +374,6 @@ export function renderDigest(report, language = 'en') {
   if (report.outcomes && outcomesLine(report.outcomes, es ? 'es' : 'en')) lines.push(...(report.usage ? [] : ['']), outcomesLine(report.outcomes, es ? 'es' : 'en'));
   // After the usage when there is one, so that the two lines read as one block.
   if (report.stages?.length) lines.push(...(report.usage ? [] : ['']), digestStagesLine(report.stages, es));
+  if (report.qa) lines.push(...(report.usage || report.stages?.length ? [] : ['']), digestQaLine(report.qa, es));
   return lines.join('\n');
 }

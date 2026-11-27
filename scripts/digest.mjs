@@ -2,7 +2,7 @@
 // Posts the daily digest as a comment on the issue named by digest.issue (chat tools subscribe to GitHub events).
 // Posts nothing when nothing is waiting, and nothing on weekends.
 //   node scripts/digest.mjs --repo owner/name [--config relevo.yml] [--dry-run] [--now ISO]
-//   node scripts/digest.mjs --input state.json [--now ISO]     (never writes; the file may hold `usage`, the parsed runs, and `stages`, the samples of the stages)
+//   node scripts/digest.mjs --input state.json [--now ISO]     (never writes; the file may hold `usage`, the parsed runs, `qaRecords`, the parsed QA records, and `stages`, the samples of the stages)
 // Prints the digest text, or nothing.   exit 0: done   exit 2: invalid configuration or bad arguments
 
 import { existsSync } from 'node:fs';

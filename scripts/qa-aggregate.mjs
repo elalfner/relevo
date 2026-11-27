@@ -8,6 +8,8 @@
 // --previous gives the report each lens wrote on the attempt before, from the second attempt: with them the output carries `contradiction`
 // ({ pairs } or null) when every blocking finding reverses a finding that another lens asked for and no longer asks for, so a retry
 // cannot meet both. A missing or unreadable file is left out, and then nothing can be compared (the retry runs as it does without it).
+// --log <file> appends what this attempt blocked to the QA record of the run (scripts/lib/qa-record.mjs); a reask records nothing,
+// and a file that cannot be written changes neither the output nor the exit code.
 // plan.json is the output of lens-plan.mjs. Prints JSON { result, action, lenses, findings, advisory, ... }.
 //   exit 0: QA PASSED   exit 1: QA REJECTED   exit 4: a report has no valid first line, ask that lens again once (see "reask")
 //   exit 5: a second invalid report: end the run with the reason "lens report invalid", with no developer retry   exit 2: bad arguments
@@ -15,6 +17,7 @@
 import { aggregate } from './lib/qa-aggregate.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
 import { join } from 'node:path';
+import { appendAttempt, attemptOf } from './lib/qa-record.mjs';
 import { parseRules } from './lib/rules-file.mjs';
 
 const argv = process.argv.slice(2);
@@ -56,5 +59,7 @@ const rulesUnread = [];
   try { rules.push(...parseRules(f, readFileSync(join(root, f), 'utf8'))); } catch { rulesUnread.push(f); }
 });
 const out = aggregate({ rules, reports, plan, attempt, retries, previous, reasked: (opt('reasked') ?? '').split(',').map((s) => s.trim()).filter(Boolean) });
+const log = opt('log');
+if (log && out.action !== 'reask' && !appendAttempt(log, attemptOf(out))) console.error(`the QA record could not be written: ${log}`);
 console.log(JSON.stringify(rulesUnread.length ? { ...out, rules_unread: rulesUnread } : out, null, 2));
 process.exit(out.action === 'reask' ? 4 : out.action === 'stop' ? 5 : out.result === 'QA REJECTED' ? 1 : 0);

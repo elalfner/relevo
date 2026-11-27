@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Runs the checks that need no judgement, once, and writes a receipt tied to the exact diff. Usage:
-//   node scripts/validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c] [--fresh]
+//   node scripts/validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c] [--fresh] [--log file]
+// --log appends a line to the QA record of the run (scripts/lib/qa-record.mjs) when the gate is red; a file that cannot be written
+// changes neither the output nor the exit code.
 // --base is the base branch as `go` has it (origin/dev). --files are the files the developer agent reported: they are made
 // visible to the diff first (`git add --intent-to-add`), as intent-to-add.mjs does. The gate then hashes the diff against
 // the base without the generated files of the profile, runs `analyze` and `test` of the profile from the folder of the
@@ -13,6 +15,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { commandWarnings } from './lib/stack-profile.mjs';
 import { intentToAdd } from './lib/intent-to-add.mjs';
+import { appendAttempt, attemptOf } from './lib/qa-record.mjs';
 import { checkKey, currentDiff, treeHash, ensureExcluded, gitIn, readStore, recordResult, resolveContext, reusable } from './lib/check-store.mjs';
 import { checkRestricted, formatRestricted, restrictedInDiff, restrictedListFromText } from './lib/restricted-paths.mjs';
 import { formatFindings } from './lib/scan.mjs';
@@ -26,7 +29,7 @@ const opt = (n) => { const i = argv.indexOf(`--${n}`); return i === -1 ? undefin
 const bad = (m) => { console.error(m); process.exit(EXIT.usage); };
 
 const base = opt('base');
-if (!base) bad('usage: validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c] [--fresh]');
+if (!base) bad('usage: validation-gate.mjs --base <ref> [--platform name] [--config relevo.yml] [--files a,b,c] [--fresh] [--log file]');
 const ctx = resolveContext({ configPath: opt('config'), platformName: opt('platform') });
 if (!ctx.ok) bad(ctx.error);
 const { platform, profile, root, configPath } = ctx;
@@ -85,6 +88,8 @@ try {
   console.log(status);
   if (status === 'could-not-run') console.log(`automated validation could not run: ${commands.filter((c) => c.status === 126 || c.status === 127 || c.error || /not found/i.test(c.output)).map((c) => toolOf(c.command)).join(', ')} is missing`);
   if (status === 'red') {
+    const log = opt('log');
+    if (log && !appendAttempt(log, attemptOf({ gate: 'red' }))) console.error(`the QA record could not be written: ${log}`);
     const ignored = commandWarnings(profile, ctx.name);
     receipt.commands.filter((c) => c.exit_code !== 0).forEach((c) => {
       console.log(`${c.name} failed: ${c.command}`);

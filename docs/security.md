@@ -84,6 +84,14 @@ Two things the table does not say:
 - **The receipt is not a security boundary.** It guards against an omission or a mistake: a reviewer cannot start on code whose checks did not run. It does not defend against an agent that writes a false file, because it lives in the working folder. The guards of the commit (the protected paths, the restricted files, the scan of what is staged) remain the enforcement, and they run whatever any receipt says. The same holds for the record of results that the gate reuses (`.relevo-receipt/checks.json`, written only after a command ran, with no option to record a result without running it): an agent that can write files could forge it, and the CI of the pull request runs the checks again.
 - **A setting never turns a reviewer off.** There is no key to disable `spec`, `security` or `code`, or to lower what they block. The one reviewer with a mode is `bugs`: `qa.bugs` is `advisory` by default (its findings are notes), and a finding that cites a hard rule of the project blocks in every mode. A project's exceptions go in its own rules file, which the `spec` reviewer reads.
 
+## What the QA record holds
+
+The comment that ends a build or a fix carries a hidden marker, `<!-- relevo:qa-record -->`: hidden on the page, but readable by anyone who can read the issue, in its source and through the API. It holds the command, whether QA passed, and for each attempt whether the gate was red, the reviewer and class of each blocking finding, its text and the number of notes. Scripts write it from what the gate and `qa-aggregate.mjs` decided; no agent types it.
+
+- A text is one line of at most 160 characters, with known secret shapes redacted, and at most 20 texts are kept; the rest are counted. A finding quotes code, and the redactor can miss a secret in a shape it does not know.
+- With `trust: public` there is no text, only counts, reviewers and classes. There is none either when `relevo.yml` cannot be read.
+- `relevo qa-report` and the digest count a record only from a comment of a bot or of a person with a role in the repository (owner, member or collaborator), with exactly one valid marker. This is wider than the usage record, which counts bots only, because a local build is posted by a person. So anyone with a role can type a record: the figures are information, not a control.
+
 ## Reviewed false positives of the credential scan
 
 A person can mark a line that the scan flags as reviewed, in `.relevo/scan-exceptions.json`:

@@ -14,6 +14,8 @@ export const USAGE = [
   '  install   add the marketplace and install the plugin; asks where in a terminal (project by default)',
   '  update    update the marketplace and the plugin (without --scope, the installation of this project), and render again the plugins that init made; --force overwrites files edited by hand',
   '  doctor    check this repository (the same as /relevo:doctor); --all lists the checks that passed too',
+  '  qa-report add up what QA stopped, from the comments of the repository (reads only)',
+  '            relevo qa-report [--repo owner/name] [--since YYYY-MM-DD] [--list]',
   '  version   print the version of this package',
   '',
   'user: every project of this machine. project: this repository, shared through .claude/settings.json. local: this repository, only you.'
@@ -23,6 +25,7 @@ export const USAGE = [
 export function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (!command || command === '--help' || command === '-h' || command === 'help') return { command: 'help' };
+  if (command === 'qa-report') return parseReportArgs(rest);
   if (!['install', 'update', 'doctor', 'version'].includes(command)) return { error: `unknown command "${command}"` };
   let scope = null;
   let force = false;
@@ -36,6 +39,22 @@ export function parseArgs(argv) {
   }
   if (scope !== null && !SCOPES.includes(scope)) return { error: `the scope must be one of ${SCOPES.join(', ')}` };
   return { command, scope, ...(force ? { force } : {}), ...(all ? { all } : {}) };
+}
+
+function parseReportArgs(rest) {
+  const out = { command: 'qa-report', repo: null, since: null, list: false };
+  for (let i = 0; i < rest.length; i += 1) {
+    const [name, ...inline] = rest[i].split('=');
+    if (rest[i] === '--list') { out.list = true; continue; }
+    if (name !== '--repo' && name !== '--since') return { error: `unknown option "${rest[i]}"` };
+    let value = inline.join('=');
+    if (!rest[i].includes('=')) { value = rest[i + 1]; i += 1; }
+    if (!value || value.startsWith('--')) return { error: `${name} needs a value` };
+    out[name.slice(2)] = value;
+  }
+  if (out.repo !== null && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(out.repo)) return { error: '--repo must be owner/name' };
+  if (out.since !== null && !(/^\d{4}-\d{2}-\d{2}$/.test(out.since) && new Date(`${out.since}T00:00:00Z`).toJSON()?.startsWith(out.since))) return { error: '--since must be a date as YYYY-MM-DD' };
+  return out;
 }
 
 /** Whether the folder is inside a git work tree; `run` is the injected runner. A missing git counts as no. */

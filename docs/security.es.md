@@ -84,6 +84,14 @@ Dos cosas que la tabla no dice:
 - **El recibo no es un límite de seguridad.** Protege contra una omisión o un error: un revisor no puede empezar sobre código cuyas comprobaciones no se ejecutaron. No defiende contra un agente que escribe un archivo falso, porque vive en la carpeta de trabajo. Las barreras del commit (las rutas protegidas, los archivos restringidos, el escaneo de lo que se prepara) siguen siendo las que obligan, y corren diga lo que diga cualquier recibo. Lo mismo vale para el registro de resultados que la puerta reutiliza (`.relevo-receipt/checks.json`, escrito solo después de ejecutar un comando, sin opción para registrar un resultado sin ejecutarlo): un agente que pueda escribir archivos podría falsificarlo, y el CI de la pull request vuelve a ejecutar las comprobaciones.
 - **Ningún ajuste apaga a un revisor.** No hay clave para desactivar `spec`, `security` o `code`, ni para bajar lo que bloquean. El único revisor con un modo es `bugs`: `qa.bugs` es `advisory` por defecto (sus hallazgos son notas), y un hallazgo que cita una regla dura del proyecto bloquea en cualquier modo. Las excepciones de un proyecto van en su propio archivo de reglas, que lee el revisor `spec`.
 
+## Qué guarda el registro de QA
+
+El comentario que cierra una construcción o una corrección lleva un marcador oculto, `<!-- relevo:qa-record -->`: no se ve en la página, pero lo puede leer cualquiera que pueda leer el issue, en su código fuente y por la API. Guarda el comando, si QA aprobó y, por cada intento, si la compuerta estuvo en rojo, el revisor y la clase de cada hallazgo bloqueante, su texto y el número de notas. Lo escriben scripts a partir de lo que decidieron la compuerta y `qa-aggregate.mjs`; ningún agente lo teclea.
+
+- Un texto es una línea de 160 caracteres como máximo, con las formas de secreto conocidas censuradas, y se guardan 20 textos como máximo; el resto se cuenta. Un hallazgo cita código, y el censor puede no ver un secreto con una forma que no conoce.
+- Con `trust: public` no hay texto, solo cantidades, revisores y clases. Tampoco lo hay cuando no se puede leer `relevo.yml`.
+- `relevo qa-report` y el resumen cuentan un registro solo de un comentario de un bot o de una persona con un rol en el repositorio (propietario, miembro o colaborador), con exactamente un marcador válido. Es más amplio que el registro de uso, que cuenta solo bots, porque una construcción local la publica una persona. Así que cualquiera con un rol puede escribir un registro: las cifras son información, no un control.
+
 ## Falsos positivos revisados del escaneo de credenciales
 
 Una persona puede marcar como revisada una línea que el escaneo señala, en `.relevo/scan-exceptions.json`:

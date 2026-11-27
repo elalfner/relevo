@@ -66,6 +66,16 @@ Read the description, the change's specification (`openspec/changes/<change>/spe
 
 If you cannot tell what the correct behaviour should be, ask the person. They are here.
 
+Then decide the **kind of the correction**, which the comment of step 7 says and the record of QA counts:
+
+- `defect`: the code did not do what the specification or a project rule says;
+- `spec-gap`: the specification missed the case;
+- `change`: the person wants other behaviour than the one specified;
+- `integration`: a conflict, or a change of the base branch;
+- `unfinished`: work that a build left unfinished, or that QA rejected.
+
+Say it to the person in one line (for example `I count this as a defect: the specification already asks for it`) and go on without waiting for an answer: this is not a question. If they say it is another kind, then or at any later point before the comment is posted, use theirs. Only `defect` counts as something QA could have caught, so do not soften one into a gap or a change.
+
 ### 2. Specification first
 
 Update the change, writing no application code:
@@ -105,7 +115,7 @@ Read its report. If its open questions are not "none", they mean the specificati
 
 ### 4. QA: the gate, the lenses and the retries
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/go/references/qa-run.md` and follow it on the diff of this iteration, with the same change folder, rules files, profile, folder of the platform, skill paths (for `fix`, those of `dev` and `qa` are in the output of `role-skills.mjs --role fix`) and base branch, and `qa.retries` as the number of retries. It runs the gate once and then the active lenses together; a script decides the result. A red gate uses one of the attempts and goes back to `relevo:dev` in **fix** mode with the end of its output.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/go/references/qa-run.md` and follow it on the diff of this iteration, with the same change folder, rules files, profile, folder of the platform, skill paths (for `fix`, those of `dev` and `qa` are in the output of `role-skills.mjs --role fix`) and base branch, and `qa.retries` as the number of retries. Give it `<qa_log>` too: a file `qa-record.jsonl` in the scratch folder of this run, outside the repository, a new one for this run; the gate and `qa-aggregate.mjs` get `--log <qa_log>`, and the comment of step 7 gets it as `qa_log`. It runs the gate once and then the active lenses together; a script decides the result. A red gate uses one of the attempts and goes back to `relevo:dev` in **fix** mode with the end of its output.
 
 If QA passed, go on to step 5. Otherwise, whether it rejected after the retries, found nothing the developer agent can fix (each finding needs an input, a decision of the specification, or something an unattended run may not do), got findings from two lenses that contradict each other (`contradiction` in the output of `qa-aggregate.mjs`), could not run the gate, or got an invalid lens report twice: **make no commit and no push.** Save the work with `node ${CLAUDE_PLUGIN_ROOT}/scripts/fix-stash.mjs save --issue <issue> --iteration <K>` (the tree is left clean, so the next `fix` can start), show the person the findings with the lens that made each (and, for a finding that is not `fixable`, its class and what it needs: `input`: supply it; `spec`: decide it in the issue; `policy`: allow the manifest in `Allow-paths:` or change the issue so that it does not need the protected path), say that `/relevo:fix <issue>` offers the saved work back, leave the issue's labels untouched, and stop.
 
@@ -134,12 +144,12 @@ Use what `fix-state.mjs` printed in step 0.
    - `notify` is `assignee`: the issue's assignee as `recipient`, with no `ask`: the message mentions them in front of the next step.
    - `notify` is `reviewer`: find the pull request (`node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs delivery-get <branch>`, which prints its `number` and `reviews`), take the people who requested changes, re-request each one with `gh pr edit <number> --add-reviewer <login>`, and mention them with the ask `please re-review`.
    - otherwise: mention nobody.
-3. Post one comment built by `node ${CLAUDE_PLUGIN_ROOT}/scripts/render-message.mjs fix_done` with: `issue`, `title`, `iteration` (the number from step 2), `summary` (one line of what changed), `qa` (`QA PASSED`), `commit` (the short hash), `state` (the `to` that `fix-state.mjs` printed), and `recipient`, and `ask` for a reviewer, when someone is told. The message ends with the next step of that state, from the table: never write one yourself.
+3. Post one comment built by `node ${CLAUDE_PLUGIN_ROOT}/scripts/render-message.mjs fix_done` with: `issue`, `title`, `iteration` (the number from step 2), `summary` (one line of what changed), `qa` (`QA PASSED`), `commit` (the short hash), `kind` (the kind of step 1: `defect`, `spec-gap`, `change`, `integration` or `unfinished`), `qa_log` (the path of the QA record of step 4; the script reads it and adds a hidden marker, so never open or retype it), `state` (the `to` that `fix-state.mjs` printed), and `recipient`, and `ask` for a reviewer, when someone is told. The message ends with the next step of that state, from the table: never write one yourself.
 4. If `evidence/review-state.json` exists (a review is in progress), reconcile it with the new specification: `node ${CLAUDE_PLUGIN_ROOT}/scripts/review-state.mjs sync openspec/changes/<change>`. Lines already confirmed stay confirmed, lines that failed are tested again, new scenarios are added, and the log audit and the agreement are repeated. Tell the person to restart the app and resume with `/relevo:review <issue>`, and that they can write `retest <numbers>` for any confirmed line the fix may have affected, because QA only audited this correction.
 
 ## Report
 
-Finish with one short block: the issue, the iteration, what changed, the QA verdict, the commit, and the issue's state before and after.
+Finish with one short block: the issue, the iteration, what changed, the kind of the correction, the QA verdict, the commit, and the issue's state before and after.
 
 End with the next step of the state the issue is in after the fix, from the same table the comments use. Pass the labels the issue has after step 7, and print the lines it gives as they are:
 

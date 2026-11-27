@@ -120,6 +120,8 @@ El resumen diario que publica el workflow del resumen tiene el mismo contenido p
 
 El resumen termina además con el tiempo de cada etapa de un issue, como la mediana de las etapas que terminaron en los últimos siete días y cuántas fueron, por ejemplo `Etapas, últimos 7 días (mediana): puerta 13 s (4), construcción 6 min (3), esperando por ti 3 h (3), revisión en dispositivo 24 h (2)`. [Qué cuenta](execution.es.md#cuánto-tarda-cada-etapa).
 
+Cuando ejecuciones de los últimos siete días dejaron un registro de QA, el resumen dice además cuántas, en cuántas QA detuvo algo y cuántas correcciones de `fix` fueron defectos, por ejemplo `QA, últimos 7 días: 4 ejecuciones con registro, 2 detenidas por QA, 1 defecto corregido por una persona.` ([qué se registra](#lo-que-detuvo-qa)).
+
 ```text
 /relevo:status
 ```
@@ -139,6 +141,18 @@ El informe empieza con una línea que dice qué juzgó: el repositorio, y si los
 `node scripts/gate-selftest.mjs [--base <ref>] [--platform <nombre>] [--config relevo.yml]` siembra tres casos en un worktree de prueba (un test unitario que falla, una historia de navegador que falla y un cambio solo de documentación), ejecuta la compuerta de validación en cada uno e imprime lo que devolvió y si coincide con lo que el caso espera (`ok`, `unexpected` o `could-not-run`). Sale con 0 cuando todos los casos ejecutados coincidieron y con 1 cuando alguno no. El worktree se separa de la referencia base (por defecto `origin/<branches.base>`) y se elimina al final: no escribe en la rama base ni en tu copia de trabajo, no crea ninguna rama y no hace push.
 
 Un caso que la pila no puede sembrar se omite y el informe dice por qué: la historia de navegador solo se siembra cuando la comprobación `test` de la plataforma ejecuta Playwright. Un resultado `unexpected` en un caso que debe fallar significa que la comprobación no ejecuta lo que se sembró. Si el repositorio no tiene `relevo.yml`, la plataforma no tiene perfil de pila o no tiene comprobación `test`, el comando no ejecuta nada e imprime los casos como instrucciones. El informe termina con los comandos que muestran el agregado del CI remoto sobre los mismos casos desde una rama de prueba y la borran después; el comando no los ejecuta.
+
+## Lo que detuvo QA
+
+`go` y `fix` guardan, en cada intento, lo que bloquearon la compuerta y los revisores y cuántas notas dejaron, y el comentario que cierra la ejecución lleva ese registro en un marcador oculto. `fix` además dice en su comentario qué tipo de corrección hizo: un defecto (`defect`), un vacío de la especificación (`spec-gap`), un cambio de idea (`change`), una integración (`integration`) o completar trabajo sin terminar (`unfinished`); puedes corregir el tipo que nombra. La línea de comandos suma esos registros, desde tu terminal. Lee los comentarios del repositorio con `gh` y no escribe nada:
+
+```bash
+npx @elalfner/relevo qa-report --list
+```
+
+`--repo owner/name` nombra otro repositorio distinto al de la carpeta, `--since YYYY-MM-DD` deja los comentarios creados desde ese día (UTC) y `--list` añade cada ejecución con el texto de sus hallazgos, para que juzgues una muestra. El informe abre con los hallazgos bloqueantes del primer intento, por revisor y clase (un intento posterior puede repetir un hallazgo con otras palabras), y dice cuáles estaban en ejecuciones que terminaron aprobadas. Cuenta también las ejecuciones con registro, aquellas en que QA detuvo algo y las correcciones de `fix` por tipo. Si no hay nada registrado, lo dice y no da cifras.
+
+Solo cuenta lo que tiene registro: no el QA de `review`, ni una ejecución cortada antes de su comentario, ni una construcción de una versión anterior (en la nube, hasta que los workflows fijen una versión que registre), ni un proyecto con `tracker: files`. Un hallazgo que bloqueó no prueba un defecto: puede ser un falso positivo o cuestión de estilo. [Qué guarda el registro](security.es.md#qué-guarda-el-registro-de-qa).
 
 ## El formato del issue
 

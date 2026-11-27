@@ -120,6 +120,8 @@ The daily digest posted by the digest workflow has the same content for the team
 
 The digest also ends with the time of each stage of an issue, as the median of the stages that finished in the last seven days and how many they were, for example `Stages, last 7 days (median): gate 13 s (4), build 6 min (3), waiting for you 3 h (3), device review 24 h (2)`. [What it counts](execution.md#how-long-each-stage-takes).
 
+When runs of the last seven days left a QA record, the digest also says how many, in how many QA stopped something and how many corrections of `fix` were defects, for example `QA, last 7 days: 4 runs recorded, 2 stopped by QA, 1 defect corrected by a person.` ([what is recorded](#what-qa-stopped)).
+
 ```text
 /relevo:status
 ```
@@ -141,6 +143,18 @@ The report starts with a line that says what it judged: the repository, and whet
 `node scripts/gate-selftest.mjs [--base <ref>] [--platform <name>] [--config relevo.yml]` seeds three cases in a scratch worktree (a failing unit test, a failing browser story and a docs-only change), runs the validation gate on each and prints what it returned and whether that is what the case expects (`ok`, `unexpected` or `could-not-run`). It exits 0 when every case that ran agreed, 1 when one did not. The worktree is detached from the base ref (by default `origin/<branches.base>`) and removed at the end: it never writes to the base branch or to your working tree, creates no branch and pushes nothing.
 
 A case that the stack cannot seed is skipped and the report says why: the browser story is seeded only when the `test` check of the platform runs Playwright. An `unexpected` result on a failing case means the check does not run what was seeded. If the repository has no `relevo.yml`, the platform has no stack profile or no `test` check, the command runs nothing and prints the cases as instructions. The report ends with the commands that show the remote CI aggregate on the same cases from a scratch branch and delete it afterwards; the command does not run them.
+
+## What QA stopped
+
+`go` and `fix` keep, for each attempt, what the gate and the reviewers blocked and how many notes they left, and the comment that ends the run carries that record in a hidden marker. `fix` also says in its comment what kind of correction it made: a defect (`defect`), a gap in the specification (`spec-gap`), a change of mind (`change`), an integration (`integration`) or the completion of unfinished work (`unfinished`); you can correct the kind it names. The command line adds those records up, from your terminal. It reads the comments of the repository with `gh` and writes nothing:
+
+```bash
+npx @elalfner/relevo qa-report --list
+```
+
+`--repo owner/name` names another repository than the one of the folder, `--since YYYY-MM-DD` keeps the comments created from that day (UTC) and `--list` adds each run with its finding texts, so that you can judge a sample. The report leads with the blocking findings of the first attempt, by reviewer and class (a later attempt may repeat a finding in other words), and says which of them were in runs that ended passed. It also counts the runs recorded, the runs in which QA stopped something and the corrections of `fix` by kind. With nothing recorded it says so and gives no figures.
+
+It counts only what has a record: not the QA of `review`, not a run cut before its comment, not a build by an earlier version (in the cloud, until the workflows pin a version that records) and not a project with `tracker: files`. A finding that blocked is not proof of a defect: it can be a false positive or a matter of style. [What the record holds](security.md#what-the-qa-record-holds).
 
 ## The issue format
 

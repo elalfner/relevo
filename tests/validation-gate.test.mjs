@@ -316,3 +316,17 @@ test('Scenario: Nothing was ignored - the red output is what it always was', () 
   assert.equal(r.status, 1);
   assert.equal(r.stdout.trim().split('\n').filter((l) => /failed|ignored/.test(l)).join('|'), 'test failed: false');
 });
+
+test('Scenario: A red gate - --log records it with no findings; a green gate records nothing; an unwritable log changes no exit code', () => {
+  const dir = repo({ test: 'exit 1' });
+  writeFileSync(join(dir, 'a.txt'), 'changed\n');
+  const log = join(mkdtempSync(join(tmpdir(), 'relevo-gate-log-')), 'qa.jsonl');
+  assert.equal(gate(dir, '--log', log).status, 1);
+  assert.deepEqual(JSON.parse(readFileSync(log, 'utf8')), { gate: 'red', blocking: [], advisory: 0 });
+  assert.equal(gate(dir, '--log', '/nonexistent/dir/qa.jsonl').status, 1);
+  const green = repo();
+  writeFileSync(join(green, 'a.txt'), 'changed\n');
+  const none = join(mkdtempSync(join(tmpdir(), 'relevo-gate-log-')), 'qa.jsonl');
+  assert.equal(gate(green, '--log', none).status, 0);
+  assert.equal(existsSync(none), false);
+});
