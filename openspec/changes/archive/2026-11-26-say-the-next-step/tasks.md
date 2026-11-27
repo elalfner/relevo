@@ -30,4 +30,4 @@
 
 - [x] 5.1 Add the four entries of the issue to `GLOSSARY.md`, exactly as written and after the existing ones, and the `[Unreleased]` entry to `CHANGELOG.md`, saying that `/relevo:init` brings the workflow lines; verify with the diff of both files
 - [x] 5.2 Run `npm test`, `openspec validate --all` and `claude plugin validate .`; verify that all pass
-- [ ] 5.3 In the sandbox, from a pinned commit of `dev`, a person runs `/relevo:review`, `/relevo:fix`, `/relevo:init` and `/relevo:ship` once and reads the last lines of each report; record the run in `docs/pilot-findings.md`
+- [ ] 5.3 In the sandbox, from a pinned commit of `dev`, a person runs `/relevo:review`, `/relevo:fix`, `/relevo:init` and `/relevo:ship` once and reads the last lines of each report; record the run in `docs/pilot-findings.md`. Not run: the change was archived without it, by the decision of the person on 2026-11-26
