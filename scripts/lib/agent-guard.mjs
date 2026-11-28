@@ -4,6 +4,7 @@
 // limit, and turns a refusal into a failure. Everything that touches the outside (the child process, the clock, the
 // files) is injected, so a test drives it with a fake child.
 
+import { fileURLToPath } from 'node:url';
 import { extractEffortSuffix } from './config.mjs';
 
 // Exit codes of the guard. 0 is the agent's own success; each stop has its own number so a workflow can tell them apart.
@@ -82,11 +83,17 @@ export class Tracker {
       const subs = Array.isArray(s.subagent_info?.subagents) ? s.subagent_info.subagents : [];
       subs.forEach((sub) => {
         if (typeof sub?.conversation_id !== 'string' || !sub.conversation_id) return;
-        this.subagentMeta.set(sub.conversation_id, {
-          name: typeof params.TypeName === 'string' && params.TypeName ? params.TypeName : 'subagent',
-          launch: typeof params.Role === 'string' && params.Role ? params.Role : null,
-          model: typeof params.Model === 'string' && params.Model ? params.Model : null,
-        });
+        const name = (typeof sub.type_name === 'string' && sub.type_name)
+          || (typeof params.TypeName === 'string' && params.TypeName)
+          || 'subagent';
+        const launch = (typeof sub.role === 'string' && sub.role)
+          || (typeof params.Role === 'string' && params.Role)
+          || null;
+        const model = (typeof sub.model === 'string' && sub.model)
+          || (typeof params.Model === 'string' && params.Model)
+          || null;
+        const logUri = typeof sub.log_uri === 'string' && sub.log_uri ? sub.log_uri : null;
+        this.subagentMeta.set(sub.conversation_id, { name, launch, model, logUri });
       });
     }
     const key = `${s.conversation_id}:${s.step_index}`;
@@ -120,6 +127,40 @@ export class Tracker {
     return e;
   }
 
+  /**
+   * Merges turns, tokens and resolved model from on-disk `transcript.jsonl` logs for subagents whose own `agent_response`
+   * steps were not streamed on stdout (as in `agy 1.5.18+`, which reports `subagent_info.subagents[].log_uri`).
+   */
+  mergeSubagentTranscripts(readFile) {
+    if (typeof readFile !== 'function') return;
+    for (const [cid, meta] of this.subagentMeta.entries()) {
+      if (this.byConversation.has(cid) || !meta?.logUri) continue;
+      if (!meta.logUri.startsWith('file://') || !meta.logUri.endsWith('.jsonl')) continue;
+      let text = null;
+      try {
+        text = readFile(fileURLToPath(meta.logUri));
+      } catch {
+        text = null;
+      }
+      if (!text) continue;
+      const stats = readSubagentTranscript(text);
+      if (!stats || (stats.turns === 0 && stats.tokens === 0)) continue;
+      this.turns += stats.turns;
+      this.input += stats.input;
+      this.output += stats.output;
+      this.cached += stats.cached;
+      this.tokens += stats.tokens;
+      this.byConversation.set(cid, {
+        turns: stats.turns,
+        tokens: stats.tokens,
+        input: stats.input,
+        output: stats.output,
+        cached: stats.cached,
+      });
+      if (stats.model) meta.model = stats.model;
+    }
+  }
+
   /** Per-agent breakdown when subagents participated: [{ name, launch?, model?, turns, tokens, cached? }], or null. */
   agentBreakdown() {
     if (this.byConversation.size <= 1 && this.subagentMeta.size === 0) return null;
@@ -150,6 +191,41 @@ export class Tracker {
   }
 }
 
+/**
+ * Parses an Antigravity subagent `transcript.jsonl` into `{ turns, input, output, cached, tokens, model }`.
+ * Counts each distinct `PLANNER_RESPONSE` step once (when `status` is `DONE` or omitted).
+ */
+export function readSubagentTranscript(text) {
+  const seen = new Set();
+  let turns = 0;
+  let input = 0;
+  let output = 0;
+  let cached = 0;
+  let model = null;
+  for (const line of String(text ?? '').split('\n')) {
+    if (!line.trim()) continue;
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!e || typeof e !== 'object') continue;
+    if (e.type !== 'PLANNER_RESPONSE') continue;
+    if (e.status !== undefined && e.status !== 'DONE') continue;
+    if (e.step_index !== undefined) {
+      if (seen.has(e.step_index)) continue;
+      seen.add(e.step_index);
+    }
+    turns += 1;
+    input += Number(e.input_tokens) || 0;
+    output += Number(e.output_tokens) || 0;
+    cached += Number(e.cache_read_tokens) || 0;
+    if (typeof e.model === 'string' && e.model) model = e.model;
+  }
+  return { turns, input, output, cached, tokens: input + output, model };
+}
+
 /** One line per step for the log: the tool and, for a command, only its program, never its output or arguments. */
 export function logLine(event) {
   const s = event?.step_update;
@@ -165,7 +241,7 @@ export function logLine(event) {
  * stdout and stderr readable streams and `on('close', (code) => ...)`. `limits`: { turns, tokens, minutes }.
  * Resolves { code, summary }: the guard's exit code and the summary to write.
  */
-export function runGuard({ command, args, limits, spawn, setTimer = setTimeout, clearTimer = clearTimeout, now = Date.now, log = () => {} }) {
+export function runGuard({ command, args, limits, spawn, setTimer = setTimeout, clearTimer = clearTimeout, now = Date.now, log = () => {}, readFile = null }) {
   return new Promise((resolve) => {
     const tracker = new Tracker();
     const started = now();
@@ -217,6 +293,7 @@ export function runGuard({ command, args, limits, spawn, setTimer = setTimeout, 
       if (timer) clearTimer(timer);
       if (killer) clearTimer(killer);
       if (buffered.trim()) onLine(buffered);
+      tracker.mergeSubagentTranscripts(readFile);
       const denied = tracker.allDenied();
       const r = tracker.result;
       let code = EXIT.ok;

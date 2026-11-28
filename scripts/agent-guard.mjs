@@ -100,7 +100,14 @@ if (mode === 'run') {
     child.on('error', (err) => child.stderr.emit('data', `${err.message}\n`));
     return { pid: child.pid, stdout: child.stdout, stderr: child.stderr, kill: (signal) => process.kill(-child.pid, signal), on: (ev, cb) => child.on(ev, cb) };
   };
-  const { code, summary, response } = await runGuard({ command: agy, args, limits, spawn: start, log: (line) => console.error(line) });
+  const readTranscript = (p) => {
+    try {
+      return existsSync(p) ? readFileSync(p, 'utf8') : null;
+    } catch {
+      return null;
+    }
+  };
+  const { code, summary, response } = await runGuard({ command: agy, args, limits, spawn: start, log: (line) => console.error(line), readFile: readTranscript });
   mkdirSync(dirname(resolve(summaryFile)), { recursive: true });
   writeFileSync(resolve(summaryFile), `${JSON.stringify(summary, null, 2)}\n`);
   if (arg('github-output')) appendFileSync(arg('github-output'), `execution_file=${resolve(summaryFile)}\n`);

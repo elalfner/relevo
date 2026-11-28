@@ -5,8 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { BASE_PROGRAMS, DENIED, EXIT, Tracker, agySettings, buildAgyArgs, logLine, runGuard } from '../scripts/lib/agent-guard.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BASE_PROGRAMS, DENIED, EXIT, Tracker, agySettings, buildAgyArgs, logLine, readSubagentTranscript, runGuard } from '../scripts/lib/agent-guard.mjs';
 import { readUsage, reachedUsageLimit } from '../scripts/lib/run-usage.mjs';
 import { readSource } from '../scripts/lib/adapters/source.mjs';
 import { agyReadDenials, restrictedList } from '../scripts/lib/restricted-paths.mjs';
@@ -335,4 +335,53 @@ test('agent-guard CLI forwards --model, --effort, --settings from relevo.yml and
   assert.ok(payload.args.includes('--effort') && payload.args.includes('medium'), 'depth: prototype lowers main.effort to medium');
   assert.ok(payload.args.includes('--settings') && payload.args.includes(settingsOut));
   assert.ok(!payload.args.includes('--sandbox'));
+});
+
+test('readSubagentTranscript and runGuard merge agy 1.5.19 subagent log_uri transcripts into summary.agents and totals', async () => {
+  const transcript = [
+    JSON.stringify({ step_index: 0, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'start' }),
+    JSON.stringify({ step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', model: 'gemini-4-neon-high', input_tokens: 8000, output_tokens: 150, cache_read_tokens: 0 }),
+    JSON.stringify({ step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', model: 'gemini-4-neon-high', input_tokens: 8000, output_tokens: 150, cache_read_tokens: 0 }),
+    JSON.stringify({ step_index: 2, source: 'MODEL', type: 'GENERIC', status: 'DONE', content: 'tool result' }),
+    JSON.stringify({ step_index: 3, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', model: 'gemini-4-neon-high', input_tokens: 2000, output_tokens: 50, cache_read_tokens: 6000 }),
+  ].join('\n');
+
+  assert.deepEqual(readSubagentTranscript(transcript), {
+    turns: 2,
+    input: 10000,
+    output: 200,
+    cached: 6000,
+    tokens: 10200,
+    model: 'gemini-4-neon-high',
+  });
+
+  const logPath = '/tmp/relevo-subagent-1/transcript.jsonl';
+  const logUri = pathToFileURL(logPath).href;
+  const { child, done } = start({ turns: 100, tokens: 1e9, minutes: 30 }, {
+    readFile: (p) => (p === logPath ? transcript : null),
+  });
+  child.push(
+    JSON.stringify({ event: 'init', conversation_id: 'main-1', init: { model: 'gemini-4-neon', tools: [] } }),
+    turn('main-1', 1, 100),
+    step('main-1', 2, 'subagent', {
+      tool_name: 'invoke_subagent',
+      subagent_info: {
+        subagents: [{
+          type_name: 'relevo-dev',
+          role: 'Developer',
+          conversation_id: 'sub-dev-1',
+          log_uri: logUri,
+        }],
+      },
+    }),
+    result()
+  );
+  child.end(0);
+  const { summary } = await done;
+  assert.equal(summary.num_turns, 3, 'main turn (1) + subagent transcript turns (2)');
+  assert.deepEqual(summary.usage, { input_tokens: 10090, output_tokens: 210, cache_read_input_tokens: 6005 });
+  assert.deepEqual(summary.agents, [
+    { name: 'main', model: 'gemini-4-neon', turns: 1, tokens: 100, cached: 5 },
+    { name: 'relevo-dev', launch: 'Developer', model: 'gemini-4-neon-high', turns: 2, tokens: 10200, cached: 6000 },
+  ]);
 });
