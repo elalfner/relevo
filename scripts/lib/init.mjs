@@ -5,7 +5,7 @@
 // running it again only lists what differs (idempotent). applyPlan carries items out through injected I/O.
 // init never reads or writes the model API key.
 
-import { loadConfig } from './config.mjs';
+import { ANTIGRAVITY_SUBAGENT_TIERS, antigravityAgentDiagnostics, loadConfig } from './config.mjs';
 import { LEGACY_PLATFORMS } from './platforms.mjs';
 import { labelDefinitions } from './labels.mjs';
 import { agentWorkflow, withRestricted } from './agent-workflow.mjs';
@@ -624,9 +624,16 @@ export function planInit({ facts, answers, templates, current, admin, upgrades =
   if (hasSupabase) {
     items.push(item('manual.supabase-mcp', 'manual', 'To explore your Supabase database in Claude Code or Antigravity during /relevo:think, consider connecting the Supabase MCP server (see https://supabase.com/docs/guides/ai-tools)'));
   }
-  // The model and the effort of a role are accepted with Antigravity and never written to the agents it renders: say so, and go on.
-  if (facts.config?.agent?.build === 'antigravity' && (facts.config.agents_given ?? []).length > 0) {
-    items.push(item('warn.agent-settings', 'warning', `Not applied with this agent: ${facts.config.agents_given.join(', ')} (agent.build is antigravity, which does not apply the model or the effort of a role)`));
+  // With Antigravity, agents.main and native invoke_subagent tiers are applied; warn specifically on unapplied fields or effort-suffix conflicts.
+  if (facts.config?.agent?.build === 'antigravity') {
+    const diag = antigravityAgentDiagnostics(facts.config);
+    if (diag.unapplied.length > 0) {
+      const paths = diag.unapplied.map((u) => u.path);
+      items.push(item('warn.agent-settings', 'warning', `Not applied with this agent: ${paths.join(', ')} (agent.build is antigravity, which applies agents.main and native invoke_subagent tiers ${ANTIGRAVITY_SUBAGENT_TIERS.join(', ')}, not per-subagent effort or custom subagent model IDs)`));
+    }
+    diag.conflicts.forEach((c) => {
+      items.push(item('warn.agent-main-effort-conflict', 'warning', c.message));
+    });
   }
   items.push(item('manual.push', 'manual', 'Commit and push the new files to the default branch: a workflow only runs from there'));
 

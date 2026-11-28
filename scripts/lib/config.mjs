@@ -35,9 +35,9 @@ export const SETTINGS = [
   { path: 'limits.building_alert_hours', type: 'int', min: 1, default: 3 },
   // How long an issue waits for a file that another issue also names before it starts anyway.
   { path: 'limits.shared_file_wait_hours', type: 'int', min: 1, default: 24 },
-  // The cost limit is the one a Claude run can enforce; an Antigravity run has none, so it takes a token limit instead.
-  { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true, default: null, requiredFor: 'claude', missing: 'unattended runs must always have a cost limit (amount in US dollars per run)', rejectedFor: 'antigravity', rejection: 'the agent has no cost limit; set limits.run_max_tokens instead, and note that the quota of the Google Cloud project that owns the key is the ceiling that really holds' },
-  { path: 'limits.run_max_tokens', type: 'int', min: 1000, default: null, required: true, requiredFor: 'antigravity', missing: 'unattended runs must always have a limit, and for this agent it is a number of tokens per run', rejectedFor: 'claude', rejection: 'the run is limited by limits.run_max_cost' },
+  // The cost limit applies to Claude runs and the token limit to Antigravity runs; both may coexist in one file so teams can switch locally or in the cloud without editing limits.
+  { path: 'limits.run_max_cost', type: 'number', exclusiveMin: 0, required: true, default: null, requiredFor: 'claude', missing: 'unattended runs must always have a cost limit (amount in US dollars per run)' },
+  { path: 'limits.run_max_tokens', type: 'int', min: 1000, default: null, required: true, requiredFor: 'antigravity', missing: 'unattended runs must always have a limit, and for this agent it is a number of tokens per run' },
   { path: 'agent.build', type: 'enum', allowed: ['claude', 'antigravity'], default: 'claude' },
   // The runner of every Relevo workflow: runs-on is read before any step, so init writes these labels into the files.
   { path: 'runner.labels', type: 'label-list', default: ['ubuntu-latest'] },
@@ -81,9 +81,22 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 // The order of the models, from the lowest to the highest. Relevo reads only the order, never checks the names against a list of
 // models (the list changes): a new model needs a line in relevo.yml and no release.
 export const DEFAULT_LADDER = ['haiku', 'sonnet', 'opus'];
+export const ANTIGRAVITY_LADDER = ['flash_lite', 'flash', 'pro', 'inherit'];
+export const ANTIGRAVITY_SUBAGENT_TIERS = ['flash_lite', 'flash', 'pro', 'inherit'];
 export const AUTO = 'auto';
 // The lowest model a QA lens takes by default on `auto`.
 export const QA_MIN_MODEL = 'sonnet';
+export const ANTIGRAVITY_QA_MIN_MODEL = 'inherit';
+// Effort suffix on an Antigravity model slug (e.g. `gemini-4-neon-high`); passing a conflicting `--effort` exits 1 in agy 1.5.18.
+export const MODEL_EFFORT_SUFFIX_RE = /-(low|medium|high|xhigh|max)$/;
+
+/** The effort suffix carried by a model slug (e.g. `high` in `gemini-4-neon-high`), or null when it is a base slug. */
+export function extractEffortSuffix(model) {
+  if (typeof model !== 'string') return null;
+  const m = MODEL_EFFORT_SUFFIX_RE.exec(model.trim());
+  return m ? m[1] : null;
+}
+
 export const AGENT_DEFAULTS = {
   ladder: [...DEFAULT_LADDER],
   dev: { model: 'sonnet', effort: 'high' },
@@ -96,13 +109,37 @@ export const AGENT_DEFAULTS = {
     bugs: { model: 'sonnet', effort: 'high' },
   },
 };
+
+export const ANTIGRAVITY_AGENT_DEFAULTS = {
+  main: { model: 'gemini-4-neon', effort: 'high' },
+  ladder: [...ANTIGRAVITY_LADDER],
+  dev: { model: 'inherit', effort: null },
+  qa: {
+    spec: { model: 'inherit', effort: null },
+    security: { model: 'inherit', effort: null },
+    code: { model: 'inherit', effort: null },
+    interface: { model: 'inherit', effort: null },
+    bugs: { model: 'inherit', effort: null },
+  },
+};
+
 /**
- * The defaults of the agents at a depth. `standard` is `AGENT_DEFAULTS`, which is what Relevo always did. `prototype` lowers the
- * effort of the developer and of every lens by one step (never below `low`) and lets a lens default to the lowest model of the
- * lens floor (`QA_MIN_MODEL`), so the two lenses that default to the highest model cost less. It never removes a lens and never
- * goes under that floor; a value written under `agents` wins over all of it.
+ * The defaults of the agents at a depth for a tool (`claude` or `antigravity`).
+ * For Claude, `standard` is `AGENT_DEFAULTS` and `prototype` lowers the effort of the developer and every lens by one step
+ * (never below `low`) and caps default lens models at `QA_MIN_MODEL` (`sonnet`).
+ * For Antigravity, `standard` uses `gemini-4-neon` (`high`) on `main` and `inherit` on `dev` and all five QA lenses so no
+ * subagent silently downgrades to `gemini-4-hydrogen-*`; `prototype` lowers `main.effort` to `medium` while keeping `dev`
+ * and all five lenses on `inherit`. A value written under `agents` wins over all of it.
  */
-export function agentDefaults(depth = 'standard') {
+export function agentDefaults(depth = 'standard', tool = 'claude') {
+  if (tool === 'antigravity') {
+    const defaults = structuredClone(ANTIGRAVITY_AGENT_DEFAULTS);
+    if (depth === 'prototype') {
+      const idx = EFFORTS.indexOf(defaults.main.effort);
+      defaults.main.effort = EFFORTS[Math.max(idx - 1, 0)];
+    }
+    return defaults;
+  }
   const defaults = structuredClone(AGENT_DEFAULTS);
   if (depth !== 'prototype') return defaults;
   const lower = (effort) => EFFORTS[Math.max(EFFORTS.indexOf(effort) - 1, 0)];
@@ -116,80 +153,285 @@ export function agentDefaults(depth = 'standard') {
   return defaults;
 }
 const isMapValue = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const AGENT_TOOLS = ['claude', 'antigravity'];
 
-/** Validate `agents` and return the settings with the defaults. { value, errors: [{ path, message }], given } where `given` lists the paths the file set. */
-function agentSettings(user, depth = 'standard') {
+/** Validate and resolve one tool's agent settings from optional base (top-level `agents.*`) and scoped (`agents.<tool>.*`) maps. */
+function resolveToolAgents({ rawTop = null, rawScoped = null, tool = 'claude', depth = 'standard' }) {
   const errors = [];
   const given = [];
-  const value = agentDefaults(depth);
-  const raw = user.agents;
-  if (raw === undefined || raw === null) return { value, errors, given };
-  if (!isMapValue(raw)) return { value, errors: [{ path: 'agents', message: 'agents must be a map with dev, qa and ladder' }], given };
-  // The ladder first: the floor and the ceiling of every role are names in it.
-  if (raw.ladder !== undefined) {
+  const value = agentDefaults(depth, tool);
+  const qaMinModel = tool === 'antigravity' ? ANTIGRAVITY_QA_MIN_MODEL : QA_MIN_MODEL;
+  const scopedPrefix = `agents.${tool}`;
+
+  const sources = [];
+  if (rawTop) sources.push({ raw: rawTop, prefix: 'agents' });
+  if (rawScoped) sources.push({ raw: rawScoped, prefix: scopedPrefix });
+
+  // Validate unknown keys inside a scoped tool block.
+  if (rawScoped) {
+    Object.keys(rawScoped).forEach((k) => {
+      if (!['main', 'dev', 'qa', 'ladder'].includes(k)) {
+        errors.push({ path: `${scopedPrefix}.${k}`, message: `unknown setting "${scopedPrefix}.${k}"; the roles are main, dev and qa, and ladder is the order of the models` });
+      }
+    });
+  }
+
+  // 1. Ladder first: the floor and the ceiling of every role are names in it.
+  sources.forEach(({ raw, prefix }) => {
+    if (raw.ladder === undefined) return;
     const l = raw.ladder;
     const names = Array.isArray(l) ? l : null;
+    const path = `${prefix}.ladder`;
     if (!names || names.length === 0 || names.some((n) => typeof n !== 'string' || n.trim() === '')) {
-      errors.push({ path: 'agents.ladder', message: `agents.ladder must be a list of model names from the lowest to the highest (got ${JSON.stringify(l)})` });
+      errors.push({ path, message: `${path} must be a list of model names from the lowest to the highest (got ${JSON.stringify(l)})` });
     } else if (new Set(names.map((n) => n.trim())).size !== names.length) {
-      errors.push({ path: 'agents.ladder', message: `agents.ladder repeats a name (got ${JSON.stringify(l)})` });
+      errors.push({ path, message: `${path} repeats a name (got ${JSON.stringify(l)})` });
     } else {
       value.ladder = names.map((n) => n.trim());
-      given.push('agents.ladder');
+      given.push(path);
     }
-  }
-  const ladder = value.ladder;
-  const role = (path, entry, target) => {
-    if (!isMapValue(entry)) { errors.push({ path, message: `${path} must be a map with model and/or effort` }); return; }
-    const defaultModel = target.model;
-    const range = {};
-    Object.keys(entry).forEach((k) => {
-      if (!['model', 'effort', 'floor', 'ceiling'].includes(k)) { errors.push({ path: `${path}.${k}`, message: `unknown setting "${path}.${k}"; a role has model, effort, floor and ceiling` }); return; }
-      const v = entry[k];
+  });
+
+  // 2. Optional `main` session setting ({ model, effort }).
+  sources.forEach(({ raw, prefix }) => {
+    if (raw.main === undefined) return;
+    const path = `${prefix}.main`;
+    if (!isMapValue(raw.main)) {
+      errors.push({ path, message: `${path} must be a map with model and/or effort` });
+      return;
+    }
+    if (!value.main) value.main = { model: null, effort: null };
+    Object.keys(raw.main).forEach((k) => {
+      if (!['model', 'effort'].includes(k)) {
+        errors.push({ path: `${path}.${k}`, message: `unknown setting "${path}.${k}"; main has model and effort` });
+        return;
+      }
+      const v = raw.main[k];
       if (k === 'model') {
-        if (typeof v !== 'string' || v.trim() === '') { errors.push({ path: `${path}.model`, message: `${path}.model must be a non-empty model name or alias (got ${JSON.stringify(v)})` }); return; }
-        target.model = v.trim();
-      } else if (k === 'effort') {
-        if (!EFFORTS.includes(v)) { errors.push({ path: `${path}.effort`, message: `${path}.effort has invalid value ${JSON.stringify(v)}; allowed values: ${describeAllowed(EFFORTS)}` }); return; }
-        target.effort = v;
+        if (typeof v !== 'string' || v.trim() === '') {
+          errors.push({ path: `${path}.model`, message: `${path}.model must be a non-empty model name or alias (got ${JSON.stringify(v)})` });
+          return;
+        }
+        if (v.trim() === AUTO) {
+          errors.push({ path: `${path}.model`, message: `${path}.model cannot be "${AUTO}"; set a model name` });
+          return;
+        }
+        value.main.model = v.trim();
       } else {
-        if (typeof v !== 'string' || !ladder.includes(v.trim())) { errors.push({ path: `${path}.${k}`, message: `${path}.${k} must be a name in agents.ladder (${ladder.join(', ')}) (got ${JSON.stringify(v)})` }); return; }
-        range[k] = v.trim();
+        if (!EFFORTS.includes(v)) {
+          errors.push({ path: `${path}.effort`, message: `${path}.effort has invalid value ${JSON.stringify(v)}; allowed values: ${describeAllowed(EFFORTS)}` });
+          return;
+        }
+        value.main.effort = v;
       }
       given.push(`${path}.${k}`);
     });
+  });
+
+  // 3. Subagent roles (`dev` and `qa.<lens>`), merging top-level then tool-scoped entries so overrides replace cleanly.
+  const ladder = value.ladder;
+  const ladderPath = rawScoped?.ladder !== undefined ? `${scopedPrefix}.ladder` : 'agents.ladder';
+  const applyRole = (roleKey, entries, target) => {
+    const defaultModel = target.model;
+    const range = {};
+    let hadAuto = false;
+    let lastPath = `agents.${roleKey}`;
+    entries.forEach(({ prefix, entry }) => {
+      const path = `${prefix}.${roleKey}`;
+      lastPath = path;
+      if (!isMapValue(entry)) { errors.push({ path, message: `${path} must be a map with model and/or effort` }); return; }
+      Object.keys(entry).forEach((k) => {
+        if (!['model', 'effort', 'floor', 'ceiling'].includes(k)) { errors.push({ path: `${path}.${k}`, message: `unknown setting "${path}.${k}"; a role has model, effort, floor and ceiling` }); return; }
+        const v = entry[k];
+        if (k === 'model') {
+          if (typeof v !== 'string' || v.trim() === '') { errors.push({ path: `${path}.model`, message: `${path}.model must be a non-empty model name or alias (got ${JSON.stringify(v)})` }); return; }
+          target.model = v.trim();
+          hadAuto = target.model === AUTO;
+        } else if (k === 'effort') {
+          if (!EFFORTS.includes(v)) { errors.push({ path: `${path}.effort`, message: `${path}.effort has invalid value ${JSON.stringify(v)}; allowed values: ${describeAllowed(EFFORTS)}` }); return; }
+          target.effort = v;
+        } else {
+          if (typeof v !== 'string' || !ladder.includes(v.trim())) { errors.push({ path: `${path}.${k}`, message: `${path}.${k} must be a name in ${ladderPath} (${ladder.join(', ')}) (got ${JSON.stringify(v)})` }); return; }
+          range[k] = v.trim();
+        }
+        given.push(`${path}.${k}`);
+      });
+    });
+    if (entries.length === 0) return;
     // On auto the range is the floor and the ceiling; by default the ceiling is the default model of the role and the floor the
     // name one step below it, so auto costs no more than the defaults unless the repository raises the ceiling.
-    if (target.model === AUTO) {
+    if (target.model === AUTO && hadAuto) {
       const ceiling = range.ceiling ?? defaultModel;
-      if (!ladder.includes(ceiling)) { errors.push({ path: `${path}.ceiling`, message: `${path} is auto and the default model "${defaultModel}" of the role is not in agents.ladder (${ladder.join(', ')}): set ${path}.ceiling` }); return; }
+      if (!ladder.includes(ceiling)) { errors.push({ path: `${lastPath}.ceiling`, message: `${lastPath} is auto and the default model "${defaultModel}" of the role is not in ${ladderPath} (${ladder.join(', ')}): set ${lastPath}.ceiling` }); return; }
       const below = ladder.indexOf(ceiling) > 0 ? ladder[ladder.indexOf(ceiling) - 1] : ceiling;
-      // A QA lens is not taken below `sonnet` by default: haiku did not pass the lens evaluation (docs/lens-evaluation.md).
-      const lensFloor = path.startsWith('agents.qa.') && ladder.includes(QA_MIN_MODEL)
-        ? ladder[Math.min(Math.max(ladder.indexOf(below), ladder.indexOf(QA_MIN_MODEL)), ladder.indexOf(ceiling))]
+      // A QA lens is not taken below the tool's QA minimum model by default (`sonnet` for Claude, `inherit` for Antigravity).
+      const lensFloor = roleKey.startsWith('qa.') && ladder.includes(qaMinModel)
+        ? ladder[Math.min(Math.max(ladder.indexOf(below), ladder.indexOf(qaMinModel)), ladder.indexOf(ceiling))]
         : below;
       const floor = range.floor ?? lensFloor;
-      if (ladder.indexOf(floor) > ladder.indexOf(ceiling)) { errors.push({ path: `${path}.floor`, message: `${path}.floor "${floor}" is above ${path}.ceiling "${ceiling}" in agents.ladder (${ladder.join(', ')})` }); return; }
+      if (ladder.indexOf(floor) > ladder.indexOf(ceiling)) { errors.push({ path: `${lastPath}.floor`, message: `${lastPath}.floor "${floor}" is above ${lastPath}.ceiling "${ceiling}" in ${ladderPath} (${ladder.join(', ')})` }); return; }
       target.floor = floor;
       target.ceiling = ceiling;
     } else {
-      if (range.floor && range.ceiling && ladder.indexOf(range.floor) > ladder.indexOf(range.ceiling)) { errors.push({ path: `${path}.floor`, message: `${path}.floor "${range.floor}" is above ${path}.ceiling "${range.ceiling}" in agents.ladder (${ladder.join(', ')})` }); return; }
+      if (range.floor && range.ceiling && ladder.indexOf(range.floor) > ladder.indexOf(range.ceiling)) { errors.push({ path: `${lastPath}.floor`, message: `${lastPath}.floor "${range.floor}" is above ${lastPath}.ceiling "${range.ceiling}" in ${ladderPath} (${ladder.join(', ')})` }); return; }
       Object.assign(target, range);
     }
   };
-  Object.keys(raw).forEach((k) => {
-    if (!['dev', 'qa', 'ladder'].includes(k)) errors.push({ path: `agents.${k}`, message: `unknown setting "agents.${k}"; the roles are dev and qa, and agents.ladder is the order of the models` });
-  });
-  if (raw.dev !== undefined) role('agents.dev', raw.dev, value.dev);
-  if (raw.qa !== undefined) {
-    if (!isMapValue(raw.qa)) errors.push({ path: 'agents.qa', message: `agents.qa must be a map with a lens: ${QA_LENSES.join(', ')}` });
-    else Object.keys(raw.qa).forEach((lens) => {
+
+  const devEntries = sources.filter(({ raw }) => raw.dev !== undefined).map(({ raw, prefix }) => ({ prefix, entry: raw.dev }));
+  applyRole('dev', devEntries, value.dev);
+
+  const qaByLens = new Map(QA_LENSES.map((l) => [l, []]));
+  sources.forEach(({ raw, prefix }) => {
+    if (raw.qa === undefined) return;
+    const qaPath = `${prefix}.qa`;
+    if (!isMapValue(raw.qa)) {
+      errors.push({ path: qaPath, message: `${qaPath} must be a map with a lens: ${QA_LENSES.join(', ')}` });
+      return;
+    }
+    Object.keys(raw.qa).forEach((lens) => {
       // There is no key that turns a lens off or lowers what it blocks: an unknown name fails here.
-      if (!QA_LENSES.includes(lens)) errors.push({ path: `agents.qa.${lens}`, message: `unknown lens "${lens}" in agents.qa; the lenses are ${QA_LENSES.join(', ')}, and none can be turned off or weakened (write exceptions in the project rules file)` });
-      else role(`agents.qa.${lens}`, raw.qa[lens], value.qa[lens]);
+      if (!QA_LENSES.includes(lens)) {
+        errors.push({ path: `${qaPath}.${lens}`, message: `unknown lens "${lens}" in ${qaPath}; the lenses are ${QA_LENSES.join(', ')}, and none can be turned off or weakened (write exceptions in the project rules file)` });
+      } else {
+        qaByLens.get(lens).push({ prefix, entry: raw.qa[lens] });
+      }
+    });
+  });
+  QA_LENSES.forEach((lens) => applyRole(`qa.${lens}`, qaByLens.get(lens), value.qa[lens]));
+
+  return { value, errors, given };
+}
+
+/**
+ * Validate `agents` (top-level fallback plus optional `agents.claude` and `agents.antigravity` blocks) and return
+ * `{ value, errors, given, byTool, givenByTool }`, where `value` and `given` are for `activeBuild`.
+ */
+function agentSettings(user, depth = 'standard', activeBuild = 'claude') {
+  const errors = [];
+  const raw = user.agents;
+  if (raw === undefined || raw === null) {
+    const byTool = { claude: agentDefaults(depth, 'claude'), antigravity: agentDefaults(depth, 'antigravity') };
+    const givenByTool = { claude: [], antigravity: [] };
+    return { value: byTool[activeBuild], errors, given: givenByTool[activeBuild], byTool, givenByTool };
+  }
+  if (!isMapValue(raw)) {
+    const byTool = { claude: agentDefaults(depth, 'claude'), antigravity: agentDefaults(depth, 'antigravity') };
+    const givenByTool = { claude: [], antigravity: [] };
+    return { value: byTool[activeBuild], errors: [{ path: 'agents', message: 'agents must be a map with main, dev, qa, ladder, claude or antigravity' }], given: [], byTool, givenByTool };
+  }
+  Object.keys(raw).forEach((k) => {
+    if (!['main', 'dev', 'qa', 'ladder', ...AGENT_TOOLS].includes(k)) {
+      errors.push({ path: `agents.${k}`, message: `unknown setting "agents.${k}"; the roles are main, dev and qa, agents.ladder is the order of the models, and agents.claude / agents.antigravity scope settings per tool` });
+    }
+  });
+  const scoped = {};
+  AGENT_TOOLS.forEach((tool) => {
+    if (raw[tool] === undefined || raw[tool] === null) return;
+    if (!isMapValue(raw[tool])) {
+      errors.push({ path: `agents.${tool}`, message: `agents.${tool} must be a map with main, dev, qa and/or ladder` });
+      return;
+    }
+    scoped[tool] = raw[tool];
+  });
+
+  const byTool = {};
+  const givenByTool = {};
+  AGENT_TOOLS.forEach((tool) => {
+    // Top-level `agents.*` acts as fallback for the active tool (preserving existing single-tool files). For the inactive
+    // tool, only its explicit `agents.<tool>` block is layered over that tool's defaults so Claude top-level settings never
+    // leak into Antigravity defaults or fail against Antigravity's ladder.
+    const res = resolveToolAgents({
+      rawTop: tool === activeBuild ? raw : null,
+      rawScoped: scoped[tool] ?? null,
+      tool,
+      depth,
+    });
+    byTool[tool] = res.value;
+    givenByTool[tool] = res.given;
+    errors.push(...res.errors);
+  });
+
+  return { value: byTool[activeBuild], errors, given: givenByTool[activeBuild], byTool, givenByTool };
+}
+
+/**
+ * The effective agent settings for `tool` (`claude` or `antigravity`), falling back to `config.agents` or tool defaults
+ * when a caller passes a partial/synthetic config object.
+ */
+export function agentsFor(config, tool = null) {
+  const target = tool ?? config?.agent?.build ?? 'claude';
+  if (config?.agents_by_tool?.[target]) return config.agents_by_tool[target];
+  if (target === (config?.agent?.build ?? 'claude') && config?.agents) return config.agents;
+  return agentDefaults(config?.depth ?? 'standard', target);
+}
+
+/** The list of explicitly configured paths under `agents` for `tool`. */
+export function agentsGivenFor(config, tool = null) {
+  const target = tool ?? config?.agent?.build ?? 'claude';
+  if (config?.agents_given_by_tool?.[target]) return config.agents_given_by_tool[target];
+  if (target === (config?.agent?.build ?? 'claude')) return config?.agents_given ?? [];
+  return [];
+}
+
+/**
+ * Targeted Antigravity diagnostics for explicitly set `agents.*` fields:
+ * - `unapplied`: paths Antigravity cannot enforce (subagent `effort`, non-tier subagent `model`/`floor`/`ceiling`, or non-tier `ladder` names)
+ * - `conflicts`: `agents.main` where `model` carries an effort suffix that disagrees with `effort` (`--effort` will be omitted)
+ */
+export function antigravityAgentDiagnostics(config) {
+  const agy = agentsFor(config, 'antigravity');
+  const given = agentsGivenFor(config, 'antigravity');
+  const unapplied = [];
+  const conflicts = [];
+  const seen = new Set();
+  const addUnapplied = (path, reason) => {
+    if (seen.has(path)) return;
+    seen.add(path);
+    unapplied.push({ path, reason });
+  };
+  const roleOf = (path) => {
+    const clean = path.replace(/^agents\.(?:antigravity\.)?/, '');
+    if (clean.startsWith('dev.')) return { role: agy?.dev, field: clean.slice(4), isSubagent: true };
+    const m = /^qa\.([^.]+)\.(.+)$/.exec(clean);
+    if (m) return { role: agy?.qa?.[m[1]], field: m[2], isSubagent: true };
+    return { role: null, field: clean, isSubagent: false };
+  };
+  given.forEach((path) => {
+    const clean = path.replace(/^agents\.(?:antigravity\.)?/, '');
+    if (clean === 'ladder') {
+      const bad = (agy?.ladder ?? []).filter((n) => !ANTIGRAVITY_SUBAGENT_TIERS.includes(n));
+      if (bad.length > 0) addUnapplied(path, `non-tier model name${bad.length === 1 ? '' : 's'} (${bad.join(', ')})`);
+      return;
+    }
+    const { role, field, isSubagent } = roleOf(path);
+    if (!isSubagent) return;
+    if (field === 'effort') {
+      addUnapplied(path, 'invoke_subagent does not accept per-subagent effort');
+      return;
+    }
+    if (field === 'model' || field === 'floor' || field === 'ceiling') {
+      const v = role?.[field];
+      const allowed = field === 'model' ? [...ANTIGRAVITY_SUBAGENT_TIERS, AUTO] : ANTIGRAVITY_SUBAGENT_TIERS;
+      if (v !== undefined && v !== null && !allowed.includes(v)) {
+        addUnapplied(path, `"${v}" is not a native invoke_subagent tier (${ANTIGRAVITY_SUBAGENT_TIERS.join(', ')})`);
+      }
+    }
+  });
+  const mainModel = agy?.main?.model;
+  const mainEffort = agy?.main?.effort;
+  const suffix = extractEffortSuffix(mainModel);
+  if (suffix && mainEffort && suffix !== mainEffort) {
+    const mainPath = given.find((p) => /\.main\.effort$/.test(p)) ?? given.find((p) => /\.main\.model$/.test(p)) ?? 'agents.main';
+    conflicts.push({
+      path: mainPath,
+      model: mainModel,
+      suffix,
+      effort: mainEffort,
+      message: `${mainPath}: model "${mainModel}" already has effort suffix "-${suffix}", which conflicts with effort "${mainEffort}"; --effort will be omitted to avoid an agy CLI conflict`,
     });
   }
-  return { value, errors, given };
+  return { unapplied, conflicts };
 }
 const ORIGIN_RE = /^https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?$/;
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -417,14 +659,22 @@ export function validateConfig(raw, { knownTargets = null, knownChecks = null } 
     errors.push({ path: 'integration.regenerate', message: 'integration.regenerate is required when integration.generated lists files: it is the command that regenerates them' });
   }
 
-  // The model and the effort of each agent, with defaults. With Antigravity they are accepted and not applied: a warning, not an error.
-  const agents = agentSettings(user, ['prototype', 'standard'].includes(config.depth) ? config.depth : 'standard');
+  // The model and the effort of each agent, with tool-scoped defaults. With Antigravity, `agents.main` and native
+  // `invoke_subagent` tiers are applied; only unapplied fields and effort-suffix conflicts produce warnings.
+  const agents = agentSettings(user, ['prototype', 'standard'].includes(config.depth) ? config.depth : 'standard', build);
   agents.errors.forEach((e) => errors.push(e));
   config.agents = agents.value;
-  // Which keys the file set, for doctor and init: kept out of the settings (not enumerable), because it is not one.
+  // Kept out of the enumerable settings: which keys the file set and per-tool resolutions for doctor, init, model-plan and go-local.
   Object.defineProperty(config, 'agents_given', { value: agents.given, enumerable: false, writable: true, configurable: true });
-  if (build === 'antigravity' && agents.given.length > 0) {
-    warnings.push({ path: 'agents', message: `${agents.given.join(', ')} ${agents.given.length === 1 ? 'is' : 'are'} not applied with this agent: with agent.build "antigravity" the model and the effort of a role are accepted and not written to the agents it renders` });
+  Object.defineProperty(config, 'agents_by_tool', { value: agents.byTool, enumerable: false, writable: true, configurable: true });
+  Object.defineProperty(config, 'agents_given_by_tool', { value: agents.givenByTool, enumerable: false, writable: true, configurable: true });
+  if (build === 'antigravity') {
+    const diag = antigravityAgentDiagnostics(config);
+    if (diag.unapplied.length > 0) {
+      const paths = diag.unapplied.map((u) => u.path);
+      warnings.push({ path: 'agents', message: `${paths.join(', ')} ${paths.length === 1 ? 'is' : 'are'} not applied with this agent: Antigravity applies agents.main and native invoke_subagent tiers (${ANTIGRAVITY_SUBAGENT_TIERS.join(', ')}), not per-subagent effort or custom subagent model IDs` });
+    }
+    diag.conflicts.forEach((c) => warnings.push({ path: c.path, message: c.message }));
   }
 
   // Platforms: the registry, or the legacy shortcut turned into one entry.

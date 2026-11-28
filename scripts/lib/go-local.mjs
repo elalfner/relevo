@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { changeId } from './branch.mjs';
+import { agentsFor, extractEffortSuffix } from './config.mjs';
 import { renderMessage } from './messages.mjs';
 import { readUsage, usageLine } from './run-usage.mjs';
 import { runFlags } from './run-flags.mjs';
@@ -61,15 +62,40 @@ export function readAnswer(stdout, { antigravity = false, summary = null } = {})
   return { text: raw.trim(), usage: null };
 }
 
+/**
+ * Resolves which local agent runner to use (`claude` or `antigravity`):
+ * 1. Explicit `--agent` override (must be `claude` or `antigravity`).
+ * 2. Runtime auto-detection when running inside Antigravity (`ANTIGRAVITY_AGENT` or `ANTIGRAVITY_CONVERSATION_ID`).
+ * 3. `config.agent.build` (defaults to `claude`).
+ */
+export function resolveLocalAgent({ agent = null, config = null, env = {} } = {}) {
+  if (agent !== null && agent !== undefined) {
+    if (!['claude', 'antigravity'].includes(agent)) {
+      return { ok: false, error: `--agent must be "claude" or "antigravity" (got ${JSON.stringify(agent)})` };
+    }
+    return { ok: true, agent };
+  }
+  const inAntigravity = Boolean(
+    (typeof env?.ANTIGRAVITY_AGENT === 'string' && env.ANTIGRAVITY_AGENT.trim() !== '')
+    || (typeof env?.ANTIGRAVITY_CONVERSATION_ID === 'string' && env.ANTIGRAVITY_CONVERSATION_ID.trim() !== '')
+  );
+  if (inAntigravity) return { ok: true, agent: 'antigravity' };
+  return { ok: true, agent: config?.agent?.build ?? 'claude' };
+}
+
 /** What a local run will do, without doing it: the worktree and the `claude` or `agy` command. Pure. */
-export function planLocalRun({ issue, repoRoot, config, retry = false, resume = false }) {
+export function planLocalRun({ issue, repoRoot, config, retry = false, resume = false, agent = null, env = {} }) {
   const base = config.branches.base;
   const worktree = worktreePath(repoRoot, issue);
   const state = stateDir(repoRoot, issue);
-  const isAntigravity = config.agent?.build === 'antigravity';
+  const resolved = resolveLocalAgent({ agent, config, env });
+  const activeAgent = resolved.ok ? resolved.agent : (config.agent?.build ?? 'claude');
+  const isAntigravity = activeAgent === 'antigravity';
   // A retry builds a `build-failed` issue again: `go` plans it with the planner's --retry and the issue never becomes `ready`.
   // A resume continues a `build-failed` issue from its branch: the same stand-in for `ready`, and the issue is claimed the same way.
   const prompt = `/relevo:go ${issue}${retry ? ' --retry' : ''}${resume ? ' --resume' : ''}`;
+  const settings = isAntigravity ? join(tmpdir(), `relevo-agy-settings-${basename(repoRoot)}-${issue}.json`) : null;
+  const main = isAntigravity ? (agentsFor(config, 'antigravity').main ?? { model: 'gemini-4-neon', effort: 'high' }) : null;
   const command = isAntigravity
     ? ['node', [
         GUARD,
@@ -80,6 +106,10 @@ export function planLocalRun({ issue, repoRoot, config, retry = false, resume = 
         'relevo.yml',
         '--timeout-minutes',
         String(GUARD_TIMEOUT_MINUTES),
+        '--settings',
+        settings,
+        ...(main?.model ? ['--model', main.model] : []),
+        ...(main?.effort && !extractEffortSuffix(main.model) ? ['--effort', main.effort] : []),
         // outside the worktree, so a clean end can remove it and the agent finds the tree clean
         '--summary',
         join(tmpdir(), `relevo-guard-${basename(repoRoot)}-${issue}.json`),
@@ -87,6 +117,7 @@ export function planLocalRun({ issue, repoRoot, config, retry = false, resume = 
     : ['claude', ['-p', prompt, ...runFlags(config, { json: true })]];
   return {
     issue,
+    agent: activeAgent,
     base,
     worktree,
     state,
@@ -95,10 +126,12 @@ export function planLocalRun({ issue, repoRoot, config, retry = false, resume = 
       ...(localRefs(config) ? [] : [['fetch', 'origin', base]]),
       ['worktree', 'add', '--detach', worktree, baseRef(config, base)],
     ],
+    settings,
     summary: isAntigravity ? command[1][command[1].indexOf('--summary') + 1] : null,
     claude: command,
-    // Without this the agent may start a subagent in the background and end the run before it finishes.
-    env: isAntigravity ? {} : { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' },
+    // Without this Claude may start a subagent in the background and end the run before it finishes; for Antigravity
+    // RELEVO_AGENT tells nested scripts (such as model-plan.mjs) to use agents.antigravity even on a claude repository.
+    env: isAntigravity ? { RELEVO_AGENT: 'antigravity' } : { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' },
   };
 }
 
@@ -108,7 +141,8 @@ export function planLocalRun({ issue, repoRoot, config, retry = false, resume = 
  * tasks or the newest lens or agent record changes, from the state folder and not from the agent. `dryRun` returns the plan.
  */
 export async function runLocal({
-  issue, config, runner, dryRun = false, retry = false, resume = false, exists = () => false,
+  issue, config, runner, dryRun = false, retry = false, resume = false, agent = null, env: runtimeEnv = {}, exists = () => false,
+  prepareSettings = null, removeSettings = null,
   state = NO_STATE, now = Date.now, sleep = (ms) => new Promise((done) => setTimeout(done, ms)), intervalMs = PRINT_INTERVAL_MS, print = noop,
 }) {
   const messages = [];
@@ -118,6 +152,13 @@ export async function runLocal({
   };
   if (resume && retry) return { status: 2, worktree: null, removed: false, messages: ['--resume and --retry cannot be given together: --resume continues from the branch, --retry builds from the beginning'] };
   if (!/^\d+$/.test(String(issue))) return { status: 2, worktree: null, removed: false, messages: ['give the issue number: go-local.mjs <issue>'] };
+  const resolvedAgent = resolveLocalAgent({ agent, config, env: runtimeEnv });
+  if (!resolvedAgent.ok) return { status: 2, worktree: null, removed: false, messages: [resolvedAgent.error] };
+  const activeAgent = resolvedAgent.agent;
+  const isAntigravity = activeAgent === 'antigravity';
+  if (isAntigravity && !(Number.isInteger(config.limits?.run_max_tokens) && config.limits.run_max_tokens >= 1000)) {
+    return { status: 2, worktree: null, removed: false, messages: ['limits.run_max_tokens is required to run locally with Antigravity: set limits.run_max_tokens (at least 1000) in relevo.yml'] };
+  }
 
   let repoRoot;
   try {
@@ -125,8 +166,7 @@ export async function runLocal({
   } catch {
     return { status: 2, worktree: null, removed: false, messages: ['not inside a git repository'] };
   }
-  const plan = planLocalRun({ issue: String(issue), repoRoot, config, retry, resume });
-  const isAntigravity = config.agent?.build === 'antigravity';
+  const plan = planLocalRun({ issue: String(issue), repoRoot, config, retry, resume, agent: activeAgent, env: runtimeEnv });
   const language = config.language ?? 'en';
 
   if (dryRun) {
@@ -191,6 +231,9 @@ export async function runLocal({
   let status;
   let answer = { text: '', usage: null };
   try {
+    if (isAntigravity && plan.settings && prepareSettings) {
+      prepareSettings({ out: plan.settings, worktree: plan.worktree, config, env: runtimeEnv });
+    }
     const running = runner.run(plan.claude[0], plan.claude[1], { cwd: plan.worktree, env }).then(
       (result) => ({ result }),
       (error) => ({ error }),
@@ -207,10 +250,14 @@ export async function runLocal({
     answer = readAnswer(outcome.result.stdout, { antigravity: isAntigravity, summary: isAntigravity && plan.summary ? state.read(plan.summary) : null });
   } catch (err) {
     status = err.code === 'ENOENT' ? 127 : 1;
-    const missing = config.agent?.build === 'antigravity'
+    const missing = isAntigravity
       ? 'the agy or node command was not found: install the Antigravity CLI'
       : 'the claude command was not found: install Claude Code and the Relevo plugin';
     say(err.code === 'ENOENT' ? missing : `the run could not start: ${err.message}`);
+  } finally {
+    if (isAntigravity && plan.settings && removeSettings) {
+      try { removeSettings(plan.settings); } catch { /* ignore cleanup failure */ }
+    }
   }
   tick();
 

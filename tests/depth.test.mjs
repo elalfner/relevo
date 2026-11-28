@@ -65,3 +65,19 @@ test('depth never lowers an effort below low', () => {
   Object.values(twice.qa).concat(twice.dev).forEach((r) => assert.ok(['low', 'medium', 'high', 'xhigh', 'max'].includes(r.effort)));
   assert.equal(twice.qa.interface.effort, 'low');
 });
+
+test('Scenario: Prototype defaults for Antigravity - lowers main.effort to medium while dev and all five QA lenses stay on inherit', () => {
+  const { ok, config, errors } = loadConfig('agent:\n  build: antigravity\ndepth: prototype\nlimits:\n  run_max_tokens: 2000000\n');
+  assert.equal(ok, true, JSON.stringify(errors));
+  assert.deepEqual(config.agents.main, { model: 'gemini-4-neon', effort: 'medium' });
+  assert.equal(config.agents.dev.model, 'inherit');
+  assert.equal(config.agents.dev.effort, null);
+  QA_LENSES.forEach((lens) => {
+    assert.equal(config.agents.qa[lens].model, 'inherit', lens);
+    assert.equal(config.agents.qa[lens].effort, null, lens);
+  });
+
+  const explicit = loadConfig('agent:\n  build: antigravity\ndepth: prototype\nlimits:\n  run_max_tokens: 2000000\nagents:\n  antigravity:\n    main:\n      effort: high\n');
+  assert.equal(explicit.ok, true, JSON.stringify(explicit.errors));
+  assert.equal(explicit.config.agents.main.effort, 'high', 'explicit main.effort wins over prototype depth');
+});

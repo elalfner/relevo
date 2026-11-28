@@ -37,10 +37,15 @@ function emit(plan) {
   } catch { /* the report simply has no plan */ }
 }
 
+const resolveAgent = (config) => {
+  const asked = arg('agent') ?? process.env.RELEVO_AGENT;
+  return ['claude', 'antigravity'].includes(asked) ? asked : (config.agent?.build ?? 'claude');
+};
+
 // A step up for the retry: the plan file only gets a record of it, the decision needs the configuration and `--from`.
-function escalate(config) {
+function escalate(config, agent) {
   const from = arg('from') ?? '';
-  const result = escalateDev({ config, from, attempt: Number(arg('attempt')) || 0, reason: arg('reason') ?? '' });
+  const result = escalateDev({ config, from, attempt: Number(arg('attempt')) || 0, reason: arg('reason') ?? '', agent });
   console.log(JSON.stringify({ model: result.model, escalated: result.escalated, why: result.why }));
   const dir = progressDir();
   if (!dir || !result.escalated) return;
@@ -58,14 +63,15 @@ try {
   if (!loaded.ok) {
     console.log(JSON.stringify({ failed: true, reason: `relevo.yml is not valid: ${loaded.errors.map((e) => e.message).join('; ').slice(0, 300)}` }));
   } else if (escalating) {
-    escalate(loaded.config);
+    escalate(loaded.config, resolveAgent(loaded.config));
   } else {
+    const agent = resolveAgent(loaded.config);
     const lenses = arg('lenses') ? arg('lenses').split(',').map((l) => l.trim()).filter((l) => QA_LENSES.includes(l)) : QA_LENSES;
     try {
       const read = (p) => (p && existsSync(resolve(p)) ? readFileSync(resolve(p), 'utf8') : null);
-      emit(planModels({ config: loaded.config, issue: { title: arg('title') ?? '', body: read(arg('issue-file')) ?? '' }, tasksText: read(arg('tasks')), lenses }));
+      emit(planModels({ config: loaded.config, issue: { title: arg('title') ?? '', body: read(arg('issue-file')) ?? '' }, tasksText: read(arg('tasks')), lenses, agent }));
     } catch (error) {
-      emit(configPlan(loaded.config, `the model plan failed (${String(error.message).slice(0, 120)}), so the configuration is used`, lenses));
+      emit(configPlan(loaded.config, `the model plan failed (${String(error.message).slice(0, 120)}), so the configuration is used`, lenses, { agent }));
     }
   }
 } catch (error) {

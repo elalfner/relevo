@@ -139,3 +139,13 @@ test('Scenario: Retries used up - the stopped situation asks a person, in both l
   assert.match(renderMessage('run_no_outcome', base, 'es'), /tras 3 reintentos automáticos/);
   assert.match(renderMessage('run_no_outcome', { ...base, rescue_state: 'kept', rescue_branch: 'feature/7-x' }, 'en'), /on the branch `feature\/7-x`/);
 });
+
+test('Scenario: Antigravity quota or capacity guard summary requeues via backoff', async () => {
+  const { reachedUsageLimit } = await import('../scripts/lib/run-usage.mjs');
+  for (const stderr_tail of ['You have exhausted your quota', 'MODEL_CAPACITY_EXHAUSTED', 'prepaid balance is insufficient']) {
+    const log = JSON.stringify({ type: 'result', status: 'ERROR', exit_code: 1, stderr_tail });
+    assert.equal(reachedUsageLimit(log), true, stderr_tail);
+    const d = decideRetry({ log, comments: [], rescueState: 'kept', now: NOW });
+    assert.deepEqual(d, { action: 'retry', at: NOW + 30 * MIN, reason: 'backoff', attempt: 1, max: 3 });
+  }
+});
