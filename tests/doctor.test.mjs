@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SHIP_APP_SECRETS, buildTimeoutMinutes, RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, pluginInstallScope, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
+import { SHIP_APP_SECRETS, buildTimeoutMinutes, defaultSkillDirs, RECOMMENDED, REQUIRED_SKILLS, boostInstallCommands, recommendedInstallCommand, WORKFLOW_FILES, recommendedSkillFacts, exitCode, gatherFacts, isVueWeb, reportHeader, playwrightFacts, pluginDeclaration, readOnlyGh, webHookDeclaration, webPluginHookDeclaration, pluginInstallScope, WEB_HOOK_COMMAND, WEB_PLUGIN_HOOK_COMMAND, refMatches, renderReport, runChecks, summarizeProtection, versionAtLeast } from '../scripts/lib/doctor.mjs';
 import { labelDefinitions } from '../scripts/lib/labels.mjs';
 import { loadConfig } from '../scripts/lib/config.mjs';
 import { folderHash } from '../scripts/lib/role-skills.mjs';
@@ -3184,4 +3184,30 @@ test('Scenario: Unreadable configuration - the report says so and does not show 
 test('without an OpenSpec root there is no schema check: openspec.root already fails', () => {
   assert.equal(schemaOf(null), null);
   assert.equal(byId(runChecks(healthy({ openspecRoot: false, openspecSchema: null })), 'openspec.schema'), undefined);
+});
+
+test('Scenario: Skill installed in Antigravity global folder - doctor checks ~/.agents/skills and ~/.gemini/config/skills and reads frontmatter', () => {
+  const home = '/home/alice';
+  const dirs = defaultSkillDirs(home);
+  assert.ok(dirs.includes(`${home}/.agents/skills`));
+  assert.ok(dirs.includes(`${home}/.gemini/config/skills`));
+  const files = {
+    [`${home}/.agents/skills/grilling/SKILL.md`]: '---\nname: grilling\n---\n',
+    [`${home}/.gemini/config/skills/grill-with-docs/SKILL.md`]: '---\nname: grill-with-docs\ndisable-model-invocation: true\n---\n',
+    [`${home}/.agents/skills/domain-modeling/SKILL.md`]: '---\nname: domain-modeling\n---\n',
+    '.agents/skills/openspec-explore/SKILL.md': '---\nname: openspec-explore\n---\n',
+  };
+  const f = gatherFacts({
+    ...probes({ localFiles: {}, remote: {} }),
+    skillDirs: dirs,
+    exists: (p) => p in files || Object.keys(files).some((k) => k.startsWith(`${p}/`)),
+    read: (p) => files[p] ?? '',
+  });
+  for (const name of REQUIRED_SKILLS) assert.equal(f.skills[name], true, `${name} should be detected`);
+  assert.ok(f.manualOnlySkills.includes('grill-with-docs'), 'frontmatter disable-model-invocation is read from ~/.gemini/config/skills');
+  const checks = runChecks(healthy({ skills: f.skills, manualOnlySkills: f.manualOnlySkills }));
+  assert.equal(byId(checks, 'skills.grilling').status, 'pass');
+  assert.equal(byId(checks, 'skills.domain-modeling').status, 'pass');
+  assert.equal(byId(checks, 'skills.openspec-explore').status, 'pass');
+  assert.equal(byId(checks, 'skills.grill-with-docs').status, 'note');
 });

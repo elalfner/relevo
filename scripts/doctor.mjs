@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { adapterFacts } from './lib/adapters/install.mjs';
-import { exitCode, gatherFacts, readOnlyGh, renderReport, reportHeader, runChecks } from './lib/doctor.mjs';
+import { defaultSkillDirs, exitCode, gatherFacts, readOnlyGh, renderReport, reportHeader, runChecks } from './lib/doctor.mjs';
 import { findRepo, isRemote } from './lib/gh-web.mjs';
 import { findRestrictedFiles } from './lib/restricted-paths.mjs';
 import { readFileSync } from './lib/guarded-fs.mjs';
@@ -65,7 +65,7 @@ const facts = gatherFacts({
   exists: existsSync,
   read: (p) => readFileSync(p, 'utf8'),
   listDir: (p) => readdirSync(p),
-  skillDirs: ['.claude/skills', '.agents/skills', `${homedir()}/.claude/skills`],
+  skillDirs: defaultSkillDirs(homedir()),
   git: (args) => tool('git', args),
   // The restricted files that exist here, found by listing folders: no file is opened. The settings of the person are
   // read from the home folder, by name.
