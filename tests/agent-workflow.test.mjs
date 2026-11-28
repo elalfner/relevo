@@ -58,14 +58,21 @@ test('Scenario: Reading the workflow - the Antigravity step shows the allow list
   assert.ok(!run.slice(0, run.indexOf('--summary')).includes('${{'), 'the prompt is built from variables, not from expressions');
 });
 
-test('the shell of the agent step uses the variables the env sets, and the binary is pinned by version and checksum', () => {
+test('the shell of the agent step uses the variables the env sets, and the binary is pinned by version (>= 1.5.18) and checksum with per-session --settings and no --sandbox', () => {
   const step = blocksOf(blocks)['agent-step'].join('\n');
-  assert.match(step, /AGY_VERSION: '\d+\.\d+\.\d+'/);
+  const active = step.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  const verMatch = /AGY_VERSION: '(\d+)\.(\d+)\.(\d+)'/.exec(step);
+  assert.ok(verMatch, 'AGY_VERSION is pinned');
+  const [maj, min, pat] = verMatch.slice(1).map(Number);
+  assert.ok(maj > 1 || (maj === 1 && (min > 5 || (min === 5 && pat >= 18))), `AGY_VERSION ${verMatch[1]}.${verMatch[2]}.${verMatch[3]} must be >= 1.5.18`);
   assert.match(step, /AGY_SHA512: [0-9a-f]{128}/);
   assert.match(step, /AGY_URL: https:\/\/storage\.googleapis\.com\/antigravity-public\/antigravity-cli\/\d+\.\d+\.\d+-/);
   assert.match(step, /\[ "\$\("\$RUNNER_TEMP\/bin\/agy" --version\)" = "\$AGY_VERSION" \]/);
   assert.match(step, /ISSUE: \$\{\{ github\.event\.issue\.number \|\| inputs\.issue \}\}/);
   assert.match(step, /--prompt "\/relevo:go \$ISSUE --decision \$DECISION"/);
+  assert.match(active, /--out "\$RUNNER_TEMP\/relevo-agy-settings\.json"/);
+  assert.match(active, /--settings "\$RUNNER_TEMP\/relevo-agy-settings\.json"/);
+  assert.doesNotMatch(active, /--sandbox/, 'C3/D9: --sandbox stays off because it blocks gh');
 });
 
 test('a marked block that the agent does not define, or an agent with no file, is an error', () => {

@@ -9,7 +9,7 @@
 //
 // The effort is not scored in this stage: every role keeps the configured effort.
 
-import { AGENT_DEFAULTS, AUTO, QA_LENSES } from './config.mjs';
+import { AUTO, QA_LENSES, agentDefaults, agentsFor, agentsGivenFor } from './config.mjs';
 import { parseIssueBody } from './issue-parse.mjs';
 import { parseIssueModels } from './issue-model.mjs';
 import { taskGroups } from './task-groups.mjs';
@@ -52,11 +52,15 @@ const LEVEL = { small: 0, medium: 1, large: 2 };
  * issue         { title, body } of the issue
  * tasksText     the text of tasks.md of the change (the pending tasks are counted); null when there is none
  * lenses        the QA lenses that run (the others get no entry); all of them by default
+ * agent         optional active tool (`claude` or `antigravity`), defaulting to `config.agent.build`
  *
- * Returns { dev, qa: { <lens>: ... }, signals, notes }. Each role is { model, effort, source, why }.
+ * Returns { main?, dev, qa: { <lens>: ... }, signals, notes }. Each role is { model, effort, source, why }.
  */
-export function planModels({ config, issue = {}, tasksText = null, lenses = QA_LENSES }) {
-  const agents = config.agents;
+export function planModels({ config, issue = {}, tasksText = null, lenses = QA_LENSES, agent = null }) {
+  const activeAgent = agent ?? config.agent?.build ?? 'claude';
+  const agents = agentsFor(config, activeAgent);
+  const given = agentsGivenFor(config, activeAgent);
+  const standardDefaults = agentDefaults('standard', activeAgent);
   const ladder = agents.ladder;
   const notes = [];
   const body = String(issue.body ?? '');
@@ -82,10 +86,15 @@ export function planModels({ config, issue = {}, tasksText = null, lenses = QA_L
     return parts.join(', ');
   };
 
+  const isWritten = (path) => {
+    const suffix = path.replace(/^agents\./, '');
+    return given.some((g) => g.startsWith(`agents.${suffix}.`) || g.startsWith(`agents.${activeAgent}.${suffix}.`));
+  };
+
   function decide(path, role, defaults, askedName, isSecurity) {
     if (role.model !== AUTO) {
       // At the prototype depth a role the file does not mention takes the default of that depth, and the plan says so.
-      const written = (config.agents_given ?? []).some((g) => g.startsWith(`${path}.`));
+      const written = isWritten(path);
       return { model: role.model, effort: role.effort, source: 'config', why: config.depth === 'prototype' && !written ? 'the default of the prototype depth' : 'set in relevo.yml' };
     }
     const { floor, ceiling } = role;
@@ -117,9 +126,22 @@ export function planModels({ config, issue = {}, tasksText = null, lenses = QA_L
     return { model, effort: role.effort, source: 'auto', why: explain() };
   }
 
-  const plan = { dev: decide('agents.dev', agents.dev, AGENT_DEFAULTS.dev, asked.dev, false), qa: {}, signals, notes };
+  const plan = {
+    ...(agents.main ? {
+      main: {
+        model: agents.main.model,
+        effort: agents.main.effort,
+        source: 'config',
+        why: config.depth === 'prototype' && !isWritten('agents.main') ? 'the default of the prototype depth' : 'set in relevo.yml',
+      },
+    } : {}),
+    dev: decide('agents.dev', agents.dev, standardDefaults.dev, asked.dev, false),
+    qa: {},
+    signals,
+    notes,
+  };
   lenses.forEach((lens) => {
-    plan.qa[lens] = decide(`agents.qa.${lens}`, agents.qa[lens], AGENT_DEFAULTS.qa[lens], asked.qa, lens === 'security');
+    plan.qa[lens] = decide(`agents.qa.${lens}`, agents.qa[lens], standardDefaults.qa[lens], asked.qa, lens === 'security');
   });
 
   // A line of the issue for a role that is not on auto is not read: the repository decided.
@@ -134,11 +156,20 @@ export function planModels({ config, issue = {}, tasksText = null, lenses = QA_L
  * The plan that the configuration alone gives: what `go` uses when the plan cannot be made. A role on `auto` has no model to
  * launch with, so it gets the default model of the role.
  */
-export function configPlan(config, reason, lenses = QA_LENSES) {
+export function configPlan(config, reason, lenses = QA_LENSES, { agent = null } = {}) {
+  const activeAgent = agent ?? config.agent?.build ?? 'claude';
+  const agents = agentsFor(config, activeAgent);
+  const standardDefaults = agentDefaults('standard', activeAgent);
   const role = (r, defaults) => ({ model: r.model === AUTO ? defaults.model : r.model, effort: r.effort, source: 'config', why: reason });
   const qa = {};
-  lenses.forEach((lens) => { qa[lens] = role(config.agents.qa[lens], AGENT_DEFAULTS.qa[lens]); });
-  return { dev: role(config.agents.dev, AGENT_DEFAULTS.dev), qa, signals: null, notes: [reason] };
+  lenses.forEach((lens) => { qa[lens] = role(agents.qa[lens], standardDefaults.qa[lens]); });
+  return {
+    ...(agents.main ? { main: { model: agents.main.model, effort: agents.main.effort, source: 'config', why: reason } } : {}),
+    dev: role(agents.dev, standardDefaults.dev),
+    qa,
+    signals: null,
+    notes: [reason],
+  };
 }
 
 // The reasons that raise the developer for a retry: a red gate or a rejection by the lenses, both followed by a fix launch.
@@ -151,16 +182,18 @@ export const ESCALATION_REASONS = ['qa-rejected', 'gate-red'];
  *   from     the model the developer ran with in the attempt that failed
  *   attempt  the number of the attempt that is about to start (2 for the first retry)
  *   reason   one of ESCALATION_REASONS
+ *   agent    optional active tool (`claude` or `antigravity`), defaulting to `config.agent.build`
  *
  * Returns { model, escalated, why, ...(escalated: from, to, attempt, reason) }. Only a developer on `auto` is raised, one name of
  * `agents.ladder` at a time and never past its ceiling, so the cost limit is not touched. Anything else keeps `from`.
  */
-export function escalateDev({ config, from, attempt, reason }) {
+export function escalateDev({ config, from, attempt, reason, agent = null }) {
   const keep = (why) => ({ model: from, escalated: false, why });
-  const dev = config.agents.dev;
+  const agents = agentsFor(config, agent ?? config.agent?.build ?? 'claude');
+  const dev = agents.dev;
   if (dev.model !== AUTO) return keep('the developer is not on auto, so the repository decided its model');
   if (!ESCALATION_REASONS.includes(reason)) return keep(`"${reason}" is not a reason to raise the model`);
-  const ladder = config.agents.ladder;
+  const ladder = agents.ladder;
   const at = ladder.indexOf(from);
   if (at === -1) return keep(`"${from}" is not in agents.ladder (${ladder.join(', ')})`);
   if (at >= ladder.indexOf(dev.ceiling)) return keep(`${from} is already the ceiling of the developer`);

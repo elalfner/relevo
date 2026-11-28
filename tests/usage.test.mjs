@@ -725,3 +725,48 @@ test('a description that is not one of the names is not shown, so a text of the 
   assert.ok(usage.agents.filter((a) => a.name === 'relevo:dev').every((a) => a.launch === undefined));
   assert.doesNotMatch(usageLine(usage), /\[/);
 });
+
+// ---- Antigravity guard summary per-subagent usage and quota detection
+
+test('Scenario: An Antigravity run with subagents - readUsage, usageLine and usageMarker preserve per-agent turns and tokens', () => {
+  const summary = JSON.stringify({
+    type: 'result',
+    status: 'SUCCESS',
+    num_turns: 4,
+    usage: { input_tokens: 700, output_tokens: 100, cache_read_input_tokens: 20 },
+    agents: [
+      { name: 'main', model: 'gemini-4-neon', turns: 1, tokens: 100 },
+      { name: 'relevo-dev', launch: 'build 1/1: 1.1', model: 'inherit', turns: 2, tokens: 400 },
+      { name: 'relevo-qa-security', launch: 'qa-security attempt 1', model: 'inherit', turns: 1, tokens: 300 },
+    ],
+    exit_code: 0,
+    stderr_tail: '',
+  });
+  const usage = readUsage(summary);
+  assert.equal(usage.turns, 4);
+  assert.equal(usage.tokens, 800);
+  assert.equal(usage.cost, null);
+  assert.deepEqual(usage.agents, [
+    { name: 'main', model: 'gemini-4-neon', turns: 1, tokens: 100 },
+    { name: 'relevo-dev', launch: 'build 1/1: 1.1', model: 'inherit', turns: 2, tokens: 400 },
+    { name: 'relevo-qa-security', launch: 'qa-security attempt 1', model: 'inherit', turns: 1, tokens: 300 },
+  ]);
+  const en = usageLine(usage, { language: 'en' });
+  assert.match(en, /By agent: main \(gemini-4-neon\) 1 turn, 100 tokens; relevo-dev \[build 1\/1: 1\.1\] \(inherit\) 2 turns, 400 tokens; relevo-qa-security \[qa-security attempt 1\] \(inherit\) 1 turn, 300 tokens\./);
+  const es = usageLine(usage, { language: 'es' });
+  assert.match(es, /Por agente: main \(gemini-4-neon\) 1 turno, 100 tokens; relevo-dev \[build 1\/1: 1\.1\] \(inherit\) 2 turnos, 400 tokens/);
+  const marker = usageMarker(usage);
+  const parsed = parseUsageMarker({ user: { type: 'Bot' }, created_at: '2026-11-28T00:00:00Z', body: `${en}\n\n${marker}` });
+  assert.deepEqual(parsed.agents, usage.agents);
+});
+
+test('Scenario: Antigravity quota and capacity failures are detected by reachedUsageLimit', () => {
+  for (const msg of ['You have exhausted your quota for this model', 'Error: MODEL_CAPACITY_EXHAUSTED', 'Your prepaid balance is insufficient to continue']) {
+    const failedSummary = JSON.stringify({ type: 'result', status: 'ERROR', exit_code: 1, stderr_tail: msg });
+    assert.equal(reachedUsageLimit(failedSummary), true, msg);
+    const failedResponse = JSON.stringify({ type: 'result', status: 'ERROR', exit_code: 1, response: msg, stderr_tail: '' });
+    assert.equal(reachedUsageLimit(failedResponse), true, `response: ${msg}`);
+    const okSummary = JSON.stringify({ type: 'result', status: 'SUCCESS', exit_code: 0, stderr_tail: msg });
+    assert.equal(reachedUsageLimit(okSummary), false, `healthy run ignores stderr: ${msg}`);
+  }
+});

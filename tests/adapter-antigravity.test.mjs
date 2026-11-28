@@ -136,7 +136,8 @@ test('Scenario: Multiple active lenses run in parallel with a schedule batch wat
 
 test('Scenario: Synced local and interactive go instructions in Antigravity', () => {
   const go = file('skills/go/SKILL.md').content;
-  assert.match(go, /go-local\.mjs <issue>` \(forwarding `--retry` or `--resume` when `\$ARGUMENTS` has it\) as a background command/);
+  const qaRun = file('skills/go/references/qa-run.md').content;
+  assert.match(go, /go-local\.mjs <issue> --agent antigravity` \(forwarding `--retry` or `--resume` when `\$ARGUMENTS` has it\) as a background command/);
   assert.match(go, /go-local\.mjs status <issue>/);
   assert.match(go, /next-step\.mjs \.\.\. --conversation/);
   assert.match(go, /next-step\.mjs --build-warning --issue <issue>/);
@@ -144,6 +145,9 @@ test('Scenario: Synced local and interactive go instructions in Antigravity', ()
   assert.match(go, /schedule[\s\S]*DurationSeconds: 1200[\s\S]*TimerCondition:/);
   assert.match(go, /manage_subagents[\s\S]*Action: "kill"/);
   assert.match(go, /multiple chat tabs share this workspace and will collide/);
+  assert.match(go, /pass `Model` set to its planned native tier \(`flash_lite`, `flash`, `pro`, or `inherit`/);
+  assert.match(qaRun, /`Model` set to the lens's planned native tier `flash_lite`, `flash`, `pro`, or `inherit`/);
+  assert.match(qaRun, /never pass `effort`/);
 });
 
 test('Scenario: Global skill discovery in Antigravity think without changing Claude source', () => {

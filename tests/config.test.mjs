@@ -273,30 +273,38 @@ test('agent.build defaults to claude, and only claude and antigravity are accept
   assert.ok(errors.some((e) => e.path === 'agent.build' && /allowed values/.test(e.message)));
 });
 
-test('Scenario: A cost limit with Antigravity - validation fails and says what is the limit instead', () => {
-  const { ok, errors } = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\n');
-  assert.equal(ok, false);
-  const e = errors.find((x) => x.path === 'limits.run_max_cost');
-  assert.match(e.message, /no effect with agent\.build "antigravity"/);
-  assert.match(e.message, /limits\.run_max_tokens/);
-  assert.match(e.message, /quota of the Google Cloud project/);
+test('Scenario: Claude and Antigravity spending limits coexist - both are accepted and type/range checked', () => {
+  const agyBoth = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\n');
+  assert.equal(agyBoth.ok, true, JSON.stringify(agyBoth.errors));
+  assert.equal(agyBoth.config.limits.run_max_cost, 5);
+  assert.equal(agyBoth.config.limits.run_max_tokens, 2000000);
+
+  const claudeBoth = loadConfig('limits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\n');
+  assert.equal(claudeBoth.ok, true, JSON.stringify(claudeBoth.errors));
+  assert.equal(claudeBoth.config.limits.run_max_cost, 5);
+  assert.equal(claudeBoth.config.limits.run_max_tokens, 2000000);
+
+  const badInactiveTokens = loadConfig('limits:\n  run_max_cost: 5\n  run_max_tokens: 500\n');
+  assert.equal(badInactiveTokens.ok, false);
+  assert.ok(badInactiveTokens.errors.some((e) => e.path === 'limits.run_max_tokens' && />= 1000/.test(e.message)));
+
+  const badInactiveCost = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\n  run_max_cost: 0\n');
+  assert.equal(badInactiveCost.ok, false);
+  assert.ok(badInactiveCost.errors.some((e) => e.path === 'limits.run_max_cost' && /> 0/.test(e.message)));
 });
 
 test('with Antigravity the token limit is required, and a valid configuration needs no cost limit', () => {
   const missing = loadConfig('agent:\n  build: antigravity\n');
   assert.ok(missing.errors.some((e) => e.path === 'limits.run_max_tokens' && /is required/.test(e.message)));
   assert.ok(!missing.errors.some((e) => e.path === 'limits.run_max_cost'), 'the cost limit is not asked for');
+  const missingWithCost = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_cost: 5\n');
+  assert.equal(missingWithCost.ok, false);
+  assert.ok(missingWithCost.errors.some((e) => e.path === 'limits.run_max_tokens' && /is required/.test(e.message)));
   const good = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\n');
   assert.equal(good.ok, true, JSON.stringify(good.errors));
   assert.equal(good.config.limits.run_max_tokens, 2000000);
   assert.equal(good.config.limits.run_max_cost, null);
   assert.ok(loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 10\n').errors.some((e) => e.path === 'limits.run_max_tokens' && />= 1000/.test(e.message)));
-});
-
-test('with Claude the token limit has no effect and is refused, so no one believes it limits the run', () => {
-  const { ok, errors } = loadConfig('limits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\n');
-  assert.equal(ok, false);
-  assert.match(errors.find((e) => e.path === 'limits.run_max_tokens').message, /no effect with agent\.build "claude": the run is limited by limits\.run_max_cost/);
 });
 
 test('Scenario: Public repositories - trust public is refused with Antigravity', () => {
@@ -426,7 +434,7 @@ test('Scenario: A project tries to lift a base entry - a profile that names .env
 });
 
 // ---- agent settings (specialist-review-lenses)
-import { AGENT_DEFAULTS, EFFORTS, QA_LENSES } from '../scripts/lib/config.mjs';
+import { AGENT_DEFAULTS, ANTIGRAVITY_AGENT_DEFAULTS, EFFORTS, QA_LENSES, agentsFor, antigravityAgentDiagnostics, extractEffortSuffix } from '../scripts/lib/config.mjs';
 
 const agents = (yaml) => `${MINIMAL}agents:\n${yaml}`;
 
@@ -472,14 +480,52 @@ test('Scenario: An attempt to turn a lens off - validation fails because the key
   assert.equal(QA_LENSES.length, 5);
 });
 
-test('Scenario: Antigravity warns and passes - the settings are accepted, not applied, and a rejected key still fails', () => {
+test('Scenario: Antigravity targeted warnings - warns only on unapplied subagent fields or main effort-suffix conflict', () => {
   const base = 'agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 200000\n';
-  const r = loadConfig(`${base}agents:\n  qa:\n    security:\n      model: opus\n`);
-  assert.equal(r.ok, true, JSON.stringify(r.errors));
-  assert.ok(r.warnings.some((w) => w.path === 'agents' && /agents\.qa\.security\.model is not applied with this agent/.test(w.message)));
+  const unapplied = loadConfig(`${base}agents:\n  qa:\n    security:\n      model: opus\n  dev:\n    effort: low\n`);
+  assert.equal(unapplied.ok, true, JSON.stringify(unapplied.errors));
+  assert.ok(unapplied.warnings.some((w) => w.path === 'agents' && /agents\.dev\.effort/.test(w.message) && /agents\.qa\.security\.model/.test(w.message)));
   assert.equal(loadConfig(base).warnings.some((w) => w.path === 'agents'), false, 'no settings, no warning');
-  assert.equal(loadConfig(`${base}  run_max_cost: 5\n`).ok, false, 'a rejected key still fails');
+  const applied = loadConfig(`${base}agents:\n  antigravity:\n    main:\n      model: gemini-4-neon\n      effort: high\n    dev:\n      model: inherit\n    qa:\n      security:\n        model: auto\n`);
+  assert.equal(applied.ok, true, JSON.stringify(applied.errors));
+  assert.equal(applied.warnings.some((w) => w.path.startsWith('agents')), false, 'applied Antigravity settings produce no warning');
+  const conflict = loadConfig(`${base}agents:\n  antigravity:\n    main:\n      model: gemini-4-neon-high\n      effort: low\n`);
+  assert.equal(conflict.ok, true, JSON.stringify(conflict.errors));
+  assert.ok(conflict.warnings.some((w) => /gemini-4-neon-high.*conflicts with effort "low"/.test(w.message)));
+  assert.equal(extractEffortSuffix('gemini-4-neon-high'), 'high');
+  assert.equal(extractEffortSuffix('gemini-4-neon'), null);
   assert.equal(loadConfig(`${MINIMAL}agents:\n  dev:\n    model: opus\n`).warnings.some((w) => w.path === 'agents'), false, 'Claude applies the model');
+});
+
+test('Scenario: Tool-scoped agents.claude and agents.antigravity blocks and Antigravity defaults', () => {
+  const agyDefault = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\n');
+  assert.equal(agyDefault.ok, true, JSON.stringify(agyDefault.errors));
+  assert.deepEqual(agyDefault.config.agents, ANTIGRAVITY_AGENT_DEFAULTS);
+  assert.deepEqual(agyDefault.config.agents.main, { model: 'gemini-4-neon', effort: 'high' });
+  assert.deepEqual(agyDefault.config.agents.ladder, ['flash_lite', 'flash', 'pro', 'inherit']);
+  assert.equal(agyDefault.config.agents.dev.model, 'inherit');
+  QA_LENSES.forEach((lens) => assert.equal(agyDefault.config.agents.qa[lens].model, 'inherit', lens));
+
+  const both = loadConfig(`agent:\n  build: claude\nlimits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\nagents:\n  claude:\n    dev:\n      model: opus\n  antigravity:\n    main:\n      model: gemini-4-neon\n      effort: medium\n    dev:\n      model: auto\n      floor: pro\n    qa:\n      security:\n        model: auto\n`);
+  assert.equal(both.ok, true, JSON.stringify(both.errors));
+  assert.equal(both.config.agents.dev.model, 'opus', 'active tool is claude');
+  const agy = agentsFor(both.config, 'antigravity');
+  assert.deepEqual(agy.main, { model: 'gemini-4-neon', effort: 'medium' });
+  assert.deepEqual(agy.dev, { model: 'auto', effort: null, floor: 'pro', ceiling: 'inherit' });
+  assert.deepEqual(agy.qa.security, { model: 'auto', effort: null, floor: 'inherit', ceiling: 'inherit' });
+
+  const overrideTop = loadConfig(`agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nagents:\n  dev:\n    model: pro\n  antigravity:\n    dev:\n      model: inherit\n`);
+  assert.equal(overrideTop.ok, true, JSON.stringify(overrideTop.errors));
+  assert.equal(overrideTop.config.agents.dev.model, 'inherit');
+
+  const badInactive = loadConfig(`${MINIMAL}agents:\n  antigravity:\n    main:\n      effort: extreme\n`);
+  assert.equal(badInactive.ok, false);
+  assert.ok(badInactive.errors.some((e) => e.path === 'agents.antigravity.main.effort'));
+
+  const badMain = loadConfig(`${MINIMAL}agents:\n  main:\n    floor: sonnet\n    model: auto\n`);
+  assert.equal(badMain.ok, false);
+  assert.ok(badMain.errors.some((e) => e.path === 'agents.main.floor'));
+  assert.ok(badMain.errors.some((e) => e.path === 'agents.main.model' && /cannot be "auto"/.test(e.message)));
 });
 
 // ---- the design system (interface-decisions-upfront)
@@ -626,15 +672,21 @@ test('Scenario: The default model of a role is not in the ladder - auto asks for
   assert.equal(loadConfig(agents('  ladder: [haiku, opus]\n  dev:\n    model: auto\n    ceiling: opus\n')).ok, true);
 });
 
-test('Scenario: With Antigravity - auto, the ladder, floor and ceiling are accepted and reported as not applied', () => {
+test('Scenario: With Antigravity - native tier ladder and auto produce no warning, while non-tier ladder names warn specifically', () => {
   const base = 'agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 200000\n';
-  const r = loadConfig(`${base}agents:\n  ladder: [sonnet, opus]\n  dev:\n    model: auto\n    ceiling: opus\n`);
-  assert.equal(r.ok, true, JSON.stringify(r.errors));
-  const w = r.warnings.find((x) => x.path === 'agents');
+  const native = loadConfig(`${base}agents:\n  ladder: [flash, pro, inherit]\n  dev:\n    model: auto\n    ceiling: inherit\n`);
+  assert.equal(native.ok, true, JSON.stringify(native.errors));
+  assert.equal(native.warnings.some((x) => x.path === 'agents'), false);
+  assert.deepEqual([native.config.agents.dev.floor, native.config.agents.dev.ceiling], ['pro', 'inherit']);
+
+  const custom = loadConfig(`${base}agents:\n  ladder: [sonnet, opus]\n  dev:\n    model: auto\n    ceiling: opus\n`);
+  assert.equal(custom.ok, true, JSON.stringify(custom.errors));
+  const w = custom.warnings.find((x) => x.path === 'agents');
   assert.ok(w);
   assert.match(w.message, /agents\.ladder/);
-  assert.match(w.message, /agents\.dev\.model/);
   assert.match(w.message, /agents\.dev\.ceiling/);
+  assert.doesNotMatch(w.message, /agents\.dev\.model/, 'auto itself is applied; only non-tier names warn');
+  assert.equal(antigravityAgentDiagnostics(native.config).unapplied.length, 0);
 });
 
 test('Scenario: A floor written for a lens - only the default is raised', () => {

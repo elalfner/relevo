@@ -38,7 +38,8 @@ limits:
   run_max_turns: 100               # per unattended run: the runner limits the main agent and Relevo limits the subagents together
   run_max_minutes: 50              # minutes after which an unattended run starts no further agent; keep it 5+ below the timeout-minutes of the go workflow (60)
   building_alert_hours: 3          # hours without activity before an issue on `building` is reported as stuck
-  run_max_cost: 5                  # REQUIRED: US dollars per unattended run; choose your own
+  run_max_cost: 5                  # REQUIRED with agent.build claude: US dollars per unattended run; choose your own
+  # run_max_tokens: 2000000        # REQUIRED with agent.build antigravity (may coexist with run_max_cost for local/cloud switching)
 
 # restricted_paths: [infra/prod.tfvars]   # files no agent or script of Relevo reads, added to the built-in list (.env files, private keys, credential files, secrets/); it only adds, never removes (docs/security.md)
 
@@ -50,19 +51,33 @@ qa:
   retries: 1                       # developer attempts after QA rejects
   rules_from: CLAUDE.md            # project rules QA reads at every run
 
-# The model and the effort of the developer agent and of each QA reviewer (lens). The values below are the defaults.
-# Two reviewers use the stronger model by default; set `spec` and `security` to `sonnet` to keep the cost QA had before.
-# With agent.build antigravity these are accepted and not applied (doctor and init say so). No key turns a reviewer off.
+# The model and the effort of the main session, the developer agent and each QA reviewer (lens).
+# You may scope settings per tool under `agents.claude` and `agents.antigravity` (each accepts `main`, `ladder`, `dev`, `qa.*`),
+# or write them at top level under `agents` as a fallback for the active tool. No key turns a reviewer off.
+# Claude defaults are shown below; Antigravity defaults to main: { model: gemini-4-neon, effort: high } (effort: medium under depth: prototype),
+# ladder: [flash_lite, flash, pro, inherit], and dev + all five QA lenses on `inherit`.
 # agents:
-#   ladder: [haiku, sonnet, opus]   # the order of the models, lowest to highest; floor and ceiling are names in it
-#   dev:
-#     model: sonnet                 # or `auto`: a script picks the model per issue between floor and ceiling (docs/configuration.md)
-#     effort: high
-#   qa:
-#     spec:      { model: opus,   effort: high }
-#     security:  { model: opus,   effort: high }
-#     code:      { model: sonnet, effort: high }
-#     interface: { model: sonnet, effort: medium }
+#   claude:
+#     ladder: [haiku, sonnet, opus] # the order of the models, lowest to highest; floor and ceiling are names in it
+#     dev:
+#       model: sonnet               # or `auto`: a script picks the model per issue between floor and ceiling (docs/configuration.md)
+#       effort: high
+#     qa:
+#       spec:      { model: opus,   effort: high }
+#       security:  { model: opus,   effort: high }
+#       code:      { model: sonnet, effort: high }
+#       interface: { model: sonnet, effort: medium }
+#       bugs:      { model: sonnet, effort: high }
+#   antigravity:
+#     main: { model: gemini-4-neon, effort: high }
+#     ladder: [flash_lite, flash, pro, inherit]
+#     dev: { model: inherit }
+#     qa:
+#       spec:      { model: inherit }
+#       security:  { model: inherit }
+#       code:      { model: inherit }
+#       interface: { model: inherit }
+#       bugs:      { model: inherit }
 
 evidence:
   policy: attach_to_pr             # attach_to_pr | local_only (use for sensitive data)

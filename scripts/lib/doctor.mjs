@@ -11,7 +11,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { mergeRepositoryRules } from './interface-knowledge.mjs';
-import { QA_LENSES, effectiveRunners, loadConfig } from './config.mjs';
+import { ANTIGRAVITY_SUBAGENT_TIERS, QA_LENSES, antigravityAgentDiagnostics, effectiveRunners, loadConfig } from './config.mjs';
 import { parse as parseYaml } from './yaml-lite.mjs';
 import { labelDefinitions, resolveLabelNames } from './labels.mjs';
 import { githubAccess } from './gh-web.mjs';
@@ -1330,9 +1330,15 @@ function toolchainChecks(f) {
 /** The QA lenses: settings an agent does not apply, the agent files, the profile of each platform for each lens, stale names. */
 function lensChecks(f) {
   const r = [];
-  const given = f.config?.agents_given ?? [];
-  if (f.config?.agent?.build === 'antigravity' && given.length > 0) {
-    r.push(warn('agents.settings', `${given.join(', ')} ${given.length === 1 ? 'is' : 'are'} not applied with this agent: agent.build is antigravity, which accepts the model and the effort of a role and does not write them to the agents it renders`, 'nothing to fix; remove the settings or use the Claude agent if you want them applied'));
+  if (f.config?.agent?.build === 'antigravity') {
+    const diag = antigravityAgentDiagnostics(f.config);
+    if (diag.unapplied.length > 0) {
+      const paths = diag.unapplied.map((u) => u.path);
+      r.push(warn('agents.settings', `${paths.join(', ')} ${paths.length === 1 ? 'is' : 'are'} not applied with this agent: agent.build is antigravity, which applies agents.main and native invoke_subagent tiers (${ANTIGRAVITY_SUBAGENT_TIERS.join(', ')}), not per-subagent effort or custom subagent model IDs`, 'remove the unapplied subagent effort/model settings or use native invoke_subagent tiers'));
+    }
+    diag.conflicts.forEach((c) => {
+      r.push(warn('agents.main-effort-conflict', c.message, 'use a base model slug (for example gemini-4-neon) with effort, or remove the conflicting effort setting'));
+    });
   }
   if (f.lensAgentsMissing !== undefined) {
     r.push(f.lensAgentsMissing.length === 0

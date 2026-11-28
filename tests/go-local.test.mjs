@@ -5,7 +5,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '../scripts/lib/config.mjs';
-import { NO_STATE, planLocalRun, runLocal } from '../scripts/lib/go-local.mjs';
+import { NO_STATE, planLocalRun, resolveLocalAgent, runLocal } from '../scripts/lib/go-local.mjs';
 import { runFlags } from '../scripts/lib/run-flags.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -69,8 +69,8 @@ test('the worktree lies outside the repository, so uncommitted changes in it do 
   assert.equal(plan.git[1][1], 'add');
 });
 
-test('Scenario: Local build with Antigravity - agent-guard run with the limits, a time limit and a summary outside the worktree', async () => {
-  const agyConfig = { ...config, agent: { build: 'antigravity' } };
+test('Scenario: Local build with Antigravity - agent-guard run with limits, --settings, --model, --effort, time limit and summary outside worktree', async () => {
+  const agyConfig = { ...config, agent: { build: 'antigravity' }, limits: { ...config.limits, run_max_tokens: 2000000 } };
   const plan = planLocalRun({ issue: '42', repoRoot: REPO, config: agyConfig });
   assert.equal(plan.claude[0], 'node');
   const [guard, mode, ...rest] = plan.claude[1];
@@ -82,12 +82,26 @@ test('Scenario: Local build with Antigravity - agent-guard run with the limits, 
   assert.equal(at('--prompt'), '/relevo:go 42');
   assert.equal(at('--config'), 'relevo.yml');
   assert.equal(at('--timeout-minutes'), '50');
+  assert.equal(at('--model'), 'gemini-4-neon');
+  assert.equal(at('--effort'), 'high');
+  assert.ok(!at('--settings').startsWith(plan.worktree));
   assert.ok(!at('--summary').startsWith(plan.worktree));
-  assert.deepEqual(plan.env, {});
+  assert.deepEqual(plan.env, { RELEVO_AGENT: 'antigravity' });
 
+  const prepared = [];
+  const removed = [];
   const runner = fakeRunner();
-  const r = await runLocal({ issue: '42', config: agyConfig, runner });
+  const r = await runLocal({
+    issue: '42',
+    config: agyConfig,
+    runner,
+    prepareSettings: (arg) => prepared.push(arg),
+    removeSettings: (p) => removed.push(p),
+  });
   assert.equal(r.status, 0);
+  assert.equal(prepared.length, 1);
+  assert.equal(prepared[0].out, plan.settings);
+  assert.deepEqual(removed, [plan.settings]);
   const spawned = runner.calls.find((c) => c.kind === 'stream');
   assert.equal(spawned.cmd, 'node');
   assert.equal(spawned.args[1], 'run');
@@ -101,18 +115,18 @@ test('Scenario: The guard accepts the planned command (real argument parser, stu
   const stub = join(dir, 'agy');
   writeFileSync(stub, '#!/bin/sh\necho \'{"type":"result","result":"ok"}\'\nexit 0\n');
   chmodSync(stub, 0o755);
-  const agyConfig = { ...config, agent: { build: 'antigravity' } };
+  const agyConfig = { ...config, agent: { build: 'antigravity' }, limits: { ...config.limits, run_max_tokens: 2000000 } };
   const plan = planLocalRun({ issue: '42', repoRoot: REPO, config: agyConfig });
   const args = [...plan.claude[1], '--agy', stub, '--max-turns', '5', '--max-tokens', '5000'];
   // the temp folder has no relevo.yml: the limits come from the flags instead of --config
   args.splice(args.indexOf('--config'), 2);
-  const r = spawnSync('node', args, { cwd: dir, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, args, { cwd: dir, encoding: 'utf8' });
   assert.ok(r.status !== 2, `the guard rejected the planned arguments: ${r.stderr}`);
   rmSync(dir, { recursive: true, force: true });
 });
 
 test('Scenario: The guard rejects the command - the worktree is kept and its path printed', async () => {
-  const agyConfig = { ...config, agent: { build: 'antigravity' } };
+  const agyConfig = { ...config, agent: { build: 'antigravity' }, limits: { ...config.limits, run_max_tokens: 2000000 } };
   const r = await runLocal({ issue: '42', config: agyConfig, runner: fakeRunner({ streamStatus: 2 }) });
   assert.equal(r.status, 2);
   assert.equal(r.removed, false);
@@ -169,12 +183,18 @@ test('a worktree that cannot be prepared stops before claude runs', async () => 
   assert.ok(!runner.calls.some((c) => c.kind === 'stream'));
 });
 
-test('the command-line wrapper rejects a missing issue and a missing relevo.yml', async () => {
+test('the command-line wrapper rejects a missing issue, bad --agent and a missing relevo.yml', async () => {
   const cli = `${root}scripts/go-local.mjs`;
-  assert.equal(spawnSync('node', [cli, '--config', '/nonexistent/relevo.yml', '5'], { encoding: 'utf8' }).status, 2);
-  const noIssue = spawnSync('node', [cli, '--config', `${root}templates/relevo.yml`, '--dry-run'], { encoding: 'utf8', cwd: root });
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.ANTIGRAVITY_AGENT;
+  delete cleanEnv.ANTIGRAVITY_CONVERSATION_ID;
+  assert.equal(spawnSync(process.execPath, [cli, '--config', '/nonexistent/relevo.yml', '5'], { encoding: 'utf8', env: cleanEnv }).status, 2);
+  const noIssue = spawnSync(process.execPath, [cli, '--config', `${root}templates/relevo.yml`, '--dry-run'], { encoding: 'utf8', cwd: root, env: cleanEnv });
   assert.equal(noIssue.status, 2);
   assert.match(noIssue.stdout + noIssue.stderr, /give the issue number/);
+  const badAgent = spawnSync(process.execPath, [cli, '5', '--agent', 'gemini', '--config', `${root}templates/relevo.yml`, '--dry-run'], { encoding: 'utf8', cwd: root, env: cleanEnv });
+  assert.equal(badAgent.status, 2);
+  assert.match(badAgent.stdout + badAgent.stderr, /--agent must be "claude" or "antigravity"/);
 });
 
 test('Scenario: Local retry - the agent runs /relevo:go <n> --retry with the same limits, and the cloud is not asked about', async () => {
@@ -300,7 +320,7 @@ test('the lines are in the language of relevo.yml', async () => {
 });
 
 test('Scenario: Antigravity - the same lines come from the same folder, whatever agent runs', async () => {
-  const agy = { ...config, agent: { build: 'antigravity' } };
+  const agy = { ...config, agent: { build: 'antigravity' }, limits: { ...config.limits, run_max_tokens: 2000000 } };
   const t = scripted([snap({ group: { group: 1, of: 1 } })]);
   const r = await runLocal({ issue: '42', config: agy, runner: t.runner, state: t.state, sleep: t.sleep, now: t.now, print: t.print });
   assert.equal(r.status, 0);
@@ -361,7 +381,7 @@ test('Scenario: Nothing reported - raw output is printed, nothing is said about 
 
 test('the Antigravity path reads the summary of the guard', async () => {
   const summary = JSON.stringify({ type: 'result', status: 'SUCCESS', num_turns: 7, usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 0 } });
-  const agy = { ...config, agent: { build: 'antigravity' } };
+  const agy = { ...config, agent: { build: 'antigravity' }, limits: { ...config.limits, run_max_tokens: 2000000 } };
   const t = scripted([snap()], { summary, stdout: 'done' });
   await runLocal({ issue: '42', config: agy, runner: t.runner, state: t.state, sleep: t.sleep, now: t.now, print: t.print });
   assert.match(t.lines.find((l) => /This run used/.test(l)), /7 turns.*150 tokens/);
@@ -419,4 +439,40 @@ test('--resume and --retry together are refused: one continues, the other builds
   const r = await run(fakeRunner(), { resume: true, retry: true });
   assert.equal(r.status, 2);
   assert.match(r.messages.join('\n'), /--resume.*--retry/);
+});
+
+// ---- frictionless Antigravity local switching (D7, D12, D15)
+
+test('Scenario: --agent antigravity on a Claude repo with limits.run_max_tokens and agents.antigravity', async () => {
+  const both = loadConfig(`agent:\n  build: claude\nlimits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\nagents:\n  antigravity:\n    main:\n      model: gemini-4-neon\n      effort: medium\n`).config;
+  const dry = await runLocal({ issue: '42', config: both, runner: fakeRunner(), agent: 'antigravity', dryRun: true });
+  assert.equal(dry.status, 0);
+  const text = dry.messages.join('\n');
+  assert.match(text, /agent-guard\.mjs run/);
+  assert.match(text, /--settings \S+relevo-agy-settings-shop-42\.json/);
+  assert.match(text, /--model gemini-4-neon/);
+  assert.match(text, /--effort medium/);
+
+  // Effort-suffixed model omits --effort in planned command.
+  const suffixed = loadConfig(`agent:\n  build: claude\nlimits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\nagents:\n  antigravity:\n    main:\n      model: gemini-4-neon-high\n      effort: low\n`).config;
+  const suffixedPlan = planLocalRun({ issue: '42', repoRoot: REPO, config: suffixed, agent: 'antigravity' });
+  assert.ok(suffixedPlan.claude[1].includes('--model') && suffixedPlan.claude[1].includes('gemini-4-neon-high'));
+  assert.ok(!suffixedPlan.claude[1].includes('--effort'));
+});
+
+test('Scenario: runtime auto-detection picks Antigravity when ANTIGRAVITY_AGENT or ANTIGRAVITY_CONVERSATION_ID is set', () => {
+  assert.deepEqual(resolveLocalAgent({ config, env: { ANTIGRAVITY_AGENT: '1' } }), { ok: true, agent: 'antigravity' });
+  assert.deepEqual(resolveLocalAgent({ config, env: { ANTIGRAVITY_CONVERSATION_ID: 'abc' } }), { ok: true, agent: 'antigravity' });
+  assert.deepEqual(resolveLocalAgent({ config, env: {} }), { ok: true, agent: 'claude' });
+  assert.deepEqual(resolveLocalAgent({ agent: 'claude', config, env: { ANTIGRAVITY_AGENT: '1' } }), { ok: true, agent: 'claude' });
+  assert.equal(resolveLocalAgent({ agent: 'bad', config, env: {} }).ok, false);
+});
+
+test('Scenario: Missing limits.run_max_tokens stops before creating a worktree', async () => {
+  const runner = fakeRunner();
+  const r = await runLocal({ issue: '42', config, runner, agent: 'antigravity' });
+  assert.equal(r.status, 2);
+  assert.equal(r.worktree, null);
+  assert.match(r.messages.join('\n'), /limits\.run_max_tokens/);
+  assert.ok(!runner.calls.some((c) => c.cmd === 'git' && c.args[0] === 'worktree'), 'no worktree is created');
 });

@@ -319,3 +319,41 @@ test('the command with a lens list can ask for the bugs lens alone', () => {
   const plan = JSON.parse(run(folder(), ['--lenses', 'bugs']).stdout);
   assert.deepEqual(Object.keys(plan.qa), ['bugs']);
 });
+
+// ---- Antigravity model planning and tool-scoped resolution
+
+test('Antigravity planModels, configPlan and escalateDev use Antigravity defaults and ladder', () => {
+  const r = loadConfig(`agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nagents:\n  antigravity:\n    dev:\n      model: auto\n      floor: flash\n      ceiling: inherit\n    qa:\n      security:\n        model: auto\n`);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  const small = planModels({ config: r.config, issue: issue(2), tasksText: tasks(2) });
+  assert.deepEqual(small.main, { model: 'gemini-4-neon', effort: 'high', source: 'config', why: 'set in relevo.yml' });
+  assert.equal(small.dev.model, 'flash');
+  assert.equal(small.qa.security.model, 'inherit', 'Antigravity QA auto floor is inherit');
+  assert.equal(small.qa.code.model, 'inherit');
+
+  const none = planModels({ config: r.config, issue: { title: 'x', body: 'none' }, tasksText: null });
+  assert.equal(none.dev.model, 'inherit', 'Antigravity default model is inherit when nothing to score');
+
+  const fallback = configPlan(r.config, 'plan failed');
+  assert.equal(fallback.main.model, 'gemini-4-neon');
+  assert.equal(fallback.dev.model, 'inherit');
+  assert.equal(fallback.qa.security.model, 'inherit');
+
+  const up1 = escalateDev({ config: r.config, from: 'flash', attempt: 2, reason: 'qa-rejected' });
+  assert.deepEqual([up1.model, up1.escalated], ['pro', true]);
+  const up2 = escalateDev({ config: r.config, from: 'pro', attempt: 3, reason: 'gate-red' });
+  assert.deepEqual([up2.model, up2.escalated], ['inherit', true]);
+  const capped = escalateDev({ config: r.config, from: 'inherit', attempt: 4, reason: 'qa-rejected' });
+  assert.equal(capped.escalated, false);
+});
+
+test('model-plan CLI resolves --agent and RELEVO_AGENT on a Claude repository with agents.antigravity', () => {
+  const dir = folder('limits:\n  run_max_cost: 5\n  run_max_tokens: 2000000\ndepth: prototype\nagents:\n  antigravity:\n    dev:\n      model: auto\n      floor: pro\n'.replace(/^limits:\n  run_max_cost: 5\n/, ''));
+  const byFlag = JSON.parse(run(dir, ['--agent', 'antigravity']).stdout);
+  assert.deepEqual(byFlag.main, { model: 'gemini-4-neon', effort: 'medium', source: 'config', why: 'the default of the prototype depth' });
+  assert.equal(byFlag.dev.model, 'pro');
+  assert.equal(byFlag.qa.spec.model, 'inherit');
+
+  const byEnv = JSON.parse(run(dir, [], { RELEVO_AGENT: 'antigravity' }).stdout);
+  assert.deepEqual(byEnv, byFlag);
+});

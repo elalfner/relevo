@@ -5,8 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { BASE_PROGRAMS, DENIED, EXIT, Tracker, agySettings, logLine, runGuard } from '../scripts/lib/agent-guard.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BASE_PROGRAMS, DENIED, EXIT, Tracker, agySettings, buildAgyArgs, logLine, readSubagentTranscript, runGuard } from '../scripts/lib/agent-guard.mjs';
 import { readUsage, reachedUsageLimit } from '../scripts/lib/run-usage.mjs';
 import { readSource } from '../scripts/lib/adapters/source.mjs';
 import { agyReadDenials, restrictedList } from '../scripts/lib/restricted-paths.mjs';
@@ -263,4 +263,125 @@ test('S4: the limits of the guard are reached through the turns and tokens of th
   const byTurns = start({ turns: 4, tokens: 100000, minutes: 30 });
   byTurns.child.push(...lensStream);
   assert.equal((await byTurns.done).code, EXIT.turns, 'the main agent made 2 turns, with the lenses the 4th turn stops the run');
+});
+
+test('buildAgyArgs passes --model, --effort (only for base slugs), --settings and never --sandbox', () => {
+  const base = buildAgyArgs({ prompt: '/relevo:go 7', timeoutMinutes: 50, model: 'gemini-4-neon', effort: 'high', settings: '/tmp/s.json' });
+  assert.deepEqual(base, ['-p', '/relevo:go 7', '--output-format', 'stream-json', '--print-timeout', '51m', '--model', 'gemini-4-neon', '--effort', 'high', '--settings', '/tmp/s.json']);
+  assert.ok(!base.includes('--sandbox'));
+
+  const suffixed = buildAgyArgs({ prompt: '/relevo:go 7', timeoutMinutes: 50, model: 'gemini-4-neon-high', effort: 'low', settings: '/tmp/s.json' });
+  assert.ok(suffixed.includes('--model') && suffixed.includes('gemini-4-neon-high'));
+  assert.ok(!suffixed.includes('--effort'), 'omits --effort on effort-suffixed slugs to avoid agy 1.5.18 conflict');
+});
+
+test('agySettings omits modelProvider locally when includeProvider is false and never allows command(agy)', () => {
+  const local = agySettings({ includeProvider: false, extra: ['agy'] });
+  assert.equal('modelProvider' in local, false);
+  assert.ok(!local.permissions.allow.includes('command(agy)'), 'C2: never allow command(agy)');
+  assert.ok(!BASE_PROGRAMS.includes('agy'));
+  const cloud = agySettings({ includeProvider: true, extra: ['agy'] });
+  assert.equal(cloud.modelProvider, 'gemini');
+  assert.ok(!cloud.permissions.allow.includes('command(agy)'));
+});
+
+test('Tracker and runGuard record per-subagent turns and tokens in summary.agents', async () => {
+  const { child, done } = start({ turns: 100, tokens: 1e9, minutes: 30 });
+  child.push(
+    JSON.stringify({ event: 'init', conversation_id: 'main-1', init: { model: 'gemini-4-neon', tools: [] } }),
+    turn('main-1', 1, 100),
+    step('main-1', 2, 'subagent', {
+      tool_name: 'invoke_subagent',
+      tool_info: { parameters: { TypeName: 'relevo-dev', Role: 'build 1/1: 1.1', Model: 'inherit' } },
+      subagent_info: { subagents: [{ conversation_id: 'sub-dev' }] },
+    }),
+    turn('sub-dev', 1, 250),
+    turn('sub-dev', 2, 150),
+    step('main-1', 3, 'subagent', {
+      tool_name: 'invoke_subagent',
+      tool_info: { parameters: { TypeName: 'relevo-qa-security', Role: 'qa-security attempt 1', Model: 'inherit' } },
+      subagent_info: { subagents: [{ conversation_id: 'sub-sec' }] },
+    }),
+    turn('sub-sec', 1, 300),
+    result()
+  );
+  child.end(0);
+  const { summary } = await done;
+  assert.deepEqual(summary.agents, [
+    { name: 'main', model: 'gemini-4-neon', turns: 1, tokens: 100, cached: 5 },
+    { name: 'relevo-dev', launch: 'build 1/1: 1.1', model: 'inherit', turns: 2, tokens: 400, cached: 10 },
+    { name: 'relevo-qa-security', launch: 'qa-security attempt 1', model: 'inherit', turns: 1, tokens: 300, cached: 5 },
+  ]);
+});
+
+test('agent-guard CLI forwards --model, --effort, --settings from relevo.yml and supports settings --local', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'relevo-guard-1518-'));
+  writeFileSync(join(dir, 'relevo.yml'), 'agent:\n  build: claude\ndepth: prototype\nlimits:\n  run_max_cost: 5\n  run_max_tokens: 50000\nplatform: flutter-android\n');
+  const settingsOut = join(dir, 'local-settings.json');
+  const envNoKey = { ...process.env };
+  delete envNoKey.GEMINI_API_KEY;
+  const s = spawnSync(process.execPath, [cli, 'settings', '--out', settingsOut, '--config', join(dir, 'relevo.yml'), '--local'], { encoding: 'utf8', env: envNoKey });
+  assert.equal(s.status, 0, s.stdout + s.stderr);
+  const parsedSettings = JSON.parse(readFileSync(settingsOut, 'utf8'));
+  assert.equal('modelProvider' in parsedSettings, false, 'omits modelProvider locally when GEMINI_API_KEY is unset');
+
+  const fake = join(dir, 'agy');
+  writeFileSync(fake, `#!/usr/bin/env node\nconst a = process.argv.slice(2);\nconsole.log(JSON.stringify({ event: 'step_update', step_update: { conversation_id: 'a', step_index: 1, state: 'DONE', step_type: 'agent_response', usage: { input_tokens: 90, output_tokens: 10, total_tokens: 100 } } }));\nconsole.log(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: JSON.stringify({ args: a, agent: process.env.RELEVO_AGENT }) } }));\n`, { mode: 0o755 });
+  const r = spawnSync(process.execPath, [cli, 'run', '--agy', fake, '--prompt', '/relevo:go 7', '--config', join(dir, 'relevo.yml'), '--timeout-minutes', '1', '--settings', settingsOut, '--summary', join(dir, 'summary.json')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const payload = JSON.parse(r.stdout.trim());
+  assert.equal(payload.agent, 'antigravity');
+  assert.ok(payload.args.includes('--model') && payload.args.includes('gemini-4-neon'));
+  assert.ok(payload.args.includes('--effort') && payload.args.includes('medium'), 'depth: prototype lowers main.effort to medium');
+  assert.ok(payload.args.includes('--settings') && payload.args.includes(settingsOut));
+  assert.ok(!payload.args.includes('--sandbox'));
+});
+
+test('readSubagentTranscript and runGuard merge agy 1.5.19 subagent log_uri transcripts into summary.agents and totals', async () => {
+  const transcript = [
+    JSON.stringify({ step_index: 0, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', content: 'start' }),
+    JSON.stringify({ step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', model: 'gemini-4-neon-high', input_tokens: 8000, output_tokens: 150, cache_read_tokens: 0 }),
+    JSON.stringify({ step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', model: 'gemini-4-neon-high', input_tokens: 8000, output_tokens: 150, cache_read_tokens: 0 }),
+    JSON.stringify({ step_index: 2, source: 'MODEL', type: 'GENERIC', status: 'DONE', content: 'tool result' }),
+    JSON.stringify({ step_index: 3, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', model: 'gemini-4-neon-high', input_tokens: 2000, output_tokens: 50, cache_read_tokens: 6000 }),
+  ].join('\n');
+
+  assert.deepEqual(readSubagentTranscript(transcript), {
+    turns: 2,
+    input: 10000,
+    output: 200,
+    cached: 6000,
+    tokens: 10200,
+    model: 'gemini-4-neon-high',
+  });
+
+  const logPath = '/tmp/relevo-subagent-1/transcript.jsonl';
+  const logUri = pathToFileURL(logPath).href;
+  const { child, done } = start({ turns: 100, tokens: 1e9, minutes: 30 }, {
+    readFile: (p) => (p === logPath ? transcript : null),
+  });
+  child.push(
+    JSON.stringify({ event: 'init', conversation_id: 'main-1', init: { model: 'gemini-4-neon', tools: [] } }),
+    turn('main-1', 1, 100),
+    step('main-1', 2, 'subagent', {
+      tool_name: 'invoke_subagent',
+      subagent_info: {
+        subagents: [{
+          type_name: 'relevo-dev',
+          role: 'Developer',
+          conversation_id: 'sub-dev-1',
+          log_uri: logUri,
+        }],
+      },
+    }),
+    result()
+  );
+  child.end(0);
+  const { summary } = await done;
+  assert.equal(summary.num_turns, 3, 'main turn (1) + subagent transcript turns (2)');
+  assert.deepEqual(summary.usage, { input_tokens: 10090, output_tokens: 210, cache_read_input_tokens: 6005 });
+  assert.deepEqual(summary.agents, [
+    { name: 'main', model: 'gemini-4-neon', turns: 1, tokens: 100, cached: 5 },
+    { name: 'relevo-dev', launch: 'Developer', model: 'gemini-4-neon-high', turns: 2, tokens: 10200, cached: 6000 },
+  ]);
 });

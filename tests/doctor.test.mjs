@@ -2523,12 +2523,21 @@ test('Scenario: A workflow for another agent has no Claude step - nothing is jud
 });
 
 // ---- the QA lenses (specialist-review-lenses)
-test('Scenario: Antigravity - doctor warns that an agent setting is not applied, names it, and does not fail', () => {
+test('Scenario: Antigravity - doctor warns specifically on unapplied settings or main effort-suffix conflicts, and stays quiet on applied settings', () => {
   const r = runChecks(healthy({ config: { ...config, agent: { build: 'antigravity' }, agents_given: ['agents.qa.security.model'] } }));
   const w = byId(r, 'agents.settings');
   assert.equal(w.status, 'warn');
   assert.match(w.message, /agents\.qa\.security\.model is not applied with this agent/);
   assert.equal(byId(runChecks(healthy({ config: { ...config, agent: { build: 'claude' }, agents_given: ['agents.dev.model'] } })), 'agents.settings'), undefined, 'Claude with every setting applied: no warning');
+
+  const applied = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\nagents:\n  antigravity:\n    main:\n      model: gemini-4-neon\n      effort: high\n    dev:\n      model: inherit\n').config;
+  assert.equal(byId(runChecks(healthy({ config: applied })), 'agents.settings'), undefined, 'applied Antigravity settings produce no warning');
+  assert.equal(byId(runChecks(healthy({ config: applied })), 'agents.main-effort-conflict'), undefined);
+
+  const conflict = loadConfig('agent:\n  build: antigravity\nlimits:\n  run_max_tokens: 2000000\nplatform: flutter-android\nagents:\n  antigravity:\n    main:\n      model: gemini-4-neon-high\n      effort: low\n').config;
+  const cw = byId(runChecks(healthy({ config: conflict })), 'agents.main-effort-conflict');
+  assert.equal(cw.status, 'warn');
+  assert.match(cw.message, /gemini-4-neon-high.*conflicts with effort "low"/);
 });
 
 test('Scenario: Antigravity with settings - the only finding that the lenses add is the warning that the settings are not applied', () => {

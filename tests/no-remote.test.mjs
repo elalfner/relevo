@@ -15,6 +15,9 @@ symlinkSync(process.execPath, join(bin, 'node'));
 writeFileSync(join(bin, 'gh'), '#!/bin/sh\nexit 1\n');
 chmodSync(join(bin, 'gh'), 0o755);
 const env = { ...process.env, PATH: `${bin}:/usr/bin:/bin`, HOME: scratch, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+delete env.ANTIGRAVITY_AGENT;
+delete env.ANTIGRAVITY_CONVERSATION_ID;
+delete env.RELEVO_AGENT;
 
 function project() {
   const dir = join(scratch, `p${Math.random().toString(36).slice(2)}`);

@@ -88,7 +88,25 @@ function breakdown(all, result) {
       });
     }
   });
-  if (done.size === 0) return { models: models.length ? models : null, agents: null };
+  const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
+  if (done.size === 0) {
+    // Antigravity agent-guard summaries record per-agent turns and tokens directly in `result.agents`.
+    const guardAgents = Array.isArray(result.agents)
+      ? result.agents
+        .filter((a) => a && typeof a.name === 'string' && a.name && num(a.turns) !== null)
+        .map((a) => clean({
+          name: a.name,
+          launch: typeof a.launch === 'string' && a.launch ? a.launch : null,
+          model: typeof a.model === 'string' && a.model ? a.model : null,
+          effort: typeof a.effort === 'string' && a.effort ? a.effort : null,
+          turns: a.turns,
+          tokens: num(a.tokens),
+          seconds: num(a.seconds),
+          cost: num(a.cost),
+        }))
+      : [];
+    return { models: models.length ? models : null, agents: guardAgents.length ? guardAgents : null };
+  }
 
   // One entry per message id and agent; the main agent is the key ''.
   const seen = new Map();
@@ -125,8 +143,6 @@ function breakdown(all, result) {
     });
     return any ? total : null;
   };
-  const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
-
   const agents = [clean({ name: 'main', model: modelOfAgent.get('')?.model ?? null, turns: num(result.num_turns), cost: costOf('') })];
   // A launch that `go` named `replica <task id>` is shown apart: one entry per target, whatever the number of launches (attempts).
   const byTarget = new Map();
@@ -314,6 +330,7 @@ export function limitsExceeded(usage, limits = {}) {
   if (!usage) return out;
   if (usage.turns !== null && Number.isFinite(limits.run_max_turns) && usage.turns > limits.run_max_turns) out.push({ limit: 'limits.run_max_turns', used: usage.turns, max: limits.run_max_turns });
   if (usage.cost !== null && Number.isFinite(limits.run_max_cost) && usage.cost > limits.run_max_cost) out.push({ limit: 'limits.run_max_cost', used: usage.cost, max: limits.run_max_cost });
+  if (usage.cost === null && usage.tokens !== null && Number.isFinite(limits.run_max_tokens) && usage.tokens > limits.run_max_tokens) out.push({ limit: 'limits.run_max_tokens', used: usage.tokens, max: limits.run_max_tokens });
   return out;
 }
 
@@ -373,8 +390,8 @@ export function usageLine(usage, { subscription = false, limits = null, plan = n
   if (usage.tokens !== null) parts.push(`${t('tokens', { n: number(usage.tokens) })}${usage.cached ? t('cached', { n: number(usage.cached) }) : ''}`);
   if (!parts.length) return '';
   const over = limitsExceeded(usage, limits ?? {});
-  const warn = over.map((o) => t('went_past', { limit: o.limit, max: o.max, used: o.limit.endsWith('turns') ? o.used : `$${o.used.toFixed(2)}`, why: o.limit.endsWith('turns') && usage.subagentTurns ? t('subagents_not_stopped') : '' })).join('');
-  const agent = (a) => `${a.name}${a.launch ? ` [${a.launch}]` : ''}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
+  const warn = over.map((o) => t('went_past', { limit: o.limit, max: o.limit.endsWith('tokens') ? number(o.max) : o.max, used: o.limit.endsWith('turns') ? o.used : o.limit.endsWith('tokens') ? number(o.used) : `$${o.used.toFixed(2)}`, why: o.limit.endsWith('turns') && usage.subagentTurns ? t('subagents_not_stopped') : '' })).join('');
+  const agent = (a) => `${a.name}${a.launch ? ` [${a.launch}]` : ''}${a.model ? ` (${a.model}${a.effort ? `, ${a.effort}` : ''})` : ''} ${turns(a.turns)}${a.seconds ? t('minutes', { n: (a.seconds / 60).toFixed(1) }) : ''}${a.tokens !== undefined ? t('agent_tokens', { n: number(a.tokens) }) : ''}${a.cost !== undefined ? t('agent_cost', { cost: a.cost.toFixed(2) }) : ''}`;
   const byAgent = usage.agents?.length ? t('by_agent', { list: usage.agents.map(agent).join('; ') }) : '';
   const attempts = (n) => t(n === 1 ? 'attempt_one' : 'attempt_many', { n });
   const replica = (r) => t('replica_item', { id: r.id, model: r.model ? ` (${r.model})` : '', attempts: attempts(r.attempts), turns: turns(r.turns), cost: r.cost !== undefined ? t('agent_cost', { cost: r.cost.toFixed(2) }) : '', why: r.why ? t('replica_why', { why: r.why }) : '' });
@@ -465,9 +482,9 @@ export function parseUsageMarker(comment) {
   }
   // Which agent used what: read only when every entry is well formed; a malformed one leaves the key out, not an error.
   if (Array.isArray(data.agents) && data.agents.length) {
-    const good = data.agents.every((a) => a && typeof a.name === 'string' && num(a.turns) !== null && (a.model === undefined || typeof a.model === 'string')
-      && (a.effort === undefined || typeof a.effort === 'string') && (a.seconds === undefined || num(a.seconds) !== null) && (a.cost === undefined || num(a.cost) !== null));
-    if (good) run.agents = data.agents.map(({ name, model, effort, turns, seconds, cost }) => ({ name, turns, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
+    const good = data.agents.every((a) => a && typeof a.name === 'string' && num(a.turns) !== null && (a.launch === undefined || typeof a.launch === 'string') && (a.model === undefined || typeof a.model === 'string')
+      && (a.effort === undefined || typeof a.effort === 'string') && (a.tokens === undefined || num(a.tokens) !== null) && (a.seconds === undefined || num(a.seconds) !== null) && (a.cost === undefined || num(a.cost) !== null));
+    if (good) run.agents = data.agents.map(({ name, launch, model, effort, turns, tokens, seconds, cost }) => ({ name, turns, ...(launch !== undefined ? { launch } : {}), ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}), ...(tokens !== undefined ? { tokens } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(cost !== undefined ? { cost } : {}) }));
   }
   if (Array.isArray(data.replicas) && data.replicas.length && data.replicas.every((r) => r && typeof r.id === 'string' && Number.isInteger(r.attempts) && num(r.turns) !== null
     && (r.model === undefined || typeof r.model === 'string') && (r.seconds === undefined || num(r.seconds) !== null) && (r.cost === undefined || num(r.cost) !== null) && (r.why === undefined || typeof r.why === 'string'))) {
@@ -559,10 +576,8 @@ export function runnerCut(text) {
   return null;
 }
 
-// Messages the Claude CLI and the API document for a usage limit, a quota or an empty credit balance. These patterns
-// are not from a failed run seen here (see docs/pilot-findings.md); a wrong guess only changes the wording of a
-// comment on a run that already failed.
-const LIMIT_RE = /usage limit|limit reached|rate[ _-]?limit|credit balance is too low|exceeded your (current )?quota|quota exceeded|resource[ _]exhausted|insufficient[ _]quota/i;
+// Messages the Claude CLI, Antigravity/Gemini and the API document for a usage limit, a quota, capacity or an empty credit balance.
+const LIMIT_RE = /usage limit|limit reached|rate[ _-]?limit|credit balance is too low|exceeded your (current )?quota|exhausted your quota|model_capacity_exhausted|prepaid balance is insufficient|quota exceeded|resource[ _]exhausted|insufficient[ _]quota/i;
 
 /**
  * Does the log show that a usage limit, a quota or the credit was reached? In a structured log only what a real limit
@@ -579,9 +594,9 @@ export function reachedUsageLimit(text) {
       return typeof status === 'string' && !status.startsWith('allowed');
     }
     // The summary of the guard for the other agent runner is a result too: it has no is_error, but a failed exit code
-    // and the tail of the standard error where the provider's message lands.
+    // and the tail of the standard error (or response/error) where the provider's message lands.
     if (e.type === 'result' && (e.is_error === true || (typeof e.exit_code === 'number' && e.exit_code !== 0))) {
-      return LIMIT_RE.test([e.result, e.error, e.stderr_tail].map((v) => (typeof v === 'string' ? v : JSON.stringify(v ?? ''))).join('\n'));
+      return LIMIT_RE.test([e.result, e.error, e.stderr_tail, e.response].map((v) => (typeof v === 'string' ? v : JSON.stringify(v ?? ''))).join('\n'));
     }
     return false;
   });
