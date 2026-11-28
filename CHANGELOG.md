@@ -22,6 +22,7 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 ### Fixed
 
 - **A large `init` plan is no longer cut.** Read through a pipe, a plan of more than 64 KB (for example with several workflow differences) arrived incomplete, with exit code 0.
+- **An Apple library that logs with no subsystem no longer rejects an iOS review.** An `Error` with no subsystem written by a system image (under `/System/Library/` or `/usr/lib/`, also inside the simulator runtime) is now system noise, and the report lists what was ignored for that reason (image, message, times; at most five). An `Error` finding with no subsystem now names the file of the image that wrote it, so a waiver recorded before for one has to be given again.
 
 ## [0.19.0] - 2026-11-26
 

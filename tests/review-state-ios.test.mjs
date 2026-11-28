@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { auditSimulatorSource, iosReviewAudit } from '../scripts/lib/logaudit-ios.mjs';
 import { auditReport } from '../scripts/lib/logaudit.mjs';
 import { applyWaivers, waiveFinding, newState, confirmEnv, precheckItem, autoItem } from '../scripts/lib/review-state.mjs';
@@ -12,7 +17,7 @@ test('a clean slice passes and counts the system noise', () => {
   const a = auditSimulatorSource(source, () => [e('Default', 'com.urban.omb', 'ok'), e('Error', 'com.apple.x', 'noise')].join('\n'), () => []);
   assert.equal(a.verdict, 'REVIEW PASSED');
   assert.equal(a.ignored, 1);
-  assert.match(auditReport(a, { scope }), /1 error\(s\) written by Apple frameworks/);
+  assert.match(auditReport(a, { scope }), /1 error\(s\) were ignored as system noise/);
 });
 
 test('a slice with findings is rejected and folded with a count', () => {
@@ -66,4 +71,42 @@ test('Scenario: Auto on iOS - needs verify and the confirmation', () => {
 
 test('Scenario: Autopilot off on iOS - precheck is refused', () => {
   assert.throws(() => precheckItem(confirmEnv(iosState('off')), 1, 'ok'), /off/);
+});
+
+const sys = (eventMessage, image = 'libCoreFSCache.dylib') => JSON.stringify({ messageType: 'Error', subsystem: '', eventMessage, senderImagePath: `/System/Library/Frameworks/OpenGLES.framework/${image}` });
+const audited = (...entries) => auditSimulatorSource(source, () => entries.join('\n'), () => []);
+
+test('Scenario: Ignored errors are listed - image, message and times, without changing the verdict', () => {
+  const a = audited(sys('fopen failed'), sys('fopen failed'));
+  assert.equal(a.verdict, 'REVIEW PASSED');
+  const report = auditReport(a, { scope });
+  assert.match(report, /2 error\(s\) were ignored as system noise \(a `com\.apple\.` subsystem, or no subsystem and a system image\)/);
+  assert.match(report, /- `libCoreFSCache\.dylib`: `fopen failed` \(2 times\)/);
+  assert.match(report, /no fault, and no error that is not system noise/);
+  assert.doesNotMatch(report, /\/System\/Library|Apple frameworks/);
+});
+
+test('Scenario: More than five - the report lists five and counts them all', () => {
+  const a = audited(...[1, 2, 3, 4, 5, 6, 7].map((n) => sys(`message ${n}`)));
+  assert.equal(a.ignored, 7);
+  const report = auditReport(a, { scope });
+  assert.equal(report.split('\n').filter((l) => l.startsWith('- `libCoreFSCache.dylib`')).length, 5);
+  assert.match(report, /7 error\(s\) were ignored/);
+  assert.match(report, /The first 5 of 7 different ones/);
+});
+
+test('Scenario: Apple subsystems are not listed', () => {
+  const report = auditReport(audited(e('Error', 'com.apple.x', 'noise')), { scope });
+  assert.match(report, /1 error\(s\) were ignored/);
+  assert.doesNotMatch(report, /written by a system image|- `/);
+});
+
+test('Scenario: After a waiver - the report written from the saved state still lists the ignored errors', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ios-waive-'));
+  const statePath = join(dir, 'evidence', 'review-state.json');
+  mkdirSync(join(dir, 'evidence'));
+  const a = audited(sys('fopen failed'), e('Error', 'com.urban.omb', 'payment failed'));
+  writeFileSync(statePath, JSON.stringify({ items: [], waivers: [], audit: { ...a, scope } }));
+  execFileSync(process.execPath, [fileURLToPath(new URL('../scripts/review-state.mjs', import.meta.url)), 'waive', '1', 'known'], { cwd: dir });
+  assert.match(readFileSync(join(dir, 'evidence', 'review-report.md'), 'utf8'), /- `libCoreFSCache\.dylib`: `fopen failed` \(1 time\)/);
 });

@@ -27,23 +27,31 @@ export function parseNdjson(text) {
 
 const clip = (text) => String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, MESSAGE_MAX);
 const isApple = (subsystem) => String(subsystem ?? '').startsWith('com.apple.');
+// A system image: under /System/Library/ or /usr/lib/, from the start of the path or directly after the root of a simulator runtime.
+const SYSTEM_IMAGE = /^(?:\/.*\.simruntime\/Contents\/Resources\/RuntimeRoot)?\/(?:System\/Library|usr\/lib)\//;
+const isSystemImage = (path) => !path.includes('/data/Containers/') && SYSTEM_IMAGE.test(path);
+const fileName = (path) => path.slice(path.lastIndexOf('/') + 1);
 
 /**
  * Audit the entries of one app.
  * - `Fault` is always a finding (it includes the runtime issues that SwiftUI reports).
- * - `Error` is system noise when its subsystem begins with `com.apple.`, and a finding otherwise.
+ * - `Error` is system noise when its subsystem begins with `com.apple.`, or when it has no subsystem and a system image wrote
+ *   it; otherwise it is a finding.
  * - Any other type is not a finding.
- * Returns { status: 'inconclusive' | 'clean' | 'findings', entries, findings, ignored, counts }.
- * Identical findings are folded into one with a `count`.
+ * Returns { status: 'inconclusive' | 'clean' | 'findings', entries, findings, ignored, ignoredByImage, counts }.
+ * Identical findings are folded into one with a `count`; an `Error` with no subsystem is also told apart by the image that
+ * wrote it, and carries its file name as `image`. `ignored` counts all the system noise, and `ignoredByImage`
+ * ([{ image, message, count }]) says which of it was ignored because of the image.
  */
 export function auditIosLog(text) {
   const entries = parseNdjson(text);
   const counts = {};
   for (const e of entries) counts[e.messageType ?? 'untyped'] = (counts[e.messageType ?? 'untyped'] ?? 0) + 1;
   if (entries.length === 0) {
-    return { status: 'inconclusive', reason: 'the log has no entry of the app since the review started', entries: 0, findings: [], ignored: 0, counts };
+    return { status: 'inconclusive', reason: 'the log has no entry of the app since the review started', entries: 0, findings: [], ignored: 0, ignoredByImage: [], counts };
   }
   const folded = new Map();
+  const byImage = new Map();
   let ignored = 0;
   for (const e of entries) {
     const type = e.messageType;
@@ -53,27 +61,37 @@ export function auditIosLog(text) {
       continue;
     }
     const message = clip(e.eventMessage);
-    const key = `${type}|${e.subsystem ?? ''}|${message}`;
+    // Only an error with no subsystem is judged, and told apart, by the image that wrote it.
+    const path = type === 'Error' && !e.subsystem ? String(e.senderImagePath ?? '') : '';
+    const key = `${type}|${e.subsystem ?? ''}|${path}|${message}`;
+    if (isSystemImage(path)) {
+      ignored += 1;
+      const seen = byImage.get(key);
+      if (seen) seen.count += 1;
+      else byImage.set(key, { image: fileName(path), message, count: 1 });
+      continue;
+    }
     const found = folded.get(key);
     if (found) found.count += 1;
-    else folded.set(key, { level: type === 'Fault' ? 'fault' : 'error', subsystem: e.subsystem ?? '', category: e.category ?? '', message, time: e.timestamp ?? null, count: 1 });
+    else folded.set(key, { level: type === 'Fault' ? 'fault' : 'error', subsystem: e.subsystem ?? '', ...(path ? { image: fileName(path) } : {}), category: e.category ?? '', message, time: e.timestamp ?? null, count: 1 });
   }
   const findings = [...folded.values()];
-  return { status: findings.length ? 'findings' : 'clean', entries: entries.length, findings, ignored, counts };
+  return { status: findings.length ? 'findings' : 'clean', entries: entries.length, findings, ignored, ignoredByImage: [...byImage.values()], counts };
 }
 
 /**
  * The audit of an iOS slice in the shape the review state keeps: { verdict, findings: [{ class, line, excerpt, count }],
- * counts, ignored, reason? }. A finding's class is `fault` or `error`; its excerpt is `[subsystem] message`, so a waiver
- * matches it as it matches the findings of the other adapters.
+ * counts, ignored, ignoredByImage, reason? }. A finding's class is `fault` or `error`; its excerpt is `[subsystem] message`, or
+ * `[no subsystem, image] message` for an error with no subsystem, so a waiver matches it as it matches the findings of the
+ * other adapters.
  */
 export function iosReviewAudit(text) {
   const r = auditIosLog(text);
-  if (r.status === 'inconclusive') return { verdict: 'REVIEW INCONCLUSIVE', reason: r.reason, findings: [], counts: {}, ignored: 0 };
-  const findings = r.findings.map((f) => ({ class: f.level, line: 0, excerpt: `[${f.subsystem || 'no subsystem'}] ${f.message}`.slice(0, 200), count: f.count }));
+  if (r.status === 'inconclusive') return { verdict: 'REVIEW INCONCLUSIVE', reason: r.reason, findings: [], counts: {}, ignored: 0, ignoredByImage: [] };
+  const findings = r.findings.map((f) => ({ class: f.level, line: 0, excerpt: `[${f.subsystem || ['no subsystem', f.image].filter(Boolean).join(', ')}] ${f.message}`.slice(0, 200), count: f.count }));
   const counts = {};
   findings.forEach((f) => { counts[f.class] = (counts[f.class] ?? 0) + 1; });
-  return { verdict: findings.length === 0 ? 'REVIEW PASSED' : 'REVIEW REJECTED', findings, counts, ignored: r.ignored };
+  return { verdict: findings.length === 0 ? 'REVIEW PASSED' : 'REVIEW REJECTED', findings, counts, ignored: r.ignored, ignoredByImage: r.ignoredByImage };
 }
 
 export const defaultCrashDir = () => join(homedir(), 'Library', 'Logs', 'DiagnosticReports');
@@ -129,7 +147,7 @@ export function auditSimulatorSource(source, readLog, readCrashes = findCrashRep
     audit = iosReviewAudit(readLog({ udid: source.udid, since: source.since, processName: source.process }));
   } catch (err) {
     const unreadable = /could not be read/.test(err.message);
-    audit = { verdict: 'REVIEW INCONCLUSIVE', reason: unreadable ? `${err.message}: boot the simulator again, start the app and repeat the steps` : `the review state cannot be audited: ${err.message}`, findings: [], counts: {}, ignored: 0 };
+    audit = { verdict: 'REVIEW INCONCLUSIVE', reason: unreadable ? `${err.message}: boot the simulator again, start the app and repeat the steps` : `the review state cannot be audited: ${err.message}`, findings: [], counts: {}, ignored: 0, ignoredByImage: [] };
   }
   const crashes = readCrashes({ processName: source.process, since: source.since, udid: source.udid });
   if (crashes.length === 0) return audit;

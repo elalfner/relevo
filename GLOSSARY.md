@@ -75,3 +75,7 @@ _Avoid_: follow-up, what follows
 **Closed**:
 An issue that was delivered, with every Relevo label removed.
 _Avoid_: done, finished
+
+**System noise**:
+An error in the app's log that Apple wrote: the audit counts it, but it is not a finding.
+_Avoid_: warning, ignored error

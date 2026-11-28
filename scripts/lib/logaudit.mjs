@@ -227,13 +227,20 @@ export function auditReport(audit, { issue, scope } = {}) {
   if (audit.findings.length === 0 && scope?.kind === 'api') {
     // said above
   } else if (audit.findings.length === 0) {
-    lines.push(scope?.kind === 'ios' ? 'The simulator log has no fault and no error from the app or from a library that is not Apple\'s.' : 'The device log contains none of the error classes: layout, lifecycle, exceptions, network or data errors, missing activity.');
+    lines.push(scope?.kind === 'ios' ? 'The simulator log has no fault, and no error that is not system noise.' : 'The device log contains none of the error classes: layout, lifecycle, exceptions, network or data errors, missing activity.');
   } else {
     lines.push(`${audit.findings.length} finding(s):`, '');
     audit.findings.forEach((f, i) => lines.push(`${i + 1}. **${f.class}** (${f.line ? `log line ${f.line}` : 'simulator log'}${f.count > 1 ? `, ${f.count} times` : ''}): \`${f.excerpt.replace(/`/g, "'")}\`${f.waived ? ` — WAIVED by the reviewer: ${f.reason}` : ''}`));
   }
   if (audit.ignored > 0) {
-    lines.push('', `${audit.ignored} error(s) written by Apple frameworks were ignored as system noise; they are not findings.`);
+    lines.push('', `${audit.ignored} error(s) were ignored as system noise (a \`com.apple.\` subsystem, or no subsystem and a system image); they are not findings.`);
+  }
+  if (audit.ignoredByImage?.length > 0) {
+    const total = audit.ignoredByImage.reduce((n, e) => n + e.count, 0);
+    const shown = audit.ignoredByImage.slice(0, 5);
+    const cut = audit.ignoredByImage.length > shown.length ? ` The first ${shown.length} of ${audit.ignoredByImage.length} different ones:` : '';
+    lines.push('', `${total} of them had no subsystem and were written by a system image.${cut}`);
+    shown.forEach((e) => lines.push(`- \`${e.image}\`: \`${e.message.replace(/`/g, "'")}\` (${e.count} time${e.count === 1 ? '' : 's'})`));
   }
   if (audit.expected?.length > 0) {
     lines.push('', `${audit.expected.length} expected denial(s): permission, row-level security or constraint errors; they are not findings.`);

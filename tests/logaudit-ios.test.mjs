@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { auditIosLog, parseNdjson } from '../scripts/lib/logaudit-ios.mjs';
+import { auditIosLog, iosReviewAudit, parseNdjson } from '../scripts/lib/logaudit-ios.mjs';
 
 // A sanitized slice of a real launch of an app in the iOS Simulator (iOS 27.1, 2026-11-17).
 const REAL = readFileSync(new URL('./fixtures/ios-log/real-launch.ndjson', import.meta.url), 'utf8');
@@ -120,4 +120,52 @@ test('a real SwiftUI runtime issue (state changed inside body, seen on iOS 27.0)
   assert.equal(a.findings[0].level, 'fault');
   assert.equal(a.findings[0].subsystem, 'com.apple.runtime-issues');
   assert.match(a.findings[0].message, /Modifying state during view update/);
+});
+
+// Errors with no subsystem are judged by the image that wrote them.
+const written = (senderImagePath, { messageType = 'Error', subsystem = '', eventMessage = 'fopen failed' } = {}) => line({ messageType, subsystem, eventMessage, senderImagePath });
+const RUNTIME = '/Library/Developer/CoreSimulator/Volumes/iOS_24A1/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.2.simruntime/Contents/Resources/RuntimeRoot';
+const APP = '/Users/someone/Library/Developer/CoreSimulator/Devices/94E35096/data/Containers/Bundle/Application/AB12/Runner.app';
+
+test('Scenario: No subsystem, from the system libraries or the simulator runtime - ignored, counted and a passed review', () => {
+  for (const root of ['', RUNTIME]) {
+    for (const folder of ['/System/Library/Frameworks/OpenGLES.framework', '/usr/lib/system']) {
+      const a = iosReviewAudit(written(`${root}${folder}/libX.dylib`));
+      assert.deepEqual([a.verdict, a.ignored, a.findings], ['REVIEW PASSED', 1, []], `${root}${folder}`);
+      assert.deepEqual(a.ignoredByImage, [{ image: 'libX.dylib', message: 'fopen failed', count: 1 }]);
+    }
+  }
+});
+
+test('an image that is not of the system keeps the error as a finding', () => {
+  for (const path of [
+    `${RUNTIME}/Library/Other/libX.dylib`,
+    `${RUNTIME}/opt/usr/lib/libX.dylib`,
+    `${APP}/Frameworks/libX.dylib`,
+    `${APP}/System/Library/libX.dylib`,
+    `${APP}/x.simruntime/Contents/Resources/RuntimeRoot/usr/lib/libX.dylib`,
+    '/Library/Developer/libX.dylib',
+  ]) {
+    const a = iosReviewAudit(written(path));
+    assert.deepEqual([a.verdict, a.ignored], ['REVIEW REJECTED', 0], path);
+    assert.equal(a.findings[0].excerpt, '[no subsystem, libX.dylib] fopen failed');
+  }
+});
+
+test('Scenario: No subsystem and no image - a finding shown without an image', () => {
+  for (const path of [undefined, '']) {
+    assert.equal(iosReviewAudit(written(path)).findings[0].excerpt, '[no subsystem] fopen failed');
+  }
+});
+
+test('a Fault, or an Error with its own subsystem, written by a system image is a finding shown as before', () => {
+  const a = iosReviewAudit([written('/System/Library/a/libX.dylib', { messageType: 'Fault' }), written('/usr/lib/libY.dylib', { subsystem: 'com.urban.omb' }), written(`${APP}/libZ.dylib`, { subsystem: 'com.urban.omb' })].join('\n'));
+  assert.deepEqual(a.findings.map((f) => [f.class, f.excerpt, f.count]), [['fault', '[no subsystem] fopen failed', 1], ['error', '[com.urban.omb] fopen failed', 2]]);
+  assert.equal(a.ignored, 0);
+});
+
+test('Scenario: Two images, one message - two findings, each with its image and count, and no folder', () => {
+  const a = iosReviewAudit([written(`${APP}/Frameworks/libA.dylib`), written(`${APP}/Frameworks/libB.dylib`), written(`${APP}/Frameworks/libB.dylib`)].join('\n'));
+  assert.deepEqual(a.findings.map((f) => [f.excerpt, f.count]), [['[no subsystem, libA.dylib] fopen failed', 1], ['[no subsystem, libB.dylib] fopen failed', 2]]);
+  assert.doesNotMatch(JSON.stringify(a), /Containers|someone/);
 });

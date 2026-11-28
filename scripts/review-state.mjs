@@ -85,7 +85,7 @@ function finishAudit(state, audit, scope) {
   writeFileSync(join(dirname(statePath), 'review-report.md'), auditReport(audit, { scope }));
   console.log(audit.verdict);
   if (audit.reason) console.log(`  ${audit.reason}`);
-  if (audit.ignored) console.log(`  ${audit.ignored} Apple system error(s) ignored`);
+  if (audit.ignored) console.log(`  ${audit.ignored} error(s) ignored as system noise`);
   audit.findings.slice(0, 10).forEach((f, i) => console.log(`  ${i + 1}. ${f.class}: ${f.excerpt}${f.waived ? ` (waived: ${f.reason})` : ''}`));
 }
 
@@ -238,7 +238,7 @@ try {
       if (state.source?.source === 'simulator') {
         const audit = auditSimulatorSource(state.source, readIosLog);
         const scope = { kind: 'ios', process: state.source.process, since: state.source.since };
-        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ignored: audit.ignored, ...(audit.reason ? { reason: audit.reason } : {}) };
+        state.audit = { verdict: audit.verdict, counts: audit.counts, findings: audit.findings, scope, ignored: audit.ignored, ignoredByImage: audit.ignoredByImage, ...(audit.reason ? { reason: audit.reason } : {}) };
         finishAudit(state, audit, scope);
         break;
       }
