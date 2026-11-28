@@ -757,3 +757,68 @@ The sandbox workflow was pinned to `82ecee3` of `dev` (sandbox PR 204). #205, a 
 - **QA passed #205 with no test for the new behaviour**, although a rule of the project asks for a widget test for every user-visible behaviour. The issue left the tests to a later one, and no reviewer cited the rule. The record cannot show this: it counts what was blocked, not what was let through.
 - **#206 did not reach QA.** It was written to be rejected, with a limit of lines that its own scope did not allow to meet. The build saw the contradiction at the specification and returned it to `needs-spec` after 1 minute, so nothing was recorded.
 - Not seen: a rejection by the reviewers or a red gate, so no finding text has gone through a real comment or the list (only the tests cover it); the digest line (the sandbox has no `digest.issue`); `trust: public`; and a person correcting the kind that `fix` named.
+
+---
+
+# Antigravity `agy 1.5.18` empirical spike (measured 2026-11-27)
+
+Tasks 1.1–1.2 of `antigravity-adapter-parity` (#231): live probes against local authenticated Antigravity CLI `1.5.18` (`agy --version` → `1.5.18`) before changing any adapter tool mapping, hook payload contract, or assumption (Constraint C3).
+
+## `init.tools` registry and `RELEVO_AGY_CHECK=1` (A2)
+
+- `RELEVO_AGY_CHECK=1 node --test tests/adapter-antigravity.test.mjs` passed 18/18 against `agy 1.5.18`: both `agy plugin validate` and the live `init.tools` check succeeded.
+- `agy -p "Reply with the word ok." --output-format stream-json` emitted `init.tools` containing the existing table names: `view_file`, `list_dir`, `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `run_command`, `grep_search`, and `find_by_name` (plus `notebook_edit`, `sed_file`, `invoke_subagent`, `manage_subagents`, `manage_task`, `schedule`, `send_message`, `run_workflow`, `command_status`, `send_command_input`, `ask_question`, `search_web`, `read_url_content`, and browser/MCP tools).
+- Note on naming split: agent frontmatter and `init.tools` use `view_file`/`write_to_file`/`replace_file_content`, whereas runtime `PreToolUse` `toolCall.name` emits function-call names such as `read_file`, `invoke_subagent`, `run_command`, and `send_message`. `ANTIGRAVITY_TOOLS` in `scripts/lib/adapters/tools.mjs` must therefore keep the `init.tools` names.
+
+## `invoke_subagent` model tiers under `gemini-4-neon-high` (A1)
+
+- Launching parallel `research` subagents from a `gemini-4-neon-high` orchestrator (`--model gemini-4-neon-high --dangerously-skip-permissions --output-format stream-json`) and inspecting `modelName` in `PreToolUse` hook payloads showed:
+  - Orchestrator: `gemini-4-neon-high`
+  - `Model: "pro"`: `gemini-4-hydrogen-tiered-xhigh`
+  - `Model: "flash"`: `gemini-4-hydrogen-tiered-high`
+- Follow-up probe on custom agent frontmatter `model:` (`agy plugin validate` + live `invoke_subagent`):
+  - Exact model IDs (e.g., `model: gemini-3.8-flash-high`) are **rejected** by `agy plugin validate` (`Invalid model tier gemini-3.8-flash-high. The loader skips this agent`); only tier names (`inherit`, `flash_lite`, `flash`, `pro`) are valid.
+  - `model: inherit` (the default when `Model` is omitted) ran on the parent's exact model: **`gemini-4-neon-high`**, avoiding the downgrade to `gemini-4-hydrogen-tiered-*`.
+
+## `--model` + `--effort` interaction and `--settings` (A3)
+
+- **Conflicting effort suffix fails**: `agy -p "Reply ok." --model gemini-4-neon-high --effort low --output-format stream-json` exited `1` with `error: invalid model selection (--model "gemini-4-neon-high" --effort "low"): --model gemini-4-neon-high conflicts with --effort=low`.
+- **Base model + `--effort` succeeds**: `agy -p "Reply ok." --model gemini-4-neon --effort low --output-format stream-json` exited `0` (`init.model`: `"gemini-4-neon"`).
+- **`--settings` with cached subscription login**: `agy -p "Reply ok." --settings '{"permissions":{"deny":["search_web"]}}' --output-format stream-json` exited `0` using the cached subscription login without `modelProvider`.
+
+## `--sandbox` with `git` and `gh`
+
+- Inside `agy --sandbox --dangerously-skip-permissions`:
+  - `git status -sb`: exited `0` (workspace read/write works).
+  - `gh auth status`: exited `1` with `open ~/.config/gh/config.yml: operation not permitted` (the sandbox blocks reads outside the workspace and network access, so `gh` cannot run inside `--sandbox`).
+
+## `stream-json` events (A4)
+
+- Confirmed on `agy 1.5.18`:
+  - `init` carries `conversation_id` and `init.tools`.
+  - Subagent launches emit `step_update` with `step_type: "subagent"`, `tool_name: "invoke_subagent"`, and on `DONE` populate `subagent_info.subagents[].conversation_id`, `log_uri`, and `workspace_uris`.
+  - Each `agent_response` step and the final `result` emit `usage` (`input_tokens`, `output_tokens`, `thinking_tokens`, `cache_read_tokens`, `total_tokens`).
+
+## Native `PreToolUse` hook contract and subagent discrimination
+
+- **Allow vs deny stdout**:
+  - Empty stdout (exit `0`) **allows** the tool call.
+  - Printing `{}` (empty JSON object without `decision`) **denies** the tool call (`tool call denied by pre-tool hook:`). Hooks that allow a call must print nothing.
+  - Printing `{"decision":"deny","reason":"<msg>"}` **denies** the tool call and surfaces `tool call denied by pre-tool hook: <msg>` to the agent.
+- **Payload shape (camelCase)**: `conversationId`, `cwd`, `hookEventName: "PreToolUse"`, `lastUserInput`, `modelName`, `stepIdx`, `toolCall: { id, name, args }`, `transcriptPath`, `artifactDirectoryPath`, `workspacePaths`.
+- **Orchestrator vs subagent**:
+  - `agy 1.5.18` emits no `agent_id`, `agentId`, `parentConversationId`, or `isSubagent` field in `PreToolUse`.
+  - The orchestrator carries its non-empty `lastUserInput` on every tool call (both before launching subagents and after reactive wakeup).
+  - Subagents carry `lastUserInput: ""` and a distinct `conversationId`.
+  - Subagents deliver their final report to the parent via `toolCall.name === "send_message"`, so `time-guard.mjs` must never deny `send_message` at the hard stop (otherwise a cut subagent cannot return its final report).
+  - To also support interactive `Workspace: 'share'` builds (where the inner `relevo-builder` is itself a subagent with `lastUserInput: ""`), `time-guard.mjs` can record the `conversationId` that launches `relevo-*` subagents as the orchestrator inside the progress directory so its own cleanup calls stay allowed after the hard stop.
+
+## Live `/relevo:go` end-to-end verification on `agy 1.5.18` (measured 2026-11-28)
+
+Task 6.2 of `antigravity-adapter-parity` (#231): rendered the Antigravity plugin from the branch into a throwaway local `tracker: files` repository (`/tmp/relevo-live-qa-verify/.agents/plugins/relevo/`, with root `hooks.json`) and ran `agy -p "/relevo:go 1" --model gemini-4-neon-high --dangerously-skip-permissions --output-format stream-json` for a small Node issue (`Add farewell helper`).
+
+- **Synced interactive `go` & isolation**: the outer session printed `next-step.mjs --build-warning --issue 1`, launched `invoke_subagent` (`TypeName: "self"`, `Role: "relevo-builder"`, `Workspace: 'share'`) with a `schedule` (`DurationSeconds: 1200`) watchdog, waited reactively without polling, terminated `relevo-builder` via `manage_subagents` (`Action: "kill"`), left the repository root clean on `main`, and closed with `next-step.mjs --state built --issue 1 --conversation`.
+- **Developer & parallel QA lenses**: inside `relevo-builder`, `relevo-dev` ran (`step 50`) and was killed on completion (`step 54`); after the validation gate passed (`node --check index.mjs`, `node --test`), `step 61` issued **5 parallel tool calls in one turn**: `invoke_subagent` for `relevo-qa-spec`, `relevo-qa-security`, `relevo-qa-code`, and `relevo-qa-bugs`, plus `schedule` (`DurationSeconds: 900`) as the batch watchdog (`interface` was `SKIPPED` for `interface: none`).
+- **Reactive cleanup**: finished lens subagents were killed via `manage_subagents` (`Action: "kill"`) as reports arrived (`steps 69, 75, 81`), and the watchdog was cancelled via `manage_task` (`Action: "kill"`) on `step 81`.
+- **Outcome & root `hooks.json`**: root `hooks.json` loaded and ran without blocking healthy calls; issue `#1` reached `relevo:built` (`QA PASSED`, commits `docs: specification for #1`, `wip: checkpoint 1/1 (#1)`, `feat: Add farewell helper (#1)` on `feature/1-add-farewell-helper`) in ~8 minutes (`480.7s`).
+- **Not exercised in this live run**: forced hard-stop refusal in a live build (covered by `tests/time-guard.test.mjs` and the `PreToolUse` deny probe above) and single-lens watchdog timeout retry (all four lenses passed on the first attempt).

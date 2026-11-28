@@ -6,8 +6,9 @@
 export const CLAUDE_AGENT_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'];
 
 /**
- * Claude tool -> the Antigravity tools that do the same. Names are the ones the CLI reports in the `init` event of
- * `agy -p --output-format stream-json` (checked by tests/adapter-antigravity.test.mjs when RELEVO_AGY_CHECK=1).
+ * Claude tool -> the Antigravity tools that do the same. Names are the ones `agy 1.5.18` reports in the `init` event of
+ * `agy -p --output-format stream-json` (verified in docs/pilot-findings.md and checked by
+ * tests/adapter-antigravity.test.mjs when RELEVO_AGY_CHECK=1).
  * An empty list means the tool has no counterpart and is left out on purpose.
  */
 export const ANTIGRAVITY_TOOLS = {

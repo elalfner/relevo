@@ -29,6 +29,14 @@ import { LENSES, ROLES, lensText, profileLocations, profileLookups, repositoryPr
 import { buildTimeoutMinutes } from './time-limit.mjs';
 
 export const REQUIRED_SKILLS = ['openspec-explore', 'grill-with-docs', 'grilling', 'domain-modeling'];
+/** Directories where `doctor` looks for the required skills of `think` (project + Claude/Antigravity global folders). */
+export const defaultSkillDirs = (home) => [
+  '.claude/skills',
+  '.agents/skills',
+  `${home}/.claude/skills`,
+  `${home}/.agents/skills`,
+  `${home}/.gemini/config/skills`,
+];
 export const SKILL_INSTALL = {
   'openspec-explore': 'run `openspec init` (or `openspec update`) in the project',
   'grill-with-docs': 'run `npx skills add mattpocock/skills` and choose it',
