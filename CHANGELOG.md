@@ -19,6 +19,10 @@ All notable changes to Relevo are recorded here. The format follows [Keep a Chan
 - **A lost runner and a ship with no outcome say how to go on.** The two lines that the workflows write without the message catalog now carry the next step, in English and Spanish. A project gets them when `/relevo:init` updates its workflows.
 - **A cloud run with no usage figures says so.** The usage comment was left out without a word when the execution log was missing or had no result; it now says that the usage is unknown, why, and links the run. A project gets this, and the job cap of the hard stop, when `/relevo:init` updates its go workflow.
 
+### Fixed
+
+- **A large `init` plan is no longer cut.** Read through a pipe, a plan of more than 64 KB (for example with several workflow differences) arrived incomplete, with exit code 0.
+
 ## [0.19.0] - 2026-11-26
 
 ### Added

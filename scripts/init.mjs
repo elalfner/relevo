@@ -109,34 +109,34 @@ try {
   fail(err.message);
 }
 
+// The output is never followed by `process.exit`: on a pipe it is written asynchronously, and exiting would cut it.
 if (mode === 'plan') {
   console.log(process.argv.includes('--json') ? JSON.stringify(items, null, 2) : renderPlan(items));
-  process.exit(0);
+} else {
+  const io = {
+    gh: ghClient({ run: execFileSync }), // the same `gh`, except that a web session answers label creation over REST
+    write: (p, text) => {
+      mkdirSync(dirname(resolve(p)), { recursive: true });
+      writeFileSync(p, text);
+    },
+    append: (p, line) => {
+      const have = existsSync(p) ? readFileSync(p, 'utf8') : '';
+      appendFileSync(p, `${have === '' || have.endsWith('\n') ? '' : '\n'}${line}\n`);
+    },
+  };
+  const skipped = (arg('skip') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const results = applyPlan(skipItems(items, skipped), { repo, io });
+  skipped.forEach((id) => console.error(`skipped ${id}: run init again to apply it`));
+  if (process.argv.includes('--json')) console.log(JSON.stringify(results, null, 2));
+  else {
+    results.forEach((r) => {
+      console.log(`${r.ok ? 'done  ' : 'FAILED'} ${r.id}: ${r.message}`);
+      (r.checklist ?? []).forEach((c) => console.log(`         by hand: ${c}`));
+    });
+    items.filter((i) => i.status === 'manual').forEach((i) => {
+      console.log(`by hand ${i.id}: ${i.description}`);
+      (i.checklist ?? []).forEach((c) => console.log(`         ${c}`));
+    });
+  }
+  process.exitCode = results.some((r) => !r.ok && !r.checklist) ? 2 : 0;
 }
-
-const io = {
-  gh: ghClient({ run: execFileSync }), // the same `gh`, except that a web session answers label creation over REST
-  write: (p, text) => {
-    mkdirSync(dirname(resolve(p)), { recursive: true });
-    writeFileSync(p, text);
-  },
-  append: (p, line) => {
-    const have = existsSync(p) ? readFileSync(p, 'utf8') : '';
-    appendFileSync(p, `${have === '' || have.endsWith('\n') ? '' : '\n'}${line}\n`);
-  },
-};
-const skipped = (arg('skip') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-const results = applyPlan(skipItems(items, skipped), { repo, io });
-skipped.forEach((id) => console.error(`skipped ${id}: run init again to apply it`));
-if (process.argv.includes('--json')) console.log(JSON.stringify(results, null, 2));
-else {
-  results.forEach((r) => {
-    console.log(`${r.ok ? 'done  ' : 'FAILED'} ${r.id}: ${r.message}`);
-    (r.checklist ?? []).forEach((c) => console.log(`         by hand: ${c}`));
-  });
-  items.filter((i) => i.status === 'manual').forEach((i) => {
-    console.log(`by hand ${i.id}: ${i.description}`);
-    (i.checklist ?? []).forEach((c) => console.log(`         ${c}`));
-  });
-}
-process.exit(results.some((r) => !r.ok && !r.checklist) ? 2 : 0);
